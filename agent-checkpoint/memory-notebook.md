@@ -1,7 +1,7 @@
 # 主线会话 Checkpoint（memory-notebook）
 
 **用途：上下文压缩前的主动快照。压缩后的主线会话（我）在 Observe 阶段读此文件恢复完整工作状态。**
-**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-16 第二轮结束（D9+WP8+评审+修复包完成，108 测试绿）。**
+**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第三轮结束（WP9a+WP9b+WP10前置包完成，136 测试绿）。**
 
 ---
 
@@ -19,33 +19,33 @@
 4. `git log --oneline` —— 每 WP 一个 commit，干活前跑 `dotnet test` 确认基线（当前 76/76 绿）
 5. 设计愿景按需查：`docs/开放世界棋盘游戏设计_003_*.md`（Kernel 语义之源，§4 Forecast 失效、§11 同刻、§12 RNG、§16 队列≠Journal）；001（游戏愿景）、002（Host/Player/Protocol 边界）、基础设施.md（工作包优先级与不变量清单原始出处）
 
-## 3. Kernel 当前形状（认知快照，代码在 src/Kernel/）
+## 3. Kernel 当前形状（认知快照，代码在 src/）
 
-- **D9 已落实（强制 event-sourcing）**：`ISimSystem.Resolve` 只返回事件；world 由 Loop 把已提交事件交给全局 `IEventReducer` 折叠。旧 ResolveResult 双轨路径已删。
-- `Time/`：ModelTime（**1 tick = 1ms**）、ModelDuration、Microstep、LogicalTimestamp。checked 溢出。
-- `Scheduling/`：EventCandidate<TPayload>（Due=ModelTime）、ForecastQueue（tie-break `(Due,SourceId,CandidateId)`；注意：InvalidateSource/Generation 实际未被 Loop 使用——评审 A4 指出的"假承诺字段"，待裁决用或删）。
-- `Simulation/`：ISimSystem（ForecastNext/Resolve 纯函数）、IEventReducer、SimulationLoop（每事件后全量重 Forecast；owner=(SourceId,CandidateId)；Microstep 按提交序分配跨时刻重置；**no-op 守卫 + 同刻 resolve 预算（默认 10_000，构造参数）**）。
-- `Journal/`：DomainEvent(Timestamp, Kind=EventKind, Payload)、**EventKind(string Id, ushort Version)**（手写小写点分稳定 id；**路由只按 Id，Version 不参与**）、**EventKindRegistry**（kind↔payload 类型唯一性）、IJournalSink、InMemoryJournal（**严格递增**，拒绝 <=）。
-- `Random/`：DeterministicRandom 坐标寻址纯函数；**RNG 常量与派生规则=replay 兼容契约**。
-- 同刻语义：顺序 Resolve + tie-break + 因果穿透（测试锁定）。
-- 测试侧（108 绿：Kernel 96 + Protocol 12）：五玩具模型、ReplayHarness、ForkHarness、CsCheck 不变量、WorldSnapshotContractTests（A10 变异探针）。
-- `src/Protocol/`（WP8）：DecisionRequest/PlayerDecision/Intent/ExpectedOutcome/Observation/KnownFact/AvailableAction；零依赖（不引用 Kernel）；时间/版本用原始 long；Intent 扁平；六动作表达力锁定。
+- **D9 已落实（强制 event-sourcing）**：`ISimSystem.Resolve` 只返回事件；world 由 Loop 把已提交事件交给全局 `IEventReducer` 折叠。
+- **WP9a 重塑后的 SimulationLoop.Run 签名**：`Run(world, SimulationCursor, until, journal, externalInputs?)` → `SimulationRunResult{World, Cursor, StopReason, Version, DecisionEvents}`。cursor 承载 now/同刻预算/no-op 守卫，跨 Run 不重置；决策停机谓词构造注入（控制流不入 journal）；externalInputs 在 cursor.Now 提交过 reducer 入 journal——**replay 只需 initialWorld+journal（评审 A1 已修）**；WorldVersion=(LineageId,EventCount)。
+- `Time/`：ModelTime（1 tick=1ms）、ModelDuration、Microstep、LogicalTimestamp。`Scheduling/`：EventCandidate（**Generation 已删**）、ForecastQueue（tie-break (Due,SourceId,CandidateId)，**InvalidateSource 已删**）。
+- `Journal/`：DomainEvent(Timestamp, EventKind(Id,Version), Payload)、EventKindRegistry、InMemoryJournal（严格递增）。路由只按 Kind.Id。
+- `Random/`：DeterministicRandom 坐标寻址 + **DeriveStreamId(long/string)**（持久身份→streamId，禁字面量）；采样坐标入事件 payload（journal 自含可审计）。RNG 常量=replay 契约。
+- **SourceId 一律由世界持久实体 id 派生**（A4 身份化）；同刻争抢用**顺序无关仲裁模式**（夹宝模型示范：胜者由 RNG 坐标决定与 Resolve 顺序无关，tie-break 只决定执行顺序）。
+- `src/Host/`（WP9b）：IPlayerDriver（Null/Scripted/Random-SplitMix64）+ PlayerDecisionSession（单线程顺序编排：requestBuilder/decisionTranslator 注入，版本校验严格；async 边界仅在 Host）。
+- `src/Protocol/`：DTO 已含 LineageId/Microstep（A3 修复）。零依赖。
+- 测试 136 绿：Kernel 114 + Protocol 12 + Host 10。玩具模型新增：生灭世界（动态实体）、夹宝（仲裁）、Host 层岔路决策模型。A6d property 覆盖全部 system（曾抓到 Bouncing/InterruptedMining 的真实 now 依赖并修复）。
 
-## 4. 尚未落盘的思考：WP9 规格重塑（下轮第一件事）
+## 4. 尚未落盘的思考：WP10 FirstBoard（下轮第一件事）
 
-D9 已完成（方案 a 采纳并全面落实，正式条目在研发计划_001）。新焦点：**adversarial review（研发计划_003，Opus 出品，质量极高）的 Top-3 必须进 WP9 规格**：
-- **A1+A2（同一件事）**：Kernel 加"显式输入端口"（外部输入作为事件入 journal，不经 Resolve；replay 只需 initialWorld+journal）+ SimulationCursor（承载 now/守卫/预算，可暂停恢复）+ StopReason（Exhausted/BoundaryReached/DecisionRequired）+ "切 N 段==一次跑完" property。这是 WP9 的 Kernel 侧地基（建议拆 WP9a）。
-- **A3**：WorldVersion=(LineageId,LogicalTimestamp) 由 Loop 生产；Protocol 补 Microstep/LineageId。
-- **A4 身份部分**：SourceId 必须由世界持久身份派生（写成正式决策）。
-- 注意：DecisionRequired 的触发机制需要设计——候选/事件如何声明"需要决策"？我的初步倾向：特殊事件 kind（如 decision.requested）由 system 产生，Loop 识别后停机并在 StopReason 携带上下文；或 Resolve 返回值增加"请求暂停"通道。派发前想清。
-- WP10 前置（评审遗留）：A4 仲裁剥离、A8 RNG 坐标纪律、A9 system 无状态化、A6d property。WP11 前置：A5 provenance。全部在 002"下一轮建议"留档。
+评审 Top-3 已全部修复（A1/A2/A3 在 WP9，A4/A8/A9/A6d 在前置包）。WP10 规格要点：
+- 同批多决策：**逐个提交**（每决策立即作为输入跑 Run 再问下一个）——需改 PlayerDecisionSession（当前是同批收齐后统一提交）。同刻公平性由 A4 仲裁模式承担。
+- 世界：3 Places、2 Actors、1 Object、1 Secret、1 Deadline；六动作 Travel/Wait/Talk/Observe/Take/Give（Protocol Intent 已锁表达力）。
+- 信息不对称在 requestBuilder 投影层实现（Observation 只含在场可见）。
+- WP9b 遗留：decisionTranslator 缺原始 request 参数（上下文复杂后扩）；async 取消在"请求已入 journal 输入未提交"的恢复留 speculative 阶段。
+- WP11 前置待做：A5 provenance（事件带 Cause+resolve 批次）+ Version 下沉 codec。全部在 002"下一轮建议"留档。
 
 ## 5. 下一轮队列（也在 002"下一轮建议"）
 
-1. WP9a：Kernel 侧——输入端口 + Cursor + StopReason + WorldVersion + SourceId 身份化 + 切分等价 property
-2. WP9b：Host 侧——IPlayerDriver + Scripted/Random/Null + Protocol 补字段
-3. WP10 前置清单（A4 仲裁/A8 RNG 纪律/A9 system 动态化/A6d）→ WP10 FirstBoard
-4. WP11 前置：A5 provenance envelope 变更
+1. WP10 FirstBoard（逐个提交策略改 PlayerDecisionSession + 3P/2A/1O/1S/1D 世界 + 六动作 + 信息不对称投影 + 完整跑一局出 journal）
+2. WP11 前置：A5 provenance envelope 变更 + Version 下沉 codec（落盘前必须完成）
+3. 可选：Host/Protocol 层小规模 adversarial review（FirstBoard 稳定后收益更大）
+4. WP11 EventJournal 落盘 adapter
 
 ## 6. 协作模式要点（实践验证过的）
 
