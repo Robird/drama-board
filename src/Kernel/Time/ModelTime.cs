@@ -2,21 +2,25 @@ using System.Globalization;
 
 namespace DramaBoard.Kernel.Time;
 
-/// <summary>Represents world logical time as one-second ticks, matching the simulation's required display precision without introducing calendar semantics.</summary>
+/// <summary>Represents world logical time as one-millisecond ticks, allowing physical event timing without introducing calendar semantics.</summary>
 public readonly struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
 {
-    private const long TicksPerMinute = 60;
+    private const long TicksPerSecond = 1_000;
+    private const long TicksPerMinute = 60 * TicksPerSecond;
     private const long TicksPerHour = 60 * TicksPerMinute;
     private const long TicksPerDay = 24 * TicksPerHour;
 
-    /// <summary>Initializes a logical time from a number of one-second ticks.</summary>
+    /// <summary>Initializes a logical time from a number of one-millisecond ticks.</summary>
     public ModelTime(long ticks)
     {
         Ticks = ticks;
     }
 
-    /// <summary>Gets the number of one-second ticks from the model epoch.</summary>
+    /// <summary>Gets the number of one-millisecond ticks from the model epoch.</summary>
     public long Ticks { get; }
+
+    /// <summary>Gets the model epoch.</summary>
+    public static ModelTime Zero => new(0);
 
     /// <summary>Compares this logical time with another logical time.</summary>
     public int CompareTo(ModelTime other) => Ticks.CompareTo(other.Ticks);
@@ -39,11 +43,13 @@ public readonly struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
         ulong timeOfDay = magnitude % TicksPerDay;
         ulong hours = timeOfDay / TicksPerHour;
         ulong minutes = timeOfDay % TicksPerHour / TicksPerMinute;
-        ulong seconds = timeOfDay % TicksPerMinute;
+        ulong seconds = timeOfDay % TicksPerMinute / TicksPerSecond;
+        ulong milliseconds = timeOfDay % TicksPerSecond;
+        string sign = isNegative ? "-" : string.Empty;
 
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"{(isNegative ? "-" : string.Empty)}D{days} {hours:00}:{minutes:00}:{seconds:00}");
+        return milliseconds == 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{sign}D{days} {hours:00}:{minutes:00}:{seconds:00}")
+            : string.Create(CultureInfo.InvariantCulture, $"{sign}D{days} {hours:00}:{minutes:00}:{seconds:00}.{milliseconds:000}");
     }
 
     /// <summary>Returns whether two logical times have the same tick value.</summary>

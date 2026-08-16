@@ -64,7 +64,7 @@ public sealed class ModelTimeTests
     [Fact]
     public void ToString_DayAndTimeOffset_UsesFixedFormat()
     {
-        var modelTime = new ModelTime((3 * 86_400) + (14 * 3_600) + (13 * 60));
+        var modelTime = new ModelTime(((3 * 86_400L) + (14 * 3_600L) + (13 * 60L)) * 1_000);
 
         Assert.Equal("D3 14:13:00", modelTime.ToString());
     }
@@ -72,8 +72,16 @@ public sealed class ModelTimeTests
     [Fact]
     public void ToString_NegativeOffset_UsesLeadingSign()
     {
-        var modelTime = new ModelTime(-((1 * 86_400) + (2 * 3_600) + (3 * 60) + 4));
+        var modelTime = new ModelTime(-((1 * 86_400L) + (2 * 3_600L) + (3 * 60L) + 4) * 1_000);
 
         Assert.Equal("-D1 02:03:04", modelTime.ToString());
+    }
+
+    [Fact]
+    public void ToString_SubsecondOffset_AppendsMilliseconds()
+    {
+        var modelTime = new ModelTime(1_234);
+
+        Assert.Equal("D0 00:00:01.234", modelTime.ToString());
     }
 }

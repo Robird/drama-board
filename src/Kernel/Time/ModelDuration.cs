@@ -1,16 +1,24 @@
 namespace DramaBoard.Kernel.Time;
 
-/// <summary>Represents a model-time duration as one-second ticks so it shares ModelTime's fixed, calendar-free scale.</summary>
+/// <summary>Represents a model-time duration as one-millisecond ticks so it shares ModelTime's fixed, calendar-free scale.</summary>
 public readonly struct ModelDuration : IComparable<ModelDuration>, IEquatable<ModelDuration>
 {
-    /// <summary>Initializes a model-time duration from a number of one-second ticks.</summary>
+    private const long TicksPerSecond = 1_000;
+
+    /// <summary>Initializes a model-time duration from a number of one-millisecond ticks.</summary>
     public ModelDuration(long ticks)
     {
         Ticks = ticks;
     }
 
-    /// <summary>Gets the duration's number of one-second ticks.</summary>
+    /// <summary>Gets the duration's number of one-millisecond ticks.</summary>
     public long Ticks { get; }
+
+    /// <summary>Creates a duration from milliseconds.</summary>
+    public static ModelDuration FromMilliseconds(long milliseconds) => new(milliseconds);
+
+    /// <summary>Creates a duration from seconds and throws if conversion overflows.</summary>
+    public static ModelDuration FromSeconds(long seconds) => new(checked(seconds * TicksPerSecond));
 
     /// <summary>Compares this duration with another duration.</summary>
     public int CompareTo(ModelDuration other) => Ticks.CompareTo(other.Ticks);
