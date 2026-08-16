@@ -6,7 +6,7 @@ public sealed class ForecastQueue<TPayload>
     private static readonly CandidateComparer Ordering = new();
 
     private readonly List<EventCandidate<TPayload>> _candidates = [];
-    private readonly HashSet<EventCandidateId> _knownIds = [];
+    private readonly HashSet<(long SourceId, EventCandidateId CandidateId)> _knownCandidates = [];
     private readonly List<EventCandidate<TPayload>> _invalidatedCandidates = [];
     private readonly IReadOnlyList<EventCandidate<TPayload>> _invalidatedCandidatesView;
     private readonly Dictionary<long, long> _minimumGenerationsBySource = [];
@@ -26,9 +26,11 @@ public sealed class ForecastQueue<TPayload>
     /// <summary>Adds a candidate, or records it as invalidated when its source generation is already stale.</summary>
     public void Enqueue(EventCandidate<TPayload> candidate)
     {
-        if (!_knownIds.Add(candidate.Id))
+        if (!_knownCandidates.Add((candidate.SourceId, candidate.Id)))
         {
-            throw new ArgumentException($"Candidate identifier {candidate.Id} has already been used.", nameof(candidate));
+            throw new ArgumentException(
+                $"Candidate identifier {candidate.Id} has already been used by source {candidate.SourceId}.",
+                nameof(candidate));
         }
 
         if (IsStale(candidate))

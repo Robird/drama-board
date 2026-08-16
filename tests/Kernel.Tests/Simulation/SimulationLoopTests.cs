@@ -83,6 +83,28 @@ public sealed class SimulationLoopTests
         Assert.Equal(2, result.ResolvedCandidateCount);
     }
 
+    [Fact]
+    public void Run_DifferentSourcesReuseCandidateId_ResolvesEachCandidateWithItsOwner()
+    {
+        OneShotSystem[] systems =
+        [
+            new(sourceId: 2, candidateId: 1, due: 10, payload: "B", stateFlag: 2),
+            new(sourceId: 1, candidateId: 1, due: 10, payload: "A", stateFlag: 1),
+        ];
+        var loop = new SimulationLoop<int, string, string>(systems);
+        var journal = new InMemoryJournal<string>();
+
+        SimulationRunResult<int> result = loop.Run(
+            initialWorld: 0,
+            initialTime: new ModelTime(0),
+            until: new ModelTime(10),
+            journal);
+
+        Assert.Equal(["A", "B"], journal.Events.Select(domainEvent => domainEvent.Payload));
+        Assert.Equal(3, result.World);
+        Assert.Equal(2, result.ResolvedCandidateCount);
+    }
+
     private sealed class OneShotSystem : ISimSystem<int, string, string>
     {
         private readonly long _sourceId;

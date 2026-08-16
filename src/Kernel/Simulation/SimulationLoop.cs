@@ -48,7 +48,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 
         while (true)
         {
-            (ForecastQueue<TCandidatePayload> queue, Dictionary<EventCandidateId, ISimSystem<TWorld, TCandidatePayload, TEventPayload>> owners) =
+            (ForecastQueue<TCandidatePayload> queue, Dictionary<(long SourceId, EventCandidateId CandidateId), ISimSystem<TWorld, TCandidatePayload, TEventPayload>> owners) =
                 ForecastAll(world, now);
 
             if (!queue.TryPeekEarliest(out EventCandidate<TCandidatePayload> next))
@@ -74,7 +74,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
                 timeAdvanceCount = checked(timeAdvanceCount + 1);
             }
 
-            ResolveResult<TWorld, TEventPayload> resolved = owners[next.Id].Resolve(world, next)
+            ResolveResult<TWorld, TEventPayload> resolved = owners[(next.SourceId, next.Id)].Resolve(world, next)
                 ?? throw new InvalidOperationException($"System resolving candidate {next.Id} returned null.");
             world = resolved.World;
             Commit(resolved.Events, now, journal, ref lastCommittedTimestamp);
@@ -82,11 +82,11 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         }
     }
 
-    private (ForecastQueue<TCandidatePayload> Queue, Dictionary<EventCandidateId, ISimSystem<TWorld, TCandidatePayload, TEventPayload>> Owners)
+    private (ForecastQueue<TCandidatePayload> Queue, Dictionary<(long SourceId, EventCandidateId CandidateId), ISimSystem<TWorld, TCandidatePayload, TEventPayload>> Owners)
         ForecastAll(TWorld world, ModelTime now)
     {
         var queue = new ForecastQueue<TCandidatePayload>();
-        var owners = new Dictionary<EventCandidateId, ISimSystem<TWorld, TCandidatePayload, TEventPayload>>();
+        var owners = new Dictionary<(long SourceId, EventCandidateId CandidateId), ISimSystem<TWorld, TCandidatePayload, TEventPayload>>();
 
         foreach (ISimSystem<TWorld, TCandidatePayload, TEventPayload> system in _systems)
         {
@@ -96,7 +96,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
             foreach (EventCandidate<TCandidatePayload> candidate in candidates)
             {
                 queue.Enqueue(candidate);
-                owners.Add(candidate.Id, system);
+                owners.Add((candidate.SourceId, candidate.Id), system);
             }
         }
 

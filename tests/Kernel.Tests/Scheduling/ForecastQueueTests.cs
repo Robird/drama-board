@@ -113,12 +113,22 @@ public sealed class ForecastQueueTests
     }
 
     [Fact]
-    public void Enqueue_DuplicateCandidateId_ThrowsArgumentException()
+    public void Enqueue_SameCandidateIdFromDifferentSources_AcceptsBothCandidates()
+    {
+        var queue = new ForecastQueue<string>();
+        queue.Enqueue(Candidate(1, due: 10, sourceId: 2));
+        queue.Enqueue(Candidate(1, due: 10, sourceId: 1));
+
+        Assert.Equal([1L, 2L], DrainSourceIds(queue));
+    }
+
+    [Fact]
+    public void Enqueue_DuplicateCandidateIdentityWithinSource_ThrowsArgumentException()
     {
         var queue = new ForecastQueue<string>();
         queue.Enqueue(Candidate(1, due: 10, sourceId: 1));
 
-        Assert.Throws<ArgumentException>(() => queue.Enqueue(Candidate(1, due: 20, sourceId: 2)));
+        Assert.Throws<ArgumentException>(() => queue.Enqueue(Candidate(1, due: 20, sourceId: 1)));
     }
 
     private static EventCandidate<string> Candidate(
@@ -137,6 +147,17 @@ public sealed class ForecastQueueTests
         }
 
         return [.. ids];
+    }
+
+    private static long[] DrainSourceIds(ForecastQueue<string> queue)
+    {
+        var sourceIds = new List<long>();
+        while (queue.TryPeekEarliest(out _))
+        {
+            sourceIds.Add(queue.DequeueEarliest().SourceId);
+        }
+
+        return [.. sourceIds];
     }
 
     private static IEnumerable<T[]> Permutations<T>(IReadOnlyList<T> values)
