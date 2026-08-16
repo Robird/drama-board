@@ -6,9 +6,18 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.ToyModels;
 
-internal sealed record MiningForecast(long Generation, string Mineral);
+internal sealed record MiningForecast(
+    long Generation,
+    string Mineral,
+    RandomSampleCoordinates DelaySample,
+    RandomSampleCoordinates MineralSample);
 
-internal sealed record MiningDiscovery(long Generation, ModelTime DiscoveredAt, string Mineral);
+internal sealed record MiningDiscovery(
+    long Generation,
+    ModelTime DiscoveredAt,
+    string Mineral,
+    RandomSampleCoordinates DelaySample,
+    RandomSampleCoordinates MineralSample);
 
 internal static class MiningEventKinds
 {
@@ -30,32 +39,38 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
 {
     private static readonly string[] Minerals = ["Quartz", "Silver", "Opal"];
 
-    private readonly ulong _activityStreamId;
-    private readonly ulong _mineralStreamId;
     private readonly ModelDuration _meanDiscoveryInterval;
 
-    public MiningSystem(ulong activityStreamId, ModelDuration meanDiscoveryInterval)
+    public MiningSystem(ModelDuration meanDiscoveryInterval)
     {
-        _activityStreamId = activityStreamId;
-        _mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
         _meanDiscoveryInterval = meanDiscoveryInterval;
     }
 
     public IReadOnlyList<EventCandidate<MiningForecast>> ForecastNext(MiningWorld world, ModelTime now)
     {
         ulong generation = checked((ulong)world.DiscoveryCount);
+        ulong activityStreamId = DeterministicRandom.DeriveStreamId(world.ActivityId);
+        ulong mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
+        var delaySample = new RandomSampleCoordinates(activityStreamId, generation, 0);
+        var mineralSample = new RandomSampleCoordinates(mineralStreamId, generation, 0);
         ModelDuration delay = DeterministicRandom.SampleExponentialDuration(
             world.WorldSeed,
-            _activityStreamId,
+            delaySample.StreamId,
             generation,
-            _meanDiscoveryInterval);
+            _meanDiscoveryInterval,
+            delaySample.SampleIndex);
         int mineralIndex = DeterministicRandom.SampleInt32(
             world.WorldSeed,
-            _mineralStreamId,
+            mineralSample.StreamId,
             generation,
             minInclusive: 0,
-            maxExclusive: Minerals.Length);
-        var forecast = new MiningForecast(world.DiscoveryCount, Minerals[mineralIndex]);
+            maxExclusive: Minerals.Length,
+            sampleIndex: mineralSample.SampleIndex);
+        var forecast = new MiningForecast(
+            world.DiscoveryCount,
+            Minerals[mineralIndex],
+            delaySample,
+            mineralSample);
 
         return
         [
@@ -80,7 +95,9 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
         var discovery = new MiningDiscovery(
             world.DiscoveryCount,
             candidate.Due,
-            candidate.Payload.Mineral);
+            candidate.Payload.Mineral,
+            candidate.Payload.DelaySample,
+            candidate.Payload.MineralSample);
         return [new UncommittedDomainEvent<MiningDiscovery>(MiningEventKinds.MineralDiscovered, discovery)];
     }
 }

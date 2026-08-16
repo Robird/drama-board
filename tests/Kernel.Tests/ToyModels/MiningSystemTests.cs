@@ -1,4 +1,5 @@
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Random;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
@@ -76,10 +77,61 @@ public sealed class MiningSystemTests
     }
 
     [Fact]
+    public void Replay_EachDiscoveryCoordinatesRecomputeRecordedDelayAndMineral()
+    {
+        const ulong worldSeed = 42;
+        string[] minerals = ["Quartz", "Silver", "Opal"];
+        ModelDuration meanInterval = ModelDuration.FromSeconds(30);
+        MiningWorld auditWorld = MiningWorld.Start(worldSeed);
+        InMemoryJournal<MiningDiscovery> journal = Run(worldSeed);
+        var reducer = new MiningReducer();
+
+        foreach (DomainEvent<MiningDiscovery> domainEvent in journal.Events)
+        {
+            MiningDiscovery discovery = domainEvent.Payload;
+            ulong expectedGeneration = checked((ulong)auditWorld.DiscoveryCount);
+            ulong expectedDelayStream = DeterministicRandom.DeriveStreamId(auditWorld.ActivityId);
+            ulong expectedMineralStream = DeterministicRandom.DeriveStreamId(expectedDelayStream, "mineral");
+            Assert.Equal(
+                new RandomSampleCoordinates(expectedDelayStream, expectedGeneration, 0),
+                discovery.DelaySample);
+            Assert.Equal(
+                new RandomSampleCoordinates(expectedMineralStream, expectedGeneration, 0),
+                discovery.MineralSample);
+
+            ModelDuration expectedDelay = DeterministicRandom.SampleExponentialDuration(
+                auditWorld.WorldSeed,
+                discovery.DelaySample.StreamId,
+                discovery.DelaySample.Generation,
+                meanInterval,
+                discovery.DelaySample.SampleIndex);
+            int expectedMineralIndex = DeterministicRandom.SampleInt32(
+                auditWorld.WorldSeed,
+                discovery.MineralSample.StreamId,
+                discovery.MineralSample.Generation,
+                0,
+                minerals.Length,
+                discovery.MineralSample.SampleIndex);
+            Assert.Equal(auditWorld.LastDiscoveryAt + expectedDelay, discovery.DiscoveredAt);
+            Assert.Equal(minerals[expectedMineralIndex], discovery.Mineral);
+
+            auditWorld = reducer.Apply(auditWorld, domainEvent);
+        }
+
+        Assert.Equal(journal.Events.Count, auditWorld.DiscoveryCount);
+        Assert.Equal(journal.Events.Select(domainEvent => domainEvent.Payload), auditWorld.Discoveries);
+    }
+
+    [Fact]
     public void Apply_SameKindIdWithNewerVersion_RoutesToExistingReducerBranch()
     {
         MiningWorld initialWorld = MiningWorld.Start(worldSeed: 42);
-        var discovery = new MiningDiscovery(0, new ModelTime(10), "Quartz");
+        var discovery = new MiningDiscovery(
+            0,
+            new ModelTime(10),
+            "Quartz",
+            new RandomSampleCoordinates(1, 0, 0),
+            new RandomSampleCoordinates(2, 0, 0));
         var versionTwoKind = new EventKind(MiningEventKinds.MineralDiscovered.Id, 2);
         var domainEvent = new DomainEvent<MiningDiscovery>(
             new LogicalTimestamp(discovery.DiscoveredAt, new Microstep(0)),
@@ -109,6 +161,5 @@ public sealed class MiningSystemTests
 
     private static MiningSystem CreateSystem() =>
         new(
-            activityStreamId: 73,
             meanDiscoveryInterval: ModelDuration.FromSeconds(30));
 }

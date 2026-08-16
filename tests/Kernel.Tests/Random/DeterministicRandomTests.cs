@@ -46,6 +46,23 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
+    public void DeriveStreamId_PersistentLong_ReturnsStableBitPatterns()
+    {
+        Assert.Equal(13_535_481_488_331_451_459UL, DeterministicRandom.DeriveStreamId(17L));
+        Assert.Equal(11_422_512_511_403_659_829UL, DeterministicRandom.DeriveStreamId(-1L));
+    }
+
+    [Fact]
+    public void DeriveStreamId_PersistentString_ReturnsStableBitPattern()
+    {
+        ulong streamId = DeterministicRandom.DeriveStreamId("item-42");
+
+        Assert.Equal(1_854_024_125_930_519_732UL, streamId);
+        Assert.Equal(streamId, DeterministicRandom.DeriveStreamId("item-42"));
+        Assert.NotEqual(streamId, DeterministicRandom.DeriveStreamId("item-43"));
+    }
+
+    [Fact]
     public void SampleInt32_WideSignedRange_AlwaysStaysWithinBounds()
     {
         int[] samples = Enumerable.Range(0, 100)

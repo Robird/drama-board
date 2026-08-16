@@ -42,7 +42,6 @@ public sealed class ReplayReducerTests
         {
             new InterruptedMiningSystem(
                 completionDuration: CompletionDuration,
-                activityStreamId: 73,
                 meanDiscoveryInterval: ModelDuration.FromSeconds(2 * 60)),
             new AliceArrivalSystem(),
         };

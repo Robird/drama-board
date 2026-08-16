@@ -113,7 +113,6 @@ public sealed class ForkHarnessTests
         [
             new InterruptedMiningSystem(
                 completionDuration: CompletionDuration,
-                activityStreamId: 73,
                 meanDiscoveryInterval: DiscoveryInterval),
             new AliceArrivalSystem(),
         ];

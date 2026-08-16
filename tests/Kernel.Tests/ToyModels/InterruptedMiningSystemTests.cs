@@ -101,7 +101,6 @@ public sealed class InterruptedMiningSystemTests
     {
         var mining = new InterruptedMiningSystem(
             completionDuration: CompletionDuration,
-            activityStreamId: 73,
             meanDiscoveryInterval: includeDiscoveries
                 ? ModelDuration.FromSeconds(2 * 60)
                 : null);

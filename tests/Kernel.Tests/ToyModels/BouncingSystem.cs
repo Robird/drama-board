@@ -111,7 +111,10 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
 
     public IReadOnlyList<EventCandidate<CollisionCandidatePayload>> ForecastNext(BouncingWorld world, ModelTime now)
     {
-        CollisionForecast? earliest = ForecastCollisions(world, now)
+        ModelTime forecastAt = world.Balls.Aggregate(
+            ModelTime.Zero,
+            (latest, ball) => ball.ReferenceTime > latest ? ball.ReferenceTime : latest);
+        CollisionForecast? earliest = ForecastCollisions(world, forecastAt)
             .OrderBy(forecast => forecast.SecondsToImpact)
             .ThenBy(forecast => forecast.Kind)
             .ThenBy(forecast => forecast.FirstBallId)
@@ -124,12 +127,12 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
         }
 
         long ticksToImpact = checked((long)Math.Ceiling(earliest.SecondsToImpact * 1_000.0));
-        ModelTime due = now + ModelDuration.FromMilliseconds(ticksToImpact);
+        ModelTime due = forecastAt + ModelDuration.FromMilliseconds(ticksToImpact);
         var payload = new CollisionCandidatePayload(
             earliest.Kind,
             earliest.FirstBallId,
             earliest.SecondBallId,
-            now,
+            forecastAt,
             earliest.SecondsToImpact);
 
         return
@@ -204,12 +207,12 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
             Array.AsReadOnly(ballResolutions));
     }
 
-    private static IEnumerable<CollisionForecast> ForecastCollisions(BouncingWorld world, ModelTime now)
+    private static IEnumerable<CollisionForecast> ForecastCollisions(BouncingWorld world, ModelTime forecastAt)
     {
         for (int firstIndex = 0; firstIndex < world.Balls.Count; firstIndex++)
         {
             BouncingBall first = world.Balls[firstIndex];
-            PhysicsVector firstPosition = world.PositionAt(first, now);
+            PhysicsVector firstPosition = world.PositionAt(first, forecastAt);
 
             foreach (CollisionForecast wallCollision in ForecastWallCollisions(world, first, firstPosition))
             {
@@ -219,7 +222,7 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
             for (int secondIndex = firstIndex + 1; secondIndex < world.Balls.Count; secondIndex++)
             {
                 BouncingBall second = world.Balls[secondIndex];
-                PhysicsVector secondPosition = world.PositionAt(second, now);
+                PhysicsVector secondPosition = world.PositionAt(second, forecastAt);
                 CollisionForecast? collision = ForecastBallCollision(first, firstPosition, second, secondPosition);
                 if (collision is not null)
                 {

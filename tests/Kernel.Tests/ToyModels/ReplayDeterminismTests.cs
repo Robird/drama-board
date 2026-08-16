@@ -94,7 +94,6 @@ public sealed class ReplayDeterminismTests
         static InMemoryJournal<MiningDiscovery> Run()
         {
             var system = new MiningSystem(
-                activityStreamId: 73,
                 meanDiscoveryInterval: ModelDuration.FromSeconds(30));
             var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>(
                 [system],
@@ -121,7 +120,6 @@ public sealed class ReplayDeterminismTests
             [
                 new InterruptedMiningSystem(
                     completionDuration: ModelDuration.FromSeconds(2 * 60 * 60),
-                    activityStreamId: 73,
                     meanDiscoveryInterval: ModelDuration.FromSeconds(2 * 60)),
                 new AliceArrivalSystem(),
             ];

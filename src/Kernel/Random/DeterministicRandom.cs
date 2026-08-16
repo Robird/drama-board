@@ -19,6 +19,23 @@ public static class DeterministicRandom
     private const double InverseTwoToThe52 = 2.2204460492503131E-16;
     private const double NaturalLogOfTwo = 0.6931471805599453;
 
+    /// <summary>
+    /// Maps a persistent signed identity to a stable stream identifier using its two's-complement bits,
+    /// the fixed stream tag, and the SplitMix64 mixing constants; these constants are part of the replay contract.
+    /// </summary>
+    public static ulong DeriveStreamId(long persistentId) =>
+        Mix(unchecked((ulong)persistentId) + StreamTag);
+
+    /// <summary>
+    /// Maps a persistent string identity to a stable stream identifier using UTF-8 FNV-1a followed by the
+    /// fixed stream tag and SplitMix64 mixing constants; encoding and constants are part of the replay contract.
+    /// </summary>
+    public static ulong DeriveStreamId(string persistentId)
+    {
+        ArgumentNullException.ThrowIfNull(persistentId);
+        return Mix(HashUtf8Fnv1A(persistentId) + StreamTag);
+    }
+
     /// <summary>Derives a stable child stream identifier from numeric parent and child identities.</summary>
     public static ulong DeriveStreamId(ulong parentStreamId, ulong childStreamId)
     {
@@ -32,14 +49,7 @@ public static class DeterministicRandom
     public static ulong DeriveStreamId(ulong parentStreamId, string purpose)
     {
         ArgumentNullException.ThrowIfNull(purpose);
-
-        ulong purposeHash = FnvOffsetBasis;
-        foreach (byte value in Encoding.UTF8.GetBytes(purpose))
-        {
-            purposeHash = unchecked((purposeHash ^ value) * FnvPrime);
-        }
-
-        return DeriveStreamId(parentStreamId, purposeHash);
+        return DeriveStreamId(parentStreamId, HashUtf8Fnv1A(purpose));
     }
 
     /// <summary>Samples all 64 bits from a stable world, stream, generation, and sample-index coordinate.</summary>
@@ -134,6 +144,17 @@ public static class DeterministicRandom
             value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
             return value ^ (value >> 31);
         }
+    }
+
+    private static ulong HashUtf8Fnv1A(string value)
+    {
+        ulong hash = FnvOffsetBasis;
+        foreach (byte byteValue in Encoding.UTF8.GetBytes(value))
+        {
+            hash = unchecked((hash ^ byteValue) * FnvPrime);
+        }
+
+        return hash;
     }
 
     private static double NaturalLog(double value)

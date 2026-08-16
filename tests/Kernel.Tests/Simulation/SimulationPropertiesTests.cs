@@ -1,5 +1,6 @@
 using CsCheck;
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Tests.ToyModels;
 using DramaBoard.Kernel.Time;
@@ -283,6 +284,76 @@ public sealed class SimulationPropertiesTests
         });
     }
 
+    [Fact]
+    public void ForecastNext_AllToySystems_IsIndependentOfNow()
+    {
+        Gen.Int[0, 20_000].Array[2, 8].Sample(nowTicks =>
+        {
+            ModelTime[] nows = [.. nowTicks.Select(ticks => new ModelTime(ticks))];
+            AssertForecastIndependentOfNow(
+                new TimerSystem(),
+                TimerWorld.Start(new TimerEntity(1, "Timer", new ModelTime(100))),
+                nows);
+            AssertForecastIndependentOfNow(
+                new TravelSystem(new ModelTime(100), new ModelTime(200)),
+                RerouteWorld.Start("B"),
+                nows);
+            AssertForecastIndependentOfNow(
+                new ScheduledRerouteSystem(),
+                RerouteWorld.Start("B") with
+                {
+                    PendingReroute = new ScheduledReroute(new ModelTime(50), "C"),
+                },
+                nows);
+            AssertForecastIndependentOfNow(
+                new BouncingSystem(),
+                new BouncingWorld(
+                    width: 20,
+                    height: 12,
+                    [new BouncingBall(
+                        1,
+                        1,
+                        1,
+                        new PhysicsVector(5, 5),
+                        new PhysicsVector(1, 0),
+                        new ModelTime(25))]),
+                nows);
+            AssertForecastIndependentOfNow(
+                new MiningSystem(ModelDuration.FromSeconds(30)),
+                MiningWorld.Start(worldSeed: 42),
+                nows);
+            AssertForecastIndependentOfNow(
+                new InterruptedMiningSystem(ModelDuration.FromSeconds(120)),
+                InterruptedMiningWorld.Start(worldSeed: 42) with
+                {
+                    Activity = new MiningActivity(new ModelTime(5)),
+                    AliceAtMine = true,
+                    AliceArrivedAt = new ModelTime(25),
+                },
+                nows);
+            AssertForecastIndependentOfNow(
+                new AliceArrivalSystem(),
+                InterruptedMiningWorld.Start(worldSeed: 42) with
+                {
+                    ScheduledAliceArrivalAt = new ModelTime(50),
+                },
+                nows);
+            AssertForecastIndependentOfNow(
+                new EntityLifecycleSystem(),
+                EntityLifecycleWorld.Start(
+                    nextEntityId: 30,
+                    new LifecycleEntity(10, 0, new ModelTime(10), EntityDirective.Act)),
+                nows);
+            AssertForecastIndependentOfNow(
+                new LootContentionSystem(),
+                new LootWorld(
+                    WorldSeed: 42,
+                    new LootItem(Id: 99, ContentionRound: 0, OwnerId: null),
+                    [new LootActor(10, "Alice", new ModelTime(10))]),
+                nows);
+        });
+    }
+
     private static (SimulationRunResult<TimerWorld, string> Result, InMemoryJournal<string> Journal) RunTimers(
         IEnumerable<int> dueTicks,
         long untilTicks)
@@ -331,7 +402,7 @@ public sealed class SimulationPropertiesTests
 
     private static InMemoryJournal<MiningDiscovery> RunMining(ulong seed, ModelDuration meanInterval)
     {
-        var system = new MiningSystem(activityStreamId: 73, meanInterval);
+        var system = new MiningSystem(meanInterval);
         var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>(
             [system],
             new MiningReducer());
@@ -343,6 +414,31 @@ public sealed class SimulationPropertiesTests
             journal);
         return journal;
     }
+
+    private static void AssertForecastIndependentOfNow<TWorld, TCandidatePayload, TEventPayload>(
+        ISimSystem<TWorld, TCandidatePayload, TEventPayload> system,
+        TWorld world,
+        IEnumerable<ModelTime> nows)
+    {
+        (EventCandidateId Id, ModelTime Due, long SourceId, TCandidatePayload Payload)[] expected =
+            ForecastSnapshot(system.ForecastNext(world, ModelTime.Zero));
+
+        foreach (ModelTime now in nows)
+        {
+            Assert.Equal(expected, ForecastSnapshot(system.ForecastNext(world, now)));
+        }
+    }
+
+    private static (EventCandidateId Id, ModelTime Due, long SourceId, TCandidatePayload Payload)[]
+        ForecastSnapshot<TCandidatePayload>(IEnumerable<EventCandidate<TCandidatePayload>> candidates) =>
+        [
+            .. candidates
+                .OrderBy(candidate => candidate.Due)
+                .ThenBy(candidate => candidate.SourceId)
+                .ThenBy(candidate => candidate.Id)
+                .Select(candidate =>
+                    (candidate.Id, candidate.Due, candidate.SourceId, candidate.Payload)),
+        ];
 
     private static void AssertEqualJournal<TEventPayload>(
         InMemoryJournal<TEventPayload> first,

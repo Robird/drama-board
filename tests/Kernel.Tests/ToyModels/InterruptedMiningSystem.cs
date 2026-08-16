@@ -24,10 +24,11 @@ internal sealed record InterruptedMiningWorld(
     bool AliceAtMine,
     long DiscoveryGeneration,
     ModelTime LastDiscoveryAt,
-    ModelTime? ScheduledAliceArrivalAt)
+    ModelTime? ScheduledAliceArrivalAt,
+    ModelTime? AliceArrivedAt)
 {
     public static InterruptedMiningWorld Start(ulong worldSeed, long minerId = 20, long aliceId = 10) =>
-        new(worldSeed, minerId, aliceId, new WaitingToMineActivity(), false, 0, ModelTime.Zero, null);
+        new(worldSeed, minerId, aliceId, new WaitingToMineActivity(), false, 0, ModelTime.Zero, null, null);
 }
 
 internal abstract record InterruptedMiningForecast;
@@ -38,7 +39,11 @@ internal sealed record CompleteMiningForecast : InterruptedMiningForecast;
 
 internal sealed record InterruptMiningForecast : InterruptedMiningForecast;
 
-internal sealed record DiscoverMineralForecast(long Generation, string Mineral) : InterruptedMiningForecast;
+internal sealed record DiscoverMineralForecast(
+    long Generation,
+    string Mineral,
+    RandomSampleCoordinates DelaySample,
+    RandomSampleCoordinates MineralSample) : InterruptedMiningForecast;
 
 internal sealed record AliceArrivalForecast : InterruptedMiningForecast;
 
@@ -56,7 +61,9 @@ internal sealed record MiningInterruptedEvent(
 internal sealed record MineralDiscoveredEvent(
     long Generation,
     ModelTime DiscoveredAt,
-    string Mineral) : InterruptedMiningEvent;
+    string Mineral,
+    RandomSampleCoordinates DelaySample,
+    RandomSampleCoordinates MineralSample) : InterruptedMiningEvent;
 
 internal sealed record AliceArrivedEvent(ModelTime ArrivedAt) : InterruptedMiningEvent;
 
@@ -78,13 +85,10 @@ internal sealed class InterruptedMiningSystem :
     private static readonly string[] Minerals = ["Quartz", "Silver", "Opal"];
 
     private readonly ModelDuration _completionDuration;
-    private readonly ulong _activityStreamId;
-    private readonly ulong _mineralStreamId;
     private readonly ModelDuration? _meanDiscoveryInterval;
 
     public InterruptedMiningSystem(
         ModelDuration completionDuration,
-        ulong activityStreamId,
         ModelDuration? meanDiscoveryInterval = null)
     {
         if (completionDuration.Ticks <= 0)
@@ -98,8 +102,6 @@ internal sealed class InterruptedMiningSystem :
         }
 
         _completionDuration = completionDuration;
-        _activityStreamId = activityStreamId;
-        _mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
         _meanDiscoveryInterval = meanDiscoveryInterval;
     }
 
@@ -119,12 +121,14 @@ internal sealed class InterruptedMiningSystem :
 
         if (world.AliceAtMine)
         {
+            ModelTime interruptAt = world.AliceArrivedAt
+                ?? throw new InvalidOperationException("Alice's arrival time must be persisted before interruption.");
             return
             [
                 Candidate(
                     world.MinerId,
                     2,
-                    now,
+                    interruptAt,
                     new InterruptMiningForecast()),
             ];
         }
@@ -141,24 +145,34 @@ internal sealed class InterruptedMiningSystem :
         if (_meanDiscoveryInterval is ModelDuration meanDiscoveryInterval)
         {
             ulong generation = checked((ulong)world.DiscoveryGeneration);
+            ulong activityStreamId = DeterministicRandom.DeriveStreamId(world.MinerId);
+            ulong mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
+            var delaySample = new RandomSampleCoordinates(activityStreamId, generation, 0);
+            var mineralSample = new RandomSampleCoordinates(mineralStreamId, generation, 0);
             ModelDuration delay = DeterministicRandom.SampleExponentialDuration(
                 world.WorldSeed,
-                _activityStreamId,
+                delaySample.StreamId,
                 generation,
-                meanDiscoveryInterval);
+                meanDiscoveryInterval,
+                delaySample.SampleIndex);
             int mineralIndex = DeterministicRandom.SampleInt32(
                 world.WorldSeed,
-                _mineralStreamId,
+                mineralSample.StreamId,
                 generation,
                 minInclusive: 0,
-                maxExclusive: Minerals.Length);
+                maxExclusive: Minerals.Length,
+                sampleIndex: mineralSample.SampleIndex);
 
             candidates.Add(
                 Candidate(
                     world.MinerId,
                     checked(100 + world.DiscoveryGeneration),
                     world.LastDiscoveryAt + delay,
-                    new DiscoverMineralForecast(world.DiscoveryGeneration, Minerals[mineralIndex])));
+                    new DiscoverMineralForecast(
+                        world.DiscoveryGeneration,
+                        Minerals[mineralIndex],
+                        delaySample,
+                        mineralSample)));
         }
 
         return candidates;
@@ -226,7 +240,9 @@ internal sealed class InterruptedMiningSystem :
         var discovered = new MineralDiscoveredEvent(
             world.DiscoveryGeneration,
             candidate.Due,
-            discovery.Mineral);
+            discovery.Mineral,
+            discovery.DelaySample,
+            discovery.MineralSample);
         return Result(InterruptedMiningEventKinds.MineralDiscovered, discovered);
     }
 
@@ -306,7 +322,12 @@ internal sealed class InterruptedMiningReducer : IEventReducer<InterruptedMining
                     LastDiscoveryAt = discovered.DiscoveredAt,
                 },
             ({ } kindId, AliceArrivedEvent) when kindId == InterruptedMiningEventKinds.AliceArrived.Id =>
-                world with { AliceAtMine = true, ScheduledAliceArrivalAt = null },
+                world with
+                {
+                    AliceAtMine = true,
+                    ScheduledAliceArrivalAt = null,
+                    AliceArrivedAt = domainEvent.Timestamp.ModelTime,
+                },
             ({ } kindId, AliceArrivalScheduledEvent scheduled)
                 when kindId == InterruptedMiningEventKinds.AliceArrivalScheduled.Id =>
                 world with { ScheduledAliceArrivalAt = scheduled.ArrivalAt },
