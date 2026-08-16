@@ -14,7 +14,9 @@ public sealed class RerouteSystemsTests
             new TravelSystem(AtSecond(10), AtSecond(17)),
             new ScheduledInputSystem(AtSecond(5), destination: "C"),
         ];
-        var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(systems);
+        var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(
+            systems,
+            new RerouteReducer());
         var journal = new InMemoryJournal<RerouteEventPayload>();
 
         SimulationRunResult<RerouteWorld> result = loop.Run(

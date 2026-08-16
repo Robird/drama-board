@@ -1,3 +1,4 @@
+using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
@@ -34,20 +35,19 @@ internal sealed record BouncingBall(
     double Radius,
     double Mass,
     PhysicsVector PositionAtReference,
-    PhysicsVector Velocity);
+    PhysicsVector Velocity,
+    ModelTime ReferenceTime = default);
 
 internal sealed record BouncingWorld
 {
     public BouncingWorld(
         double width,
         double height,
-        ModelTime referenceTime,
         IEnumerable<BouncingBall> balls,
         long generation = 0)
     {
         Width = width;
         Height = height;
-        ReferenceTime = referenceTime;
         Balls = Array.AsReadOnly(balls.OrderBy(ball => ball.Id).ToArray());
         Generation = generation;
     }
@@ -56,15 +56,13 @@ internal sealed record BouncingWorld
 
     public double Height { get; }
 
-    public ModelTime ReferenceTime { get; }
-
     public IReadOnlyList<BouncingBall> Balls { get; }
 
     public long Generation { get; }
 
     public PhysicsVector PositionAt(BouncingBall ball, ModelTime time)
     {
-        double elapsedSeconds = (time - ReferenceTime).Ticks / 1_000.0;
+        double elapsedSeconds = (time - ball.ReferenceTime).Ticks / 1_000.0;
         return ball.PositionAtReference + (ball.Velocity * elapsedSeconds);
     }
 }
@@ -85,7 +83,27 @@ internal sealed record CollisionCandidatePayload(
     ModelTime ForecastAt,
     double SecondsToImpact);
 
-internal sealed record CollisionEventPayload(CollisionKind Kind, int FirstBallId, int? SecondBallId);
+internal sealed record CollisionEventPayload(
+    CollisionKind Kind,
+    int FirstBallId,
+    int? SecondBallId,
+    IReadOnlyList<BouncingBallResolution> BallResolutions);
+
+internal sealed record BouncingBallResolution(
+    int BallId,
+    PhysicsVector PositionAtDue,
+    PhysicsVector VelocityAfterImpact);
+
+internal sealed record CollisionResolution(
+    CollisionKind Kind,
+    int FirstBallId,
+    int? SecondBallId,
+    IReadOnlyList<BouncingBallResolution> BallResolutions);
+
+internal static class BouncingEventKinds
+{
+    public static readonly EventKind Collision = new("physics.collision", 1);
+}
 
 internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>
 {
@@ -126,17 +144,40 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
         ];
     }
 
-    public ResolveResult<BouncingWorld, CollisionEventPayload> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<CollisionEventPayload>> Resolve(
+        BouncingWorld world,
+        EventCandidate<CollisionCandidatePayload> candidate)
+    {
+        CollisionResolution resolution = CalculateResolution(world, candidate);
+        var eventPayload = new CollisionEventPayload(
+            resolution.Kind,
+            resolution.FirstBallId,
+            resolution.SecondBallId,
+            resolution.BallResolutions);
+
+        return [new UncommittedDomainEvent<CollisionEventPayload>(BouncingEventKinds.Collision, eventPayload)];
+    }
+
+    internal static CollisionResolution CalculateResolution(
         BouncingWorld world,
         EventCandidate<CollisionCandidatePayload> candidate)
     {
         CollisionCandidatePayload collision = candidate.Payload;
         double quantizedSeconds = (candidate.Due - collision.ForecastAt).Ticks / 1_000.0;
         double remainderSeconds = Math.Max(0.0, quantizedSeconds - collision.SecondsToImpact);
-        Dictionary<int, PhysicsVector> impactPositions = world.Balls.ToDictionary(
+        int[] affectedBallIds = collision.SecondBallId is int secondBallId
+            ? [collision.FirstBallId, secondBallId]
+            : [collision.FirstBallId];
+        BouncingBall[] affectedBalls =
+        [
+            .. affectedBallIds.Select(ballId => world.Balls.Single(ball => ball.Id == ballId)),
+        ];
+        Dictionary<int, PhysicsVector> impactPositions = affectedBalls.ToDictionary(
             ball => ball.Id,
             ball => world.PositionAt(ball, collision.ForecastAt) + (ball.Velocity * collision.SecondsToImpact));
-        Dictionary<int, PhysicsVector> nextVelocities = world.Balls.ToDictionary(ball => ball.Id, ball => ball.Velocity);
+        Dictionary<int, PhysicsVector> nextVelocities = affectedBalls.ToDictionary(
+            ball => ball.Id,
+            ball => ball.Velocity);
 
         if (collision.Kind == CollisionKind.BallBall)
         {
@@ -147,28 +188,22 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
             ResolveWallCollision(collision, nextVelocities);
         }
 
-        BouncingBall[] nextBalls = world.Balls
-            .Select(ball =>
+        BouncingBallResolution[] ballResolutions =
+        [
+            .. affectedBalls.Select(ball =>
             {
                 PhysicsVector velocity = nextVelocities[ball.Id];
-                PhysicsVector positionAtDue = impactPositions[ball.Id] + (velocity * remainderSeconds);
-                return ball with { PositionAtReference = positionAtDue, Velocity = velocity };
-            })
-            .ToArray();
-        var nextWorld = new BouncingWorld(
-            world.Width,
-            world.Height,
-            candidate.Due,
-            nextBalls,
-            checked(world.Generation + 1));
-        var eventPayload = new CollisionEventPayload(
+                PhysicsVector positionAtImpact = impactPositions[ball.Id];
+                PhysicsVector positionAtDue = positionAtImpact + (velocity * remainderSeconds);
+                return new BouncingBallResolution(ball.Id, positionAtDue, velocity);
+            }),
+        ];
+
+        return new CollisionResolution(
             collision.Kind,
             collision.FirstBallId,
-            collision.SecondBallId);
-
-        return new ResolveResult<BouncingWorld, CollisionEventPayload>(
-            nextWorld,
-            [new UncommittedDomainEvent<CollisionEventPayload>("Physics.Collision", eventPayload)]);
+            collision.SecondBallId,
+            Array.AsReadOnly(ballResolutions));
     }
 
     private static IEnumerable<CollisionForecast> ForecastCollisions(BouncingWorld world, ModelTime now)
@@ -300,4 +335,43 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
         int FirstBallId,
         int? SecondBallId,
         double SecondsToImpact);
+}
+
+internal sealed class BouncingReducer : IEventReducer<BouncingWorld, CollisionEventPayload>
+{
+    public BouncingWorld Apply(BouncingWorld world, DomainEvent<CollisionEventPayload> domainEvent)
+    {
+        if (domainEvent.Kind != BouncingEventKinds.Collision)
+        {
+            throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
+        }
+
+        int[] expectedBallIds = domainEvent.Payload.SecondBallId is int secondBallId
+            ? [domainEvent.Payload.FirstBallId, secondBallId]
+            : [domainEvent.Payload.FirstBallId];
+        Dictionary<int, BouncingBallResolution> resolutionsByBall =
+            domainEvent.Payload.BallResolutions.ToDictionary(resolution => resolution.BallId);
+        if (resolutionsByBall.Count != expectedBallIds.Length ||
+            expectedBallIds.Any(ballId => !resolutionsByBall.ContainsKey(ballId)))
+        {
+            throw new InvalidOperationException("Collision event must contain exactly the affected balls.");
+        }
+
+        BouncingBall[] nextBalls =
+        [
+            .. world.Balls.Select(ball => resolutionsByBall.TryGetValue(ball.Id, out BouncingBallResolution? resolution)
+                ? ball with
+                {
+                    PositionAtReference = resolution.PositionAtDue,
+                    Velocity = resolution.VelocityAfterImpact,
+                    ReferenceTime = domainEvent.Timestamp.ModelTime,
+                }
+                : ball),
+        ];
+        return new BouncingWorld(
+            world.Width,
+            world.Height,
+            nextBalls,
+            checked(world.Generation + 1));
+    }
 }

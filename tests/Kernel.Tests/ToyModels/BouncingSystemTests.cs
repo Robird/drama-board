@@ -22,7 +22,9 @@ public sealed class BouncingSystemTests
 
         Assert.Single(journal.Events);
         Assert.Equal(new ModelTime(2_667), journal.Events[0].Timestamp.ModelTime);
-        Assert.Equal(new CollisionEventPayload(CollisionKind.BallBall, 1, 2), journal.Events[0].Payload);
+        Assert.Equal(CollisionKind.BallBall, journal.Events[0].Payload.Kind);
+        Assert.Equal(1, journal.Events[0].Payload.FirstBallId);
+        Assert.Equal(2, journal.Events[0].Payload.SecondBallId);
         AssertVector(new PhysicsVector(0, 0), Ball(result.World, 1).Velocity);
         AssertVector(new PhysicsVector(3, 0), Ball(result.World, 2).Velocity);
         AssertVector(new PhysicsVector(18, 10), Ball(result.World, 1).PositionAtReference);
@@ -68,8 +70,8 @@ public sealed class BouncingSystemTests
 
         Assert.True(first.Events.Count >= 30, $"Expected dozens of collisions, but observed {first.Events.Count}.");
         Assert.Equal(
-            first.Events.Select(domainEvent => (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)),
-            second.Events.Select(domainEvent => (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)));
+            Snapshot(first),
+            Snapshot(second));
     }
 
     [Fact]
@@ -88,14 +90,58 @@ public sealed class BouncingSystemTests
         Assert.Equal(0, result.ResolvedCandidateCount);
     }
 
+    [Fact]
+    public void Run_FiveBallWorld_FirstCollisionPayloadContainsOnlyAffectedBallsAndThirteenScalars()
+    {
+        BouncingWorld initialWorld = CreateWorld(
+            width: 100,
+            height: 20,
+            new BouncingBall(1, 1, 1, new PhysicsVector(10, 10), new PhysicsVector(5, 0)),
+            new BouncingBall(2, 1, 1, new PhysicsVector(14, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(3, 1, 1, new PhysicsVector(20, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(4, 1, 1, new PhysicsVector(28, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(5, 1, 1, new PhysicsVector(38, 10), new PhysicsVector(0, 0)));
+
+        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+            Run(initialWorld, new ModelTime(500));
+        CollisionEventPayload payload = Assert.Single(journal.Events).Payload;
+        BouncingWorld replayed = journal.Events.Aggregate(initialWorld, new BouncingReducer().Apply);
+
+        Assert.Equal([1, 2], payload.BallResolutions.Select(resolution => resolution.BallId));
+        Assert.Equal(13, 3 + (payload.BallResolutions.Count * 5));
+        AssertWorldEqual(result.World, replayed);
+    }
+
+    [Fact]
+    public void Run_MultipleCollisions_ReplaysJournalToFinalWorld()
+    {
+        BouncingWorld initialWorld = CreateWorld(
+            width: 100,
+            height: 20,
+            new BouncingBall(1, 1, 1, new PhysicsVector(10, 10), new PhysicsVector(5, 0)),
+            new BouncingBall(2, 1, 1, new PhysicsVector(14, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(3, 1, 1, new PhysicsVector(20, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(4, 1, 1, new PhysicsVector(28, 10), new PhysicsVector(0, 0)),
+            new BouncingBall(5, 1, 1, new PhysicsVector(38, 10), new PhysicsVector(0, 0)));
+
+        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+            Run(initialWorld, AtSecond(5));
+        BouncingWorld replayed = journal.Events.Aggregate(initialWorld, new BouncingReducer().Apply);
+
+        Assert.Equal(4, journal.Events.Count);
+        AssertWorldEqual(result.World, replayed);
+    }
+
     private static BouncingWorld CreateWorld(double width, double height, params BouncingBall[] balls) =>
-        new(width, height, ModelTime.Zero, balls);
+        new(width, height, balls);
 
     private static (SimulationRunResult<BouncingWorld>, InMemoryJournal<CollisionEventPayload>) Run(
         BouncingWorld initialWorld,
         ModelTime until)
     {
-        var loop = new SimulationLoop<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>([new BouncingSystem()]);
+        var loop = new SimulationLoop<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>(
+            [new BouncingSystem()],
+            new BouncingReducer());
         var journal = new InMemoryJournal<CollisionEventPayload>();
         SimulationRunResult<BouncingWorld> result = loop.Run(initialWorld, ModelTime.Zero, until, journal);
         return (result, journal);
@@ -119,6 +165,28 @@ public sealed class BouncingSystemTests
 
     private static void AssertClose(double expected, double actual) =>
         Assert.InRange(Math.Abs(expected - actual), 0.0, ConservationTolerance);
+
+    private static (int EventIndex, LogicalTimestamp Timestamp, EventKind Kind, CollisionKind CollisionKind, int FirstBallId, int? SecondBallId, BouncingBallResolution Resolution)[] Snapshot(
+        InMemoryJournal<CollisionEventPayload> journal) =>
+    [
+        .. journal.Events.SelectMany((domainEvent, eventIndex) =>
+            domainEvent.Payload.BallResolutions.Select(resolution =>
+                (eventIndex,
+                 domainEvent.Timestamp,
+                 domainEvent.Kind,
+                 domainEvent.Payload.Kind,
+                 domainEvent.Payload.FirstBallId,
+                 domainEvent.Payload.SecondBallId,
+                 resolution))),
+    ];
+
+    private static void AssertWorldEqual(BouncingWorld expected, BouncingWorld actual)
+    {
+        Assert.Equal(expected.Width, actual.Width);
+        Assert.Equal(expected.Height, actual.Height);
+        Assert.Equal(expected.Generation, actual.Generation);
+        Assert.Equal(expected.Balls.ToArray(), actual.Balls.ToArray());
+    }
 
     private static ModelTime AtSecond(long seconds) => ModelTime.Zero + ModelDuration.FromSeconds(seconds);
 }

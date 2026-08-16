@@ -6,13 +6,8 @@ namespace DramaBoard.Kernel.Journal;
 public sealed class DomainEvent<TPayload>
 {
     /// <summary>Initializes a committed domain event.</summary>
-    public DomainEvent(LogicalTimestamp timestamp, string kind, TPayload payload)
+    public DomainEvent(LogicalTimestamp timestamp, EventKind kind, TPayload payload)
     {
-        if (string.IsNullOrWhiteSpace(kind))
-        {
-            throw new ArgumentException("Event kind cannot be empty.", nameof(kind));
-        }
-
         Timestamp = timestamp;
         Kind = kind;
         Payload = payload;
@@ -22,7 +17,7 @@ public sealed class DomainEvent<TPayload>
     public LogicalTimestamp Timestamp { get; }
 
     /// <summary>Gets the stable event kind.</summary>
-    public string Kind { get; }
+    public EventKind Kind { get; }
 
     /// <summary>Gets the event payload.</summary>
     public TPayload Payload { get; }

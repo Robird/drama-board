@@ -32,7 +32,7 @@ public sealed class SimulationPropertiesTests
                 RunTimers(timerDueTicks, untilTicks: 20_000).Journal);
 
             BouncingWorld bouncingWorld = CreateBouncingWorld(values);
-            AssertEqualJournal(
+            AssertEqualBouncingJournal(
                 RunBouncing(bouncingWorld),
                 RunBouncing(bouncingWorld));
 
@@ -84,9 +84,7 @@ public sealed class SimulationPropertiesTests
             TimerWorld replayed = ReplayHarness.Replay(
                 initialWorld,
                 journal.Events,
-                static (world, domainEvent) => domainEvent.Kind == "TimerFired"
-                    ? new TimerWorld([.. world.FiredTimers, domainEvent.Payload])
-                    : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind}'."));
+                new TimerReducer());
 
             Assert.Equal(result.World.FiredTimers, replayed.FiredTimers);
         });
@@ -105,7 +103,9 @@ public sealed class SimulationPropertiesTests
                 new TravelSystem(arrivalAtB, arrivalAtC),
                 new ScheduledInputSystem(rerouteAt, destination: "C"),
             ];
-            var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(systems);
+            var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(
+                systems,
+                new RerouteReducer());
             var journal = new InMemoryJournal<RerouteEventPayload>();
 
             SimulationRunResult<RerouteWorld> result = loop.Run(
@@ -133,7 +133,7 @@ public sealed class SimulationPropertiesTests
                     sourceId: index + 1,
                     new ModelTime(due))),
         ];
-        var loop = new SimulationLoop<TimerWorld, string, string>(systems);
+        var loop = new SimulationLoop<TimerWorld, string, string>(systems, new TimerReducer());
         var journal = new InMemoryJournal<string>();
         SimulationRunResult<TimerWorld> result = loop.Run(
             new TimerWorld([]),
@@ -152,14 +152,14 @@ public sealed class SimulationPropertiesTests
         return new BouncingWorld(
             width: 10,
             height: 10,
-            ModelTime.Zero,
             [new BouncingBall(1, 0.5, 1, new PhysicsVector(x, y), new PhysicsVector(velocityX, velocityY))]);
     }
 
     private static InMemoryJournal<CollisionEventPayload> RunBouncing(BouncingWorld initialWorld)
     {
         var loop = new SimulationLoop<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>(
-            [new BouncingSystem()]);
+            [new BouncingSystem()],
+            new BouncingReducer());
         var journal = new InMemoryJournal<CollisionEventPayload>();
         _ = loop.Run(
             initialWorld,
@@ -172,7 +172,9 @@ public sealed class SimulationPropertiesTests
     private static InMemoryJournal<MiningDiscovery> RunMining(ulong seed, ModelDuration meanInterval)
     {
         var system = new MiningSystem(sourceId: 17, activityStreamId: 73, meanInterval);
-        var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>([system]);
+        var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>(
+            [system],
+            new MiningReducer());
         var journal = new InMemoryJournal<MiningDiscovery>();
         _ = loop.Run(
             MiningWorld.Start(seed),
@@ -190,4 +192,23 @@ public sealed class SimulationPropertiesTests
                 (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)),
             second.Events.Select(domainEvent =>
                 (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)));
+
+    private static void AssertEqualBouncingJournal(
+        InMemoryJournal<CollisionEventPayload> first,
+        InMemoryJournal<CollisionEventPayload> second) =>
+        Assert.Equal(BouncingSnapshot(first), BouncingSnapshot(second));
+
+    private static (int EventIndex, LogicalTimestamp Timestamp, EventKind Kind, CollisionKind CollisionKind, int FirstBallId, int? SecondBallId, BouncingBallResolution Resolution)[] BouncingSnapshot(
+        InMemoryJournal<CollisionEventPayload> journal) =>
+    [
+        .. journal.Events.SelectMany((domainEvent, eventIndex) =>
+            domainEvent.Payload.BallResolutions.Select(resolution =>
+                (eventIndex,
+                 domainEvent.Timestamp,
+                 domainEvent.Kind,
+                 domainEvent.Payload.Kind,
+                 domainEvent.Payload.FirstBallId,
+                 domainEvent.Payload.SecondBallId,
+                 resolution))),
+    ];
 }

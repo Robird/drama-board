@@ -62,7 +62,7 @@ public sealed class ForkHarnessTests
         var loop = new SimulationLoop<
             InterruptedMiningWorld,
             InterruptedMiningForecast,
-            InterruptedMiningEvent>(CreateSystems(includeAlice: true));
+            InterruptedMiningEvent>(CreateSystems(includeAlice: true), new InterruptedMiningReducer());
         var journal = new InMemoryJournal<InterruptedMiningEvent>();
         _ = loop.Run(initialWorld, ModelTime.Zero, Until, journal);
         return journal;
@@ -78,7 +78,7 @@ public sealed class ForkHarnessTests
             ModelTime.Zero,
             original.Events,
             eventCount,
-            ReplayReducerTests.ApplyInterruptedMining,
+            new InterruptedMiningReducer(),
             CreateSystems(includeAlice),
             Until);
 
@@ -103,7 +103,7 @@ public sealed class ForkHarnessTests
         return systems;
     }
 
-    private static (LogicalTimestamp Timestamp, string Kind, InterruptedMiningEvent Payload)[] Snapshot(
+    private static (LogicalTimestamp Timestamp, EventKind Kind, InterruptedMiningEvent Payload)[] Snapshot(
         InMemoryJournal<InterruptedMiningEvent> journal) =>
         [
             .. journal.Events.Select(domainEvent =>

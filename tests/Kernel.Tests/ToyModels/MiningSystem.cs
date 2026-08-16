@@ -1,3 +1,4 @@
+using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Random;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -8,6 +9,11 @@ namespace DramaBoard.Kernel.Tests.ToyModels;
 internal sealed record MiningForecast(long Generation, string Mineral);
 
 internal sealed record MiningDiscovery(long Generation, ModelTime DiscoveredAt, string Mineral);
+
+internal static class MiningEventKinds
+{
+    public static readonly EventKind MineralDiscovered = new("mining.mineral-discovered", 1);
+}
 
 internal sealed record MiningWorld(
     ulong WorldSeed,
@@ -62,7 +68,7 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
         ];
     }
 
-    public ResolveResult<MiningWorld, MiningDiscovery> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<MiningDiscovery>> Resolve(
         MiningWorld world,
         EventCandidate<MiningForecast> candidate)
     {
@@ -77,14 +83,24 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
             world.DiscoveryCount,
             candidate.Due,
             candidate.Payload.Mineral);
-        var nextWorld = new MiningWorld(
+        return [new UncommittedDomainEvent<MiningDiscovery>(MiningEventKinds.MineralDiscovered, discovery)];
+    }
+}
+
+internal sealed class MiningReducer : IEventReducer<MiningWorld, MiningDiscovery>
+{
+    public MiningWorld Apply(MiningWorld world, DomainEvent<MiningDiscovery> domainEvent)
+    {
+        if (domainEvent.Kind != MiningEventKinds.MineralDiscovered ||
+            domainEvent.Payload.Generation != world.DiscoveryCount)
+        {
+            throw new InvalidOperationException($"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'.");
+        }
+
+        return new MiningWorld(
             world.WorldSeed,
             checked(world.DiscoveryCount + 1),
-            candidate.Due,
-            [.. world.Discoveries, discovery]);
-
-        return new ResolveResult<MiningWorld, MiningDiscovery>(
-            nextWorld,
-            [new UncommittedDomainEvent<MiningDiscovery>("MineralDiscovered", discovery)]);
+            domainEvent.Payload.DiscoveredAt,
+            [.. world.Discoveries, domainEvent.Payload]);
     }
 }

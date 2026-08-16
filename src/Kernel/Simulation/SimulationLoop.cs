@@ -4,16 +4,19 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Simulation;
 
-/// <summary>Runs deterministic Forecast, Advance, Resolve, and journal-commit cycles.</summary>
+/// <summary>Runs deterministic simulation cycles whose world updates come only from committed events.</summary>
 public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 {
     private readonly IReadOnlyList<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> _systems;
+    private readonly IEventReducer<TWorld, TEventPayload> _reducer;
 
-    /// <summary>Initializes a loop from the systems that participate in each full forecast.</summary>
+    /// <summary>Initializes a loop from participating systems and the journal projection reducer.</summary>
     public SimulationLoop(
-        IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems)
+        IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems,
+        IEventReducer<TWorld, TEventPayload> reducer)
     {
         ArgumentNullException.ThrowIfNull(systems);
+        ArgumentNullException.ThrowIfNull(reducer);
 
         ISimSystem<TWorld, TCandidatePayload, TEventPayload>[] systemArray = [.. systems];
         if (systemArray.Any(system => system is null))
@@ -22,6 +25,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         }
 
         _systems = systemArray;
+    _reducer = reducer;
     }
 
     /// <summary>Runs until no candidate remains or the next candidate would be later than the inclusive time boundary.</summary>
@@ -45,6 +49,8 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         LogicalTimestamp? lastCommittedTimestamp = journal.Events.Count == 0
             ? null
             : journal.Events[^1].Timestamp;
+        (long SourceId, EventCandidateId CandidateId, ModelTime Due)? lastResolvedCandidate = null;
+        bool lastResolveProducedNoEvents = false;
 
         while (true)
         {
@@ -67,6 +73,14 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
                 return Result(world, now, timeAdvanceCount, resolvedCandidateCount);
             }
 
+            var nextIdentity = (next.SourceId, next.Id, next.Due);
+            if (lastResolveProducedNoEvents && lastResolvedCandidate == nextIdentity)
+            {
+                throw new InvalidOperationException(
+                    $"Resolving candidate ({next.SourceId}, {next.Id}, {next.Due}) produced no events and " +
+                    "the identical candidate remained next after re-forecasting, which would cause an infinite loop.");
+            }
+
             next = queue.DequeueEarliest();
             if (next.Due > now)
             {
@@ -74,10 +88,12 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
                 timeAdvanceCount = checked(timeAdvanceCount + 1);
             }
 
-            ResolveResult<TWorld, TEventPayload> resolved = owners[(next.SourceId, next.Id)].Resolve(world, next)
+            IReadOnlyList<UncommittedDomainEvent<TEventPayload>> events =
+                owners[(next.SourceId, next.Id)].Resolve(world, next)
                 ?? throw new InvalidOperationException($"System resolving candidate {next.Id} returned null.");
-            world = resolved.World;
-            Commit(resolved.Events, now, journal, ref lastCommittedTimestamp);
+            world = CommitAndApply(events, world, now, journal, ref lastCommittedTimestamp);
+            lastResolvedCandidate = nextIdentity;
+            lastResolveProducedNoEvents = events.Count == 0;
             resolvedCandidateCount = checked(resolvedCandidateCount + 1);
         }
     }
@@ -103,21 +119,30 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         return (queue, owners);
     }
 
-    private static void Commit(
+    private TWorld CommitAndApply(
         IReadOnlyList<UncommittedDomainEvent<TEventPayload>> events,
+        TWorld world,
         ModelTime now,
         IJournalSink<TEventPayload> journal,
         ref LogicalTimestamp? lastCommittedTimestamp)
     {
         foreach (UncommittedDomainEvent<TEventPayload> uncommitted in events)
         {
+            if (uncommitted is null)
+            {
+                throw new InvalidOperationException("A simulation system returned a null event description.");
+            }
+
             Microstep microstep = NextMicrostep(now, lastCommittedTimestamp);
             var timestamp = new LogicalTimestamp(now, microstep);
             var domainEvent = new DomainEvent<TEventPayload>(timestamp, uncommitted.Kind, uncommitted.Payload);
 
             journal.Append(domainEvent);
             lastCommittedTimestamp = timestamp;
+            world = _reducer.Apply(world, domainEvent);
         }
+
+        return world;
     }
 
     private static Microstep NextMicrostep(ModelTime now, LogicalTimestamp? lastCommittedTimestamp)

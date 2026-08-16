@@ -1,3 +1,4 @@
+using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
@@ -17,6 +18,12 @@ internal abstract record RerouteEventPayload;
 internal sealed record ArrivedEventPayload(string Destination) : RerouteEventPayload;
 
 internal sealed record ReroutedEventPayload(string Destination) : RerouteEventPayload;
+
+internal static class RerouteEventKinds
+{
+    public static readonly EventKind Arrived = new("travel.arrived", 1);
+    public static readonly EventKind Rerouted = new("travel.rerouted", 1);
+}
 
 internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>
 {
@@ -55,7 +62,7 @@ internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePa
         ];
     }
 
-    public ResolveResult<RerouteWorld, RerouteEventPayload> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<RerouteEventPayload>> Resolve(
         RerouteWorld world,
         EventCandidate<RerouteCandidatePayload> candidate)
     {
@@ -64,9 +71,12 @@ internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePa
             throw new InvalidOperationException("TravelSystem received an incompatible candidate payload.");
         }
 
-        return new ResolveResult<RerouteWorld, RerouteEventPayload>(
-            world with { HasArrived = true },
-            [new UncommittedDomainEvent<RerouteEventPayload>("Travel.Arrived", new ArrivedEventPayload(arrival.Destination))]);
+        return
+        [
+            new UncommittedDomainEvent<RerouteEventPayload>(
+                RerouteEventKinds.Arrived,
+                new ArrivedEventPayload(arrival.Destination)),
+        ];
     }
 }
 
@@ -94,7 +104,7 @@ internal sealed class ScheduledInputSystem : ISimSystem<RerouteWorld, RerouteCan
                     new ScheduledRerouteCandidatePayload(_destination)),
             ];
 
-    public ResolveResult<RerouteWorld, RerouteEventPayload> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<RerouteEventPayload>> Resolve(
         RerouteWorld world,
         EventCandidate<RerouteCandidatePayload> candidate)
     {
@@ -103,8 +113,24 @@ internal sealed class ScheduledInputSystem : ISimSystem<RerouteWorld, RerouteCan
             throw new InvalidOperationException("ScheduledInputSystem received an incompatible candidate payload.");
         }
 
-        return new ResolveResult<RerouteWorld, RerouteEventPayload>(
-            world with { Destination = reroute.Destination, HasRedirected = true },
-            [new UncommittedDomainEvent<RerouteEventPayload>("Input.Rerouted", new ReroutedEventPayload(reroute.Destination))]);
+        return
+        [
+            new UncommittedDomainEvent<RerouteEventPayload>(
+                RerouteEventKinds.Rerouted,
+                new ReroutedEventPayload(reroute.Destination)),
+        ];
     }
+}
+
+internal sealed class RerouteReducer : IEventReducer<RerouteWorld, RerouteEventPayload>
+{
+    public RerouteWorld Apply(RerouteWorld world, DomainEvent<RerouteEventPayload> domainEvent) =>
+        (domainEvent.Kind, domainEvent.Payload) switch
+        {
+            ({ } kind, ArrivedEventPayload arrived) when kind == RerouteEventKinds.Arrived =>
+                world with { Destination = arrived.Destination, HasArrived = true },
+            ({ } kind, ReroutedEventPayload rerouted) when kind == RerouteEventKinds.Rerouted =>
+                world with { Destination = rerouted.Destination, HasRedirected = true },
+            _ => throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'."),
+        };
 }

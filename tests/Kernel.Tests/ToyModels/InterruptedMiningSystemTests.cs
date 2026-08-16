@@ -16,7 +16,11 @@ public sealed class InterruptedMiningSystemTests
         RunOutput output = Run(includeAlice: true, includeDiscoveries: false);
 
         Assert.Equal(
-            ["MiningStarted", "AliceArrived", "MiningInterrupted"],
+            [
+                InterruptedMiningEventKinds.MiningStarted,
+                InterruptedMiningEventKinds.AliceArrived,
+                InterruptedMiningEventKinds.MiningInterrupted,
+            ],
             output.Journal.Events.Select(domainEvent => domainEvent.Kind));
         Assert.Equal(
             [ModelTime.Zero, ArrivalAt, ArrivalAt],
@@ -52,7 +56,7 @@ public sealed class InterruptedMiningSystemTests
         RunOutput output = Run(includeAlice: false, includeDiscoveries: false);
 
         Assert.Equal(
-            ["MiningStarted", "MiningCompleted"],
+            [InterruptedMiningEventKinds.MiningStarted, InterruptedMiningEventKinds.MiningCompleted],
             output.Journal.Events.Select(domainEvent => domainEvent.Kind));
         Assert.Equal(
             [ModelTime.Zero, ModelTime.Zero + CompletionDuration],
@@ -120,7 +124,7 @@ public sealed class InterruptedMiningSystemTests
         var loop = new SimulationLoop<
             InterruptedMiningWorld,
             InterruptedMiningForecast,
-            InterruptedMiningEvent>(systems);
+            InterruptedMiningEvent>(systems, new InterruptedMiningReducer());
         var journal = new InMemoryJournal<InterruptedMiningEvent>();
         SimulationRunResult<InterruptedMiningWorld> result = loop.Run(
             InterruptedMiningWorld.Start(worldSeed: 42),
@@ -131,7 +135,7 @@ public sealed class InterruptedMiningSystemTests
         return new RunOutput(result, journal);
     }
 
-    private static (LogicalTimestamp Timestamp, string Kind, InterruptedMiningEvent Payload)[] Snapshot(
+    private static (LogicalTimestamp Timestamp, EventKind Kind, InterruptedMiningEvent Payload)[] Snapshot(
         InMemoryJournal<InterruptedMiningEvent> journal) =>
         [
             .. journal.Events.Select(

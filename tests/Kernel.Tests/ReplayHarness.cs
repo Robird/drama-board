@@ -9,15 +9,15 @@ internal static class ReplayHarness
     public static TWorld Replay<TWorld, TEventPayload>(
         TWorld initialWorld,
         IEnumerable<DomainEvent<TEventPayload>> events,
-        Func<TWorld, DomainEvent<TEventPayload>, TWorld> apply) =>
-        events.Aggregate(initialWorld, apply);
+        IEventReducer<TWorld, TEventPayload> reducer) =>
+        events.Aggregate(initialWorld, reducer.Apply);
 
     public static ReplayForkResult<TWorld, TEventPayload> Fork<TWorld, TCandidatePayload, TEventPayload>(
         TWorld initialWorld,
         ModelTime initialTime,
         IReadOnlyList<DomainEvent<TEventPayload>> journal,
         int eventCount,
-        Func<TWorld, DomainEvent<TEventPayload>, TWorld> apply,
+        IEventReducer<TWorld, TEventPayload> reducer,
         IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems,
         ModelTime until)
     {
@@ -27,7 +27,7 @@ internal static class ReplayHarness
         }
 
         DomainEvent<TEventPayload>[] prefix = [.. journal.Take(eventCount)];
-        TWorld forkWorld = Replay(initialWorld, prefix, apply);
+        TWorld forkWorld = Replay(initialWorld, prefix, reducer);
         ModelTime forkTime = prefix.Length == 0
             ? initialTime
             : prefix[^1].Timestamp.ModelTime;
@@ -37,7 +37,7 @@ internal static class ReplayHarness
             forkJournal.Append(domainEvent);
         }
 
-        var loop = new SimulationLoop<TWorld, TCandidatePayload, TEventPayload>(systems);
+        var loop = new SimulationLoop<TWorld, TCandidatePayload, TEventPayload>(systems, reducer);
         SimulationRunResult<TWorld> result = loop.Run(forkWorld, forkTime, until, forkJournal);
         return new ReplayForkResult<TWorld, TEventPayload>(result, forkJournal);
     }

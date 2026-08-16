@@ -18,7 +18,8 @@ public sealed class ReplayReducerTests
             new("B", sourceId: 2, ModelTime.Zero + ModelDuration.FromSeconds(20)),
             new("C", sourceId: 3, ModelTime.Zero + ModelDuration.FromSeconds(15)),
         ];
-        var loop = new SimulationLoop<TimerWorld, string, string>(systems);
+        var reducer = new TimerReducer();
+        var loop = new SimulationLoop<TimerWorld, string, string>(systems, reducer);
         var journal = new InMemoryJournal<string>();
 
         SimulationRunResult<TimerWorld> result = loop.Run(
@@ -27,12 +28,7 @@ public sealed class ReplayReducerTests
             ModelTime.Zero + ModelDuration.FromSeconds(20),
             journal);
 
-        TimerWorld replayed = ReplayHarness.Replay(
-            initialWorld,
-            journal.Events,
-            static (world, domainEvent) => domainEvent.Kind == "TimerFired"
-                ? new TimerWorld([.. world.FiredTimers, domainEvent.Payload])
-                : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind}'."));
+        TimerWorld replayed = ReplayHarness.Replay(initialWorld, journal.Events, reducer);
 
         Assert.Equal(result.World.FiredTimers, replayed.FiredTimers);
     }
@@ -55,10 +51,11 @@ public sealed class ReplayReducerTests
                 sourceId: 10,
                 arrivalAt: ModelTime.Zero + ModelDuration.FromSeconds(17 * 60)),
         };
+        var reducer = new InterruptedMiningReducer();
         var loop = new SimulationLoop<
             InterruptedMiningWorld,
             InterruptedMiningForecast,
-            InterruptedMiningEvent>(systems);
+            InterruptedMiningEvent>(systems, reducer);
         var journal = new InMemoryJournal<InterruptedMiningEvent>();
 
         SimulationRunResult<InterruptedMiningWorld> result = loop.Run(
@@ -67,38 +64,8 @@ public sealed class ReplayReducerTests
             ModelTime.Zero + ModelDuration.FromSeconds(3 * 60 * 60),
             journal);
 
-        InterruptedMiningWorld replayed = ReplayHarness.Replay(
-            initialWorld,
-            journal.Events,
-            ApplyInterruptedMining);
+        InterruptedMiningWorld replayed = ReplayHarness.Replay(initialWorld, journal.Events, reducer);
 
         Assert.Equal(result.World, replayed);
     }
-
-    internal static InterruptedMiningWorld ApplyInterruptedMining(
-        InterruptedMiningWorld world,
-        DomainEvent<InterruptedMiningEvent> domainEvent) =>
-        domainEvent.Payload switch
-        {
-            MiningStartedEvent started => world with
-            {
-                Activity = new MiningActivity(started.StartedAt),
-                LastDiscoveryAt = started.StartedAt,
-            },
-            MiningCompletedEvent completed => world with
-            {
-                Activity = new FinishedMiningActivity(completed.CompletedAt),
-            },
-            MiningInterruptedEvent interrupted => world with
-            {
-                Activity = new ConversationActivity(interrupted.InterruptedAt),
-            },
-            MineralDiscoveredEvent discovered => world with
-            {
-                DiscoveryGeneration = checked(world.DiscoveryGeneration + 1),
-                LastDiscoveryAt = discovered.DiscoveredAt,
-            },
-            AliceArrivedEvent => world with { AliceAtMine = true },
-            _ => throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind}'."),
-        };
 }

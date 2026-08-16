@@ -17,7 +17,7 @@ public sealed class ReplayDeterminismTests
                 new("B", sourceId: 2, ModelTime.Zero + ModelDuration.FromSeconds(20)),
                 new("C", sourceId: 3, ModelTime.Zero + ModelDuration.FromSeconds(15)),
             ];
-            var loop = new SimulationLoop<TimerWorld, string, string>(systems);
+            var loop = new SimulationLoop<TimerWorld, string, string>(systems, new TimerReducer());
             var journal = new InMemoryJournal<string>();
             _ = loop.Run(
                 new TimerWorld([]),
@@ -40,7 +40,9 @@ public sealed class ReplayDeterminismTests
                 new TravelSystem(AtSecond(10), AtSecond(17)),
                 new ScheduledInputSystem(AtSecond(5), destination: "C"),
             ];
-            var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(systems);
+            var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(
+                systems,
+                new RerouteReducer());
             var journal = new InMemoryJournal<RerouteEventPayload>();
             _ = loop.Run(new RerouteWorld("B", false, false), ModelTime.Zero, AtSecond(20), journal);
             return journal;
@@ -57,19 +59,21 @@ public sealed class ReplayDeterminismTests
             var initialWorld = new BouncingWorld(
                 width: 100,
                 height: 20,
-                ModelTime.Zero,
                 [
                     new BouncingBall(1, 1, 1, new PhysicsVector(10, 10), new PhysicsVector(3, 0)),
                     new BouncingBall(2, 1, 1, new PhysicsVector(20, 10), new PhysicsVector(0, 0)),
                 ]);
             var loop = new SimulationLoop<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>(
-                [new BouncingSystem()]);
+                [new BouncingSystem()],
+                new BouncingReducer());
             var journal = new InMemoryJournal<CollisionEventPayload>();
             _ = loop.Run(initialWorld, ModelTime.Zero, AtSecond(3), journal);
             return journal;
         }
 
-        AssertRerunProducesIdenticalJournal(Run);
+        InMemoryJournal<CollisionEventPayload> first = Run();
+        InMemoryJournal<CollisionEventPayload> second = Run();
+        Assert.Equal(BouncingSnapshot(first), BouncingSnapshot(second));
     }
 
     [Fact]
@@ -81,7 +85,9 @@ public sealed class ReplayDeterminismTests
                 sourceId: 17,
                 activityStreamId: 73,
                 meanDiscoveryInterval: ModelDuration.FromSeconds(30));
-            var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>([system]);
+            var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>(
+                [system],
+                new MiningReducer());
             var journal = new InMemoryJournal<MiningDiscovery>();
             _ = loop.Run(
                 MiningWorld.Start(worldSeed: 42),
@@ -112,7 +118,7 @@ public sealed class ReplayDeterminismTests
             var loop = new SimulationLoop<
                 InterruptedMiningWorld,
                 InterruptedMiningForecast,
-                InterruptedMiningEvent>(systems);
+                InterruptedMiningEvent>(systems, new InterruptedMiningReducer());
             var journal = new InMemoryJournal<InterruptedMiningEvent>();
             _ = loop.Run(
                 InterruptedMiningWorld.Start(worldSeed: 42),
@@ -140,4 +146,18 @@ public sealed class ReplayDeterminismTests
 
     private static ModelTime AtSecond(long seconds) =>
         ModelTime.Zero + ModelDuration.FromSeconds(seconds);
+
+    private static (int EventIndex, LogicalTimestamp Timestamp, EventKind Kind, CollisionKind CollisionKind, int FirstBallId, int? SecondBallId, BouncingBallResolution Resolution)[] BouncingSnapshot(
+        InMemoryJournal<CollisionEventPayload> journal) =>
+    [
+        .. journal.Events.SelectMany((domainEvent, eventIndex) =>
+            domainEvent.Payload.BallResolutions.Select(resolution =>
+                (eventIndex,
+                 domainEvent.Timestamp,
+                 domainEvent.Kind,
+                 domainEvent.Payload.Kind,
+                 domainEvent.Payload.FirstBallId,
+                 domainEvent.Payload.SecondBallId,
+                 resolution))),
+    ];
 }

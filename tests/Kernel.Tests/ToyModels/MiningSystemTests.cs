@@ -54,13 +54,19 @@ public sealed class MiningSystemTests
         EventCandidate<MiningForecast> first = Assert.Single(
             system.ForecastNext(initialWorld, ModelTime.Zero));
 
-        ResolveResult<MiningWorld, MiningDiscovery> resolved = system.Resolve(initialWorld, first);
+        UncommittedDomainEvent<MiningDiscovery> resolved = Assert.Single(system.Resolve(initialWorld, first));
+        MiningWorld resolvedWorld = new MiningReducer().Apply(
+            initialWorld,
+            new DomainEvent<MiningDiscovery>(
+                new LogicalTimestamp(first.Due, new Microstep(0)),
+                resolved.Kind,
+                resolved.Payload));
         EventCandidate<MiningForecast> next = Assert.Single(
-            system.ForecastNext(resolved.World, first.Due));
+            system.ForecastNext(resolvedWorld, first.Due));
         EventCandidate<MiningForecast> repeated = Assert.Single(
-            system.ForecastNext(resolved.World, first.Due));
+            system.ForecastNext(resolvedWorld, first.Due));
 
-        Assert.Equal(1, resolved.World.DiscoveryCount);
+        Assert.Equal(1, resolvedWorld.DiscoveryCount);
         Assert.Equal(1, next.Generation);
         Assert.True(next.Due > first.Due);
         Assert.NotEqual(first.Due, next.Due);
@@ -72,7 +78,7 @@ public sealed class MiningSystemTests
     private static InMemoryJournal<MiningDiscovery> Run(ulong worldSeed)
     {
         MiningSystem system = CreateSystem();
-        var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>([system]);
+        var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>([system], new MiningReducer());
         var journal = new InMemoryJournal<MiningDiscovery>();
 
         _ = loop.Run(

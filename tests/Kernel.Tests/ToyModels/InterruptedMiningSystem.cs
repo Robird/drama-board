@@ -1,3 +1,4 @@
+using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Random;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -55,6 +56,15 @@ internal sealed record MineralDiscoveredEvent(
     string Mineral) : InterruptedMiningEvent;
 
 internal sealed record AliceArrivedEvent(ModelTime ArrivedAt) : InterruptedMiningEvent;
+
+internal static class InterruptedMiningEventKinds
+{
+    public static readonly EventKind MiningStarted = new("mining.started", 1);
+    public static readonly EventKind MiningCompleted = new("mining.completed", 1);
+    public static readonly EventKind MiningInterrupted = new("mining.interrupted", 1);
+    public static readonly EventKind MineralDiscovered = new("mining.mineral-discovered", 1);
+    public static readonly EventKind AliceArrived = new("character.alice-arrived", 1);
+}
 
 internal sealed class InterruptedMiningSystem :
     ISimSystem<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>
@@ -151,7 +161,7 @@ internal sealed class InterruptedMiningSystem :
         return candidates;
     }
 
-    public ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> Resolve(
         InterruptedMiningWorld world,
         EventCandidate<InterruptedMiningForecast> candidate)
     {
@@ -162,32 +172,22 @@ internal sealed class InterruptedMiningSystem :
 
         return candidate.Payload switch
         {
-            StartMiningForecast when world.Activity is WaitingToMineActivity => StartMining(world, candidate.Due),
+            StartMiningForecast when world.Activity is WaitingToMineActivity => StartMining(candidate.Due),
             CompleteMiningForecast when world.Activity is MiningActivity mining && !world.AliceAtMine =>
-                CompleteMining(world, mining, candidate.Due),
+                CompleteMining(mining, candidate.Due),
             InterruptMiningForecast when world.Activity is MiningActivity mining && world.AliceAtMine =>
-                InterruptMining(world, mining, candidate.Due),
+                InterruptMining(mining, candidate.Due),
             DiscoverMineralForecast discovery when world.Activity is MiningActivity && !world.AliceAtMine =>
                 DiscoverMineral(world, candidate, discovery),
             _ => throw new InvalidOperationException("The mining candidate is stale for the current activity."),
         };
     }
 
-    private ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> StartMining(
-        InterruptedMiningWorld world,
-        ModelTime startedAt)
-    {
-        InterruptedMiningWorld nextWorld = world with
-        {
-            Activity = new MiningActivity(startedAt),
-            LastDiscoveryAt = startedAt,
-        };
+    private static IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> StartMining(
+        ModelTime startedAt) =>
+        Result(InterruptedMiningEventKinds.MiningStarted, new MiningStartedEvent(startedAt));
 
-        return Result(nextWorld, "MiningStarted", new MiningStartedEvent(startedAt));
-    }
-
-    private ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> CompleteMining(
-        InterruptedMiningWorld world,
+    private IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> CompleteMining(
         MiningActivity mining,
         ModelTime completedAt)
     {
@@ -196,31 +196,21 @@ internal sealed class InterruptedMiningSystem :
             throw new InvalidOperationException("The mining completion candidate has the wrong due time.");
         }
 
-        InterruptedMiningWorld nextWorld = world with
-        {
-            Activity = new FinishedMiningActivity(completedAt),
-        };
-
-        return Result(nextWorld, "MiningCompleted", new MiningCompletedEvent(completedAt));
+        return Result(InterruptedMiningEventKinds.MiningCompleted, new MiningCompletedEvent(completedAt));
     }
 
-    private ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> InterruptMining(
-        InterruptedMiningWorld world,
+    private IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> InterruptMining(
         MiningActivity mining,
         ModelTime interruptedAt)
     {
         ModelDuration elapsed = interruptedAt - mining.StartedAt;
         decimal progressFraction = elapsed.Ticks / (decimal)_completionDuration.Ticks;
-        InterruptedMiningWorld nextWorld = world with
-        {
-            Activity = new ConversationActivity(interruptedAt),
-        };
         var interrupted = new MiningInterruptedEvent(interruptedAt, elapsed, progressFraction);
 
-        return Result(nextWorld, "MiningInterrupted", interrupted);
+        return Result(InterruptedMiningEventKinds.MiningInterrupted, interrupted);
     }
 
-    private ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> DiscoverMineral(
+    private IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> DiscoverMineral(
         InterruptedMiningWorld world,
         EventCandidate<InterruptedMiningForecast> candidate,
         DiscoverMineralForecast discovery)
@@ -235,13 +225,7 @@ internal sealed class InterruptedMiningSystem :
             world.DiscoveryGeneration,
             candidate.Due,
             discovery.Mineral);
-        InterruptedMiningWorld nextWorld = world with
-        {
-            DiscoveryGeneration = checked(world.DiscoveryGeneration + 1),
-            LastDiscoveryAt = candidate.Due,
-        };
-
-        return Result(nextWorld, "MineralDiscovered", discovered);
+        return Result(InterruptedMiningEventKinds.MineralDiscovered, discovered);
     }
 
     private EventCandidate<InterruptedMiningForecast> Candidate(
@@ -251,11 +235,10 @@ internal sealed class InterruptedMiningSystem :
         InterruptedMiningForecast payload) =>
         new(new EventCandidateId(candidateId), due, _sourceId, generation, payload);
 
-    private static ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> Result(
-        InterruptedMiningWorld world,
-        string kind,
+    private static IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> Result(
+        EventKind kind,
         InterruptedMiningEvent payload) =>
-        new(world, [new UncommittedDomainEvent<InterruptedMiningEvent>(kind, payload)]);
+        [new UncommittedDomainEvent<InterruptedMiningEvent>(kind, payload)];
 }
 
 internal sealed class AliceArrivalSystem :
@@ -285,7 +268,7 @@ internal sealed class AliceArrivalSystem :
                     new AliceArrivalForecast()),
             ];
 
-    public ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent> Resolve(
+    public IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> Resolve(
         InterruptedMiningWorld world,
         EventCandidate<InterruptedMiningForecast> candidate)
     {
@@ -294,11 +277,44 @@ internal sealed class AliceArrivalSystem :
             throw new InvalidOperationException("The arrival candidate does not belong to Alice.");
         }
 
-        InterruptedMiningWorld nextWorld = world with { AliceAtMine = true };
         var arrived = new AliceArrivedEvent(candidate.Due);
 
-        return new ResolveResult<InterruptedMiningWorld, InterruptedMiningEvent>(
-            nextWorld,
-            [new UncommittedDomainEvent<InterruptedMiningEvent>("AliceArrived", arrived)]);
+        return
+        [
+            new UncommittedDomainEvent<InterruptedMiningEvent>(
+                InterruptedMiningEventKinds.AliceArrived,
+                arrived),
+        ];
     }
+}
+
+internal sealed class InterruptedMiningReducer : IEventReducer<InterruptedMiningWorld, InterruptedMiningEvent>
+{
+    public InterruptedMiningWorld Apply(
+        InterruptedMiningWorld world,
+        DomainEvent<InterruptedMiningEvent> domainEvent) =>
+        (domainEvent.Kind, domainEvent.Payload) switch
+        {
+            ({ } kind, MiningStartedEvent started) when kind == InterruptedMiningEventKinds.MiningStarted =>
+                world with
+                {
+                    Activity = new MiningActivity(started.StartedAt),
+                    LastDiscoveryAt = started.StartedAt,
+                },
+            ({ } kind, MiningCompletedEvent completed) when kind == InterruptedMiningEventKinds.MiningCompleted =>
+                world with { Activity = new FinishedMiningActivity(completed.CompletedAt) },
+            ({ } kind, MiningInterruptedEvent interrupted) when kind == InterruptedMiningEventKinds.MiningInterrupted =>
+                world with { Activity = new ConversationActivity(interrupted.InterruptedAt) },
+            ({ } kind, MineralDiscoveredEvent discovered)
+                when kind == InterruptedMiningEventKinds.MineralDiscovered &&
+                    discovered.Generation == world.DiscoveryGeneration =>
+                world with
+                {
+                    DiscoveryGeneration = checked(world.DiscoveryGeneration + 1),
+                    LastDiscoveryAt = discovered.DiscoveredAt,
+                },
+            ({ } kind, AliceArrivedEvent) when kind == InterruptedMiningEventKinds.AliceArrived =>
+                world with { AliceAtMine = true },
+            _ => throw new InvalidOperationException($"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'."),
+        };
 }
