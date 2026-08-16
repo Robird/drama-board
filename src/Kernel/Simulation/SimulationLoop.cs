@@ -7,16 +7,26 @@ namespace DramaBoard.Kernel.Simulation;
 /// <summary>Runs deterministic simulation cycles whose world updates come only from committed events.</summary>
 public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 {
+    private const int DefaultMaxResolveCountPerModelTime = 10_000;
+
     private readonly IReadOnlyList<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> _systems;
     private readonly IEventReducer<TWorld, TEventPayload> _reducer;
+    private readonly int _maxResolveCountPerModelTime;
 
     /// <summary>Initializes a loop from participating systems and the journal projection reducer.</summary>
     public SimulationLoop(
         IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems,
-        IEventReducer<TWorld, TEventPayload> reducer)
+        IEventReducer<TWorld, TEventPayload> reducer,
+        int maxResolveCountPerModelTime = DefaultMaxResolveCountPerModelTime)
     {
         ArgumentNullException.ThrowIfNull(systems);
         ArgumentNullException.ThrowIfNull(reducer);
+        if (maxResolveCountPerModelTime <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxResolveCountPerModelTime),
+                "The resolve budget per model time must be positive.");
+        }
 
         ISimSystem<TWorld, TCandidatePayload, TEventPayload>[] systemArray = [.. systems];
         if (systemArray.Any(system => system is null))
@@ -25,7 +35,8 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         }
 
         _systems = systemArray;
-    _reducer = reducer;
+        _reducer = reducer;
+        _maxResolveCountPerModelTime = maxResolveCountPerModelTime;
     }
 
     /// <summary>Runs until no candidate remains or the next candidate would be later than the inclusive time boundary.</summary>
@@ -46,6 +57,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         ModelTime now = initialTime;
         int timeAdvanceCount = 0;
         int resolvedCandidateCount = 0;
+        int resolveCountAtCurrentTime = 0;
         LogicalTimestamp? lastCommittedTimestamp = journal.Events.Count == 0
             ? null
             : journal.Events[^1].Timestamp;
@@ -86,6 +98,17 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
             {
                 now = next.Due;
                 timeAdvanceCount = checked(timeAdvanceCount + 1);
+                resolveCountAtCurrentTime = 0;
+            }
+
+            if (resolveCountAtCurrentTime >= _maxResolveCountPerModelTime)
+            {
+                string recentCandidate = lastResolvedCandidate is { } recent
+                    ? $"(SourceId: {recent.SourceId}, CandidateId: {recent.CandidateId}, Due: {recent.Due})"
+                    : "none";
+                throw new InvalidOperationException(
+                    $"Resolve budget of {_maxResolveCountPerModelTime} exhausted at model time {now} " +
+                    $"after {resolveCountAtCurrentTime} resolves. Most recent resolved candidate: {recentCandidate}.");
             }
 
             IReadOnlyList<UncommittedDomainEvent<TEventPayload>> events =
@@ -94,6 +117,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
             world = CommitAndApply(events, world, now, journal, ref lastCommittedTimestamp);
             lastResolvedCandidate = nextIdentity;
             lastResolveProducedNoEvents = events.Count == 0;
+            resolveCountAtCurrentTime = checked(resolveCountAtCurrentTime + 1);
             resolvedCandidateCount = checked(resolvedCandidateCount + 1);
         }
     }

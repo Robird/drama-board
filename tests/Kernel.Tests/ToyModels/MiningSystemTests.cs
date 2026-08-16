@@ -75,6 +75,23 @@ public sealed class MiningSystemTests
             (repeated.Id, repeated.Due, repeated.SourceId, repeated.Generation, repeated.Payload));
     }
 
+    [Fact]
+    public void Apply_SameKindIdWithNewerVersion_RoutesToExistingReducerBranch()
+    {
+        MiningWorld initialWorld = MiningWorld.Start(worldSeed: 42);
+        var discovery = new MiningDiscovery(0, new ModelTime(10), "Quartz");
+        var versionTwoKind = new EventKind(MiningEventKinds.MineralDiscovered.Id, 2);
+        var domainEvent = new DomainEvent<MiningDiscovery>(
+            new LogicalTimestamp(discovery.DiscoveredAt, new Microstep(0)),
+            versionTwoKind,
+            discovery);
+
+        MiningWorld result = new MiningReducer().Apply(initialWorld, domainEvent);
+
+        Assert.Equal(1, result.DiscoveryCount);
+        Assert.Equal(discovery, Assert.Single(result.Discoveries));
+    }
+
     private static InMemoryJournal<MiningDiscovery> Run(ulong worldSeed)
     {
         MiningSystem system = CreateSystem();

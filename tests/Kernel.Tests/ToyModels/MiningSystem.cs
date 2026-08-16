@@ -91,7 +91,7 @@ internal sealed class MiningReducer : IEventReducer<MiningWorld, MiningDiscovery
 {
     public MiningWorld Apply(MiningWorld world, DomainEvent<MiningDiscovery> domainEvent)
     {
-        if (domainEvent.Kind != MiningEventKinds.MineralDiscovered ||
+        if (domainEvent.Kind.Id != MiningEventKinds.MineralDiscovered.Id ||
             domainEvent.Payload.Generation != world.DiscoveryCount)
         {
             throw new InvalidOperationException($"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'.");

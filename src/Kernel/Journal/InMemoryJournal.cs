@@ -1,6 +1,6 @@
 namespace DramaBoard.Kernel.Journal;
 
-/// <summary>Stores committed domain events in memory while enforcing timestamp monotonicity.</summary>
+/// <summary>Stores committed domain events in memory while enforcing strictly increasing timestamps.</summary>
 public sealed class InMemoryJournal<TPayload> : IJournalSink<TPayload>
 {
     private readonly List<DomainEvent<TPayload>> _events = [];
@@ -20,9 +20,9 @@ public sealed class InMemoryJournal<TPayload> : IJournalSink<TPayload>
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
 
-        if (_events.Count > 0 && domainEvent.Timestamp < _events[^1].Timestamp)
+        if (_events.Count > 0 && domainEvent.Timestamp <= _events[^1].Timestamp)
         {
-            throw new InvalidOperationException("Journal event timestamps must be monotonically nondecreasing.");
+            throw new InvalidOperationException("Journal event timestamps must be strictly increasing.");
         }
 
         _events.Add(domainEvent);

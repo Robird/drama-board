@@ -94,7 +94,7 @@ public sealed class SameTimeSemanticsTests
     private sealed class FlagReducer : IEventReducer<int, FlagEvent>
     {
         public int Apply(int world, DomainEvent<FlagEvent> domainEvent) =>
-            domainEvent.Kind == FlagResolved
+            domainEvent.Kind.Id == FlagResolved.Id
                 ? world | domainEvent.Payload.ResolvedFlag
                 : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
     }

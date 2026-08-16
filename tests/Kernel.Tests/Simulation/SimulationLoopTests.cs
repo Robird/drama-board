@@ -8,6 +8,7 @@ namespace DramaBoard.Kernel.Tests.Simulation;
 public sealed class SimulationLoopTests
 {
     private static readonly EventKind OneShotResolved = new("test.one-shot-resolved", 1);
+    private static readonly EventKind SameTimeProduced = new("test.same-time-produced", 1);
 
     [Fact]
     public void Run_CandidateBeforeCurrentTime_ThrowsInvalidOperationException()
@@ -148,12 +149,52 @@ public sealed class SimulationLoopTests
         Assert.Empty(journal.Events);
     }
 
+    [Fact]
+    public void Run_TwoNoOpCandidatesAlternateAtSameTime_ThrowsResolveBudgetDiagnostic()
+    {
+        var loop = new SimulationLoop<int, string, string>(
+            [new AlternatingNoOpSystem()],
+            new IdentityReducer(),
+            maxResolveCountPerModelTime: 3);
+        var journal = new InMemoryJournal<string>();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            loop.Run(0, ModelTime.Zero, new ModelTime(10), journal));
+
+        AssertResolveBudgetDiagnostic(exception, expectedCount: 3);
+        Assert.Empty(journal.Events);
+    }
+
+    [Fact]
+    public void Run_SystemContinuouslyProducesEventsAtSameTime_ThrowsResolveBudgetDiagnostic()
+    {
+        var loop = new SimulationLoop<int, string, string>(
+            [new SameTimeEventSystem()],
+            new IncrementingReducer(),
+            maxResolveCountPerModelTime: 3);
+        var journal = new InMemoryJournal<string>();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            loop.Run(0, ModelTime.Zero, new ModelTime(10), journal));
+
+        AssertResolveBudgetDiagnostic(exception, expectedCount: 3);
+        Assert.Equal([0, 1, 2], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
+    }
+
+    private static void AssertResolveBudgetDiagnostic(InvalidOperationException exception, int expectedCount)
+    {
+        Assert.Contains("Resolve budget", exception.Message);
+        Assert.Contains(ModelTime.Zero.ToString(), exception.Message);
+        Assert.Contains($"after {expectedCount} resolves", exception.Message);
+        Assert.Contains("Most recent resolved candidate", exception.Message);
+    }
+
     private sealed record OneShotEvent(string Name, int StateFlag);
 
     private sealed class OneShotReducer : IEventReducer<int, OneShotEvent>
     {
         public int Apply(int world, DomainEvent<OneShotEvent> domainEvent) =>
-            domainEvent.Kind == OneShotResolved
+            domainEvent.Kind.Id == OneShotResolved.Id
                 ? world | domainEvent.Payload.StateFlag
                 : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
     }
@@ -220,8 +261,40 @@ public sealed class SimulationLoopTests
             EventCandidate<string> candidate) => [];
     }
 
+    private sealed class AlternatingNoOpSystem : ISimSystem<int, string, string>
+    {
+        private bool _forecastFirst = true;
+
+        public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now)
+        {
+            long candidateId = _forecastFirst ? 1 : 2;
+            _forecastFirst = !_forecastFirst;
+            return [new EventCandidate<string>(new EventCandidateId(candidateId), now, 1, 0, "alternate")];
+        }
+
+        public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
+            int world,
+            EventCandidate<string> candidate) => [];
+    }
+
+    private sealed class SameTimeEventSystem : ISimSystem<int, string, string>
+    {
+        public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
+            [new EventCandidate<string>(new EventCandidateId(world), now, 1, world, "produce")];
+
+        public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
+            int world,
+            EventCandidate<string> candidate) =>
+            [new UncommittedDomainEvent<string>(SameTimeProduced, candidate.Payload)];
+    }
+
     private sealed class IdentityReducer : IEventReducer<int, string>
     {
         public int Apply(int world, DomainEvent<string> domainEvent) => world;
+    }
+
+    private sealed class IncrementingReducer : IEventReducer<int, string>
+    {
+        public int Apply(int world, DomainEvent<string> domainEvent) => checked(world + 1);
     }
 }

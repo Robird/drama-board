@@ -39,7 +39,7 @@ internal sealed class TimerSystem : ISimSystem<TimerWorld, string, string>
 internal sealed class TimerReducer : IEventReducer<TimerWorld, string>
 {
     public TimerWorld Apply(TimerWorld world, DomainEvent<string> domainEvent) =>
-        domainEvent.Kind == TimerEventKinds.Fired
+        domainEvent.Kind.Id == TimerEventKinds.Fired.Id
             ? new TimerWorld([.. world.FiredTimers, domainEvent.Payload])
             : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
 }

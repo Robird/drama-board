@@ -125,11 +125,11 @@ internal sealed class ScheduledInputSystem : ISimSystem<RerouteWorld, RerouteCan
 internal sealed class RerouteReducer : IEventReducer<RerouteWorld, RerouteEventPayload>
 {
     public RerouteWorld Apply(RerouteWorld world, DomainEvent<RerouteEventPayload> domainEvent) =>
-        (domainEvent.Kind, domainEvent.Payload) switch
+        (domainEvent.Kind.Id, domainEvent.Payload) switch
         {
-            ({ } kind, ArrivedEventPayload arrived) when kind == RerouteEventKinds.Arrived =>
+            ({ } kindId, ArrivedEventPayload arrived) when kindId == RerouteEventKinds.Arrived.Id =>
                 world with { Destination = arrived.Destination, HasArrived = true },
-            ({ } kind, ReroutedEventPayload rerouted) when kind == RerouteEventKinds.Rerouted =>
+            ({ } kindId, ReroutedEventPayload rerouted) when kindId == RerouteEventKinds.Rerouted.Id =>
                 world with { Destination = rerouted.Destination, HasRedirected = true },
             _ => throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'."),
         };

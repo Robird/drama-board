@@ -341,7 +341,7 @@ internal sealed class BouncingReducer : IEventReducer<BouncingWorld, CollisionEv
 {
     public BouncingWorld Apply(BouncingWorld world, DomainEvent<CollisionEventPayload> domainEvent)
     {
-        if (domainEvent.Kind != BouncingEventKinds.Collision)
+        if (domainEvent.Kind.Id != BouncingEventKinds.Collision.Id)
         {
             throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
         }

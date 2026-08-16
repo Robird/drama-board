@@ -62,7 +62,7 @@ internal static class InterruptedMiningEventKinds
     public static readonly EventKind MiningStarted = new("mining.started", 1);
     public static readonly EventKind MiningCompleted = new("mining.completed", 1);
     public static readonly EventKind MiningInterrupted = new("mining.interrupted", 1);
-    public static readonly EventKind MineralDiscovered = new("mining.mineral-discovered", 1);
+    public static readonly EventKind MineralDiscovered = new("interrupted-mining.mineral-discovered", 1);
     public static readonly EventKind AliceArrived = new("character.alice-arrived", 1);
 }
 
@@ -293,27 +293,27 @@ internal sealed class InterruptedMiningReducer : IEventReducer<InterruptedMining
     public InterruptedMiningWorld Apply(
         InterruptedMiningWorld world,
         DomainEvent<InterruptedMiningEvent> domainEvent) =>
-        (domainEvent.Kind, domainEvent.Payload) switch
+        (domainEvent.Kind.Id, domainEvent.Payload) switch
         {
-            ({ } kind, MiningStartedEvent started) when kind == InterruptedMiningEventKinds.MiningStarted =>
+            ({ } kindId, MiningStartedEvent started) when kindId == InterruptedMiningEventKinds.MiningStarted.Id =>
                 world with
                 {
                     Activity = new MiningActivity(started.StartedAt),
                     LastDiscoveryAt = started.StartedAt,
                 },
-            ({ } kind, MiningCompletedEvent completed) when kind == InterruptedMiningEventKinds.MiningCompleted =>
+            ({ } kindId, MiningCompletedEvent completed) when kindId == InterruptedMiningEventKinds.MiningCompleted.Id =>
                 world with { Activity = new FinishedMiningActivity(completed.CompletedAt) },
-            ({ } kind, MiningInterruptedEvent interrupted) when kind == InterruptedMiningEventKinds.MiningInterrupted =>
+            ({ } kindId, MiningInterruptedEvent interrupted) when kindId == InterruptedMiningEventKinds.MiningInterrupted.Id =>
                 world with { Activity = new ConversationActivity(interrupted.InterruptedAt) },
-            ({ } kind, MineralDiscoveredEvent discovered)
-                when kind == InterruptedMiningEventKinds.MineralDiscovered &&
+            ({ } kindId, MineralDiscoveredEvent discovered)
+                when kindId == InterruptedMiningEventKinds.MineralDiscovered.Id &&
                     discovered.Generation == world.DiscoveryGeneration =>
                 world with
                 {
                     DiscoveryGeneration = checked(world.DiscoveryGeneration + 1),
                     LastDiscoveryAt = discovered.DiscoveredAt,
                 },
-            ({ } kind, AliceArrivedEvent) when kind == InterruptedMiningEventKinds.AliceArrived =>
+            ({ } kindId, AliceArrivedEvent) when kindId == InterruptedMiningEventKinds.AliceArrived.Id =>
                 world with { AliceAtMine = true },
             _ => throw new InvalidOperationException($"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'."),
         };
