@@ -17,25 +17,25 @@ internal static class MiningEventKinds
 
 internal sealed record MiningWorld(
     ulong WorldSeed,
+    long ActivityId,
     long DiscoveryCount,
     ModelTime LastDiscoveryAt,
     IReadOnlyList<MiningDiscovery> Discoveries)
 {
-    public static MiningWorld Start(ulong worldSeed) => new(worldSeed, 0, ModelTime.Zero, []);
+    public static MiningWorld Start(ulong worldSeed, long activityId = 17) =>
+        new(worldSeed, activityId, 0, ModelTime.Zero, []);
 }
 
 internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, MiningDiscovery>
 {
     private static readonly string[] Minerals = ["Quartz", "Silver", "Opal"];
 
-    private readonly long _sourceId;
     private readonly ulong _activityStreamId;
     private readonly ulong _mineralStreamId;
     private readonly ModelDuration _meanDiscoveryInterval;
 
-    public MiningSystem(long sourceId, ulong activityStreamId, ModelDuration meanDiscoveryInterval)
+    public MiningSystem(ulong activityStreamId, ModelDuration meanDiscoveryInterval)
     {
-        _sourceId = sourceId;
         _activityStreamId = activityStreamId;
         _mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
         _meanDiscoveryInterval = meanDiscoveryInterval;
@@ -62,8 +62,7 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
             new EventCandidate<MiningForecast>(
                 new EventCandidateId(world.DiscoveryCount),
                 world.LastDiscoveryAt + delay,
-                _sourceId,
-                world.DiscoveryCount,
+                world.ActivityId,
                 forecast),
         ];
     }
@@ -72,8 +71,7 @@ internal sealed class MiningSystem : ISimSystem<MiningWorld, MiningForecast, Min
         MiningWorld world,
         EventCandidate<MiningForecast> candidate)
     {
-        if (candidate.SourceId != _sourceId ||
-            candidate.Generation != world.DiscoveryCount ||
+        if (candidate.SourceId != world.ActivityId ||
             candidate.Payload.Generation != world.DiscoveryCount)
         {
             throw new InvalidOperationException("The mining forecast does not match the current activity generation.");
@@ -99,6 +97,7 @@ internal sealed class MiningReducer : IEventReducer<MiningWorld, MiningDiscovery
 
         return new MiningWorld(
             world.WorldSeed,
+            world.ActivityId,
             checked(world.DiscoveryCount + 1),
             domainEvent.Payload.DiscoveredAt,
             [.. world.Discoveries, domainEvent.Payload]);

@@ -108,7 +108,6 @@ internal static class BouncingEventKinds
 internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandidatePayload, CollisionEventPayload>
 {
     private const double TimeEpsilon = 1e-12;
-    private const long SourceId = 1;
 
     public IReadOnlyList<EventCandidate<CollisionCandidatePayload>> ForecastNext(BouncingWorld world, ModelTime now)
     {
@@ -138,8 +137,7 @@ internal sealed class BouncingSystem : ISimSystem<BouncingWorld, CollisionCandid
             new EventCandidate<CollisionCandidatePayload>(
                 new EventCandidateId(checked(world.Generation + 1)),
                 due,
-                SourceId,
-                world.Generation,
+                earliest.FirstBallId,
                 payload),
         ];
     }

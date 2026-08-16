@@ -5,7 +5,14 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.ToyModels;
 
-internal sealed record TimerWorld(IReadOnlyList<string> FiredTimers);
+internal sealed record TimerEntity(long Id, string Name, ModelTime Due);
+
+internal sealed record TimerWorld(
+    IReadOnlyList<TimerEntity> Timers,
+    IReadOnlyList<string> FiredTimers)
+{
+    public static TimerWorld Start(params TimerEntity[] timers) => new(Array.AsReadOnly(timers), []);
+}
 
 internal static class TimerEventKinds
 {
@@ -14,21 +21,16 @@ internal static class TimerEventKinds
 
 internal sealed class TimerSystem : ISimSystem<TimerWorld, string, string>
 {
-    private readonly string _timerId;
-    private readonly long _sourceId;
-    private readonly ModelTime _due;
-
-    public TimerSystem(string timerId, long sourceId, ModelTime due)
-    {
-        _timerId = timerId;
-        _sourceId = sourceId;
-        _due = due;
-    }
-
     public IReadOnlyList<EventCandidate<string>> ForecastNext(TimerWorld world, ModelTime now) =>
-        world.FiredTimers.Contains(_timerId)
-            ? []
-            : [new EventCandidate<string>(new EventCandidateId(_sourceId), _due, _sourceId, 0, _timerId)];
+        [
+            .. world.Timers
+                .Where(timer => !world.FiredTimers.Contains(timer.Name))
+                .Select(timer => new EventCandidate<string>(
+                    new EventCandidateId(timer.Id),
+                    timer.Due,
+                    timer.Id,
+                    timer.Name)),
+        ];
 
     public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
         TimerWorld world,
@@ -40,6 +42,6 @@ internal sealed class TimerReducer : IEventReducer<TimerWorld, string>
 {
     public TimerWorld Apply(TimerWorld world, DomainEvent<string> domainEvent) =>
         domainEvent.Kind.Id == TimerEventKinds.Fired.Id
-            ? new TimerWorld([.. world.FiredTimers, domainEvent.Payload])
+            ? world with { FiredTimers = [.. world.FiredTimers, domainEvent.Payload] }
             : throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'.");
 }

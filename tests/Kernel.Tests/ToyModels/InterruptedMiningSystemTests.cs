@@ -17,20 +17,21 @@ public sealed class InterruptedMiningSystemTests
 
         Assert.Equal(
             [
+                InterruptedMiningEventKinds.AliceArrivalScheduled,
                 InterruptedMiningEventKinds.MiningStarted,
                 InterruptedMiningEventKinds.AliceArrived,
                 InterruptedMiningEventKinds.MiningInterrupted,
             ],
             output.Journal.Events.Select(domainEvent => domainEvent.Kind));
         Assert.Equal(
-            [ModelTime.Zero, ArrivalAt, ArrivalAt],
+            [ModelTime.Zero, ModelTime.Zero, ArrivalAt, ArrivalAt],
             output.Journal.Events.Select(domainEvent => domainEvent.Timestamp.ModelTime));
         Assert.Equal(
-            [0, 0, 1],
+            [0, 1, 0, 1],
             output.Journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
 
         MiningInterruptedEvent interrupted = Assert.IsType<MiningInterruptedEvent>(
-            output.Journal.Events[2].Payload);
+            output.Journal.Events[3].Payload);
         Assert.Equal(ArrivalDelay, interrupted.Elapsed);
         Assert.Equal(ArrivalDelay.Ticks / (decimal)CompletionDuration.Ticks, interrupted.ProgressFraction);
         Assert.IsType<ConversationActivity>(output.Result.World.Activity);
@@ -99,7 +100,6 @@ public sealed class InterruptedMiningSystemTests
         bool reverseSystems = false)
     {
         var mining = new InterruptedMiningSystem(
-            sourceId: 20,
             completionDuration: CompletionDuration,
             activityStreamId: 73,
             meanDiscoveryInterval: includeDiscoveries
@@ -113,7 +113,7 @@ public sealed class InterruptedMiningSystemTests
 
         if (includeAlice)
         {
-            systems.Add(new AliceArrivalSystem(sourceId: 10, arrivalAt: ArrivalAt));
+            systems.Add(new AliceArrivalSystem());
         }
 
         if (reverseSystems)
@@ -126,11 +126,20 @@ public sealed class InterruptedMiningSystemTests
             InterruptedMiningForecast,
             InterruptedMiningEvent>(systems, new InterruptedMiningReducer());
         var journal = new InMemoryJournal<InterruptedMiningEvent>();
-        SimulationRunResult<InterruptedMiningWorld> result = loop.Run(
+        UncommittedDomainEvent<InterruptedMiningEvent>[] externalInputs = includeAlice
+            ?
+            [
+                new UncommittedDomainEvent<InterruptedMiningEvent>(
+                    InterruptedMiningEventKinds.AliceArrivalScheduled,
+                    new AliceArrivalScheduledEvent(ArrivalAt)),
+            ]
+            : [];
+        SimulationRunResult<InterruptedMiningWorld, InterruptedMiningEvent> result = loop.Run(
             InterruptedMiningWorld.Start(worldSeed: 42),
-            initialTime: ModelTime.Zero,
+            cursor: SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
             until: ModelTime.Zero + ModelDuration.FromSeconds(3 * 60 * 60),
-            journal);
+            journal,
+            externalInputs);
 
         return new RunOutput(result, journal);
     }
@@ -143,6 +152,6 @@ public sealed class InterruptedMiningSystemTests
         ];
 
     private sealed record RunOutput(
-        SimulationRunResult<InterruptedMiningWorld> Result,
+        SimulationRunResult<InterruptedMiningWorld, InterruptedMiningEvent> Result,
         InMemoryJournal<InterruptedMiningEvent> Journal);
 }

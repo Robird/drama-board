@@ -33,7 +33,9 @@ public sealed class EventKindRegistryTests
         registry.Register<MiningInterruptedEvent>(InterruptedMiningEventKinds.MiningInterrupted);
         registry.Register<MineralDiscoveredEvent>(InterruptedMiningEventKinds.MineralDiscovered);
         registry.Register<AliceArrivedEvent>(InterruptedMiningEventKinds.AliceArrived);
+        registry.Register<AliceArrivalScheduledEvent>(InterruptedMiningEventKinds.AliceArrivalScheduled);
+        registry.Register<RerouteScheduledEventPayload>(RerouteEventKinds.RerouteScheduled);
 
-        Assert.Equal(10, registry.Count);
+        Assert.Equal(12, registry.Count);
     }
 }

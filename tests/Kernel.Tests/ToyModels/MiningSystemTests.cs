@@ -42,8 +42,8 @@ public sealed class MiningSystemTests
         EventCandidate<MiningForecast> second = Assert.Single(system.ForecastNext(world, ModelTime.Zero));
 
         Assert.Equal(
-            (first.Id, first.Due, first.SourceId, first.Generation, first.Payload),
-            (second.Id, second.Due, second.SourceId, second.Generation, second.Payload));
+            (first.Id, first.Due, first.SourceId, first.Payload),
+            (second.Id, second.Due, second.SourceId, second.Payload));
     }
 
     [Fact]
@@ -67,12 +67,12 @@ public sealed class MiningSystemTests
             system.ForecastNext(resolvedWorld, first.Due));
 
         Assert.Equal(1, resolvedWorld.DiscoveryCount);
-        Assert.Equal(1, next.Generation);
+        Assert.Equal(1, next.Payload.Generation);
         Assert.True(next.Due > first.Due);
         Assert.NotEqual(first.Due, next.Due);
         Assert.Equal(
-            (next.Id, next.Due, next.SourceId, next.Generation, next.Payload),
-            (repeated.Id, repeated.Due, repeated.SourceId, repeated.Generation, repeated.Payload));
+            (next.Id, next.Due, next.SourceId, next.Payload),
+            (repeated.Id, repeated.Due, repeated.SourceId, repeated.Payload));
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class MiningSystemTests
 
         _ = loop.Run(
             MiningWorld.Start(worldSeed),
-            initialTime: ModelTime.Zero,
+            cursor: SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
             until: ModelTime.Zero + ModelDuration.FromSeconds(300),
             journal);
 
@@ -109,7 +109,6 @@ public sealed class MiningSystemTests
 
     private static MiningSystem CreateSystem() =>
         new(
-            sourceId: 17,
             activityStreamId: 73,
             meanDiscoveryInterval: ModelDuration.FromSeconds(30));
 }

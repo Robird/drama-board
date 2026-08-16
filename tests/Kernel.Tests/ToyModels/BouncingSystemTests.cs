@@ -17,7 +17,7 @@ public sealed class BouncingSystemTests
             new BouncingBall(1, 1, 1, new PhysicsVector(10, 10), new PhysicsVector(3, 0)),
             new BouncingBall(2, 1, 1, new PhysicsVector(20, 10), new PhysicsVector(0, 0)));
 
-        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+        (SimulationRunResult<BouncingWorld, CollisionEventPayload> result, InMemoryJournal<CollisionEventPayload> journal) =
             Run(initialWorld, AtSecond(3));
 
         Assert.Single(journal.Events);
@@ -45,7 +45,7 @@ public sealed class BouncingSystemTests
         double initialEnergy = KineticEnergy(initialWorld);
         PhysicsVector initialMomentum = Momentum(initialWorld);
 
-        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+        (SimulationRunResult<BouncingWorld, CollisionEventPayload> result, InMemoryJournal<CollisionEventPayload> journal) =
             Run(initialWorld, AtSecond(5));
 
         Assert.Equal(4, journal.Events.Count);
@@ -82,7 +82,7 @@ public sealed class BouncingSystemTests
             height: 12,
             new BouncingBall(1, 1, 1, new PhysicsVector(5, 5), new PhysicsVector(0, 0)));
 
-        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+        (SimulationRunResult<BouncingWorld, CollisionEventPayload> result, InMemoryJournal<CollisionEventPayload> journal) =
             Run(initialWorld, AtSecond(100));
 
         Assert.Empty(journal.Events);
@@ -102,7 +102,7 @@ public sealed class BouncingSystemTests
             new BouncingBall(4, 1, 1, new PhysicsVector(28, 10), new PhysicsVector(0, 0)),
             new BouncingBall(5, 1, 1, new PhysicsVector(38, 10), new PhysicsVector(0, 0)));
 
-        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+        (SimulationRunResult<BouncingWorld, CollisionEventPayload> result, InMemoryJournal<CollisionEventPayload> journal) =
             Run(initialWorld, new ModelTime(500));
         CollisionEventPayload payload = Assert.Single(journal.Events).Payload;
         BouncingWorld replayed = journal.Events.Aggregate(initialWorld, new BouncingReducer().Apply);
@@ -124,7 +124,7 @@ public sealed class BouncingSystemTests
             new BouncingBall(4, 1, 1, new PhysicsVector(28, 10), new PhysicsVector(0, 0)),
             new BouncingBall(5, 1, 1, new PhysicsVector(38, 10), new PhysicsVector(0, 0)));
 
-        (SimulationRunResult<BouncingWorld> result, InMemoryJournal<CollisionEventPayload> journal) =
+        (SimulationRunResult<BouncingWorld, CollisionEventPayload> result, InMemoryJournal<CollisionEventPayload> journal) =
             Run(initialWorld, AtSecond(5));
         BouncingWorld replayed = journal.Events.Aggregate(initialWorld, new BouncingReducer().Apply);
 
@@ -135,7 +135,7 @@ public sealed class BouncingSystemTests
     private static BouncingWorld CreateWorld(double width, double height, params BouncingBall[] balls) =>
         new(width, height, balls);
 
-    private static (SimulationRunResult<BouncingWorld>, InMemoryJournal<CollisionEventPayload>) Run(
+    private static (SimulationRunResult<BouncingWorld, CollisionEventPayload>, InMemoryJournal<CollisionEventPayload>) Run(
         BouncingWorld initialWorld,
         ModelTime until)
     {
@@ -143,7 +143,11 @@ public sealed class BouncingSystemTests
             [new BouncingSystem()],
             new BouncingReducer());
         var journal = new InMemoryJournal<CollisionEventPayload>();
-        SimulationRunResult<BouncingWorld> result = loop.Run(initialWorld, ModelTime.Zero, until, journal);
+        SimulationRunResult<BouncingWorld, CollisionEventPayload> result = loop.Run(
+            initialWorld,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
+            until,
+            journal);
         return (result, journal);
     }
 

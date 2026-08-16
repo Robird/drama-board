@@ -73,12 +73,167 @@ public sealed class SimulationPropertiesTests
     }
 
     [Fact]
+    public void Run_RandomSegmentBoundariesAndInputPlan_EqualsSingleRun()
+    {
+        Gen.Int[-10_000, 10_000].Array[12, 24].Sample(values =>
+        {
+            int timerCount = 1 + Math.Abs(values[0]) % 5;
+            int requestedSegmentCount = 1 + Math.Abs(values[1]) % 5;
+            int inputCount = Math.Abs(values[2]) % (timerCount + 1);
+            TimerEntity[] timers =
+            [
+                .. Enumerable.Range(0, timerCount).Select(index =>
+                    new TimerEntity(
+                        index + 1,
+                        $"Timer-{index}",
+                        new ModelTime(100 + Math.Abs(values[3 + index]) % 901))),
+            ];
+            TimerWorld initialWorld = TimerWorld.Start(timers);
+            UncommittedDomainEvent<string>[] inputPlan =
+            [
+                .. timers.Take(inputCount).Select(timer =>
+                    new UncommittedDomainEvent<string>(TimerEventKinds.Fired, timer.Name)),
+            ];
+            ModelTime[] boundaries =
+            [
+                .. values
+                    .Skip(8)
+                    .Take(requestedSegmentCount - 1)
+                    .Select(value => new ModelTime(1 + Math.Abs(value) % 99))
+                    .Distinct()
+                    .OrderBy(boundary => boundary),
+            ];
+            int segmentCount = boundaries.Length + 1;
+            var singleJournal = new InMemoryJournal<string>();
+            var splitJournal = new InMemoryJournal<string>();
+            var singleLoop = new SimulationLoop<TimerWorld, string, string>([new TimerSystem()], new TimerReducer());
+            var splitLoop = new SimulationLoop<TimerWorld, string, string>([new TimerSystem()], new TimerReducer());
+            SimulationCursor initialCursor = SimulationCursor.CreateInitial(lineageId: 77, ModelTime.Zero);
+            var until = new ModelTime(1_000);
+
+            SimulationRunResult<TimerWorld, string> single = singleLoop.Run(
+                initialWorld,
+                initialCursor,
+                until,
+                singleJournal,
+                inputPlan);
+
+            TimerWorld splitWorld = initialWorld;
+            SimulationCursor splitCursor = initialCursor;
+            for (int segmentIndex = 0; segmentIndex < boundaries.Length; segmentIndex++)
+            {
+                int inputStart = inputPlan.Length * segmentIndex / segmentCount;
+                int inputEnd = inputPlan.Length * (segmentIndex + 1) / segmentCount;
+                SimulationRunResult<TimerWorld, string> segment = splitLoop.Run(
+                    splitWorld,
+                    splitCursor,
+                    boundaries[segmentIndex],
+                    splitJournal,
+                    inputPlan[inputStart..inputEnd]);
+                splitWorld = segment.World;
+                splitCursor = segment.Cursor;
+                Assert.Equal(StopReason.BoundaryReached, segment.StopReason);
+            }
+
+            int finalInputStart = inputPlan.Length * boundaries.Length / segmentCount;
+            SimulationRunResult<TimerWorld, string> split = splitLoop.Run(
+                splitWorld,
+                splitCursor,
+                until,
+                splitJournal,
+                inputPlan[finalInputStart..]);
+
+            AssertEqualJournal(singleJournal, splitJournal);
+            Assert.Equal(single.World.Timers, split.World.Timers);
+            Assert.Equal(single.World.FiredTimers, split.World.FiredTimers);
+            Assert.Equal(single.Cursor, split.Cursor);
+            Assert.Equal(single.StopReason, split.StopReason);
+        });
+    }
+
+    [Fact]
+    public void Run_RandomCandidateTimelineCuts_EqualsSingleRun()
+    {
+        Gen.Int[-10_000, 10_000].Array[12, 24].Sample(values =>
+        {
+            int timerCount = 1 + Math.Abs(values[0]) % 5;
+            int requestedCutCount = Math.Abs(values[1]) % 5;
+            int inputCount = Math.Abs(values[2]) % (timerCount + 1);
+            TimerEntity[] timers =
+            [
+                .. Enumerable.Range(0, timerCount).Select(index =>
+                    new TimerEntity(
+                        index + 1,
+                        $"Timer-{index}",
+                        new ModelTime(1 + Math.Abs(values[3 + index]) % 1_000))),
+            ];
+            TimerWorld initialWorld = TimerWorld.Start(timers);
+            UncommittedDomainEvent<string>[] initiallyReadyInputs =
+            [
+                .. timers.Take(inputCount).Select(timer =>
+                    new UncommittedDomainEvent<string>(TimerEventKinds.Fired, timer.Name)),
+            ];
+            ModelTime[] cuts =
+            [
+                .. values
+                    .Skip(8)
+                    .Take(requestedCutCount)
+                    .Select(value => new ModelTime(Math.Abs(value) % 1_001))
+                    .Distinct()
+                    .OrderBy(cut => cut),
+            ];
+            var singleJournal = new InMemoryJournal<string>();
+            var splitJournal = new InMemoryJournal<string>();
+            var singleLoop = new SimulationLoop<TimerWorld, string, string>([new TimerSystem()], new TimerReducer());
+            var splitLoop = new SimulationLoop<TimerWorld, string, string>([new TimerSystem()], new TimerReducer());
+            SimulationCursor initialCursor = SimulationCursor.CreateInitial(lineageId: 91, ModelTime.Zero);
+            var until = new ModelTime(1_000);
+
+            SimulationRunResult<TimerWorld, string> single = singleLoop.Run(
+                initialWorld,
+                initialCursor,
+                until,
+                singleJournal,
+                initiallyReadyInputs);
+
+            TimerWorld splitWorld = initialWorld;
+            SimulationCursor splitCursor = initialCursor;
+            bool inputsSubmitted = false;
+            foreach (ModelTime cut in cuts)
+            {
+                SimulationRunResult<TimerWorld, string> segment = splitLoop.Run(
+                    splitWorld,
+                    splitCursor,
+                    cut,
+                    splitJournal,
+                    inputsSubmitted ? null : initiallyReadyInputs);
+                splitWorld = segment.World;
+                splitCursor = segment.Cursor;
+                inputsSubmitted = true;
+            }
+
+            SimulationRunResult<TimerWorld, string> split = splitLoop.Run(
+                splitWorld,
+                splitCursor,
+                until,
+                splitJournal,
+                inputsSubmitted ? null : initiallyReadyInputs);
+
+            AssertEqualJournal(singleJournal, splitJournal);
+            Assert.Equal(single.World.Timers, split.World.Timers);
+            Assert.Equal(single.World.FiredTimers, split.World.FiredTimers);
+            Assert.Equal(single.Cursor, split.Cursor);
+            Assert.Equal(single.StopReason, split.StopReason);
+        });
+    }
+
+    [Fact]
     public void Replay_RandomTimerJournal_ReconstructsRunFinalWorld()
     {
         Gen.Int[0, 20_000].Array[0, 16].Sample(dueTicks =>
         {
-            TimerWorld initialWorld = new([]);
-            (SimulationRunResult<TimerWorld> result, InMemoryJournal<string> journal) =
+            TimerWorld initialWorld = CreateTimerWorld(dueTicks);
+            (SimulationRunResult<TimerWorld, string> result, InMemoryJournal<string> journal) =
                 RunTimers(dueTicks, untilTicks: 20_000);
 
             TimerWorld replayed = ReplayHarness.Replay(
@@ -101,47 +256,52 @@ public sealed class SimulationPropertiesTests
             ISimSystem<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>[] systems =
             [
                 new TravelSystem(arrivalAtB, arrivalAtC),
-                new ScheduledInputSystem(rerouteAt, destination: "C"),
+                new ScheduledRerouteSystem(),
             ];
             var loop = new SimulationLoop<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>(
                 systems,
                 new RerouteReducer());
             var journal = new InMemoryJournal<RerouteEventPayload>();
 
-            SimulationRunResult<RerouteWorld> result = loop.Run(
-                new RerouteWorld("B", false, false),
-                ModelTime.Zero,
+            SimulationRunResult<RerouteWorld, RerouteEventPayload> result = loop.Run(
+                RerouteWorld.Start("B"),
+                SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
                 arrivalAtC,
-                journal);
+                journal,
+                [
+                    new UncommittedDomainEvent<RerouteEventPayload>(
+                        RerouteEventKinds.RerouteScheduled,
+                        new RerouteScheduledEventPayload(rerouteAt, "C")),
+                ]);
 
             Assert.DoesNotContain(
                 journal.Events,
                 domainEvent => domainEvent.Payload is ArrivedEventPayload { Destination: "B" });
-            Assert.Equal(new RerouteWorld("C", true, true), result.World);
+            Assert.Equal(
+                RerouteWorld.Start("C") with { HasRedirected = true, HasArrived = true },
+                result.World);
         });
     }
 
-    private static (SimulationRunResult<TimerWorld> Result, InMemoryJournal<string> Journal) RunTimers(
+    private static (SimulationRunResult<TimerWorld, string> Result, InMemoryJournal<string> Journal) RunTimers(
         IEnumerable<int> dueTicks,
         long untilTicks)
     {
-        ISimSystem<TimerWorld, string, string>[] systems =
-        [
-            .. dueTicks.Select((due, index) =>
-                (ISimSystem<TimerWorld, string, string>)new TimerSystem(
-                    $"Timer-{index}",
-                    sourceId: index + 1,
-                    new ModelTime(due))),
-        ];
+        TimerWorld initialWorld = CreateTimerWorld(dueTicks);
+        ISimSystem<TimerWorld, string, string>[] systems = [new TimerSystem()];
         var loop = new SimulationLoop<TimerWorld, string, string>(systems, new TimerReducer());
         var journal = new InMemoryJournal<string>();
-        SimulationRunResult<TimerWorld> result = loop.Run(
-            new TimerWorld([]),
-            ModelTime.Zero,
+        SimulationRunResult<TimerWorld, string> result = loop.Run(
+            initialWorld,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
             new ModelTime(untilTicks),
             journal);
         return (result, journal);
     }
+
+    private static TimerWorld CreateTimerWorld(IEnumerable<int> dueTicks) =>
+        TimerWorld.Start(
+            [.. dueTicks.Select((due, index) => new TimerEntity(index + 1, $"Timer-{index}", new ModelTime(due)))]);
 
     private static BouncingWorld CreateBouncingWorld(IReadOnlyList<int> values)
     {
@@ -163,7 +323,7 @@ public sealed class SimulationPropertiesTests
         var journal = new InMemoryJournal<CollisionEventPayload>();
         _ = loop.Run(
             initialWorld,
-            ModelTime.Zero,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
             ModelTime.Zero + ModelDuration.FromSeconds(5),
             journal);
         return journal;
@@ -171,14 +331,14 @@ public sealed class SimulationPropertiesTests
 
     private static InMemoryJournal<MiningDiscovery> RunMining(ulong seed, ModelDuration meanInterval)
     {
-        var system = new MiningSystem(sourceId: 17, activityStreamId: 73, meanInterval);
+        var system = new MiningSystem(activityStreamId: 73, meanInterval);
         var loop = new SimulationLoop<MiningWorld, MiningForecast, MiningDiscovery>(
             [system],
             new MiningReducer());
         var journal = new InMemoryJournal<MiningDiscovery>();
         _ = loop.Run(
             MiningWorld.Start(seed),
-            ModelTime.Zero,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
             ModelTime.Zero + ModelDuration.FromSeconds(300),
             journal);
         return journal;

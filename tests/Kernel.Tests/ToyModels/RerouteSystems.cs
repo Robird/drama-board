@@ -5,7 +5,18 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.ToyModels;
 
-internal sealed record RerouteWorld(string Destination, bool HasRedirected, bool HasArrived);
+internal sealed record ScheduledReroute(ModelTime Due, string Destination);
+
+internal sealed record RerouteWorld(
+    long TravelerId,
+    string Destination,
+    ScheduledReroute? PendingReroute,
+    bool HasRedirected,
+    bool HasArrived)
+{
+    public static RerouteWorld Start(string destination, long travelerId = 1) =>
+        new(travelerId, destination, null, false, false);
+}
 
 internal abstract record RerouteCandidatePayload;
 
@@ -19,10 +30,13 @@ internal sealed record ArrivedEventPayload(string Destination) : RerouteEventPay
 
 internal sealed record ReroutedEventPayload(string Destination) : RerouteEventPayload;
 
+internal sealed record RerouteScheduledEventPayload(ModelTime Due, string Destination) : RerouteEventPayload;
+
 internal static class RerouteEventKinds
 {
     public static readonly EventKind Arrived = new("travel.arrived", 1);
     public static readonly EventKind Rerouted = new("travel.rerouted", 1);
+    public static readonly EventKind RerouteScheduled = new("travel.reroute-scheduled", 1);
 }
 
 internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>
@@ -56,8 +70,7 @@ internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePa
             new EventCandidate<RerouteCandidatePayload>(
                 new EventCandidateId(100 + generation),
                 due,
-                sourceId: 1,
-                generation,
+                world.TravelerId,
                 new ArrivalCandidatePayload(world.Destination)),
         ];
     }
@@ -80,28 +93,18 @@ internal sealed class TravelSystem : ISimSystem<RerouteWorld, RerouteCandidatePa
     }
 }
 
-internal sealed class ScheduledInputSystem : ISimSystem<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>
+internal sealed class ScheduledRerouteSystem : ISimSystem<RerouteWorld, RerouteCandidatePayload, RerouteEventPayload>
 {
-    private readonly ModelTime _due;
-    private readonly string _destination;
-
-    public ScheduledInputSystem(ModelTime due, string destination)
-    {
-        _due = due;
-        _destination = destination;
-    }
-
     public IReadOnlyList<EventCandidate<RerouteCandidatePayload>> ForecastNext(RerouteWorld world, ModelTime now) =>
-        world.HasRedirected
+        world.HasRedirected || world.PendingReroute is not ScheduledReroute reroute
             ? []
             :
             [
                 new EventCandidate<RerouteCandidatePayload>(
                     new EventCandidateId(200),
-                    _due,
-                    sourceId: 2,
-                    generation: 0,
-                    new ScheduledRerouteCandidatePayload(_destination)),
+                    reroute.Due,
+                    world.TravelerId,
+                    new ScheduledRerouteCandidatePayload(reroute.Destination)),
             ];
 
     public IReadOnlyList<UncommittedDomainEvent<RerouteEventPayload>> Resolve(
@@ -110,7 +113,7 @@ internal sealed class ScheduledInputSystem : ISimSystem<RerouteWorld, RerouteCan
     {
         if (candidate.Payload is not ScheduledRerouteCandidatePayload reroute)
         {
-            throw new InvalidOperationException("ScheduledInputSystem received an incompatible candidate payload.");
+            throw new InvalidOperationException("ScheduledRerouteSystem received an incompatible candidate payload.");
         }
 
         return
@@ -130,7 +133,15 @@ internal sealed class RerouteReducer : IEventReducer<RerouteWorld, RerouteEventP
             ({ } kindId, ArrivedEventPayload arrived) when kindId == RerouteEventKinds.Arrived.Id =>
                 world with { Destination = arrived.Destination, HasArrived = true },
             ({ } kindId, ReroutedEventPayload rerouted) when kindId == RerouteEventKinds.Rerouted.Id =>
-                world with { Destination = rerouted.Destination, HasRedirected = true },
+                world with
+                {
+                    Destination = rerouted.Destination,
+                    PendingReroute = null,
+                    HasRedirected = true,
+                },
+            ({ } kindId, RerouteScheduledEventPayload scheduled)
+                when kindId == RerouteEventKinds.RerouteScheduled.Id =>
+                world with { PendingReroute = new ScheduledReroute(scheduled.Due, scheduled.Destination) },
             _ => throw new InvalidOperationException($"Unknown event kind '{domainEvent.Kind.Id}'."),
         };
 }

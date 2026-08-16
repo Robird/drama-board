@@ -2,7 +2,7 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Scheduling;
 
-/// <summary>Represents a typed forecast result that may become stale before it is resolved.</summary>
+/// <summary>Represents a typed forecast result selected by deterministic scheduling metadata.</summary>
 public readonly struct EventCandidate<TPayload>
 {
     /// <summary>Initializes a forecast candidate and its deterministic scheduling metadata.</summary>
@@ -10,13 +10,11 @@ public readonly struct EventCandidate<TPayload>
         EventCandidateId id,
         ModelTime due,
         long sourceId,
-        long generation,
         TPayload payload)
     {
         Id = id;
         Due = due;
         SourceId = sourceId;
-        Generation = generation;
         Payload = payload;
     }
 
@@ -28,9 +26,6 @@ public readonly struct EventCandidate<TPayload>
 
     /// <summary>Gets the stable source identifier, whose numeric order participates in deterministic tie-breaking.</summary>
     public long SourceId { get; }
-
-    /// <summary>Gets the source generation that produced the candidate.</summary>
-    public long Generation { get; }
 
     /// <summary>Gets the typed forecast payload.</summary>
     public TPayload Payload { get; }

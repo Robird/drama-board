@@ -45,7 +45,7 @@ public sealed class SameTimeSemanticsTests
         var journal = new InMemoryJournal<FlagEvent>();
 
         // WP5 locks same-time handling to sequential Resolve followed by a full re-Forecast after each event.
-        SimulationRunResult<int> result = loop.Run(0, ModelTime.Zero, Due, journal);
+        SimulationRunResult<int, FlagEvent> result = loop.Run(0, Cursor(), Due, journal);
 
         Assert.Equal(["A"], journal.Events.Select(domainEvent => domainEvent.Payload.Name));
         Assert.Equal(1, result.World);
@@ -77,7 +77,7 @@ public sealed class SameTimeSemanticsTests
 
         var loop = new SimulationLoop<int, string, FlagEvent>(systems, new FlagReducer());
         var journal = new InMemoryJournal<FlagEvent>();
-        _ = loop.Run(0, ModelTime.Zero, Due, journal);
+        _ = loop.Run(0, Cursor(), Due, journal);
 
         return journal;
     }
@@ -88,6 +88,8 @@ public sealed class SameTimeSemanticsTests
             .. journal.Events.Select(
                 domainEvent => (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)),
         ];
+
+    private static SimulationCursor Cursor() => SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero);
 
     private sealed record FlagEvent(string Name, int ResolvedFlag);
 
@@ -123,7 +125,7 @@ public sealed class SameTimeSemanticsTests
 
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
             (world & _forecastBlockedByFlags) == 0
-                ? [new EventCandidate<string>(_candidateId, Due, _sourceId, 0, _payload)]
+                ? [new EventCandidate<string>(_candidateId, Due, _sourceId, _payload)]
                 : [];
 
         public IReadOnlyList<UncommittedDomainEvent<FlagEvent>> Resolve(

@@ -18,7 +18,7 @@ public sealed class SimulationLoopTests
         var journal = new InMemoryJournal<OneShotEvent>();
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            loop.Run(0, new ModelTime(10), new ModelTime(20), journal));
+            loop.Run(0, Cursor(10), new ModelTime(20), journal));
 
         Assert.Contains("before current model time", exception.Message);
         Assert.Empty(journal.Events);
@@ -30,9 +30,9 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, OneShotEvent>([], new OneShotReducer());
         var journal = new InMemoryJournal<OneShotEvent>();
 
-        SimulationRunResult<int> result = loop.Run(
+        SimulationRunResult<int, OneShotEvent> result = loop.Run(
             initialWorld: 7,
-            initialTime: new ModelTime(5),
+            cursor: Cursor(5),
             until: new ModelTime(100),
             journal);
 
@@ -50,9 +50,9 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, OneShotEvent>([system], new OneShotReducer());
         var journal = new InMemoryJournal<OneShotEvent>();
 
-        SimulationRunResult<int> result = loop.Run(
+        SimulationRunResult<int, OneShotEvent> result = loop.Run(
             initialWorld: 0,
-            initialTime: new ModelTime(0),
+            cursor: Cursor(),
             until: new ModelTime(10),
             journal);
 
@@ -73,9 +73,9 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, OneShotEvent>(systems, new OneShotReducer());
         var journal = new InMemoryJournal<OneShotEvent>();
 
-        SimulationRunResult<int> result = loop.Run(
+        SimulationRunResult<int, OneShotEvent> result = loop.Run(
             initialWorld: 0,
-            initialTime: new ModelTime(0),
+            cursor: Cursor(),
             until: new ModelTime(10),
             journal);
 
@@ -97,9 +97,9 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, OneShotEvent>(systems, new OneShotReducer());
         var journal = new InMemoryJournal<OneShotEvent>();
 
-        SimulationRunResult<int> result = loop.Run(
+        SimulationRunResult<int, OneShotEvent> result = loop.Run(
             initialWorld: 0,
-            initialTime: new ModelTime(0),
+            cursor: Cursor(),
             until: new ModelTime(10),
             journal);
 
@@ -115,7 +115,7 @@ public sealed class SimulationLoopTests
         var journal = new InMemoryJournal<string>();
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            loop.Run(0, ModelTime.Zero, new ModelTime(10), journal));
+            loop.Run(0, Cursor(), new ModelTime(10), journal));
 
         Assert.Contains("produced no events", exception.Message);
         Assert.Contains("identical candidate remained next", exception.Message);
@@ -128,7 +128,7 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, string>([new DisappearingNoOpSystem()], new IdentityReducer());
         var journal = new InMemoryJournal<string>();
 
-        SimulationRunResult<int> result = loop.Run(7, ModelTime.Zero, new ModelTime(10), journal);
+        SimulationRunResult<int, string> result = loop.Run(7, Cursor(), new ModelTime(10), journal);
 
         Assert.Equal(7, result.World);
         Assert.Equal(new ModelTime(5), result.CurrentTime);
@@ -142,7 +142,7 @@ public sealed class SimulationLoopTests
         var loop = new SimulationLoop<int, string, string>([new AdvancingNoOpSystem()], new IdentityReducer());
         var journal = new InMemoryJournal<string>();
 
-        SimulationRunResult<int> result = loop.Run(7, ModelTime.Zero, new ModelTime(3), journal);
+        SimulationRunResult<int, string> result = loop.Run(7, Cursor(), new ModelTime(3), journal);
 
         Assert.Equal(new ModelTime(3), result.CurrentTime);
         Assert.Equal(3, result.ResolvedCandidateCount);
@@ -159,7 +159,7 @@ public sealed class SimulationLoopTests
         var journal = new InMemoryJournal<string>();
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            loop.Run(0, ModelTime.Zero, new ModelTime(10), journal));
+            loop.Run(0, Cursor(), new ModelTime(10), journal));
 
         AssertResolveBudgetDiagnostic(exception, expectedCount: 3);
         Assert.Empty(journal.Events);
@@ -175,7 +175,7 @@ public sealed class SimulationLoopTests
         var journal = new InMemoryJournal<string>();
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            loop.Run(0, ModelTime.Zero, new ModelTime(10), journal));
+            loop.Run(0, Cursor(), new ModelTime(10), journal));
 
         AssertResolveBudgetDiagnostic(exception, expectedCount: 3);
         Assert.Equal([0, 1, 2], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
@@ -188,6 +188,9 @@ public sealed class SimulationLoopTests
         Assert.Contains($"after {expectedCount} resolves", exception.Message);
         Assert.Contains("Most recent resolved candidate", exception.Message);
     }
+
+    private static SimulationCursor Cursor(long ticks = 0) =>
+        SimulationCursor.CreateInitial(lineageId: 1, new ModelTime(ticks));
 
     private sealed record OneShotEvent(string Name, int StateFlag);
 
@@ -218,7 +221,7 @@ public sealed class SimulationLoopTests
 
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
             (world & _stateFlag) == 0
-                ? [new EventCandidate<string>(_candidateId, _due, _sourceId, 0, _payload)]
+                ? [new EventCandidate<string>(_candidateId, _due, _sourceId, _payload)]
                 : [];
 
         public IReadOnlyList<UncommittedDomainEvent<OneShotEvent>> Resolve(
@@ -230,7 +233,7 @@ public sealed class SimulationLoopTests
     private sealed class RepeatingNoOpSystem : ISimSystem<int, string, string>
     {
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
-            [new EventCandidate<string>(new EventCandidateId(1), now, 1, 0, "repeat")];
+            [new EventCandidate<string>(new EventCandidateId(1), now, 1, "repeat")];
 
         public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
             int world,
@@ -243,7 +246,7 @@ public sealed class SimulationLoopTests
 
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
             now < Due
-                ? [new EventCandidate<string>(new EventCandidateId(1), Due, 1, 0, "disappear")]
+                ? [new EventCandidate<string>(new EventCandidateId(1), Due, 1, "disappear")]
                 : [];
 
         public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
@@ -254,7 +257,7 @@ public sealed class SimulationLoopTests
     private sealed class AdvancingNoOpSystem : ISimSystem<int, string, string>
     {
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
-            [new EventCandidate<string>(new EventCandidateId(1), now + new ModelDuration(1), 1, 0, "advance")];
+            [new EventCandidate<string>(new EventCandidateId(1), now + new ModelDuration(1), 1, "advance")];
 
         public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
             int world,
@@ -269,7 +272,7 @@ public sealed class SimulationLoopTests
         {
             long candidateId = _forecastFirst ? 1 : 2;
             _forecastFirst = !_forecastFirst;
-            return [new EventCandidate<string>(new EventCandidateId(candidateId), now, 1, 0, "alternate")];
+            return [new EventCandidate<string>(new EventCandidateId(candidateId), now, 1, "alternate")];
         }
 
         public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
@@ -280,7 +283,7 @@ public sealed class SimulationLoopTests
     private sealed class SameTimeEventSystem : ISimSystem<int, string, string>
     {
         public IReadOnlyList<EventCandidate<string>> ForecastNext(int world, ModelTime now) =>
-            [new EventCandidate<string>(new EventCandidateId(world), now, 1, world, "produce")];
+            [new EventCandidate<string>(new EventCandidateId(world), now, 1, "produce")];
 
         public IReadOnlyList<UncommittedDomainEvent<string>> Resolve(
             int world,

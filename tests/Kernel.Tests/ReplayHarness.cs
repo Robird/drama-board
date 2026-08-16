@@ -15,11 +15,13 @@ internal static class ReplayHarness
     public static ReplayForkResult<TWorld, TEventPayload> Fork<TWorld, TCandidatePayload, TEventPayload>(
         TWorld initialWorld,
         ModelTime initialTime,
+        long lineageId,
         IReadOnlyList<DomainEvent<TEventPayload>> journal,
         int eventCount,
         IEventReducer<TWorld, TEventPayload> reducer,
         IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems,
-        ModelTime until)
+        ModelTime until,
+        IReadOnlyList<UncommittedDomainEvent<TEventPayload>>? externalInputs = null)
     {
         if (eventCount < 0 || eventCount > journal.Count)
         {
@@ -38,11 +40,16 @@ internal static class ReplayHarness
         }
 
         var loop = new SimulationLoop<TWorld, TCandidatePayload, TEventPayload>(systems, reducer);
-        SimulationRunResult<TWorld> result = loop.Run(forkWorld, forkTime, until, forkJournal);
+        SimulationRunResult<TWorld, TEventPayload> result = loop.Run(
+            forkWorld,
+            SimulationCursor.CreateInitial(lineageId, forkTime),
+            until,
+            forkJournal,
+            externalInputs);
         return new ReplayForkResult<TWorld, TEventPayload>(result, forkJournal);
     }
 }
 
 internal sealed record ReplayForkResult<TWorld, TEventPayload>(
-    SimulationRunResult<TWorld> Result,
+    SimulationRunResult<TWorld, TEventPayload> Result,
     InMemoryJournal<TEventPayload> Journal);

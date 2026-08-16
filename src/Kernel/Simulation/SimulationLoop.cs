@@ -12,12 +12,14 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
     private readonly IReadOnlyList<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> _systems;
     private readonly IEventReducer<TWorld, TEventPayload> _reducer;
     private readonly int _maxResolveCountPerModelTime;
+    private readonly Func<DomainEvent<TEventPayload>, bool>? _decisionRequestPredicate;
 
     /// <summary>Initializes a loop from participating systems and the journal projection reducer.</summary>
     public SimulationLoop(
         IEnumerable<ISimSystem<TWorld, TCandidatePayload, TEventPayload>> systems,
         IEventReducer<TWorld, TEventPayload> reducer,
-        int maxResolveCountPerModelTime = DefaultMaxResolveCountPerModelTime)
+        int maxResolveCountPerModelTime = DefaultMaxResolveCountPerModelTime,
+        Func<DomainEvent<TEventPayload>, bool>? decisionRequestPredicate = null)
     {
         ArgumentNullException.ThrowIfNull(systems);
         ArgumentNullException.ThrowIfNull(reducer);
@@ -37,56 +39,61 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         _systems = systemArray;
         _reducer = reducer;
         _maxResolveCountPerModelTime = maxResolveCountPerModelTime;
+        _decisionRequestPredicate = decisionRequestPredicate;
     }
 
-    /// <summary>Runs until no candidate remains or the next candidate would be later than the inclusive time boundary.</summary>
-    public SimulationRunResult<TWorld> Run(
+    /// <summary>Commits ready external inputs, then runs until exhaustion, a boundary, or a decision request.</summary>
+    public SimulationRunResult<TWorld, TEventPayload> Run(
         TWorld initialWorld,
-        ModelTime initialTime,
+        SimulationCursor cursor,
         ModelTime until,
-        IJournalSink<TEventPayload> journal)
+        IJournalSink<TEventPayload> journal,
+        IReadOnlyList<UncommittedDomainEvent<TEventPayload>>? externalInputs = null)
     {
+        ArgumentNullException.ThrowIfNull(cursor);
         ArgumentNullException.ThrowIfNull(journal);
 
-        if (until < initialTime)
+        if (until < cursor.Now)
         {
             throw new ArgumentOutOfRangeException(nameof(until), "The simulation boundary cannot precede its initial time.");
         }
 
         TWorld world = initialWorld;
-        ModelTime now = initialTime;
         int timeAdvanceCount = 0;
         int resolvedCandidateCount = 0;
-        int resolveCountAtCurrentTime = 0;
         LogicalTimestamp? lastCommittedTimestamp = journal.Events.Count == 0
             ? null
             : journal.Events[^1].Timestamp;
-        (long SourceId, EventCandidateId CandidateId, ModelTime Due)? lastResolvedCandidate = null;
-        bool lastResolveProducedNoEvents = false;
+
+        if (externalInputs is { Count: > 0 })
+        {
+            world = CommitAndApply(externalInputs, world, cursor.Now, journal, ref lastCommittedTimestamp);
+            cursor = cursor.RecordExternalInputs();
+        }
 
         while (true)
         {
             (ForecastQueue<TCandidatePayload> queue, Dictionary<(long SourceId, EventCandidateId CandidateId), ISimSystem<TWorld, TCandidatePayload, TEventPayload>> owners) =
-                ForecastAll(world, now);
+                ForecastAll(world, cursor.Now);
 
             if (!queue.TryPeekEarliest(out EventCandidate<TCandidatePayload> next))
             {
-                return Result(world, now, timeAdvanceCount, resolvedCandidateCount);
+                return Result(world, cursor, StopReason.Exhausted, journal, [], timeAdvanceCount, resolvedCandidateCount);
             }
 
-            if (next.Due < now)
+            if (next.Due < cursor.Now)
             {
                 throw new InvalidOperationException(
-                    $"Candidate {next.Id} is due at {next.Due}, before current model time {now}.");
+                    $"Candidate {next.Id} is due at {next.Due}, before current model time {cursor.Now}.");
             }
 
             if (next.Due > until)
             {
-                return Result(world, now, timeAdvanceCount, resolvedCandidateCount);
+                return Result(world, cursor, StopReason.BoundaryReached, journal, [], timeAdvanceCount, resolvedCandidateCount);
             }
 
-            var nextIdentity = (next.SourceId, next.Id, next.Due);
-            if (lastResolveProducedNoEvents && lastResolvedCandidate == nextIdentity)
+            var nextIdentity = new ResolvedCandidateIdentity(next.SourceId, next.Id, next.Due);
+            if (cursor.IsRepeatedNoOp(nextIdentity))
             {
                 throw new InvalidOperationException(
                     $"Resolving candidate ({next.SourceId}, {next.Id}, {next.Due}) produced no events and " +
@@ -94,31 +101,44 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
             }
 
             next = queue.DequeueEarliest();
-            if (next.Due > now)
+            if (next.Due > cursor.Now)
             {
-                now = next.Due;
+                cursor = cursor.AdvanceTo(next.Due);
                 timeAdvanceCount = checked(timeAdvanceCount + 1);
-                resolveCountAtCurrentTime = 0;
             }
 
-            if (resolveCountAtCurrentTime >= _maxResolveCountPerModelTime)
+            if (cursor.ResolveCountAtCurrentTime >= _maxResolveCountPerModelTime)
             {
-                string recentCandidate = lastResolvedCandidate is { } recent
+                string recentCandidate = cursor.LastResolvedCandidate is { } recent
                     ? $"(SourceId: {recent.SourceId}, CandidateId: {recent.CandidateId}, Due: {recent.Due})"
                     : "none";
                 throw new InvalidOperationException(
-                    $"Resolve budget of {_maxResolveCountPerModelTime} exhausted at model time {now} " +
-                    $"after {resolveCountAtCurrentTime} resolves. Most recent resolved candidate: {recentCandidate}.");
+                    $"Resolve budget of {_maxResolveCountPerModelTime} exhausted at model time {cursor.Now} " +
+                    $"after {cursor.ResolveCountAtCurrentTime} resolves. Most recent resolved candidate: {recentCandidate}.");
             }
 
             IReadOnlyList<UncommittedDomainEvent<TEventPayload>> events =
                 owners[(next.SourceId, next.Id)].Resolve(world, next)
                 ?? throw new InvalidOperationException($"System resolving candidate {next.Id} returned null.");
-            world = CommitAndApply(events, world, now, journal, ref lastCommittedTimestamp);
-            lastResolvedCandidate = nextIdentity;
-            lastResolveProducedNoEvents = events.Count == 0;
-            resolveCountAtCurrentTime = checked(resolveCountAtCurrentTime + 1);
+            List<DomainEvent<TEventPayload>>? committedEvents = _decisionRequestPredicate is null ? null : [];
+            world = CommitAndApply(events, world, cursor.Now, journal, ref lastCommittedTimestamp, committedEvents);
+            cursor = cursor.RecordResolve(nextIdentity, events.Count == 0);
             resolvedCandidateCount = checked(resolvedCandidateCount + 1);
+
+            DomainEvent<TEventPayload>[] decisionEvents = committedEvents is null
+                ? []
+                : [.. committedEvents.Where(_decisionRequestPredicate!)];
+            if (decisionEvents.Length > 0)
+            {
+                return Result(
+                    world,
+                    cursor,
+                    StopReason.DecisionRequired,
+                    journal,
+                    decisionEvents,
+                    timeAdvanceCount,
+                    resolvedCandidateCount);
+            }
         }
     }
 
@@ -148,7 +168,8 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         TWorld world,
         ModelTime now,
         IJournalSink<TEventPayload> journal,
-        ref LogicalTimestamp? lastCommittedTimestamp)
+        ref LogicalTimestamp? lastCommittedTimestamp,
+        ICollection<DomainEvent<TEventPayload>>? committedEvents = null)
     {
         foreach (UncommittedDomainEvent<TEventPayload> uncommitted in events)
         {
@@ -164,6 +185,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
             journal.Append(domainEvent);
             lastCommittedTimestamp = timestamp;
             world = _reducer.Apply(world, domainEvent);
+            committedEvents?.Add(domainEvent);
         }
 
         return world;
@@ -184,10 +206,20 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         return new Microstep(checked(previous.Microstep.Value + 1));
     }
 
-    private static SimulationRunResult<TWorld> Result(
+    private static SimulationRunResult<TWorld, TEventPayload> Result(
         TWorld world,
-        ModelTime now,
+        SimulationCursor cursor,
+        StopReason stopReason,
+        IJournalSink<TEventPayload> journal,
+        IReadOnlyList<DomainEvent<TEventPayload>> decisionEvents,
         int timeAdvanceCount,
         int resolvedCandidateCount) =>
-        new(world, now, timeAdvanceCount, resolvedCandidateCount);
+        new(
+            world,
+            cursor,
+            stopReason,
+            new WorldVersion(cursor.LineageId, journal.Events.Count),
+            decisionEvents,
+            timeAdvanceCount,
+            resolvedCandidateCount);
 }

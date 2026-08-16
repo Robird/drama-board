@@ -41,18 +41,20 @@ public sealed class WorldSnapshotContractTests
 
     private static RunOutput RunTimers()
     {
-        TimerWorld initialWorld = new([]);
-        TimerSystem[] systems =
-        [
-            new("A", sourceId: 1, AtSecond(10)),
-            new("B", sourceId: 2, AtSecond(20)),
-            new("C", sourceId: 3, AtSecond(15)),
-        ];
+        TimerWorld initialWorld = TimerWorld.Start(
+            new TimerEntity(1, "A", AtSecond(10)),
+            new TimerEntity(2, "B", AtSecond(20)),
+            new TimerEntity(3, "C", AtSecond(15)));
+        TimerSystem[] systems = [new()];
         var reducer = new SnapshotRecordingTimerReducer(initialWorld);
         var loop = new SimulationLoop<TimerWorld, string, string>(systems, reducer);
         var journal = new InMemoryJournal<string>();
 
-        _ = loop.Run(initialWorld, ModelTime.Zero, AtSecond(20), journal);
+        _ = loop.Run(
+            initialWorld,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
+            AtSecond(20),
+            journal);
 
         return new RunOutput(initialWorld, journal, reducer);
     }

@@ -30,33 +30,6 @@ public sealed class ForecastQueueTests
     }
 
     [Fact]
-    public void InvalidateSource_OlderGenerations_ExcludesAndExposesInvalidatedCandidates()
-    {
-        var queue = new ForecastQueue<string>();
-        queue.Enqueue(Candidate(3, due: 30, sourceId: 7, generation: 1));
-        queue.Enqueue(Candidate(2, due: 20, sourceId: 7, generation: 2));
-        queue.Enqueue(Candidate(1, due: 10, sourceId: 7, generation: 3));
-        queue.Enqueue(Candidate(4, due: 5, sourceId: 8, generation: 1));
-
-        queue.InvalidateSource(sourceId: 7, olderThanGeneration: 3);
-
-        Assert.Equal([4, 1], DrainIds(queue));
-        Assert.Equal([2, 3], queue.InvalidatedCandidates.Select(candidate => candidate.Id.Value));
-    }
-
-    [Fact]
-    public void Enqueue_CandidateOlderThanSourceGeneration_RecordsCandidateAsInvalidated()
-    {
-        var queue = new ForecastQueue<string>();
-        queue.InvalidateSource(sourceId: 7, olderThanGeneration: 5);
-
-        queue.Enqueue(Candidate(1, due: 10, sourceId: 7, generation: 4));
-
-        Assert.Equal(0, queue.Count);
-        Assert.Equal([1], queue.InvalidatedCandidates.Select(candidate => candidate.Id.Value));
-    }
-
-    [Fact]
     public void TryPeekEarliest_EmptyQueue_ReturnsFalse()
     {
         var queue = new ForecastQueue<string>();
@@ -134,9 +107,8 @@ public sealed class ForecastQueueTests
     private static EventCandidate<string> Candidate(
         long id,
         long due,
-        long sourceId,
-        long generation = 1) =>
-        new(new EventCandidateId(id), new ModelTime(due), sourceId, generation, $"candidate-{id}");
+        long sourceId) =>
+        new(new EventCandidateId(id), new ModelTime(due), sourceId, $"candidate-{id}");
 
     private static long[] DrainIds(ForecastQueue<string> queue)
     {

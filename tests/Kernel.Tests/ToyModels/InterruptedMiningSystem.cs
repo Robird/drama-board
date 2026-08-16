@@ -18,13 +18,16 @@ internal sealed record FinishedMiningActivity(ModelTime CompletedAt) : MinerActi
 
 internal sealed record InterruptedMiningWorld(
     ulong WorldSeed,
+    long MinerId,
+    long AliceId,
     MinerActivity Activity,
     bool AliceAtMine,
     long DiscoveryGeneration,
-    ModelTime LastDiscoveryAt)
+    ModelTime LastDiscoveryAt,
+    ModelTime? ScheduledAliceArrivalAt)
 {
-    public static InterruptedMiningWorld Start(ulong worldSeed) =>
-        new(worldSeed, new WaitingToMineActivity(), false, 0, ModelTime.Zero);
+    public static InterruptedMiningWorld Start(ulong worldSeed, long minerId = 20, long aliceId = 10) =>
+        new(worldSeed, minerId, aliceId, new WaitingToMineActivity(), false, 0, ModelTime.Zero, null);
 }
 
 internal abstract record InterruptedMiningForecast;
@@ -57,6 +60,8 @@ internal sealed record MineralDiscoveredEvent(
 
 internal sealed record AliceArrivedEvent(ModelTime ArrivedAt) : InterruptedMiningEvent;
 
+internal sealed record AliceArrivalScheduledEvent(ModelTime ArrivalAt) : InterruptedMiningEvent;
+
 internal static class InterruptedMiningEventKinds
 {
     public static readonly EventKind MiningStarted = new("mining.started", 1);
@@ -64,6 +69,7 @@ internal static class InterruptedMiningEventKinds
     public static readonly EventKind MiningInterrupted = new("mining.interrupted", 1);
     public static readonly EventKind MineralDiscovered = new("interrupted-mining.mineral-discovered", 1);
     public static readonly EventKind AliceArrived = new("character.alice-arrived", 1);
+    public static readonly EventKind AliceArrivalScheduled = new("character.alice-arrival-scheduled", 1);
 }
 
 internal sealed class InterruptedMiningSystem :
@@ -71,14 +77,12 @@ internal sealed class InterruptedMiningSystem :
 {
     private static readonly string[] Minerals = ["Quartz", "Silver", "Opal"];
 
-    private readonly long _sourceId;
     private readonly ModelDuration _completionDuration;
     private readonly ulong _activityStreamId;
     private readonly ulong _mineralStreamId;
     private readonly ModelDuration? _meanDiscoveryInterval;
 
     public InterruptedMiningSystem(
-        long sourceId,
         ModelDuration completionDuration,
         ulong activityStreamId,
         ModelDuration? meanDiscoveryInterval = null)
@@ -93,7 +97,6 @@ internal sealed class InterruptedMiningSystem :
             throw new ArgumentOutOfRangeException(nameof(meanDiscoveryInterval));
         }
 
-        _sourceId = sourceId;
         _completionDuration = completionDuration;
         _activityStreamId = activityStreamId;
         _mineralStreamId = DeterministicRandom.DeriveStreamId(activityStreamId, "mineral");
@@ -106,7 +109,7 @@ internal sealed class InterruptedMiningSystem :
     {
         if (world.Activity is WaitingToMineActivity)
         {
-            return [Candidate(0, ModelTime.Zero, 0, new StartMiningForecast())];
+            return [Candidate(world.MinerId, 0, ModelTime.Zero, new StartMiningForecast())];
         }
 
         if (world.Activity is not MiningActivity mining)
@@ -119,9 +122,9 @@ internal sealed class InterruptedMiningSystem :
             return
             [
                 Candidate(
+                    world.MinerId,
                     2,
                     now,
-                    world.DiscoveryGeneration,
                     new InterruptMiningForecast()),
             ];
         }
@@ -129,9 +132,9 @@ internal sealed class InterruptedMiningSystem :
         var candidates = new List<EventCandidate<InterruptedMiningForecast>>
         {
             Candidate(
+                world.MinerId,
                 1,
                 mining.StartedAt + _completionDuration,
-                world.DiscoveryGeneration,
                 new CompleteMiningForecast()),
         };
 
@@ -152,9 +155,9 @@ internal sealed class InterruptedMiningSystem :
 
             candidates.Add(
                 Candidate(
+                    world.MinerId,
                     checked(100 + world.DiscoveryGeneration),
                     world.LastDiscoveryAt + delay,
-                    world.DiscoveryGeneration,
                     new DiscoverMineralForecast(world.DiscoveryGeneration, Minerals[mineralIndex])));
         }
 
@@ -165,7 +168,7 @@ internal sealed class InterruptedMiningSystem :
         InterruptedMiningWorld world,
         EventCandidate<InterruptedMiningForecast> candidate)
     {
-        if (candidate.SourceId != _sourceId)
+        if (candidate.SourceId != world.MinerId)
         {
             throw new InvalidOperationException("The mining candidate belongs to another source.");
         }
@@ -215,8 +218,7 @@ internal sealed class InterruptedMiningSystem :
         EventCandidate<InterruptedMiningForecast> candidate,
         DiscoverMineralForecast discovery)
     {
-        if (candidate.Generation != world.DiscoveryGeneration ||
-            discovery.Generation != world.DiscoveryGeneration)
+        if (discovery.Generation != world.DiscoveryGeneration)
         {
             throw new InvalidOperationException("The discovery candidate has the wrong generation.");
         }
@@ -229,11 +231,11 @@ internal sealed class InterruptedMiningSystem :
     }
 
     private EventCandidate<InterruptedMiningForecast> Candidate(
+        long sourceId,
         long candidateId,
         ModelTime due,
-        long generation,
         InterruptedMiningForecast payload) =>
-        new(new EventCandidateId(candidateId), due, _sourceId, generation, payload);
+        new(new EventCandidateId(candidateId), due, sourceId, payload);
 
     private static IReadOnlyList<UncommittedDomainEvent<InterruptedMiningEvent>> Result(
         EventKind kind,
@@ -244,27 +246,17 @@ internal sealed class InterruptedMiningSystem :
 internal sealed class AliceArrivalSystem :
     ISimSystem<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>
 {
-    private readonly long _sourceId;
-    private readonly ModelTime _arrivalAt;
-
-    public AliceArrivalSystem(long sourceId, ModelTime arrivalAt)
-    {
-        _sourceId = sourceId;
-        _arrivalAt = arrivalAt;
-    }
-
     public IReadOnlyList<EventCandidate<InterruptedMiningForecast>> ForecastNext(
         InterruptedMiningWorld world,
         ModelTime now) =>
-        world.AliceAtMine
+        world.AliceAtMine || world.ScheduledAliceArrivalAt is not ModelTime arrivalAt
             ? []
             :
             [
                 new EventCandidate<InterruptedMiningForecast>(
                     new EventCandidateId(0),
-                    _arrivalAt,
-                    _sourceId,
-                    0,
+                    arrivalAt,
+                    world.AliceId,
                     new AliceArrivalForecast()),
             ];
 
@@ -272,7 +264,7 @@ internal sealed class AliceArrivalSystem :
         InterruptedMiningWorld world,
         EventCandidate<InterruptedMiningForecast> candidate)
     {
-        if (candidate.SourceId != _sourceId || candidate.Payload is not AliceArrivalForecast)
+        if (candidate.SourceId != world.AliceId || candidate.Payload is not AliceArrivalForecast)
         {
             throw new InvalidOperationException("The arrival candidate does not belong to Alice.");
         }
@@ -314,7 +306,10 @@ internal sealed class InterruptedMiningReducer : IEventReducer<InterruptedMining
                     LastDiscoveryAt = discovered.DiscoveredAt,
                 },
             ({ } kindId, AliceArrivedEvent) when kindId == InterruptedMiningEventKinds.AliceArrived.Id =>
-                world with { AliceAtMine = true },
+                world with { AliceAtMine = true, ScheduledAliceArrivalAt = null },
+            ({ } kindId, AliceArrivalScheduledEvent scheduled)
+                when kindId == InterruptedMiningEventKinds.AliceArrivalScheduled.Id =>
+                world with { ScheduledAliceArrivalAt = scheduled.ArrivalAt },
             _ => throw new InvalidOperationException($"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'."),
         };
 }

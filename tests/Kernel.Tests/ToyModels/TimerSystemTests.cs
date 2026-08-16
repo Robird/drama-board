@@ -9,18 +9,13 @@ public sealed class TimerSystemTests
     [Fact]
     public void Run_ThreeIndependentTimers_CommitsInTimeOrderWithThreeJumps()
     {
-        TimerSystem[] systems =
-        [
-            new("A", sourceId: 1, AtSecond(10)),
-            new("B", sourceId: 2, AtSecond(20)),
-            new("C", sourceId: 3, AtSecond(15)),
-        ];
+        TimerSystem[] systems = [new()];
         var loop = new SimulationLoop<TimerWorld, string, string>(systems, new TimerReducer());
         var journal = new InMemoryJournal<string>();
 
-        SimulationRunResult<TimerWorld> result = loop.Run(
-            new TimerWorld([]),
-            initialTime: ModelTime.Zero,
+        SimulationRunResult<TimerWorld, string> result = loop.Run(
+            CreateWorld(),
+            cursor: Cursor(),
             until: AtSecond(20),
             journal);
 
@@ -34,14 +29,14 @@ public sealed class TimerSystemTests
     [Fact]
     public void Run_CommittedJournal_ReplaysToFinalWorld()
     {
-        TimerWorld initialWorld = new([]);
+        TimerWorld initialWorld = CreateWorld();
         var reducer = new TimerReducer();
         var journal = new InMemoryJournal<string>();
         var loop = new SimulationLoop<TimerWorld, string, string>(CreateSystems(), reducer);
 
-        SimulationRunResult<TimerWorld> result = loop.Run(
+        SimulationRunResult<TimerWorld, string> result = loop.Run(
             initialWorld,
-            ModelTime.Zero,
+            Cursor(),
             AtSecond(20),
             journal);
         TimerWorld replayed = journal.Events.Aggregate(initialWorld, reducer.Apply);
@@ -56,17 +51,19 @@ public sealed class TimerSystemTests
         var reducer = new JournalObservingTimerReducer(journal);
         var loop = new SimulationLoop<TimerWorld, string, string>(CreateSystems(), reducer);
 
-        _ = loop.Run(new TimerWorld([]), ModelTime.Zero, AtSecond(20), journal);
+        _ = loop.Run(CreateWorld(), Cursor(), AtSecond(20), journal);
 
         Assert.True(reducer.ObservedOnlyCommittedEvents);
     }
 
-    private static TimerSystem[] CreateSystems() =>
-    [
-        new("A", sourceId: 1, AtSecond(10)),
-        new("B", sourceId: 2, AtSecond(20)),
-        new("C", sourceId: 3, AtSecond(15)),
-    ];
+    private static TimerSystem[] CreateSystems() => [new()];
+
+    private static TimerWorld CreateWorld() => TimerWorld.Start(
+        new TimerEntity(1, "A", AtSecond(10)),
+        new TimerEntity(2, "B", AtSecond(20)),
+        new TimerEntity(3, "C", AtSecond(15)));
+
+    private static SimulationCursor Cursor() => SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero);
 
     private static ModelTime AtSecond(long seconds) => ModelTime.Zero + ModelDuration.FromSeconds(seconds);
 

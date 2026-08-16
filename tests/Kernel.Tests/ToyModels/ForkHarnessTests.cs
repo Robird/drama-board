@@ -24,20 +24,20 @@ public sealed class ForkHarnessTests
             domainEvent => domainEvent.Payload is MineralDiscoveredEvent);
 
         ReplayForkResult<InterruptedMiningWorld, InterruptedMiningEvent> aliceBranch =
-            Fork(initialWorld, original, eventCount, includeAlice: true);
+            Fork(initialWorld, original, eventCount, lineageId: 2, includeAlice: true);
         ReplayForkResult<InterruptedMiningWorld, InterruptedMiningEvent> repeatedAliceBranch =
-            Fork(initialWorld, original, eventCount, includeAlice: true);
+            Fork(initialWorld, original, eventCount, lineageId: 2, includeAlice: true);
         ReplayForkResult<InterruptedMiningWorld, InterruptedMiningEvent> completionBranch =
-            Fork(initialWorld, original, eventCount, includeAlice: false);
+            Fork(initialWorld, original, eventCount, lineageId: 3, includeAlice: false);
         ReplayForkResult<InterruptedMiningWorld, InterruptedMiningEvent> repeatedCompletionBranch =
-            Fork(initialWorld, original, eventCount, includeAlice: false);
+            Fork(initialWorld, original, eventCount, lineageId: 3, includeAlice: false);
 
-        Assert.Equal(Snapshot(original), Snapshot(aliceBranch.Journal));
+        Assert.Equal(Snapshot(original), Snapshot(completionBranch.Journal));
         Assert.Equal(Snapshot(aliceBranch.Journal), Snapshot(repeatedAliceBranch.Journal));
         Assert.Equal(Snapshot(completionBranch.Journal), Snapshot(repeatedCompletionBranch.Journal));
         Assert.Equal(
             Snapshot(original).Take(eventCount),
-            Snapshot(completionBranch.Journal).Take(eventCount));
+            Snapshot(aliceBranch.Journal).Take(eventCount));
 
         Assert.IsType<ConversationActivity>(aliceBranch.Result.World.Activity);
         Assert.Contains(
@@ -55,6 +55,18 @@ public sealed class ForkHarnessTests
         Assert.DoesNotContain(
             completionBranch.Journal.Events,
             domainEvent => domainEvent.Payload is AliceArrivedEvent or MiningInterruptedEvent);
+
+        InterruptedMiningWorld replayedAlice = ReplayHarness.Replay(
+            initialWorld,
+            aliceBranch.Journal.Events,
+            new InterruptedMiningReducer());
+        InterruptedMiningWorld replayedCompletion = ReplayHarness.Replay(
+            initialWorld,
+            completionBranch.Journal.Events,
+            new InterruptedMiningReducer());
+        Assert.Equal(aliceBranch.Result.World, replayedAlice);
+        Assert.Equal(completionBranch.Result.World, replayedCompletion);
+        Assert.NotEqual(aliceBranch.Result.Version.LineageId, completionBranch.Result.Version.LineageId);
     }
 
     private static InMemoryJournal<InterruptedMiningEvent> RunOriginal(InterruptedMiningWorld initialWorld)
@@ -62,9 +74,13 @@ public sealed class ForkHarnessTests
         var loop = new SimulationLoop<
             InterruptedMiningWorld,
             InterruptedMiningForecast,
-            InterruptedMiningEvent>(CreateSystems(includeAlice: true), new InterruptedMiningReducer());
+            InterruptedMiningEvent>(CreateSystems(), new InterruptedMiningReducer());
         var journal = new InMemoryJournal<InterruptedMiningEvent>();
-        _ = loop.Run(initialWorld, ModelTime.Zero, Until, journal);
+        _ = loop.Run(
+            initialWorld,
+            SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero),
+            Until,
+            journal);
         return journal;
     }
 
@@ -72,36 +88,35 @@ public sealed class ForkHarnessTests
         InterruptedMiningWorld initialWorld,
         InMemoryJournal<InterruptedMiningEvent> original,
         int eventCount,
+        long lineageId,
         bool includeAlice) =>
         ReplayHarness.Fork<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>(
             initialWorld,
             ModelTime.Zero,
+            lineageId,
             original.Events,
             eventCount,
             new InterruptedMiningReducer(),
-            CreateSystems(includeAlice),
-            Until);
+            CreateSystems(),
+            Until,
+            includeAlice
+                ?
+                [
+                    new UncommittedDomainEvent<InterruptedMiningEvent>(
+                        InterruptedMiningEventKinds.AliceArrivalScheduled,
+                        new AliceArrivalScheduledEvent(ArrivalAt)),
+                ]
+                : []);
 
     private static IReadOnlyList<
-        ISimSystem<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>> CreateSystems(
-        bool includeAlice)
-    {
-        var systems = new List<
-            ISimSystem<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>>
-        {
+        ISimSystem<InterruptedMiningWorld, InterruptedMiningForecast, InterruptedMiningEvent>> CreateSystems() =>
+        [
             new InterruptedMiningSystem(
-                sourceId: 20,
                 completionDuration: CompletionDuration,
                 activityStreamId: 73,
                 meanDiscoveryInterval: DiscoveryInterval),
-        };
-        if (includeAlice)
-        {
-            systems.Add(new AliceArrivalSystem(sourceId: 10, ArrivalAt));
-        }
-
-        return systems;
-    }
+            new AliceArrivalSystem(),
+        ];
 
     private static (LogicalTimestamp Timestamp, EventKind Kind, InterruptedMiningEvent Payload)[] Snapshot(
         InMemoryJournal<InterruptedMiningEvent> journal) =>
