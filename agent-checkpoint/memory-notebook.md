@@ -1,7 +1,7 @@
 # 主线会话 Checkpoint（memory-notebook）
 
 **用途：上下文压缩前的主动快照。压缩后的主线会话（我）在 Observe 阶段读此文件恢复完整工作状态。**
-**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-16，第一阶段（WP0–WP7）完成后。**
+**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-16 第二轮结束（D9+WP8+评审+修复包完成，108 测试绿）。**
 
 ---
 
@@ -21,29 +21,31 @@
 
 ## 3. Kernel 当前形状（认知快照，代码在 src/Kernel/）
 
-- `Time/`：ModelTime（**1 tick = 1ms**，WP4 从 1 秒改来——弹球暴露的）、ModelDuration、Microstep、LogicalTimestamp。checked 溢出。
-- `Scheduling/`：EventCandidate<TPayload>（Due=ModelTime，**Microstep 是 Resolve 阶段概念，候选不带**）、ForecastQueue（tie-break `(Due,SourceId,CandidateId)`；generation floor 失效带记忆）。
-- `Simulation/`：ISimSystem<TWorld,TCand,TEvt>（ForecastNext/Resolve 纯函数，Resolve 返回 ResolveResult=新 world+未提交事件）；SimulationLoop（**每事件后全量重 Forecast**——失效表现为"下轮不再产生"，ForecastQueue.InvalidateSource 实际未被 Loop 用；owner=(SourceId,CandidateId)；Microstep 由 Loop 按提交序分配、跨时刻重置）。
-- `Journal/`：DomainEvent(Timestamp, Kind=string, Payload)、IJournalSink、InMemoryJournal（拒绝时间倒退）。
-- `Random/`：DeterministicRandom **坐标寻址纯函数** `(worldSeed,streamId,generation,sampleIndex)→样本`；自实现 ln 级数不依赖 Math.Log（跨平台位稳定）；**RNG 常量与派生规则=replay 兼容契约**（变更需版本化）。
-- 同刻语义（WP5 裁决、WP6 测试锁定）：**不上 μ 阶段体系**；顺序 Resolve + tie-break + 因果穿透（同刻先 Resolve 者可使后者不再发生）。
-- 测试侧：五个玩具模型（Timer/Reroute/Bouncing/Mining/InterruptedMining，物理与领域全在测试项目——Kernel 不含任何领域内容）；ReplayHarness（re-run determinism 全覆盖 + reducer fold 探索版）；ForkHarness（前缀折叠重建）；CsCheck 4.8.0（仅测试项目）6 条不变量。
+- **D9 已落实（强制 event-sourcing）**：`ISimSystem.Resolve` 只返回事件；world 由 Loop 把已提交事件交给全局 `IEventReducer` 折叠。旧 ResolveResult 双轨路径已删。
+- `Time/`：ModelTime（**1 tick = 1ms**）、ModelDuration、Microstep、LogicalTimestamp。checked 溢出。
+- `Scheduling/`：EventCandidate<TPayload>（Due=ModelTime）、ForecastQueue（tie-break `(Due,SourceId,CandidateId)`；注意：InvalidateSource/Generation 实际未被 Loop 使用——评审 A4 指出的"假承诺字段"，待裁决用或删）。
+- `Simulation/`：ISimSystem（ForecastNext/Resolve 纯函数）、IEventReducer、SimulationLoop（每事件后全量重 Forecast；owner=(SourceId,CandidateId)；Microstep 按提交序分配跨时刻重置；**no-op 守卫 + 同刻 resolve 预算（默认 10_000，构造参数）**）。
+- `Journal/`：DomainEvent(Timestamp, Kind=EventKind, Payload)、**EventKind(string Id, ushort Version)**（手写小写点分稳定 id；**路由只按 Id，Version 不参与**）、**EventKindRegistry**（kind↔payload 类型唯一性）、IJournalSink、InMemoryJournal（**严格递增**，拒绝 <=）。
+- `Random/`：DeterministicRandom 坐标寻址纯函数；**RNG 常量与派生规则=replay 兼容契约**。
+- 同刻语义：顺序 Resolve + tie-break + 因果穿透（测试锁定）。
+- 测试侧（108 绿：Kernel 96 + Protocol 12）：五玩具模型、ReplayHarness、ForkHarness、CsCheck 不变量、WorldSnapshotContractTests（A10 变异探针）。
+- `src/Protocol/`（WP8）：DecisionRequest/PlayerDecision/Intent/ExpectedOutcome/Observation/KnownFact/AvailableAction；零依赖（不引用 Kernel）；时间/版本用原始 long；Intent 扁平；六动作表达力锁定。
 
-## 4. 尚未落盘的思考：D9 的设计倾向（下轮第一件事）
+## 4. 尚未落盘的思考：WP9 规格重塑（下轮第一件事）
 
-D9 = 统一事件 envelope + IEventReducer 正式契约。核心问题：**"world 由事件产生"是强制还是约定？**
-- 方案 a（强制 event-sourcing）：Resolve 只返回事件，Loop 用注册的 reducer 折叠出新 world。D2 的彻底落实，封死"world 与事件描述不一致"缺口。
-- 方案 b（宽松双轨）：保持 Resolve 返回 world+事件，用 property test 锁定 fold(initial, events) == world。
-- **我的倾向：a**，但需评估五个玩具模型的改造成本与"事件粒度被迫变细"的风险（Resolve 中间态是否都要事件化？）。派发时让 coder 两方案都做小 spike 再定。
-- envelope 相关：Kind 应从 string 变稳定 id + schema version 考虑（WP11 落盘序列化需要）；payload 联合类型摩擦中等（WP4 实测），envelope 或 typed adapter 是解法候选。
-- 注意：D9 决定后要回写研发计划_001 成为正式 D9 条目。
+D9 已完成（方案 a 采纳并全面落实，正式条目在研发计划_001）。新焦点：**adversarial review（研发计划_003，Opus 出品，质量极高）的 Top-3 必须进 WP9 规格**：
+- **A1+A2（同一件事）**：Kernel 加"显式输入端口"（外部输入作为事件入 journal，不经 Resolve；replay 只需 initialWorld+journal）+ SimulationCursor（承载 now/守卫/预算，可暂停恢复）+ StopReason（Exhausted/BoundaryReached/DecisionRequired）+ "切 N 段==一次跑完" property。这是 WP9 的 Kernel 侧地基（建议拆 WP9a）。
+- **A3**：WorldVersion=(LineageId,LogicalTimestamp) 由 Loop 生产；Protocol 补 Microstep/LineageId。
+- **A4 身份部分**：SourceId 必须由世界持久身份派生（写成正式决策）。
+- 注意：DecisionRequired 的触发机制需要设计——候选/事件如何声明"需要决策"？我的初步倾向：特殊事件 kind（如 decision.requested）由 system 产生，Loop 识别后停机并在 StopReason 携带上下文；或 Resolve 返回值增加"请求暂停"通道。派发前想清。
+- WP10 前置（评审遗留）：A4 仲裁剥离、A8 RNG 坐标纪律、A9 system 无状态化、A6d property。WP11 前置：A5 provenance。全部在 002"下一轮建议"留档。
 
 ## 5. 下一轮队列（也在 002"下一轮建议"）
 
-1. D9 决策（spike→裁决→落实，含玩具模型迁移）
-2. WP8 Protocol（DecisionRequest/PlayerDecision DTO；envelope 定型后形状才稳）
-3. WP9 IPlayerDriver + DecisionPoint（Kernel 首次出现"等待外部输入"暂停点；async 边界在 Host 层，Kernel 保持同步纯函数）
-4. WP9 前插 adversarial review（基础设施.md"架构攻击者"清单：同时事件、迟到决策、speculative 失效等）
+1. WP9a：Kernel 侧——输入端口 + Cursor + StopReason + WorldVersion + SourceId 身份化 + 切分等价 property
+2. WP9b：Host 侧——IPlayerDriver + Scripted/Random/Null + Protocol 补字段
+3. WP10 前置清单（A4 仲裁/A8 RNG 纪律/A9 system 动态化/A6d）→ WP10 FirstBoard
+4. WP11 前置：A5 provenance envelope 变更
 
 ## 6. 协作模式要点（实践验证过的）
 
