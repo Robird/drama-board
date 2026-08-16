@@ -24,7 +24,12 @@ public sealed class DtoJsonRoundTripTests
             UntilModelTimeMs: 80_000);
         ExpectedOutcome expectedOutcome = new("Bob keeps the letter safe.", 80_000);
         DecisionRequest request = CreateCompleteRequest(observation);
-        PlayerDecision decision = new(request.DecisionId, request.BasedOnWorldVersion, intent, expectedOutcome);
+        PlayerDecision decision = new(
+            request.DecisionId,
+            request.BasedOnWorldVersion,
+            request.LineageId,
+            intent,
+            expectedOutcome);
 
         AssertRoundTrip(fact);
         AssertRoundTrip(observation);
@@ -46,7 +51,7 @@ public sealed class DtoJsonRoundTripTests
         AvailableAction availableAction = new(ActionKinds.Observe);
         KnownFact fact = new(new FactKind("fact.weather"), null, "It is raining.");
         ExpectedOutcome outcome = new("Learn what is nearby.");
-        PlayerDecision decision = new(new DecisionId("decision-1"), 12, intent);
+        PlayerDecision decision = new(new DecisionId("decision-1"), 12, 3, intent);
 
         AssertNullProperties(intent, nameof(Intent.TargetActorId), nameof(Intent.TargetObjectId),
             nameof(Intent.DestinationId), nameof(Intent.FreeText), nameof(Intent.DurationMs), nameof(Intent.UntilModelTimeMs));
@@ -67,6 +72,7 @@ public sealed class DtoJsonRoundTripTests
         "actor.alice",
         "place.square",
         72_000,
+        4,
         ["actor.bob"],
         ["object.letter"],
         [fact]);
@@ -74,7 +80,9 @@ public sealed class DtoJsonRoundTripTests
     private static DecisionRequest CreateCompleteRequest(Observation observation) => new(
         new DecisionId("decision-42"),
         17,
+        3,
         72_000,
+        4,
         "actor.alice",
         observation,
         DecisionReasons.Interrupted,

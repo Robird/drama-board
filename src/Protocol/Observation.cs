@@ -13,6 +13,7 @@ public sealed record KnownFact(
 /// <param name="ActorId">The identifier of the observing actor.</param>
 /// <param name="LocationId">The actor's current location identifier.</param>
 /// <param name="ModelTimeMs">The current model time, where one unit is one millisecond.</param>
+/// <param name="Microstep">The latest visible ordering position within the current model time.</param>
 /// <param name="VisibleActorIds">The identifiers of actors currently visible to the observer.</param>
 /// <param name="VisibleObjectIds">The identifiers of objects currently visible to the observer.</param>
 /// <param name="KnownFacts">The facts currently known to the observer.</param>
@@ -20,6 +21,7 @@ public sealed record Observation(
     string ActorId,
     string LocationId,
     long ModelTimeMs,
+    int Microstep,
     IReadOnlyList<string> VisibleActorIds,
     IReadOnlyList<string> VisibleObjectIds,
     IReadOnlyList<KnownFact> KnownFacts);
