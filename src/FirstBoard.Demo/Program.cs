@@ -16,9 +16,14 @@ try
     Console.WriteLine($"Output: {options.OutputDirectory}");
 
     using var overallTimeout = new CancellationTokenSource(options.OverallTimeout);
+    ScenarioInstance scenarioInstance = ScenarioInstance.CreateDefault(options.WorldSeed);
     var traceSink = new DemoTraceSink(options.OutputDirectory);
     var profiler = new DemoLlmProfiler(options.OutputDirectory);
-    await using DemoBackend aliceBackend = DemoBackend.Create(options, options.AliceBackend);
+    var manifest = new DemoRunManifestWriter(
+        options.OutputDirectory,
+        options,
+        scenarioInstance);
+    DemoBackend? aliceBackend = null;
     DemoBackend? separateBobBackend = null;
     DemoBackend? separateMemoryBackend = null;
     LlmPlayerDriver? aliceLlm = null;
@@ -26,6 +31,7 @@ try
 
     try
     {
+        aliceBackend = DemoBackend.Create(options, options.AliceBackend);
         ILlmChatBackend rawBobBackend;
         if (options.BobBackend == options.AliceBackend)
         {
@@ -52,8 +58,10 @@ try
             rawMemoryBackend = separateMemoryBackend.Client;
         }
 
-        MemoryBank aliceMemory = DemoMemoryProfile.Alice();
-        MemoryBank bobMemory = DemoMemoryProfile.Bob();
+        ScenarioActorDefinition aliceDefinition = scenarioInstance.Definition.Actor(BoardIds.Alice);
+        ScenarioActorDefinition bobDefinition = scenarioInstance.Definition.Actor(BoardIds.Bob);
+        MemoryBank aliceMemory = DemoMemoryProfile.Create(aliceDefinition);
+        MemoryBank bobMemory = DemoMemoryProfile.Create(bobDefinition);
         ILlmChatBackend aliceDecisionBackend = profiler.Wrap(
             aliceBackend.Client,
             Descriptor(BoardIds.Alice, "role-decision", shardKey: null, options.AliceBackend));
@@ -63,10 +71,10 @@ try
 
         aliceLlm = new LlmPlayerDriver(
             new CharacterCard(
-                "爱丽丝",
-                "谨慎、敏锐，不轻易相信别人；在压力下仍保持克制",
-                "查明公爵夫人密信的下落与内容，并据此保护自己的长期利益",
-                "简短、克制，习惯用试探性问题"),
+                aliceDefinition.Role.Name,
+                aliceDefinition.Role.Traits,
+                aliceDefinition.Role.Goal,
+                aliceDefinition.Role.Voice),
             aliceMemory,
             aliceDecisionBackend,
             DemoMemoryProfile.Maintainers(
@@ -75,24 +83,14 @@ try
                     rawMemoryBackend,
                     Descriptor(BoardIds.Alice, "memory-maintenance", shardKey, options.MemoryBackend))),
             traceSink.Record,
-            referenceMaterials:
-            [
-                new ReferenceMaterial(
-                    "alice.case-notes",
-                    "爱丽丝在酒馆根据零散传闻写下的案情笔记",
-                    "公爵夫人的密信可能锁在地窖箱中；黄铜钥匙最近在集市出现；地窖门口公告称一小时后永久封闭。"),
-                new ReferenceMaterial(
-                    "alice.meeting-note",
-                    "爱丽丝昨夜与鲍勃谈过后留下的会面备忘",
-                    "先去集市摊位会面；若钥匙和鲍勃都不在，至少等待五分钟，避免与返回摊位的鲍勃错身。"),
-            ],
+            Materials(aliceDefinition),
             options.MemoryMaintenanceMode);
         bobLlm = new LlmPlayerDriver(
             new CharacterCard(
-                "鲍勃",
-                "务实、机会主义，但并非冷酷；喜欢掌握谈判筹码",
-                "利用黄铜钥匙和密信线索取得收益，同时避免把自己困在无法兑现的交易中",
-                "直率，偶尔讥讽，谈条件时毫不含糊"),
+                bobDefinition.Role.Name,
+                bobDefinition.Role.Traits,
+                bobDefinition.Role.Goal,
+                bobDefinition.Role.Voice),
             bobMemory,
             bobDecisionBackend,
             DemoMemoryProfile.Maintainers(
@@ -101,17 +99,7 @@ try
                     rawMemoryBackend,
                     Descriptor(BoardIds.Bob, "memory-maintenance", shardKey, options.MemoryBackend))),
             traceSink.Record,
-            referenceMaterials:
-            [
-                new ReferenceMaterial(
-                    "bob.lead-ledger",
-                    "鲍勃自己的生意账本边角记录",
-                    "摊位附近可能有一把黄铜钥匙；爱丽丝正在追查地窖中的密信；地窖门口公告称一小时后封闭。"),
-                new ReferenceMaterial(
-                    "bob.meeting-note",
-                    "鲍勃记下的昨夜会面安排",
-                    "若先拿钥匙去地窖，开箱后回集市摊位至少等待十分钟；爱丽丝会先去摊位寻找鲍勃。"),
-            ],
+            Materials(bobDefinition),
             options.MemoryMaintenanceMode);
         var alice = new DecisionBudgetPlayerDriver(aliceLlm, options.MaxTurnsPerActor);
         var bob = new DecisionBudgetPlayerDriver(bobLlm, options.MaxTurnsPerActor);
@@ -123,7 +111,7 @@ try
 
         BoardRunCapture capture = await FirstBoardScenario.RunAsync(
             drivers,
-            options.WorldSeed,
+            scenarioInstance,
             new ModelTime(options.UntilModelTimeMs),
             cancellationToken: overallTimeout.Token);
         await Task.WhenAll(
@@ -131,14 +119,24 @@ try
             bobLlm.FlushMemoryAsync(overallTimeout.Token));
         string recordPath = DramaRecordWriter.Write(
             options,
+            scenarioInstance,
             capture,
             traceSink.Traces,
+            alice.ForcedSceneEndCount + bob.ForcedSceneEndCount);
+        manifest.Complete(
+            capture,
+            traceSink.Traces.Count,
             alice.ForcedSceneEndCount + bob.ForcedSceneEndCount);
 
         Console.WriteLine(
             $"Completed: {capture.Result.StopReason}; events={capture.Journal.Events.Count}; " +
             $"llmTurns={traceSink.Traces.Count}");
         Console.WriteLine($"Drama record: {recordPath}");
+    }
+    catch (Exception exception)
+    {
+        manifest.Fail(exception);
+        throw;
     }
     finally
     {
@@ -162,6 +160,11 @@ try
             await separateBobBackend.DisposeAsync();
         }
 
+        if (aliceBackend is not null)
+        {
+            await aliceBackend.DisposeAsync();
+        }
+
         profiler.WriteSummary(options);
     }
 
@@ -179,6 +182,14 @@ try
             backend.Backend == "codex"
                 ? options.ReasoningEffort ?? "provider-default"
                 : "provider-default");
+
+    static IReadOnlyList<ReferenceMaterial> Materials(ScenarioActorDefinition actor) =>
+        [
+            .. actor.Role.ReferenceMaterials.Select(material => new ReferenceMaterial(
+                material.Id,
+                material.Source,
+                material.Content)),
+        ];
 }
 catch (DemoHelpRequestedException)
 {

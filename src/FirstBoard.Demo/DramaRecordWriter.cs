@@ -12,6 +12,7 @@ internal static class DramaRecordWriter
 
     public static string Write(
         DemoOptions options,
+        ScenarioInstance scenarioInstance,
         BoardRunCapture capture,
         IReadOnlyList<LlmTurnTrace> traces,
         int budgetForcedCount)
@@ -28,6 +29,11 @@ internal static class DramaRecordWriter
             .AppendLine(options.MemoryBackend.Model)
             .Append("- 记忆维护调度：").AppendLine(
                 options.MemoryMaintenanceMode.ToString().ToLowerInvariant())
+            .Append("- 场景定义：").Append(scenarioInstance.Definition.Id)
+            .Append(" @ revision ").AppendLine(
+                scenarioInstance.Definition.Revision.ToString(CultureInfo.InvariantCulture))
+            .Append("- Definition SHA-256：").AppendLine(scenarioInstance.DefinitionSha256)
+            .Append("- Instance SHA-256：").AppendLine(scenarioInstance.InstanceSha256)
             .Append("- 世界种子：").AppendLine(options.WorldSeed.ToString(CultureInfo.InvariantCulture))
             .Append("- 结束：").Append(capture.Result.StopReason)
             .Append(" @ ").Append(capture.Result.Cursor.Now.Ticks.ToString(CultureInfo.InvariantCulture))

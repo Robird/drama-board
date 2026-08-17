@@ -88,40 +88,8 @@ public sealed record FirstBoardWorld(
     bool CellarSealed,
     bool ChestOpened)
 {
-    public static FirstBoardWorld CreateInitial(ulong worldSeed)
-    {
-        long nextId = 1;
-        long worldRuleSourceId = nextId++;
-        var places = new[]
-        {
-            new BoardPlace(nextId++, BoardIds.Tavern, [BoardIds.Market]),
-            new BoardPlace(nextId++, BoardIds.Market, [BoardIds.Tavern, BoardIds.Cellar]),
-            new BoardPlace(nextId++, BoardIds.Cellar, [BoardIds.Market]),
-        };
-        var actors = new[]
-        {
-            NewActor(nextId++, BoardIds.Alice, BoardIds.Tavern),
-            NewActor(nextId++, BoardIds.Bob, BoardIds.Market),
-        };
-        long aliceId = actors.Single(actor => actor.Key == BoardIds.Alice).Id;
-        var objects = new[]
-        {
-            new BoardObject(nextId++, BoardIds.BrassKey, BoardIds.Market, null, 0),
-            new BoardObject(nextId++, BoardIds.DuchessLetter, null, null, 0),
-            new BoardObject(nextId++, BoardIds.SilverCoinOne, null, aliceId, 0),
-            new BoardObject(nextId++, BoardIds.SilverCoinTwo, null, aliceId, 0),
-        };
-
-        return new FirstBoardWorld(
-            worldSeed,
-            worldRuleSourceId,
-            nextId,
-            Array.AsReadOnly(places),
-            Array.AsReadOnly(actors),
-            Array.AsReadOnly(objects),
-            CellarSealed: false,
-            ChestOpened: false);
-    }
+    public static FirstBoardWorld CreateInitial(ulong worldSeed) =>
+        ScenarioInstance.CreateDefault(worldSeed).CreateInitialWorld();
 
     public BoardActor Actor(string actorId) =>
         Actors.Single(actor => actor.Key == actorId);
@@ -144,19 +112,6 @@ public sealed record FirstBoardWorld(
     public bool IsPresent(BoardActor actor) =>
         actor.Activity?.Kind != BoardActivityKind.Travel;
 
-    private static BoardActor NewActor(long id, string key, string placeId) =>
-        new(
-            id,
-            key,
-            placeId,
-            Generation: 0,
-            DecisionSequence: 0,
-            AwaitingDecision: false,
-            OpenDecisionId: null,
-            PendingAction: null,
-            Activity: null,
-            KnownFacts: [],
-            LastRejectedIntent: null);
 }
 
 public abstract record BoardEventPayload;

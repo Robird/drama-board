@@ -591,6 +591,21 @@ public sealed class ActivityCompletionSystem :
 public sealed class CellarDeadlineSystem :
     ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
+    private readonly long _deadlineMs;
+
+    /// <summary>Creates the deadline rule with a scenario-provided model time.</summary>
+    public CellarDeadlineSystem(long deadlineMs = BoardTiming.DeadlineTicks)
+    {
+        if (deadlineMs < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(deadlineMs),
+                "The deadline cannot be negative.");
+        }
+
+        _deadlineMs = deadlineMs;
+    }
+
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
         FirstBoardWorld world,
         ModelTime now) =>
@@ -600,7 +615,7 @@ public sealed class CellarDeadlineSystem :
             [
                 new EventCandidate<BoardCandidate>(
                     new EventCandidateId(0),
-                    new ModelTime(BoardTiming.DeadlineTicks),
+                    new ModelTime(_deadlineMs),
                     world.WorldRuleSourceId,
                     new DeadlineCandidate()),
             ];

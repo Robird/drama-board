@@ -12,11 +12,22 @@ public static class FirstBoardScenario
 {
     public const long LineageId = 10_001;
 
+    /// <summary>Creates the FirstBoard loop with the current default scenario definition.</summary>
     public static SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateLoop(
-        FirstBoardReducer reducer) =>
+        FirstBoardReducer reducer) => CreateLoop(reducer, ScenarioDefinition.Default);
+
+    /// <summary>Creates the FirstBoard loop with causal parameters from one definition.</summary>
+    public static SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateLoop(
+        FirstBoardReducer reducer,
+        ScenarioDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(reducer);
+        ArgumentNullException.ThrowIfNull(definition);
+        definition.Validate();
+        return
         new(
             [
-                new CellarDeadlineSystem(),
+                new CellarDeadlineSystem(definition.CellarDeadlineMs),
                 new ActionResolutionSystem(),
                 new ActivityCompletionSystem(),
                 new DecisionSchedulingSystem(),
@@ -24,19 +35,43 @@ public static class FirstBoardScenario
             reducer,
             decisionRequestPredicate: domainEvent =>
                 domainEvent.Kind == BoardEventKinds.DecisionRequested);
+    }
 
+    /// <summary>Runs the default definition with a backward-compatible explicit seed.</summary>
     public static async Task<BoardRunCapture> RunAsync(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ulong worldSeed,
         ModelTime until,
         FirstBoardWorld? initialWorld = null,
+        CancellationToken cancellationToken = default) =>
+        await RunAsync(
+            drivers,
+            ScenarioInstance.CreateDefault(worldSeed),
+            until,
+            initialWorld,
+            cancellationToken);
+
+    /// <summary>Runs one frozen seeded scenario instance.</summary>
+    public static async Task<BoardRunCapture> RunAsync(
+        IReadOnlyDictionary<string, IPlayerDriver> drivers,
+        ScenarioInstance instance,
+        ModelTime until,
+        FirstBoardWorld? initialWorld = null,
         CancellationToken cancellationToken = default)
     {
-        FirstBoardWorld world = initialWorld ?? FirstBoardWorld.CreateInitial(worldSeed);
+        ArgumentNullException.ThrowIfNull(instance);
+        FirstBoardWorld world = initialWorld ?? instance.CreateInitialWorld();
+        if (world.WorldSeed != instance.WorldSeed)
+        {
+            throw new ArgumentException(
+                "The supplied initial world and scenario instance use different seeds.",
+                nameof(initialWorld));
+        }
+
         var reducer = new FirstBoardReducer();
         var journal = new InMemoryJournal<BoardEventPayload>();
         var session = new PlayerDecisionSession<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
-            CreateLoop(reducer),
+            CreateLoop(reducer, instance.Definition),
             journal,
             world,
             SimulationCursor.CreateInitial(LineageId, ModelTime.Zero),
