@@ -1,7 +1,7 @@
 # 主线会话 Checkpoint（memory-notebook）
 
 **用途：上下文压缩前的主动快照。压缩后的主线会话（我）在 Observe 阶段读此文件恢复完整工作状态。**
-**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第三轮结束（WP9a+WP9b+WP10前置包完成，136 测试绿）。**
+**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第四轮结束（Session 逐个提交 + WP10 FirstBoard 完成，148 测试绿）。**
 
 ---
 
@@ -31,21 +31,20 @@
 - `src/Protocol/`：DTO 已含 LineageId/Microstep（A3 修复）。零依赖。
 - 测试 136 绿：Kernel 114 + Protocol 12 + Host 10。玩具模型新增：生灭世界（动态实体）、夹宝（仲裁）、Host 层岔路决策模型。A6d property 覆盖全部 system（曾抓到 Bouncing/InterruptedMining 的真实 now 依赖并修复）。
 
-## 4. 尚未落盘的思考：WP10 FirstBoard（下轮第一件事）
+## 4. 尚未落盘的思考：WP11 与 frontier 模式（下轮）
 
-评审 Top-3 已全部修复（A1/A2/A3 在 WP9，A4/A8/A9/A6d 在前置包）。WP10 规格要点：
-- 同批多决策：**逐个提交**（每决策立即作为输入跑 Run 再问下一个）——需改 PlayerDecisionSession（当前是同批收齐后统一提交）。同刻公平性由 A4 仲裁模式承担。
-- 世界：3 Places、2 Actors、1 Object、1 Secret、1 Deadline；六动作 Travel/Wait/Talk/Observe/Take/Give（Protocol Intent 已锁表达力）。
-- 信息不对称在 requestBuilder 投影层实现（Observation 只含在场可见）。
-- WP9b 遗留：decisionTranslator 缺原始 request 参数（上下文复杂后扩）；async 取消在"请求已入 journal 输入未提交"的恢复留 speculative 阶段。
-- WP11 前置待做：A5 provenance（事件带 Cause+resolve 批次）+ Version 下沉 codec。全部在 002"下一轮建议"留档。
+- **WP10 已完成（纯装配方，三层零改动）**；tests/FirstBoard.Tests 是未来正式 Board 的参考实现。Session 已改逐个提交（FIFO、nullable requestBuilder 跳过失效请求、SkippedDecisionCount）。
+- **WP10 关键发现**：逐个提交模式逻辑上消解了同刻竞争（后决者看到先决者后果，affordance 已变）；"两 player 彼此不知情同时决策"需要 frontier 批量模式（同 frontier 收齐回应后批量提交，冲突由 A4 仲裁解）——Kernel 已能支撑（抢钥匙测试用 externalInputs 批量验证过），缺的只是 Host 编排模式。与 speculative/迟到决策同源，可缓。
+- **下轮主体：WP11 前置（A5 provenance）+ WP11 落盘**：
+  - A5：DomainEvent 加 Cause=(SourceId,CandidateId,Due)+resolve 批次序号；外部输入事件用独立标记；Fork 只接受批次边界。envelope 变更必须在落盘前——落盘后改=全历史迁移。
+  - WP11：src/Journal.Atelia → `e:\repos\Atelia-org\atelia` EventJournal（依赖闭包 Data+Primitives+Rbf+RbfSegmentStore）；引用机制（ProjectReference vs local NuGet）届时裁决——我初步倾向 ProjectReference（探索期零发布成本）但需确认 slnx 引用外部 repo 路径的可维护性；序列化用 System.Text.Json 先跑通（payload 多态是难点——FirstBoard payload 是接口多态，落盘需 discriminator，EventKindRegistry 的 kind↔type 映射正好能用）。全部在 002"下一轮建议"留档。
 
 ## 5. 下一轮队列（也在 002"下一轮建议"）
 
-1. WP10 FirstBoard（逐个提交策略改 PlayerDecisionSession + 3P/2A/1O/1S/1D 世界 + 六动作 + 信息不对称投影 + 完整跑一局出 journal）
-2. WP11 前置：A5 provenance envelope 变更 + Version 下沉 codec（落盘前必须完成）
-3. 可选：Host/Protocol 层小规模 adversarial review（FirstBoard 稳定后收益更大）
-4. WP11 EventJournal 落盘 adapter
+1. WP11 前置：A5 provenance envelope 变更（Cause+批次；落盘前必须）
+2. WP11 EventJournal 落盘 adapter（src/Journal.Atelia，唯一允许碰 atelia 的项目）
+3. Host frontier 批量模式（可单独小包或等 speculative 阶段）
+4. 低优先：RandomPlayerDriver 参数生成、AvailableAction 结构化参数组合
 
 ## 6. 协作模式要点（实践验证过的）
 
