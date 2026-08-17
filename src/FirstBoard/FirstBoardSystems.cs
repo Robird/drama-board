@@ -249,13 +249,18 @@ public sealed class ActionResolutionSystem :
             facts.Add(new BoardFact(
                 "cellar.locked-chest-visible",
                 BoardIds.LockedChest,
-                "A locked chest is visible in the cellar."));
+                world.ChestOpened
+                    ? "An opened chest is visible in the cellar."
+                    : "A locked chest is visible in the cellar."));
             if (world.ChestOpened)
             {
+                BoardObject letter = world.Object(BoardIds.DuchessLetter);
                 facts.Add(new BoardFact(
-                    BoardIds.ChestContainsLetter,
+                    BoardIds.ChestOpenedKnown,
                     BoardIds.LockedChest,
-                    "The opened chest contains the duchess's letter."));
+                    letter.OwnerActorId == actor.Id
+                        ? "The chest is open; you recovered the duchess's letter from it."
+                        : "The chest is open and empty; someone removed the duchess's letter."));
             }
         }
 

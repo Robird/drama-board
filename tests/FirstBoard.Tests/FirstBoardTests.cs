@@ -62,12 +62,14 @@ public sealed class FirstBoardTests
         BoardActor alice = world.Actor(BoardIds.Alice);
         BoardActor bob = world.Actor(BoardIds.Bob);
         BoardObject brassKey = world.Object(BoardIds.BrassKey);
+        BoardObject letter = world.Object(BoardIds.DuchessLetter);
 
         Assert.Equal(StopReason.BoundaryReached, capture.Run.Result.StopReason);
         Assert.Equal(0, capture.Run.Result.ForcedDecisionCount);
         Assert.Equal(BoardIds.Cellar, alice.PlaceId);
         Assert.Equal(BoardIds.Tavern, bob.PlaceId);
         Assert.Equal(alice.Id, brassKey.OwnerActorId);
+        Assert.Equal(alice.Id, letter.OwnerActorId);
         Assert.True(world.ChestOpened);
         Assert.Contains(alice.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
         Assert.DoesNotContain(bob.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
@@ -103,13 +105,15 @@ public sealed class FirstBoardTests
         DecisionRequest bobLast = capture.Bob.Requests[^1];
         Assert.Equal(BoardIds.Tavern, aliceInitial.Observation.LocationId);
         Assert.Empty(aliceInitial.Observation.VisibleActorIds);
-        Assert.Empty(aliceInitial.Observation.VisibleObjectIds);
+        Assert.Equal(
+            [BoardIds.SilverCoinOne, BoardIds.SilverCoinTwo],
+            aliceInitial.Observation.VisibleObjectIds);
         Assert.Contains(BoardIds.LockedChest, aliceLast.Observation.VisibleObjectIds);
         Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.ChestContainsLetter);
         Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.LastActionOutcome &&
-            fact.Text.Contains("found the duchess's letter", StringComparison.Ordinal));
+            fact.Text.Contains("took the duchess's letter", StringComparison.Ordinal));
         Assert.DoesNotContain(bobLast.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.ChestContainsLetter);
     }
@@ -247,7 +251,8 @@ public sealed class FirstBoardTests
         Assert.Contains(BoardIds.BrassKey, bobWithOwnKey.Observation.VisibleObjectIds);
         Assert.Contains(BoardIds.BrassKey, aliceWithPlacedKey.Observation.VisibleObjectIds);
         Assert.DoesNotContain(aliceWithCarriedKey.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ObjectHeld);
+            fact.FactKind.Id == BoardIds.ObjectHeld &&
+            fact.RelatedId == BoardIds.BrassKey);
         Assert.Contains(bobWithOwnKey.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.ObjectHeld &&
             fact.RelatedId == BoardIds.BrassKey &&
@@ -460,6 +465,77 @@ public sealed class FirstBoardTests
             capture.Result.World.Object(BoardIds.BrassKey).OwnerActorId);
         Assert.Single(capture.Journal.Events, domainEvent =>
             domainEvent.Kind == BoardEventKinds.ObjectGiven);
+    }
+
+    [Fact]
+    public async Task MaterializedLetterAndCoins_EnableNonAtomicExchangeThroughGive()
+    {
+        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
+            request => Decide(request, new Intent(
+                ActionKinds.Wait,
+                DurationMs: BoardTiming.TravelTicks)),
+            request =>
+            {
+                AvailableAction give = Assert.Single(
+                    request.AvailableActions,
+                    action => action.ActionKind == ActionKinds.Give);
+                Assert.Contains(BoardIds.SilverCoinOne, give.CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Give,
+                    TargetActorId: BoardIds.Bob,
+                    TargetObjectId: BoardIds.SilverCoinOne));
+            },
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
+            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)),
+            request => Decide(request, new Intent(
+                ActionKinds.Use,
+                TargetObjectId: BoardIds.LockedChest)),
+            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
+            request =>
+            {
+                AvailableAction give = Assert.Single(
+                    request.AvailableActions,
+                    action => action.ActionKind == ActionKinds.Give);
+                Assert.Contains(BoardIds.DuchessLetter, give.CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Give,
+                    TargetActorId: BoardIds.Alice,
+                    TargetObjectId: BoardIds.DuchessLetter));
+            },
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+
+        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
+            Drivers(alice, bob),
+            worldSeed: 43,
+            new ModelTime(1_200_000));
+        FirstBoardWorld world = capture.Result.World;
+
+        Assert.Equal(
+            world.Actor(BoardIds.Alice).Id,
+            world.Object(BoardIds.DuchessLetter).OwnerActorId);
+        Assert.Equal(
+            world.Actor(BoardIds.Bob).Id,
+            world.Object(BoardIds.SilverCoinOne).OwnerActorId);
+        Assert.Equal(
+            world.Actor(BoardIds.Alice).Id,
+            world.Object(BoardIds.SilverCoinTwo).OwnerActorId);
+        Assert.Equal(2, capture.Journal.Events.Count(domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ObjectGiven));
+        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
+            fact.Kind == BoardIds.ObjectReceived &&
+            fact.RelatedId == BoardIds.DuchessLetter);
+        Assert.DoesNotContain(world.Actor(BoardIds.Alice).KnownFacts, fact =>
+            fact.Kind == BoardIds.KeyLocationKnown);
+        Assert.Contains(world.Actor(BoardIds.Bob).KnownFacts, fact =>
+            fact.Kind == BoardIds.ObjectReceived &&
+            fact.RelatedId == BoardIds.SilverCoinOne);
     }
 
     [Fact]

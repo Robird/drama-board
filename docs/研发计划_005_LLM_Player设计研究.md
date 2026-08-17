@@ -135,7 +135,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP17）
+## 5. WP 切分草案（WP12–WP18）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -145,6 +145,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP15 | Demo harness（console）：FirstBoard + LlmPlayerDriver 真跑一局，输出**戏剧记录**（journal 叙事 dump + 各角色内心独白轨迹）——顺带吸收此前"journal 可读性工具"穿插件 | WP14 | 真实完整一局跑通；戏剧记录人工可读；质量观感汇报给用户 |
 | WP16 | 对话反应、权威动作回执、最小 `action.use` 与真模型舞台调度实验 | WP15 | 完成：两个后端均形成真实往返；局部反应闭环进入 Board 事件链 |
 | WP17 | 谈判到世界后果：物化密信/交易筹码，优先复用 `give` 验证非原子交换 | WP16 | 真模型从议价推进到至少一次权威所有权转移；保留违约/背叛可能 |
+| WP18 | 可验证议价：最小 `action.show`/`object.shown`，展示产生目标私有事实但不转移所有权 | WP17 | 真模型以 show 回答“先验货”，再自主选择 give、拒绝或欺诈 |
 
 ## 6. 开放问题
 

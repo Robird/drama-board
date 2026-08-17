@@ -2,9 +2,11 @@ using System.Globalization;
 
 namespace DramaBoard.FirstBoard.Demo;
 
+internal sealed record DemoBackendOptions(string Backend, string Model);
+
 internal sealed record DemoOptions(
-    string Backend,
-    string Model,
+    DemoBackendOptions AliceBackend,
+    DemoBackendOptions BobBackend,
     string OutputDirectory,
     ulong WorldSeed,
     long UntilModelTimeMs,
@@ -35,27 +37,30 @@ internal sealed record DemoOptions(
             values[argument[2..]] = args[++index];
         }
 
-        string backend = Read(values, "backend", "codex").ToLowerInvariant();
-        if (backend is not ("codex" or "deepseek" or "openai"))
-        {
-            throw new ArgumentException("--backend must be codex, deepseek, or openai.");
-        }
-
-        string defaultModel = backend == "codex"
-            ? "gpt-5.6-luna"
-            : Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-v4-flash";
-        string model = Read(values, "model", defaultModel);
+        string backend = ReadBackend(values, "backend", "codex");
+        string model = Read(values, "model", DefaultModel(backend));
+        string aliceBackend = ReadBackend(values, "alice-backend", backend);
+        string bobBackend = ReadBackend(values, "bob-backend", backend);
+        string aliceModel = Read(
+            values,
+            "alice-model",
+            aliceBackend == backend ? model : DefaultModel(aliceBackend));
+        string bobModel = Read(
+            values,
+            "bob-model",
+            bobBackend == backend ? model : DefaultModel(bobBackend));
         string output = Read(
             values,
             "output",
             Path.Combine(
                 "artifacts",
-                "wp15",
-                $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{backend}-{model}"));
+                "wp17",
+                $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-" +
+                $"alice-{aliceBackend}-{aliceModel}-bob-{bobBackend}-{bobModel}"));
 
         return new DemoOptions(
-            backend,
-            model,
+            new DemoBackendOptions(aliceBackend, aliceModel),
+            new DemoBackendOptions(bobBackend, bobModel),
             Path.GetFullPath(output),
             ReadUInt64(values, "seed", 20_260_817),
             ReadInt64(values, "until-ms", BoardTiming.RandomRunBoundaryTicks, minimum: 0),
@@ -79,8 +84,12 @@ internal sealed record DemoOptions(
           dotnet run --project src/FirstBoard.Demo -- [options]
 
         Options:
-          --backend codex|deepseek|openai   Default: codex
-          --model MODEL                    Backend-specific model id
+          --backend codex|deepseek|openai   Default backend for both actors: codex
+          --model MODEL                    Default model for both actors
+          --alice-backend BACKEND          Override Alice backend
+          --alice-model MODEL              Override Alice model
+          --bob-backend BACKEND            Override Bob backend
+          --bob-model MODEL                Override Bob model
           --base-url URL                   OpenAI-compatible base URL; env fallback:
                                            DEEPSEEK_BASE_URL, then BASE_URL
           --api-key-env NAME               Credential env name; default: DEEPSEEK_API_KEY
@@ -93,6 +102,25 @@ internal sealed record DemoOptions(
           --codex-command PATH             Default: codex
           --reasoning EFFORT               Codex effort; default: low
         """;
+
+    private static string ReadBackend(
+        IReadOnlyDictionary<string, string> values,
+        string name,
+        string fallback)
+    {
+        string backend = Read(values, name, fallback).ToLowerInvariant();
+        if (backend is not ("codex" or "deepseek" or "openai"))
+        {
+            throw new ArgumentException($"--{name} must be codex, deepseek, or openai.");
+        }
+
+        return backend;
+    }
+
+    private static string DefaultModel(string backend) =>
+        backend == "codex"
+            ? "gpt-5.6-luna"
+            : Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-v4-flash";
 
     private static string Read(
         IReadOnlyDictionary<string, string> values,

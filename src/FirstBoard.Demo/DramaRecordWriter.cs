@@ -20,7 +20,10 @@ internal static class DramaRecordWriter
         var text = new StringBuilder()
             .AppendLine("# DramaBoard · FirstBoard 首场记录")
             .AppendLine()
-            .Append("- 后端：").Append(options.Backend).Append(" / ").AppendLine(options.Model)
+            .Append("- 爱丽丝后端：").Append(options.AliceBackend.Backend).Append(" / ")
+            .AppendLine(options.AliceBackend.Model)
+            .Append("- 鲍勃后端：").Append(options.BobBackend.Backend).Append(" / ")
+            .AppendLine(options.BobBackend.Model)
             .Append("- 世界种子：").AppendLine(options.WorldSeed.ToString(CultureInfo.InvariantCulture))
             .Append("- 结束：").Append(capture.Result.StopReason)
             .Append(" @ ").Append(capture.Result.Cursor.Now.Ticks.ToString(CultureInfo.InvariantCulture))
@@ -34,6 +37,12 @@ internal static class DramaRecordWriter
             .Append("- 地窖：").AppendLine(capture.Result.World.CellarSealed ? "已封闭" : "仍开放")
             .Append("- 锁箱：").AppendLine(capture.Result.World.ChestOpened ? "已打开" : "仍上锁")
             .Append("- 黄铜钥匙：").AppendLine(ObjectLocation(capture.Result.World))
+            .Append("- 公爵夫人的密信：").AppendLine(
+                ObjectLocation(capture.Result.World, BoardIds.DuchessLetter))
+            .Append("- 银币一：").AppendLine(
+                ObjectLocation(capture.Result.World, BoardIds.SilverCoinOne))
+            .Append("- 银币二：").AppendLine(
+                ObjectLocation(capture.Result.World, BoardIds.SilverCoinTwo))
             .Append("- 爱丽丝：").AppendLine(ActorSummary(capture.Result.World, BoardIds.Alice))
             .Append("- 鲍勃：").AppendLine(ActorSummary(capture.Result.World, BoardIds.Bob))
             .AppendLine()
@@ -122,12 +131,19 @@ internal static class DramaRecordWriter
         return $"位于{DisplayPlace(actor.PlaceId)}；{facts}";
     }
 
-    private static string ObjectLocation(FirstBoardWorld world)
+    private static string ObjectLocation(
+        FirstBoardWorld world,
+        string objectId = BoardIds.BrassKey)
     {
-        BoardObject item = world.Object(BoardIds.BrassKey);
+        BoardObject item = world.Object(objectId);
         if (item.OwnerActorId is long ownerId)
         {
             return $"由{DisplayActor(world.Actor(ownerId).Key)}持有";
+        }
+
+        if (objectId == BoardIds.DuchessLetter && !world.ChestOpened)
+        {
+            return "仍封存在锁箱内";
         }
 
         return $"位于{DisplayPlace(item.PlaceId)}";
@@ -157,6 +173,9 @@ internal static class DramaRecordWriter
         {
             BoardIds.BrassKey => "黄铜钥匙",
             BoardIds.LockedChest => "上锁的箱子",
+            BoardIds.DuchessLetter => "公爵夫人的密信",
+            BoardIds.SilverCoinOne => "第一枚银币",
+            BoardIds.SilverCoinTwo => "第二枚银币",
             null => "（未知物品）",
             _ => objectId,
         };

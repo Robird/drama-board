@@ -14,10 +14,15 @@ public static class BoardIds
     public const string Bob = "bob";
     public const string BrassKey = "brass-key";
     public const string LockedChest = "locked-chest";
+    public const string DuchessLetter = "duchess-letter";
+    public const string SilverCoinOne = "silver-coin-1";
+    public const string SilverCoinTwo = "silver-coin-2";
     public const string KeyLocationKnown = "key.location-known";
     public const string ChestContainsLetter = "chest.contains-letter";
+    public const string ChestOpenedKnown = "chest.opened-known";
     public const string CellarSealedKnown = "cellar.sealed-known";
     public const string ObjectHeld = "object.held";
+    public const string ObjectReceived = "object.received";
     public const string DialogueHeard = "dialogue.heard";
     public const string LastActionOutcome = "action.last-outcome";
     public const string ActionRejected = "action.rejected";
@@ -93,9 +98,13 @@ public sealed record FirstBoardWorld(
             NewActor(nextId++, BoardIds.Alice, BoardIds.Tavern),
             NewActor(nextId++, BoardIds.Bob, BoardIds.Market),
         };
+        long aliceId = actors.Single(actor => actor.Key == BoardIds.Alice).Id;
         var objects = new[]
         {
             new BoardObject(nextId++, BoardIds.BrassKey, BoardIds.Market, null, 0),
+            new BoardObject(nextId++, BoardIds.DuchessLetter, null, null, 0),
+            new BoardObject(nextId++, BoardIds.SilverCoinOne, null, aliceId, 0),
+            new BoardObject(nextId++, BoardIds.SilverCoinTwo, null, aliceId, 0),
         };
 
         return new FirstBoardWorld(
@@ -438,24 +447,43 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         updated = UpdateActor(updated, given.ActorId, actor =>
             AddFacts(CompleteAction(actor), [LastOutcome(
                 $"You successfully gave {given.ObjectId} to {given.TargetActorId}.")]));
-        return UpdateActor(updated, given.TargetActorId, actor => AddFacts(actor, [KeyLocationFact()]));
+        var targetFacts = new List<BoardFact>
+        {
+            new(
+                BoardIds.ObjectReceived,
+                given.ObjectId,
+                $"{given.ActorId} gave you {given.ObjectId}."),
+        };
+        if (given.ObjectId == BoardIds.BrassKey)
+        {
+            targetFacts.Add(KeyLocationFact());
+        }
+
+        return UpdateActor(updated, given.TargetActorId, actor => AddFacts(actor, targetFacts));
     }
 
     private static FirstBoardWorld ApplyChestOpened(
         FirstBoardWorld world,
         ChestOpenedEvent opened)
     {
-        FirstBoardWorld updated = world with { ChestOpened = true };
+        FirstBoardWorld updated = UpdateObject(
+            world with { ChestOpened = true },
+            BoardIds.DuchessLetter,
+            letter => letter with
+            {
+                PlaceId = null,
+                OwnerActorId = world.Actor(opened.ActorId).Id,
+            });
         return UpdateActor(updated, opened.ActorId, actor =>
             AddFacts(CompleteAction(actor),
             [
                 new BoardFact(
                     BoardIds.ChestContainsLetter,
-                    BoardIds.LockedChest,
-                    "The opened chest contains the duchess's letter."),
+                    BoardIds.DuchessLetter,
+                    "You recovered the duchess's letter from the opened chest and now carry it."),
                 LastOutcome(
                     $"You successfully used {opened.KeyObjectId} to open {opened.ObjectId} " +
-                    "and found the duchess's letter."),
+                    "and took the duchess's letter."),
             ]));
     }
 
