@@ -144,7 +144,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP21）
+## 5. WP 切分草案（WP12–WP23）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -158,6 +158,8 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP19 | 目标化观察：复用 `action.observe(TargetObjectId)` 只检查自持对象，不新增 inspect/read 动词 | WP18 | 两个真后端均自主检查持有物并吸收对象特有私有事实 |
 | WP20 | 叙事化长期材料：稳定保存来源/原文，不冻结角色信念 | WP19 | 完整替换 Memory 后材料仍可查，角色能明确怀疑或反转解释 |
 | WP21 | 分块 MemoryBank：独立 maintainer、keep/replace 与局部 fallback | WP20 | 不同稳定性自然出现；承诺被明确完成/放弃而非静默丢失；混合真场跑通 |
+| WP22 | 公共放置与检查：`action.put` 将持有物转为当前地点公共无主态，目标 observe 可检查本人物或同地公共物 | WP21 | 机制、落盘 replay 与模型理解均验证；保留被 take 风险和策略性拒绝空间 |
+| WP23 | Passive Curator 轨迹诊断 MVP：只读分析 journal/turn trace，不干预 Player 或 World | WP22 | 能识别重复谈判/低信息区段、相遇密度、关系/所有权变化和高影响决策点 |
 
 ## 6. 开放问题
 
