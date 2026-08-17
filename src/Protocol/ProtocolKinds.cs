@@ -20,6 +20,9 @@ public static class ActionKinds
 
     /// <summary>Identifies giving an object to another actor.</summary>
     public static ActionKind Give { get; } = new("action.give");
+
+    /// <summary>Identifies using an object or contextual capability on a target object.</summary>
+    public static ActionKind Use { get; } = new("action.use");
 }
 
 /// <summary>Provides the first-version decision-point reason identifiers.</summary>

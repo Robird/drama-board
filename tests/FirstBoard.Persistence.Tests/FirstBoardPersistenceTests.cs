@@ -50,7 +50,7 @@ public sealed class FirstBoardPersistenceTests
             AssertDomainEventsEqual(written, replay.Events);
             Assert.Equal(LineageId, replay.Sink.LineageId);
             Assert.Contains(replay.Events, domainEvent =>
-                domainEvent.Payload is ActorObservedEvent);
+                domainEvent.Payload is ChestOpenedEvent);
             Assert.Contains(replay.Events, domainEvent =>
                 domainEvent.Payload is CellarSealedEvent);
         }
@@ -160,6 +160,7 @@ public sealed class FirstBoardPersistenceTests
             ActorObservedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectTakenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectGivenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
+            ChestOpenedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectContentionResolvedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ActionRejectedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             CellarSealedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
@@ -177,6 +178,7 @@ public sealed class FirstBoardPersistenceTests
             "action.observe-requested" or
             "action.take-requested" or
             "action.give-requested" or
+            "action.use-requested" or
             "action.unknown-requested" => Deserialize<ActionRequestedEvent>(payload),
             "actor.departed" => Deserialize<ActorDepartedEvent>(payload),
             "actor.arrived" => Deserialize<ActorArrivedEvent>(payload),
@@ -186,6 +188,7 @@ public sealed class FirstBoardPersistenceTests
             "actor.observed" => Deserialize<ActorObservedEvent>(payload),
             "object.taken" => Deserialize<ObjectTakenEvent>(payload),
             "object.given" => Deserialize<ObjectGivenEvent>(payload),
+            "chest.opened" => Deserialize<ChestOpenedEvent>(payload),
             "object.contention-resolved" => Deserialize<ObjectContentionResolvedEvent>(payload),
             "action.rejected" => Deserialize<ActionRejectedEvent>(payload),
             "cellar.sealed" => Deserialize<CellarSealedEvent>(payload),
@@ -240,7 +243,7 @@ public sealed class FirstBoardPersistenceTests
                     TargetActorId: BoardIds.Bob,
                     FreeText: $"fact:{BoardIds.KeyLocationKnown}"),
                 "decision.alice.4" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar),
-                "decision.alice.5" => new Intent(ActionKinds.Observe),
+                "decision.alice.5" => new Intent(ActionKinds.Use, TargetObjectId: BoardIds.LockedChest),
                 "decision.alice.6" => new Intent(ActionKinds.Wait, DurationMs: 5_000_000),
                 "decision.bob.1" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),
                 "decision.bob.2" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),

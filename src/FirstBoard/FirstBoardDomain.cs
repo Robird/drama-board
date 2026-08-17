@@ -18,6 +18,8 @@ public static class BoardIds
     public const string ChestContainsLetter = "chest.contains-letter";
     public const string CellarSealedKnown = "cellar.sealed-known";
     public const string ObjectHeld = "object.held";
+    public const string DialogueHeard = "dialogue.heard";
+    public const string LastActionOutcome = "action.last-outcome";
     public const string ActionRejected = "action.rejected";
 }
 
@@ -73,7 +75,8 @@ public sealed record FirstBoardWorld(
     IReadOnlyList<BoardPlace> Places,
     IReadOnlyList<BoardActor> Actors,
     IReadOnlyList<BoardObject> Objects,
-    bool CellarSealed)
+    bool CellarSealed,
+    bool ChestOpened)
 {
     public static FirstBoardWorld CreateInitial(ulong worldSeed)
     {
@@ -102,7 +105,8 @@ public sealed record FirstBoardWorld(
             Array.AsReadOnly(places),
             Array.AsReadOnly(actors),
             Array.AsReadOnly(objects),
-            CellarSealed: false);
+            CellarSealed: false,
+            ChestOpened: false);
     }
 
     public BoardActor Actor(string actorId) =>
@@ -188,6 +192,11 @@ public sealed record ObjectGivenEvent(
     string TargetActorId,
     string ObjectId) : BoardEventPayload;
 
+public sealed record ChestOpenedEvent(
+    string ActorId,
+    string ObjectId,
+    string KeyObjectId) : BoardEventPayload;
+
 public sealed record BoardRandomSample(
     ulong StreamId,
     ulong Generation,
@@ -215,6 +224,7 @@ public static class BoardEventKinds
     public static EventKind ObserveRequested { get; } = new("action.observe-requested", 1);
     public static EventKind TakeRequested { get; } = new("action.take-requested", 1);
     public static EventKind GiveRequested { get; } = new("action.give-requested", 1);
+    public static EventKind UseRequested { get; } = new("action.use-requested", 1);
     public static EventKind UnknownActionRequested { get; } = new("action.unknown-requested", 1);
     public static EventKind ActorDeparted { get; } = new("actor.departed", 1);
     public static EventKind ActorArrived { get; } = new("actor.arrived", 1);
@@ -224,6 +234,7 @@ public static class BoardEventKinds
     public static EventKind ActorObserved { get; } = new("actor.observed", 1);
     public static EventKind ObjectTaken { get; } = new("object.taken", 1);
     public static EventKind ObjectGiven { get; } = new("object.given", 1);
+    public static EventKind ChestOpened { get; } = new("chest.opened", 1);
     public static EventKind ObjectContentionResolved { get; } = new("object.contention-resolved", 1);
     public static EventKind ActionRejected { get; } = new("action.rejected", 1);
     public static EventKind CellarSealed { get; } = new("cellar.sealed", 1);
@@ -237,6 +248,7 @@ public static class BoardEventKinds
             "action.observe" => ObserveRequested,
             "action.take" => TakeRequested,
             "action.give" => GiveRequested,
+            "action.use" => UseRequested,
             _ => UnknownActionRequested,
         };
 
@@ -247,6 +259,7 @@ public static class BoardEventKinds
         kind == ObserveRequested ||
         kind == TakeRequested ||
         kind == GiveRequested ||
+        kind == UseRequested ||
         kind == UnknownActionRequested;
 }
 
@@ -274,35 +287,49 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
                     DecisionSequence = requested.DecisionNumber,
                 }),
             ({ } kind, ActorDepartedEvent departed) when kind == BoardEventKinds.ActorDeparted =>
-                UpdateActor(world, departed.ActorId, actor => CompleteAction(actor) with
-                {
-                    Activity = new BoardActivity(
-                        BoardActivityKind.Travel,
-                        departed.ArriveAt,
-                        departed.DestinationId),
-                    PlaceId = departed.OriginId,
-                }),
+                UpdateActor(world, departed.ActorId, actor =>
+                    AddFacts(CompleteAction(actor) with
+                    {
+                        Activity = new BoardActivity(
+                            BoardActivityKind.Travel,
+                            departed.ArriveAt,
+                            departed.DestinationId),
+                        PlaceId = departed.OriginId,
+                    }, [LastOutcome(
+                        $"Your travel to {departed.DestinationId} was accepted; arrival is pending.")])),
             ({ } kind, ActorArrivedEvent arrived) when kind == BoardEventKinds.ActorArrived =>
-                UpdateActor(world, arrived.ActorId, actor => CompleteActivity(actor) with
-                {
-                    PlaceId = arrived.DestinationId,
-                }),
+                UpdateActor(world, arrived.ActorId, actor =>
+                    AddFacts(CompleteActivity(actor) with
+                    {
+                        PlaceId = arrived.DestinationId,
+                    }, [LastOutcome($"You successfully arrived at {arrived.DestinationId}.")])),
             ({ } kind, ActorWaitStartedEvent waited) when kind == BoardEventKinds.ActorWaitStarted =>
-                UpdateActor(world, waited.ActorId, actor => CompleteAction(actor) with
-                {
-                    Activity = new BoardActivity(BoardActivityKind.Wait, waited.CompleteAt),
-                }),
+                UpdateActor(world, waited.ActorId, actor =>
+                    AddFacts(CompleteAction(actor) with
+                    {
+                        Activity = new BoardActivity(BoardActivityKind.Wait, waited.CompleteAt),
+                    }, [LastOutcome(
+                        $"Your wait was accepted until model time {waited.CompleteAt.Ticks}ms.")])),
             ({ } kind, ActorWaitedEvent waited) when kind == BoardEventKinds.ActorWaited =>
-                UpdateActor(world, waited.ActorId, CompleteActivity),
+                UpdateActor(world, waited.ActorId, actor =>
+                    AddFacts(CompleteActivity(actor), [LastOutcome(
+                        $"You successfully finished waiting at model time " +
+                        $"{domainEvent.Timestamp.ModelTime.Ticks}ms.")])),
             ({ } kind, ActorSpokeEvent spoke) when kind == BoardEventKinds.ActorSpoke =>
                 ApplySpoke(world, spoke),
             ({ } kind, ActorObservedEvent observed) when kind == BoardEventKinds.ActorObserved =>
                 UpdateActor(world, observed.ActorId, actor =>
-                    AddFacts(CompleteAction(actor), observed.LearnedFacts)),
+                    AddFacts(
+                        CompleteAction(actor),
+                        observed.LearnedFacts.Append(LastOutcome(
+                            $"You successfully observed the current place; " +
+                            $"the event reported {observed.LearnedFacts.Count} visible facts.")))),
             ({ } kind, ObjectTakenEvent taken) when kind == BoardEventKinds.ObjectTaken =>
                 ApplyTaken(world, taken),
             ({ } kind, ObjectGivenEvent given) when kind == BoardEventKinds.ObjectGiven =>
                 ApplyGiven(world, given),
+            ({ } kind, ChestOpenedEvent opened) when kind == BoardEventKinds.ChestOpened =>
+                ApplyChestOpened(world, opened),
             ({ } kind, ObjectContentionResolvedEvent resolved)
                 when kind == BoardEventKinds.ObjectContentionResolved =>
                 ApplyContention(world, resolved),
@@ -321,6 +348,8 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         var learnedFacts = new List<BoardFact>
         {
             RejectedActionFact(rejected.RejectedIntent, rejected.Reason),
+            LastOutcome($"Your {rejected.RejectedIntent.ActionKind.Id} action was rejected: " +
+                $"{rejected.Reason}."),
         };
         if (rejected.RejectedIntent.ActionKind == ActionKinds.Travel &&
             rejected.RejectedIntent.DestinationId == BoardIds.Cellar &&
@@ -354,10 +383,32 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         BoardFact? sharedFact = spoke.SharedFactKind is null
             ? null
             : speaker.KnownFacts.Single(fact => fact.Kind == spoke.SharedFactKind);
-        FirstBoardWorld afterSpeaker = UpdateActor(world, spoke.ActorId, CompleteAction);
-        return sharedFact is null
-            ? afterSpeaker
-            : UpdateActor(afterSpeaker, spoke.TargetActorId, actor => AddFacts(actor, [sharedFact]));
+        FirstBoardWorld afterSpeaker = UpdateActor(world, spoke.ActorId, actor =>
+            AddFacts(CompleteAction(actor), [LastOutcome(
+                $"You successfully spoke to {spoke.TargetActorId}: {spoke.Text}")]));
+        return UpdateActor(afterSpeaker, spoke.TargetActorId, actor =>
+        {
+            var facts = new List<BoardFact>
+            {
+                new(
+                    BoardIds.DialogueHeard,
+                    spoke.ActorId,
+                    $"{spoke.ActorId} said to you: {spoke.Text}"),
+            };
+            if (sharedFact is not null)
+            {
+                facts.Add(sharedFact);
+            }
+
+            if (actor.Activity?.Kind == BoardActivityKind.Wait)
+            {
+                facts.Add(LastOutcome(
+                    $"Your wait was interrupted because {spoke.ActorId} spoke to you."));
+                actor = CompleteActivity(actor);
+            }
+
+            return AddFacts(actor, facts);
+        });
     }
 
     private static FirstBoardWorld ApplyTaken(FirstBoardWorld world, ObjectTakenEvent taken)
@@ -369,7 +420,11 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
             OwnerActorId = actor.Id,
         });
         return UpdateActor(updated, taken.ActorId, current =>
-            AddFacts(CompleteAction(current), [KeyLocationFact()]));
+            AddFacts(CompleteAction(current),
+            [
+                KeyLocationFact(),
+                LastOutcome($"You successfully took {taken.ObjectId}."),
+            ]));
     }
 
     private static FirstBoardWorld ApplyGiven(FirstBoardWorld world, ObjectGivenEvent given)
@@ -380,8 +435,28 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
             PlaceId = null,
             OwnerActorId = target.Id,
         });
-        updated = UpdateActor(updated, given.ActorId, CompleteAction);
+        updated = UpdateActor(updated, given.ActorId, actor =>
+            AddFacts(CompleteAction(actor), [LastOutcome(
+                $"You successfully gave {given.ObjectId} to {given.TargetActorId}.")]));
         return UpdateActor(updated, given.TargetActorId, actor => AddFacts(actor, [KeyLocationFact()]));
+    }
+
+    private static FirstBoardWorld ApplyChestOpened(
+        FirstBoardWorld world,
+        ChestOpenedEvent opened)
+    {
+        FirstBoardWorld updated = world with { ChestOpened = true };
+        return UpdateActor(updated, opened.ActorId, actor =>
+            AddFacts(CompleteAction(actor),
+            [
+                new BoardFact(
+                    BoardIds.ChestContainsLetter,
+                    BoardIds.LockedChest,
+                    "The opened chest contains the duchess's letter."),
+                LastOutcome(
+                    $"You successfully used {opened.KeyObjectId} to open {opened.ObjectId} " +
+                    "and found the duchess's letter."),
+            ]));
     }
 
     private static FirstBoardWorld ApplyContention(
@@ -397,8 +472,13 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         foreach (long actorId in resolved.CompetitorActorIds)
         {
             updated = UpdateActor(updated, actorId, actor => actorId == resolved.WinnerActorId
-                ? AddFacts(CompleteAction(actor), [KeyLocationFact()])
-                : CompleteAction(actor));
+                ? AddFacts(CompleteAction(actor),
+                [
+                    KeyLocationFact(),
+                    LastOutcome($"You won the contention and took {resolved.ObjectId}."),
+                ])
+                : AddFacts(CompleteAction(actor), [LastOutcome(
+                    $"You tried to take {resolved.ObjectId}, but another actor won the contention.")]));
         }
 
         return updated;
@@ -446,6 +526,9 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
 
     private static BoardFact KeyLocationFact() =>
         new(BoardIds.KeyLocationKnown, BoardIds.BrassKey, "The brass key is in an actor's possession.");
+
+    private static BoardFact LastOutcome(string text) =>
+        new(BoardIds.LastActionOutcome, RelatedId: null, Text: text);
 
     private static FirstBoardWorld UpdateActor(
         FirstBoardWorld world,

@@ -2,13 +2,13 @@
 
 **用途:跨会话/跨 agent 的工作交接快照。任何接手本项目的 coding agent 会话(无论 Copilot、codex 还是其他),在开工前读此文件恢复完整工作状态。本文档不假设你拥有之前任何会话的记忆。**
 
-**本版:2026-08-17,codex 完成 WP15。状态:第一阶段(WP0–WP11)+ 两轮攻击性评审修复(A1–A10、S1–S14)+ 第二阶段 WP12(LLM Player 设计研究)、WP13(src/Player.Llm 骨架)、WP14(真 LLM 后端双 adapter)、WP15(FirstBoard 真 LLM demo)完成;主 slnx 199 / Local.slnx 213 测试绿;下一步 WP16(对话反应、成功动作回执与动作词汇表探索)。**
+**本版:2026-08-17,codex 完成 WP16。状态:第一阶段(WP0–WP11)+ 两轮攻击性评审修复(A1–A10、S1–S14)+ 第二阶段 WP12–WP16 完成;主 slnx 202 / Local.slnx 216 测试绿;下一步 WP17(把谈判接到可执行的世界所有权变化)。**
 
 ---
 
 ## 1. 项目与接手者角色
 
-- 项目:DramaBoard(戏剧棋盘)——AI Player 参与的沙盒戏剧棋类。已建成:确定性 event-sourced Simulation Kernel + Protocol DTO + Host 决策编排 + FirstBoard 场景 + atelia 落盘 adapter + 双真后端 LLM Player + 可运行戏剧记录 demo。当前目标:基于首场观感补足真正的角色互动闭环。
+- 项目:DramaBoard(戏剧棋盘)——AI Player 参与的沙盒戏剧棋类。已建成:确定性 event-sourced Simulation Kernel + Protocol DTO + Host 决策编排 + FirstBoard 场景 + atelia 落盘 adapter + 双真后端 LLM Player + 可运行戏剧记录 demo。当前目标:让已成立的真实多轮谈判能兑现为世界动作与后果。
 - repo:`e:\repos\drama-board`(正式名与目录名均为 DramaBoard;旧交接曾误记为 dream-board)。
 - 接手者工作模式:按"自主循环协议"(002 顶部)每轮自主规划→实现→验收→commit→更新状态表与"下一轮建议"→汇报。之前的主线会话把实现派发给 subagent;如果你是单会话 agent(如 codex),直接自己实现+自我验收即可,协议其余部分不变。方向级决策点:列选项+你的倾向,先按倾向推进不阻塞,用户异步纠偏。
 - **基调(用户明示,持续有效)**:第二阶段是探索性快速原型,**探索可能性优于严谨性与可审计性**——测试覆盖关键路径即可,不追求 property/快照级锁定,不预留抽象。但第一阶段已建成的确定性/event-sourcing 不变量不得破坏(它们是已交付资产,不是未来约束)。
@@ -18,10 +18,10 @@
 以本节顺序为准（002 顶部的"前提文档"清单是历史派发用语）。协议中提到的"repo memory"是前任 Copilot 会话的私有设施，内容已并入本文档，无此设施的 agent 跳过即可。
 
 1. `docs/研发计划_002_工作包分解.md` — **最重要**:自主循环协议(顶部)、状态表(WP 备注=设计裁决留档)、"下一轮建议"。
-2. `docs/研发计划_005_LLM_Player设计研究.md` — **当前阶段执行依据**:三大设计问题(Observation/Action/内部状态)的裁决与依据、后端接入与成本策略、WP13–WP16 路线。
+2. `docs/研发计划_005_LLM_Player设计研究.md` — **当前阶段执行依据**:三大设计问题(Observation/Action/内部状态)的裁决与依据、后端接入与成本策略、WP13–WP17 路线。
 3. `docs/研发计划_001_架构基线与决策记录.md` — D1–D9(D1 纯函数零依赖、D2 事件链是 authority、D9 强制 event-sourcing + EventKind envelope)。
 4. `docs/研发计划_003_Kernel攻击性评审_2026-08-16.md`(A1–A10,全修)与 `docs/研发计划_004_Host落盘层攻击性评审_2026-08-17.md`(S1–S14,全修;头部有修复 commit 对照)——两轮评审的发现模式对后续开发有预警价值。
-5. `git log --oneline -20`;干活前跑 `dotnet test DramaBoard.slnx` 确认基线(199 绿;Local.slnx 213 绿,含 atelia 落盘集成)。
+5. `git log --oneline -20`;干活前跑 `dotnet test DramaBoard.slnx` 确认基线(202 绿;Local.slnx 216 绿,含 atelia 落盘集成)。
 6. 设计愿景按需:`docs/开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md`(Kernel 语义之源)、`开放世界棋盘游戏设计_002_整体软件架构与技术栈.md`(Host/Player/Protocol 边界、§3.1 信息不对称是 Core 规则、§9 版本语义)、`Design Note 001`(游戏愿景)、`基础设施.md`(不变量清单、"架构攻击者"方法论出处)。**注意：愿景文档中的早期技术选型（MonoGame、StateJournal 脊柱、μ0–μ4 相位、基础设施.md 的项目切分建议）已被 ADR（D1–D9）与 002 状态表取代，冲突时以后者为准。**
 
 ## 3. 系统全景(认知快照)
@@ -42,22 +42,22 @@
 - SourceId 一律由世界持久实体 id 派生;动态实体生死=世界状态变化(Kernel 零改动支持)。
 
 ### Protocol(src/Protocol,零依赖,不引用 Kernel)
-- DTO:DecisionRequest(含 LineageId/Microstep/Reason/**RejectedIntent 回带**/AvailableActions)、PlayerDecision、Intent(扁平,六动作表达力锁定,**数值域校验** S9)、ExpectedOutcome、Observation(含 Microstep)、KnownFact、AvailableAction。时间/版本用原始 long(DTO=wire 形状)。JSON round-trip 锁定。
+- DTO:DecisionRequest(含 LineageId/Microstep/Reason/**RejectedIntent 回带**/AvailableActions)、PlayerDecision、Intent(扁平,七动作:travel/wait/talk/observe/take/give/use,**数值域校验** S9)、ExpectedOutcome、Observation(含 Microstep)、KnownFact、AvailableAction。时间/版本用原始 long(DTO=wire 形状)。JSON round-trip 锁定。
 
 ### Host(src/Host,引用 Kernel+Protocol,零领域内容)
 - IPlayerDriver:Null/Scripted/**Random(坐标寻址,同 request 幂等,S12)**。
 - **PlayerDecisionSession=同刻决策屏障模式**(β,推翻早期"逐个提交"):停机批次=同刻决策集合,同一快照构造全部请求(彼此不知情)→ 全部问 driver → 整批 externalInputs 一次提交;决策三态(Open/Answered/Invalidated)会话字段,**取消/异常可恢复**(未提交批次不污染状态,重入续问 Open);验证失败重问一次;requestBuilder 可返回 null(Invalidated:StaleRequest);**拒绝预算**超阈强制降级 wait(rejectionSelector 注入,S2);重入防护(S14);Host 级切分等价成立(S5)。
 
 ### FirstBoard(src/FirstBoard,BCL-only 正式运行时项目)
-- tavern/market/cellar、Alice/Bob、brass-key、secret(持钥匙在地窖 Observe 才发现)、60min deadline(地窖封)。六动作。Intent 校验在 system(非法尝试→action.rejected 入 journal)。
-- **信念层**(α):affordance 只由 actor.KnownFacts 计算(封闭须先知情才影响选项);拒绝写入 KnownFact+LastRejectedIntent;placed/carried 可见性(携带物仅持有者可见);WP15 增加 `object.held` Observation fact,让持有者明确区分“自己携带”与“地上可见”。原测试项目现只放测试/RecordingPlayerDriver;落盘测试直接引用正式项目。
+- tavern/market/cellar、Alice/Bob、brass-key、locked-chest、60min deadline(地窖封)。七动作;`action.use` 让持钥匙者在开放地窖提交 `chest.opened`,密信事实不再由 Observe 隐式解锁。Intent 校验在 system(非法尝试→action.rejected 入 journal)。
+- **信念/反应层**(α+WP16):affordance 只由 actor.KnownFacts 计算;拒绝与每次完成事件投影单值 `action.last-outcome`;placed/carried 可见性(携带物仅持有者可见);`object.held` 明示自持物。talk 向听者写最后一条 `dialogue.heard`;若听者在 wait,事件 reducer 中断 wait,常规 DecisionSchedulingSystem 自然唤醒;travel 不打断,抵达后仍能读到台词。原测试项目现只放测试/RecordingPlayerDriver;落盘测试直接引用正式项目。
 
 ### Journal.Atelia(src/Journal.Atelia,唯一碰 atelia)
 - AteliaJournalSink:IJournalSink+IDisposable;写路径 AppendEventFrame(utc=0 确定性)+批级 AdvanceRef(**一批一帧**,半批崩溃=不可见 orphan);内存镜像;OpenAndReplay(残批防御性截断);ForkBranch 只接受批次边界;**lineage 元帧**(LineageId/parent/fork prefix 落盘校验)。
 - **envelope v2**(JSON,固定 key 序,双目录字节逐位相等已验证):v/t{ms,us}/c{k,s,cid,due,b}/kind{id,ver}/**pc**(codec 标识)/**bi/bc**(批内序号/批大小)/p(base64)。v1 拒读。
 - 反序列化委托收 EventKind(upcaster 挂载点);CursorSnapshotEnvelopeCodec(读档续跑);FirstBoard 真落盘+读档续跑端到端已验收(多态 payload 用 kind→type 显式映射,评审警告的抽象类静默 {} 已规避)。
 
-### Player.Llm(src/Player.Llm,WP13–WP15,零 NuGet,引用 Protocol+Host)
+### Player.Llm(src/Player.Llm,WP13–WP16,零 NuGet,引用 Protocol+Host)
 - **ILlmChatBackend 最小端口**:`CompleteAsync(LlmChatRequest(System,User), ct) → string`。
 - **PromptRenderer(纯函数,中文)**:system=[角色卡][世界规则+四分节输出格式约定];user=[内心状态(记忆文档)][当前观察][新近变化(KnownFacts diff + RejectedIntent 反馈)][决策请求(AvailableActions 渲染)]。
 - **四分节输出解析器(宽松)**:【独白】【行动】(单 JSON 对象,字段 action/targetActor/targetObject/destination/freeText/durationMs/untilModelTimeMs,大小写不敏感,容忍 ```json 围栏与杂文)【台词】(非空覆盖 freeText)【记忆】(整体替换)。缺【行动】或 JSON 非法=解析失败(返回失败对象不抛异常)。
@@ -65,26 +65,25 @@
 - FirstBoard 集成测试(tests/FirstBoard.Tests/LlmPlayerIntegrationTests.cs):假后端脚本化完整一局——拒绝闭环/台词入事件/记忆演进均验证。
 - **CodexAppServerBackend(主力)**:`CodexAppServerOptions(CommandPath/Model/WorkingDirectory/ReasoningEffort/RequestTimeout)`;无 BOM UTF-8 JSONL;进程复用、调用顺序门控,EOF/畸形/超时/server error 后回收且下次重启;v2 initialize/initialized;每决策 `thread/start(ephemeral=true)`→`turn/start(approval=never,readOnly,no-network)`→取 final agentMessage/turn.completed→`thread/unsubscribe`;所有 approval 反向请求拒绝。真实协议有一条关键竞态:**短 turn 的 item/turn completed 可早于 turn/start response**,实现会提前缓存,测试已锁。
 - **OpenAiCompatBackend(对照)**:构造收 HttpClient/baseUrl/apiKey?/model;POST `{baseUrl}/chat/completions`,system+user 两条 message;只取 `choices[0].message.content`;非 2xx/畸形 response 抛异常;key 不入 repo/错误文本。真 smoke 走 OpenRouter compatible 成功;官方 OpenAI key 本轮返回 429(额度外部状态)。
-- **FirstBoard.Demo**:BCL-only console;运行时选 codex/deepseek(openai-compatible),参数化模型/端点/env key 名/超时/每演员 turn 预算;每成功 turn 立即写 memory snapshot+turns.md,结束写中文 journal+内心轨迹 `drama-record.md`。输出默认在 git ignored `artifacts/wp15/`。
+- **FirstBoard.Demo**:BCL-only console;运行时选 codex/deepseek(openai-compatible),参数化模型/端点/env key 名/超时/每演员 turn 预算;每成功 turn 立即写 memory snapshot+turns.md,结束写中文 journal+内心轨迹 `drama-record.md`。WP16 角色初始记忆加入最小舞台调度(鲍勃完成任务后回集市、爱丽丝等待一个路程、同场/听见台词后优先回应);输出在 git ignored `artifacts/wp15/`/`wp16/`。
 
 ## 4. 当前状态与后续计划(交接核心)
 
-- **已完成**:WP0–WP15 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12 设计=b16ca21、WP13 实现=c5307a2、WP14=f3d0721。
+- **已完成**:WP0–WP16 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12 设计=b16ca21、WP13=c5307a2、WP14=f3d0721、WP15=930ba78;WP16 commit 见当前 HEAD。
 - **元教训**(评审二核心发现,后续开发警惕):Kernel 层修对的东西没有"继承机制",Host/装配层会重蹈覆辙(S4 重现 A2、S3 架空 A4、S11 架空 A7)——**修复时优先把约定变机制**(如 EventKind 相等语义)。
 - 残留风险(已留档 002,不阻塞主线):checkpoint 与 journal head 无统一事务;orphan 帧无 GC;LineageId 全局唯一性靠调用方;FirstBoard 手写 codec 新增事件需同步。
 
-### 下一步:WP16 对话反应 + 成功动作回执
+### 下一步:WP17 谈判到世界后果
 
-WP15 实测资料（均同 seed、每演员 8 turn 上限）:
-- DeepSeek `deepseek-v4-flash`:代表场 67 events / 16 parsed turns / 约 87s;Codex `gpt-5.6-luna(low)`:61 events / 16 parsed turns / 约 188s。两者 32 turns 合计 0 次格式重试,说明 parser/格式约定不是当前瓶颈。
-- 已做两项便宜修正:system prompt 明示无变化时重复 observe 不会发现更深线索;FirstBoard 投影 `object.held` 明示自持物。前者减少 DeepSeek observe 循环,后者修正鲍勃“已经拿钥匙却以为在别人手里”。
-- 两后端都能产出稳定角色独白和带立场的谈判台词;Codex 延迟约为本轮最快 DeepSeek 场的 2.2×,但样本太少不作模型优劣结论。
+WP16 四场真模型资料(同 seed;全部 88 turns 均解析尝试=1):
+- 原始提示/每演员 12 turn:DeepSeek 101 events/24 turns/约 363s,5min 开箱,45min talk 唤醒已耗尽预算的爱丽丝;Codex 97/24/约 237s,5min 开箱但双方持续错身。说明 `use` 与 reaction 机制成立,相遇压力不足。
+- 舞台调度提示/每演员 10 turn:DeepSeek 75/20/约 225s,12min 形成连续谈判(该样本为等人而未开箱);Codex 71/20/约 246s,5min 开箱、10min 形成连续谈判。两者听者的下一记忆均准确引用对方原话;Codex 同场议价一直持续到 turn 预算。
+- 关键发现:硬编码“回集市/等一个路程”能制造戏剧接触,但会与任务推进竞争;更直接的新瓶颈是角色谈到密信/银币/定金,世界却只有 key object 与 secret fact,没有可交付的 letter/coin,所以现有 `give` 无法兑现谈判。
 
-优先机制方向(未否决按倾向推进):
-1. **听者反应**:talk 目前只完成说话者动作;目标若在 wait/travel 中不会被唤醒,于是说话者连续发问。A=FirstBoard 领域事件记录 heard dialogue、打断可中断 activity 并触发目标决策;B=Host 特判 talk。**倾向 A**,因为这是 Board 戏剧规则且应进入 journal。
-2. **成功动作回执**:无新增 KnownFact 的 observe/wait 等成功动作没有回到下轮 prompt,角色会误以为“尚未做”。A=driver 见无 RejectedIntent 就推断上次成功;B=Board 动作完成事件投影权威 outcome fact。**倾向 B**,避免 Player 自行猜 authority。
-3. **动作表达力**:LLM 一致期待 `open/use` 处理锁箱,六动作只能用“携钥匙 observe 即发现”隐喻。完成 1/2 后比较新增最小 `action.use` 与继续提示词映射;**倾向新增 use**以主动探索动作词汇表边界。
-4. 完成后两后端各跑一场往返谈判;再看是否需要导演事件/分层调度/记忆压缩。005 §6 既定倾向仍有效:独白向观众展示、prompt/记忆用中文。
+WP17 方向(未否决按倾向推进):
+1. A=新增原子 `action.trade`/契约系统;B=把密信与银币物化为持有对象,复用 `give` 做非原子交换;C=Director 在口头成交后直接改世界。**倾向 B**:机制最少,且保留先付、违约、背叛的戏剧可能。
+2. 真模型验收:开箱→相遇→议价→至少一次实际 `give`→对方下一请求看到所有权变化。不要为测试闭合设计通用交易抽象。
+3. 后续再立 WP18 比较:保留角色级舞台提示 vs journaled scene cue/Director;倾向 scene cue,但先让当前谈判能落地。005 §6 既定倾向仍有效:独白向观众展示、prompt/记忆用中文。
 
 ## 5. 工作方式约定与红线(实践验证)
 

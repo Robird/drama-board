@@ -107,6 +107,7 @@ public sealed class ActionResolutionSystem :
             "action.observe" => ResolveObserve(world, actor),
             "action.take" => ResolveTake(world, actor, submitted.Intent),
             "action.give" => ResolveGive(world, actor, submitted.Intent),
+            "action.use" => ResolveUse(world, actor, submitted.Intent),
             _ => Reject(actor, submitted.Intent, "unknown action kind"),
         };
     }
@@ -249,12 +250,12 @@ public sealed class ActionResolutionSystem :
                 "cellar.locked-chest-visible",
                 BoardIds.LockedChest,
                 "A locked chest is visible in the cellar."));
-            if (!world.CellarSealed && ActorOwns(world, actor, BoardIds.BrassKey))
+            if (world.ChestOpened)
             {
                 facts.Add(new BoardFact(
                     BoardIds.ChestContainsLetter,
                     BoardIds.LockedChest,
-                    "The locked chest contains the duchess's letter."));
+                    "The opened chest contains the duchess's letter."));
             }
         }
 
@@ -351,6 +352,41 @@ public sealed class ActionResolutionSystem :
         return Result(
             BoardEventKinds.ObjectGiven,
             new ObjectGivenEvent(actor.Key, target.Key, item.Key));
+    }
+
+    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveUse(
+        FirstBoardWorld world,
+        BoardActor actor,
+        Intent intent)
+    {
+        if (intent.TargetObjectId != BoardIds.LockedChest)
+        {
+            return Reject(actor, intent, "target object cannot be used here");
+        }
+
+        if (!world.IsPresent(actor) || actor.PlaceId != BoardIds.Cellar)
+        {
+            return Reject(actor, intent, "locked chest is not at the actor's current place");
+        }
+
+        if (world.CellarSealed)
+        {
+            return Reject(actor, intent, "cellar is sealed");
+        }
+
+        if (world.ChestOpened)
+        {
+            return Reject(actor, intent, "locked chest is already open");
+        }
+
+        if (!ActorOwns(world, actor, BoardIds.BrassKey))
+        {
+            return Reject(actor, intent, "actor does not hold the brass key");
+        }
+
+        return Result(
+            BoardEventKinds.ChestOpened,
+            new ChestOpenedEvent(actor.Key, BoardIds.LockedChest, BoardIds.BrassKey));
     }
 
     private static IEnumerable<BoardObject> VisibleObjects(FirstBoardWorld world, BoardActor observer) =>

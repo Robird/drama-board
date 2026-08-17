@@ -12,6 +12,7 @@ public sealed class IntentJsonTests
         new Intent(ActionKinds.Observe, TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Take, TargetActorId: "actor.bob", TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Give, TargetActorId: "actor.bob", TargetObjectId: "object.letter"),
+        new Intent(ActionKinds.Use, TargetObjectId: "object.locked-chest"),
     };
 
     [Theory]

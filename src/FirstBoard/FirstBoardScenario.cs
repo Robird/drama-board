@@ -145,7 +145,7 @@ public static class FirstBoardScenario
                 item.OwnerActorId?.ToString(CultureInfo.InvariantCulture),
                 item.ContentionRound.ToString(CultureInfo.InvariantCulture))));
         return FormattableString.Invariant(
-            $"seed={world.WorldSeed};sealed={world.CellarSealed};actors={actors};objects={objects}");
+            $"seed={world.WorldSeed};sealed={world.CellarSealed};chestOpened={world.ChestOpened};actors={actors};objects={objects}");
     }
 
     public static string[] EventSnapshots(InMemoryJournal<BoardEventPayload> journal) =>
@@ -265,6 +265,16 @@ public static class FirstBoardScenario
                 .OrderBy(item => item.Id)
                 .Select(item => item.Key),
         ];
+        if (actor.PlaceId == BoardIds.Cellar &&
+            !world.CellarSealed &&
+            !world.ChestOpened &&
+            heldObjects.Contains(BoardIds.BrassKey, StringComparer.Ordinal))
+        {
+            actions.Add(new AvailableAction(
+                ActionKinds.Use,
+                CandidateObjectIds: [BoardIds.LockedChest]));
+        }
+
         if (heldObjects.Length > 0 && targetActors.Length > 0)
         {
             actions.Add(new AvailableAction(
@@ -337,6 +347,8 @@ public static class FirstBoardScenario
             ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
             ObjectGivenEvent given =>
                 $"actor={given.ActorId} target={given.TargetActorId} object={given.ObjectId}",
+            ChestOpenedEvent opened =>
+                $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
             ObjectContentionResolvedEvent contention =>
                 $"object={contention.ObjectId} competitors=" +
                 $"{string.Join(",", contention.CompetitorActorIds)} winner={contention.WinnerActorId} " +

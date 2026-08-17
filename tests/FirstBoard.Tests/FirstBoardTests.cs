@@ -1,5 +1,6 @@
 using DramaBoard.Host;
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
@@ -67,6 +68,7 @@ public sealed class FirstBoardTests
         Assert.Equal(BoardIds.Cellar, alice.PlaceId);
         Assert.Equal(BoardIds.Tavern, bob.PlaceId);
         Assert.Equal(alice.Id, brassKey.OwnerActorId);
+        Assert.True(world.ChestOpened);
         Assert.Contains(alice.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
         Assert.DoesNotContain(bob.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
         Assert.Contains(bob.KnownFacts, fact => fact.Kind == BoardIds.KeyLocationKnown);
@@ -83,8 +85,8 @@ public sealed class FirstBoardTests
                 "action.travel-requested",
                 "actor.departed",
                 "actor.arrived",
-                "action.observe-requested",
-                "actor.observed",
+                "action.use-requested",
+                "chest.opened",
             ],
             AliceKeyHistory(capture.Run.Journal));
 
@@ -105,6 +107,9 @@ public sealed class FirstBoardTests
         Assert.Contains(BoardIds.LockedChest, aliceLast.Observation.VisibleObjectIds);
         Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.ChestContainsLetter);
+        Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
+            fact.FactKind.Id == BoardIds.LastActionOutcome &&
+            fact.Text.Contains("found the duchess's letter", StringComparison.Ordinal));
         Assert.DoesNotContain(bobLast.Observation.KnownFacts, fact =>
             fact.FactKind.Id == BoardIds.ChestContainsLetter);
     }
@@ -247,6 +252,92 @@ public sealed class FirstBoardTests
             fact.FactKind.Id == BoardIds.ObjectHeld &&
             fact.RelatedId == BoardIds.BrassKey &&
             fact.Text.Contains("You are carrying", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TalkEvent_AwakensWaitingListenerAndMakesDialogueAuthoritativeInput()
+    {
+        FirstBoardWorld world = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 33));
+        world = world with
+        {
+            Actors = Array.AsReadOnly(world.Actors
+                .Select(actor => actor.Key switch
+                {
+                    BoardIds.Alice => actor with
+                    {
+                        PendingAction = new SubmittedAction(
+                            "decision.alice.1",
+                            new Intent(
+                                ActionKinds.Talk,
+                                TargetActorId: BoardIds.Bob,
+                                FreeText: "Meet me in the cellar.")),
+                    },
+                    BoardIds.Bob => actor with
+                    {
+                        Activity = new BoardActivity(
+                            BoardActivityKind.Wait,
+                            new ModelTime(600_000)),
+                    },
+                    _ => actor,
+                })
+                .ToArray()),
+        };
+        var spokeEvent = new DomainEvent<BoardEventPayload>(
+            new LogicalTimestamp(new ModelTime(10_000), new Microstep(0)),
+            EventCause.FromExternalInput(batchOrdinal: 0),
+            BoardEventKinds.ActorSpoke,
+            new ActorSpokeEvent(
+                BoardIds.Alice,
+                BoardIds.Bob,
+                "Meet me in the cellar.",
+                SharedFactKind: null));
+
+        FirstBoardWorld updated = new FirstBoardReducer().Apply(world, spokeEvent);
+        BoardActor bob = updated.Actor(BoardIds.Bob);
+
+        Assert.Null(bob.Activity);
+        Assert.Contains(bob.KnownFacts, fact =>
+            fact.Kind == BoardIds.DialogueHeard &&
+            fact.RelatedId == BoardIds.Alice &&
+            fact.Text.Contains("Meet me in the cellar", StringComparison.Ordinal));
+        Assert.Contains(bob.KnownFacts, fact =>
+            fact.Kind == BoardIds.LastActionOutcome &&
+            fact.Text.Contains("wait was interrupted", StringComparison.Ordinal));
+
+        var scheduler = new DecisionSchedulingSystem();
+        EventCandidate<BoardCandidate> candidate = Assert.Single(
+            scheduler.ForecastNext(updated, spokeEvent.Timestamp.ModelTime));
+        IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> decisions =
+            scheduler.Resolve(updated, candidate);
+        Assert.Contains(decisions, item =>
+            Assert.IsType<DecisionRequestedEvent>(item.Payload).ActorId == BoardIds.Bob);
+    }
+
+    [Fact]
+    public void BuildRequest_KeyHolderInCellar_CanUseLockedChest()
+    {
+        FirstBoardWorld world = FirstBoardWorld.CreateInitial(worldSeed: 35);
+        BoardActor alice = world.Actor(BoardIds.Alice);
+        world = world with
+        {
+            Actors = Array.AsReadOnly(world.Actors
+                .Select(actor => actor.Key == BoardIds.Alice
+                    ? actor with { PlaceId = BoardIds.Cellar }
+                    : actor)
+                .ToArray()),
+            Objects = Array.AsReadOnly(world.Objects
+                .Select(item => item.Key == BoardIds.BrassKey
+                    ? item with { PlaceId = null, OwnerActorId = alice.Id }
+                    : item)
+                .ToArray()),
+        };
+
+        DecisionRequest request = RequestFor(world, BoardIds.Alice);
+
+        AvailableAction use = Assert.Single(
+            request.AvailableActions,
+            action => action.ActionKind == ActionKinds.Use);
+        Assert.Equal([BoardIds.LockedChest], use.CandidateObjectIds);
     }
 
     [Fact]
@@ -424,8 +515,9 @@ public sealed class FirstBoardTests
         Assert.Contains(
             "actor.spoke actor=alice target=bob text=fact:key.location-known",
             history);
-        Assert.Contains("actor.observed actor=alice facts=", history);
-        Assert.Contains(BoardIds.ChestContainsLetter, history);
+        Assert.Contains(
+            "chest.opened actor=alice object=locked-chest key=brass-key",
+            history);
         Assert.Contains("3600000:0 cellar.sealed place=cellar", history);
     }
 
@@ -440,7 +532,9 @@ public sealed class FirstBoardTests
                 TargetActorId: BoardIds.Bob,
                 FreeText: $"fact:{BoardIds.KeyLocationKnown}")),
             request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)),
-            request => Decide(request, new Intent(ActionKinds.Observe)),
+            request => Decide(request, new Intent(
+                ActionKinds.Use,
+                TargetObjectId: BoardIds.LockedChest)),
             request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
         ]));
         var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
@@ -501,6 +595,7 @@ public sealed class FirstBoardTests
             ObjectTakenEvent taken => taken.ActorId == BoardIds.Alice,
             ActorSpokeEvent spoke => spoke.ActorId == BoardIds.Alice,
             ActorObservedEvent observed => observed.ActorId == BoardIds.Alice,
+            ChestOpenedEvent opened => opened.ActorId == BoardIds.Alice,
             _ => false,
         };
 

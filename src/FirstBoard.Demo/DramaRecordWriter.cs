@@ -32,6 +32,7 @@ internal static class DramaRecordWriter
             .AppendLine("## 世界终局")
             .AppendLine()
             .Append("- 地窖：").AppendLine(capture.Result.World.CellarSealed ? "已封闭" : "仍开放")
+            .Append("- 锁箱：").AppendLine(capture.Result.World.ChestOpened ? "已打开" : "仍上锁")
             .Append("- 黄铜钥匙：").AppendLine(ObjectLocation(capture.Result.World))
             .Append("- 爱丽丝：").AppendLine(ActorSummary(capture.Result.World, BoardIds.Alice))
             .Append("- 鲍勃：").AppendLine(ActorSummary(capture.Result.World, BoardIds.Bob))
@@ -76,6 +77,7 @@ internal static class DramaRecordWriter
             "action.observe" => "观察四周",
             "action.take" => $"拿取 {DisplayObject(intent.TargetObjectId)}",
             "action.give" => $"把 {DisplayObject(intent.TargetObjectId)} 交给 {DisplayActor(intent.TargetActorId)}",
+            "action.use" => $"使用 {DisplayObject(intent.TargetObjectId)}",
             _ => intent.ActionKind.Id,
         };
 
@@ -100,6 +102,9 @@ internal static class DramaRecordWriter
                 $"{DisplayActor(value.ActorId)}拿到了{DisplayObject(value.ObjectId)}。",
             ObjectGivenEvent value =>
                 $"{DisplayActor(value.ActorId)}把{DisplayObject(value.ObjectId)}交给{DisplayActor(value.TargetActorId)}。",
+            ChestOpenedEvent value =>
+                $"{DisplayActor(value.ActorId)}用{DisplayObject(value.KeyObjectId)}打开了" +
+                $"{DisplayObject(value.ObjectId)}，找到了公爵夫人的密信。",
             ObjectContentionResolvedEvent value =>
                 $"众人争抢{DisplayObject(value.ObjectId)}，最终由演员 #{value.WinnerActorId} 得手。",
             ActionRejectedEvent value =>

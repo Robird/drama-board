@@ -135,7 +135,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP16）
+## 5. WP 切分草案（WP12–WP17）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -143,7 +143,8 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP13 | src/Player.Llm 骨架：PromptRenderer（含 KnownFacts diff）+ 输出解析器 + 认知循环（LlmPlayerDriver）+ 记忆文档读写（勘注：实际交付为内存态 + CurrentMemory 只读访问，落盘移至 WP15 harness）；全部纯逻辑 + 假后端单测 | WP12 | 主 slnx 测试绿；渲染/解析双向锁定；假后端跑通 FirstBoard 一局（脚本化 LLM 输出） |
 | WP14 | 两个真后端 adapter：CodexAppServerBackend（stdio JSON-RPC，协议细节此时钉死）+ OpenAiCompatBackend | WP13 | 手动连通性验证各一次（真实一问一答）；协议交互有录制样本回归测试 |
 | WP15 | Demo harness（console）：FirstBoard + LlmPlayerDriver 真跑一局，输出**戏剧记录**（journal 叙事 dump + 各角色内心独白轨迹）——顺带吸收此前"journal 可读性工具"穿插件 | WP14 | 真实完整一局跑通；戏剧记录人工可读；质量观感汇报给用户 |
-| WP16 | 质量迭代：prompt 工程、记忆压缩策略、失败模式统计（解析失败率/拒绝率/降级率） | WP15 | 视 WP15 观感定义 |
+| WP16 | 对话反应、权威动作回执、最小 `action.use` 与真模型舞台调度实验 | WP15 | 完成：两个后端均形成真实往返；局部反应闭环进入 Board 事件链 |
+| WP17 | 谈判到世界后果：物化密信/交易筹码，优先复用 `give` 验证非原子交换 | WP16 | 真模型从议价推进到至少一次权威所有权转移；保留违约/背叛可能 |
 
 ## 6. 开放问题
 
