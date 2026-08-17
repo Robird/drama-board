@@ -146,7 +146,7 @@ public sealed class SimulationControlTests
     }
 
     [Fact]
-    public void Run_ExternalInputs_ContinueMicrostepsApplyReducerEnterJournalAndReplay()
+    public void Run_ExternalInputs_MatchingDecisionPredicateCommitWholeBatchAndStop()
     {
         var reducer = new ControlReducer();
         var loop = new SimulationLoop<int, string, ControlEvent>(
@@ -172,8 +172,10 @@ public sealed class SimulationControlTests
             ]);
         int replayed = ReplayHarness.Replay(0, journal.Events, reducer);
 
-        Assert.Equal(StopReason.Exhausted, result.StopReason);
-        Assert.Empty(result.DecisionEvents);
+        Assert.Equal(StopReason.DecisionRequired, result.StopReason);
+        Assert.Equal(
+            ["input-a", "input-b"],
+            result.DecisionEvents.Select(domainEvent => domainEvent.Payload.Name));
         Assert.Equal([2, 3, 4], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
         Assert.All(
             journal.Events.Skip(1),
@@ -181,6 +183,8 @@ public sealed class SimulationControlTests
         Assert.Equal(7, result.World);
         Assert.Equal(result.World, replayed);
         Assert.Equal(new WorldVersion(1, 3), result.Version);
+        Assert.Equal(0, result.TimeAdvanceCount);
+        Assert.Equal(0, result.ResolvedCandidateCount);
     }
 
     [Fact]

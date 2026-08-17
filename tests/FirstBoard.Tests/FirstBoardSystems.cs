@@ -144,17 +144,35 @@ internal sealed class ActionResolutionSystem :
         Intent intent,
         ModelTime now)
     {
-        long duration = intent.UntilModelTimeMs is long until
-            ? checked(until - now.Ticks)
-            : intent.DurationMs ?? BoardTiming.DefaultWaitTicks;
-        if (duration <= 0)
+        ModelTime completeAt;
+        if (intent.UntilModelTimeMs is long until)
         {
-            return Reject(actor, intent.ActionKind, "wait duration must be positive");
+            if (until <= now.Ticks)
+            {
+                return Reject(actor, intent.ActionKind, "wait duration must be positive");
+            }
+
+            completeAt = new ModelTime(until);
+        }
+        else
+        {
+            long duration = intent.DurationMs ?? BoardTiming.DefaultWaitTicks;
+            if (duration <= 0)
+            {
+                return Reject(actor, intent.ActionKind, "wait duration must be positive");
+            }
+
+            if (now.Ticks > long.MaxValue - duration)
+            {
+                return Reject(actor, intent.ActionKind, "wait completion time exceeds the model-time range");
+            }
+
+            completeAt = now + new ModelDuration(duration);
         }
 
         return Result(
             BoardEventKinds.ActorWaitStarted,
-            new ActorWaitStartedEvent(actor.Key, now + new ModelDuration(duration)));
+            new ActorWaitStartedEvent(actor.Key, completeAt));
     }
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveTalk(

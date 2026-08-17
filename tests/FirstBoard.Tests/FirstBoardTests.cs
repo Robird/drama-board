@@ -9,6 +9,51 @@ namespace DramaBoard.FirstBoard.Tests;
 public sealed class FirstBoardTests
 {
     [Fact]
+    public void Reducer_SameEventIdWithNewSchemaVersion_StillRoutes()
+    {
+        FirstBoardWorld world = FirstBoardWorld.CreateInitial(worldSeed: 1);
+        var domainEvent = new DomainEvent<BoardEventPayload>(
+            new LogicalTimestamp(ModelTime.Zero, new Microstep(0)),
+            EventCause.FromExternalInput(batchOrdinal: 0),
+            new EventKind(BoardEventKinds.CellarSealed.Id, version: 2),
+            new CellarSealedEvent());
+
+        FirstBoardWorld updated = new FirstBoardReducer().Apply(world, domainEvent);
+
+        Assert.True(updated.CellarSealed);
+    }
+
+    [Fact]
+    public void WaitWhoseCompletionWouldOverflow_IsRejectedAndLoopContinues()
+    {
+        var reducer = new FirstBoardReducer();
+        var loop = new SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
+            [new ActionResolutionSystem()],
+            reducer);
+        var journal = new InMemoryJournal<BoardEventPayload>();
+        ModelTime now = new(long.MaxValue - 100);
+
+        SimulationRunResult<FirstBoardWorld, BoardEventPayload> result = loop.Run(
+            FirstBoardWorld.CreateInitial(worldSeed: 1),
+            SimulationCursor.CreateInitial(FirstBoardScenario.LineageId, now),
+            now,
+            journal,
+            [FirstBoardScenario.ActionInput(
+                BoardIds.Alice,
+                "overflowing-wait",
+                new Intent(ActionKinds.Wait, DurationMs: 101))]);
+
+        Assert.Equal(StopReason.Exhausted, result.StopReason);
+        Assert.Null(result.World.Actor(BoardIds.Alice).PendingAction);
+        DomainEvent<BoardEventPayload> rejectedEvent = Assert.Single(
+            journal.Events,
+            domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected);
+        Assert.Equal(
+            "wait completion time exceeds the model-time range",
+            Assert.IsType<ActionRejectedEvent>(rejectedEvent.Payload).Reason);
+    }
+
+    [Fact]
     public async Task ScriptedGame_FindsSecret_ReplaysAndPreservesAsymmetricKnowledge()
     {
         ScriptedCapture capture = await RunDiscoveryScriptAsync();
@@ -242,8 +287,8 @@ public sealed class FirstBoardTests
         await FirstBoardScenario.RunAsync(
             new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
             {
-                [BoardIds.Alice] = new RandomPlayerDriver(seed),
-                [BoardIds.Bob] = new RandomPlayerDriver(seed ^ 0x9E3779B97F4A7C15UL),
+                [BoardIds.Alice] = new RandomPlayerDriver(unchecked((long)seed)),
+                [BoardIds.Bob] = new RandomPlayerDriver(unchecked((long)(seed ^ 0x9E3779B97F4A7C15UL))),
             },
             worldSeed: seed,
             new ModelTime(BoardTiming.RandomRunBoundaryTicks));

@@ -67,9 +67,32 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 
         if (externalInputs is { Count: > 0 })
         {
+            List<DomainEvent<TEventPayload>>? committedEvents = _decisionRequestPredicate is null ? null : [];
             EventCause cause = EventCause.FromExternalInput(cursor.NextBatchOrdinal);
-            world = CommitAndApply(externalInputs, cause, world, cursor.Now, journal, ref lastCommittedTimestamp);
+            world = CommitAndApply(
+                externalInputs,
+                cause,
+                world,
+                cursor.Now,
+                journal,
+                ref lastCommittedTimestamp,
+                committedEvents);
             cursor = cursor.RecordExternalInputs();
+
+            DomainEvent<TEventPayload>[] decisionEvents = committedEvents is null
+                ? []
+                : [.. committedEvents.Where(_decisionRequestPredicate!)];
+            if (decisionEvents.Length > 0)
+            {
+                return Result(
+                    world,
+                    cursor,
+                    StopReason.DecisionRequired,
+                    journal,
+                    decisionEvents,
+                    timeAdvanceCount,
+                    resolvedCandidateCount);
+            }
         }
 
         while (true)

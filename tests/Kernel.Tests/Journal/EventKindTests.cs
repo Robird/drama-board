@@ -11,8 +11,30 @@ public sealed class EventKindTests
         var second = new EventKind("timer.fired", 1);
 
         Assert.Equal(first, second);
+        Assert.True(first == second);
         Assert.Equal("timer.fired", first.Id);
         Assert.Equal((ushort)1, first.Version);
+    }
+
+    [Fact]
+    public void Equality_SameIdAcrossVersions_UsesRoutingIdentity()
+    {
+        var versionOne = new EventKind("timer.fired", 1);
+        var versionTwo = new EventKind("timer.fired", 2);
+
+        Assert.Equal(versionOne, versionTwo);
+        Assert.True(versionOne == versionTwo);
+        Assert.Equal(versionOne.GetHashCode(), versionTwo.GetHashCode());
+    }
+
+    [Fact]
+    public void Equality_DifferentIds_AreNotEqual()
+    {
+        var fired = new EventKind("timer.fired", 1);
+        var cancelled = new EventKind("timer.cancelled", 1);
+
+        Assert.NotEqual(fired, cancelled);
+        Assert.True(fired != cancelled);
     }
 
     [Theory]

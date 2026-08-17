@@ -33,6 +33,18 @@ public sealed class StableIdentifierTests
         AssertStringRoundTrip(new FactKind("fact.secret.known"), "fact.secret.known");
     }
 
+    [Fact]
+    public void Constructor_IdentifierLongerThanProtocolLimit_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => new DecisionId(new string('x', 257)));
+    }
+
+    [Fact]
+    public void Constructor_IdentifierContainingControlCharacter_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => new ActionKind("action.\ntravel"));
+    }
+
     private static void AssertStringRoundTrip<T>(T value, string expectedJsonValue)
     {
         string json = JsonSerializer.Serialize(value);

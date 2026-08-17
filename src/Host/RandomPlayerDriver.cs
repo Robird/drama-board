@@ -1,16 +1,17 @@
+using DramaBoard.Kernel.Random;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.Host;
 
-/// <summary>Chooses uniformly from available affordances using a stable SplitMix64 stream.</summary>
+/// <summary>Chooses uniformly from available affordances using stable request-addressed samples.</summary>
 public sealed class RandomPlayerDriver : IPlayerDriver
 {
-    private ulong _state;
+    private readonly long _seed;
 
     /// <summary>Initializes a deterministic random Player from an explicit seed.</summary>
-    public RandomPlayerDriver(ulong seed)
+    public RandomPlayerDriver(long seed)
     {
-        _state = seed;
+        _seed = seed;
     }
 
     /// <inheritdoc />
@@ -23,7 +24,9 @@ public sealed class RandomPlayerDriver : IPlayerDriver
 
         Intent intent = request.AvailableActions.Count == 0
             ? new Intent(ActionKinds.Wait)
-            : CreateIntent(request.AvailableActions[NextIndex(request.AvailableActions.Count)]);
+            : CreateIntent(
+                request,
+                request.AvailableActions[SampleIndex(request, request.AvailableActions.Count, choiceIndex: 0)]);
         return ValueTask.FromResult(new PlayerDecision(
             request.DecisionId,
             request.BasedOnWorldVersion,
@@ -31,39 +34,27 @@ public sealed class RandomPlayerDriver : IPlayerDriver
             intent));
     }
 
-    private Intent CreateIntent(AvailableAction availableAction) =>
+    private Intent CreateIntent(DecisionRequest request, AvailableAction availableAction) =>
         new(
             availableAction.ActionKind,
-            TargetActorId: ChooseCandidate(availableAction.CandidateActorIds),
-            TargetObjectId: ChooseCandidate(availableAction.CandidateObjectIds),
-            DestinationId: ChooseCandidate(availableAction.CandidateDestinationIds));
+            TargetActorId: ChooseCandidate(request, availableAction.CandidateActorIds, choiceIndex: 1),
+            TargetObjectId: ChooseCandidate(request, availableAction.CandidateObjectIds, choiceIndex: 2),
+            DestinationId: ChooseCandidate(request, availableAction.CandidateDestinationIds, choiceIndex: 3));
 
-    private string? ChooseCandidate(IReadOnlyList<string>? candidates) =>
+    private string? ChooseCandidate(
+        DecisionRequest request,
+        IReadOnlyList<string>? candidates,
+        ulong choiceIndex) =>
         candidates is { Count: > 0 }
-            ? candidates[NextIndex(candidates.Count)]
+            ? candidates[SampleIndex(request, candidates.Count, choiceIndex)]
             : null;
 
-    private int NextIndex(int exclusiveUpperBound)
-    {
-        ulong bound = (uint)exclusiveUpperBound;
-        ulong rejectionThreshold = unchecked(0UL - bound) % bound;
-
-        while (true)
-        {
-            ulong sample = NextUInt64();
-            if (sample >= rejectionThreshold)
-            {
-                return (int)(sample % bound);
-            }
-        }
-    }
-
-    private ulong NextUInt64()
-    {
-        _state = unchecked(_state + 0x9E3779B97F4A7C15UL);
-        ulong mixed = _state;
-        mixed = (mixed ^ (mixed >> 30)) * 0xBF58476D1CE4E5B9UL;
-        mixed = (mixed ^ (mixed >> 27)) * 0x94D049BB133111EBUL;
-        return mixed ^ (mixed >> 31);
-    }
+    private int SampleIndex(DecisionRequest request, int exclusiveUpperBound, ulong choiceIndex) =>
+        DeterministicRandom.SampleInt32(
+            unchecked((ulong)_seed),
+            DeterministicRandom.DeriveStreamId(request.ActorId),
+            unchecked((ulong)request.BasedOnWorldVersion),
+            minInclusive: 0,
+            exclusiveUpperBound,
+            choiceIndex);
 }

@@ -16,6 +16,7 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
     private readonly Func<PlayerDecision, TWorld, IReadOnlyList<UncommittedDomainEvent<TEventPayload>>> _decisionTranslator;
     private TWorld _world;
     private SimulationCursor _cursor;
+    private int _runInProgress;
 
     /// <summary>Initializes a session from its simulation state and domain translation functions.</summary>
     public PlayerDecisionSession(
@@ -63,79 +64,99 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
     }
 
     /// <summary>Runs through decision points until the simulation is exhausted or reaches the boundary.</summary>
-    public async ValueTask<PlayerDecisionSessionResult<TWorld>> RunUntilAsync(
+    public ValueTask<PlayerDecisionSessionResult<TWorld>> RunUntilAsync(
         ModelTime until,
         CancellationToken cancellationToken = default)
     {
-        var pendingDecisionEvents = new Queue<DomainEvent<TEventPayload>>();
-        int decisionCount = 0;
-        int skippedDecisionCount = 0;
-
-        cancellationToken.ThrowIfCancellationRequested();
-        SimulationRunResult<TWorld, TEventPayload> run = RunSimulation(until, externalInputs: null);
-        EnqueueDecisionEvents(run, pendingDecisionEvents);
-
-        while (true)
+        if (Interlocked.CompareExchange(ref _runInProgress, 1, 0) != 0)
         {
+            throw new InvalidOperationException(
+                "A Player decision session permits only one in-flight RunUntilAsync call.");
+        }
+
+        return RunSingleFlightAsync(until, cancellationToken);
+    }
+
+    private async ValueTask<PlayerDecisionSessionResult<TWorld>> RunSingleFlightAsync(
+        ModelTime until,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pendingDecisionEvents = new Queue<DomainEvent<TEventPayload>>();
+            int decisionCount = 0;
+            int skippedDecisionCount = 0;
+
             cancellationToken.ThrowIfCancellationRequested();
-            if (!pendingDecisionEvents.TryDequeue(out DomainEvent<TEventPayload>? decisionEvent))
+            SimulationRunResult<TWorld, TEventPayload> run = RunSimulation(until, externalInputs: null);
+            EnqueueDecisionEvents(run, pendingDecisionEvents);
+
+            while (true)
             {
-                if (run.StopReason != StopReason.DecisionRequired)
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!pendingDecisionEvents.TryDequeue(out DomainEvent<TEventPayload>? decisionEvent))
                 {
-                    return new PlayerDecisionSessionResult<TWorld>(
-                        _world,
-                        _cursor,
-                        run.Version,
-                        run.StopReason,
-                        decisionCount,
-                        skippedDecisionCount);
+                    if (run.StopReason != StopReason.DecisionRequired)
+                    {
+                        return new PlayerDecisionSessionResult<TWorld>(
+                            _world,
+                            _cursor,
+                            run.Version,
+                            run.StopReason,
+                            decisionCount,
+                            skippedDecisionCount);
+                    }
+
+                    run = RunSimulation(until, externalInputs: null);
+                    EnqueueDecisionEvents(run, pendingDecisionEvents);
+                    continue;
                 }
 
-                run = RunSimulation(until, externalInputs: null);
+                LogicalTimestamp currentTimestamp = _journal.Events[^1].Timestamp;
+                DecisionRequest? request = BuildRequest(decisionEvent, run.Version, currentTimestamp);
+                if (request is null)
+                {
+                    skippedDecisionCount = checked(skippedDecisionCount + 1);
+                    continue;
+                }
+
+                string actorId = _actorSelector(decisionEvent);
+                if (string.IsNullOrWhiteSpace(actorId))
+                {
+                    throw new InvalidOperationException("The decision actor selector returned an empty actor identifier.");
+                }
+
+                if (!string.Equals(request.ActorId, actorId, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"The decision request actor '{request.ActorId}' does not match routed actor '{actorId}'.");
+                }
+
+                if (!_drivers.TryGetValue(actorId, out IPlayerDriver? driver))
+                {
+                    throw new InvalidOperationException($"No Player driver is registered for actor '{actorId}'.");
+                }
+
+                PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
+                    ?? throw new InvalidOperationException("A Player driver returned null.");
+                ValidateDecision(decision, request);
+
+                IReadOnlyList<UncommittedDomainEvent<TEventPayload>> decisionInputs =
+                    _decisionTranslator(decision, _world)
+                    ?? throw new InvalidOperationException("The decision translator returned null.");
+                decisionCount = checked(decisionCount + 1);
+                if (decisionInputs.Count == 0)
+                {
+                    continue;
+                }
+
+                run = RunSimulation(until, decisionInputs);
                 EnqueueDecisionEvents(run, pendingDecisionEvents);
-                continue;
             }
-
-            LogicalTimestamp currentTimestamp = _journal.Events[^1].Timestamp;
-            DecisionRequest? request = BuildRequest(decisionEvent, run.Version, currentTimestamp);
-            if (request is null)
-            {
-                skippedDecisionCount = checked(skippedDecisionCount + 1);
-                continue;
-            }
-
-            string actorId = _actorSelector(decisionEvent);
-            if (string.IsNullOrWhiteSpace(actorId))
-            {
-                throw new InvalidOperationException("The decision actor selector returned an empty actor identifier.");
-            }
-
-            if (!string.Equals(request.ActorId, actorId, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"The decision request actor '{request.ActorId}' does not match routed actor '{actorId}'.");
-            }
-
-            if (!_drivers.TryGetValue(actorId, out IPlayerDriver? driver))
-            {
-                throw new InvalidOperationException($"No Player driver is registered for actor '{actorId}'.");
-            }
-
-            PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
-                ?? throw new InvalidOperationException("A Player driver returned null.");
-            ValidateDecision(decision, request);
-
-            IReadOnlyList<UncommittedDomainEvent<TEventPayload>> decisionInputs =
-                _decisionTranslator(decision, _world)
-                ?? throw new InvalidOperationException("The decision translator returned null.");
-            decisionCount = checked(decisionCount + 1);
-            if (decisionInputs.Count == 0)
-            {
-                continue;
-            }
-
-            run = RunSimulation(until, decisionInputs);
-            EnqueueDecisionEvents(run, pendingDecisionEvents);
+        }
+        finally
+        {
+            Volatile.Write(ref _runInProgress, 0);
         }
     }
 

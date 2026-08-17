@@ -33,4 +33,49 @@ public sealed class IntentJsonTests
 
         Assert.Equal(intent, JsonSerializer.Deserialize<Intent>(json));
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(315_360_000_001)]
+    public void Constructor_DurationOutsideSupportedRange_Throws(long durationMs)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new Intent(ActionKinds.Wait, DurationMs: durationMs));
+    }
+
+    [Fact]
+    public void Constructor_DurationAtSupportedBounds_Succeeds()
+    {
+        Assert.Equal(1, new Intent(ActionKinds.Wait, DurationMs: 1).DurationMs);
+        Assert.Equal(
+            315_360_000_000,
+            new Intent(ActionKinds.Wait, DurationMs: 315_360_000_000).DurationMs);
+    }
+
+    [Fact]
+    public void Constructor_InvalidExpectedOutcomeValues_Throw()
+    {
+        Assert.Throws<ArgumentException>(() => new ExpectedOutcome(new string('x', 4_097)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ExpectedOutcome("later", -1));
+    }
+
+    [Fact]
+    public void Deserialize_NegativeDuration_Throws()
+    {
+        const string json = "{\"ActionKind\":\"action.wait\",\"DurationMs\":-1}";
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize<Intent>(json));
+    }
+
+    [Fact]
+    public void Deserialize_OverlongFreeText_Throws()
+    {
+        string json = JsonSerializer.Serialize(new
+        {
+            ActionKind = "action.talk",
+            FreeText = new string('x', 4_097),
+        });
+
+        Assert.Throws<ArgumentException>(() => JsonSerializer.Deserialize<Intent>(json));
+    }
 }
