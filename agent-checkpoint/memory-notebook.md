@@ -70,7 +70,7 @@
 
 ## 4. 当前状态与后续计划(交接核心)
 
-- **已完成**:WP0–WP23 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12=b16ca21、WP13=c5307a2、WP14=f3d0721、WP15=930ba78、WP16=d8d06ae、WP17=e5fd4ec、WP18=a082a50、WP19=2986bcd、WP20=2eccf39、WP21=911a4f8、WP22=f22a56a。用户另在 WP22 真场期间提交 `aa82119`，新增 Providence/因果模板概念设计。WP23 commit 待本轮提交后回填。
+- **已完成**:WP0–WP23 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12=b16ca21、WP13=c5307a2、WP14=f3d0721、WP15=930ba78、WP16=d8d06ae、WP17=e5fd4ec、WP18=a082a50、WP19=2986bcd、WP20=2eccf39、WP21=911a4f8、WP22=f22a56a、WP23=d741d89。用户另在 WP22 真场期间提交 `aa82119`，新增 Providence/因果模板概念设计。
 - **元教训**(评审二核心发现,后续开发警惕):Kernel 层修对的东西没有"继承机制",Host/装配层会重蹈覆辙(S4 重现 A2、S3 架空 A4、S11 架空 A7)——**修复时优先把约定变机制**(如 EventKind 相等语义)。
 - 残留风险(已留档 002,不阻塞主线):checkpoint 与 journal head 无统一事务;orphan 帧无 GC;LineageId 全局唯一性靠调用方;FirstBoard 手写 codec 新增事件需同步。
 
