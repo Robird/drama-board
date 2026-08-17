@@ -26,6 +26,8 @@ internal static class DramaRecordWriter
             .AppendLine(options.BobBackend.Model)
             .Append("- 记忆维护后端：").Append(options.MemoryBackend.Backend).Append(" / ")
             .AppendLine(options.MemoryBackend.Model)
+            .Append("- 记忆维护调度：").AppendLine(
+                options.MemoryMaintenanceMode.ToString().ToLowerInvariant())
             .Append("- 世界种子：").AppendLine(options.WorldSeed.ToString(CultureInfo.InvariantCulture))
             .Append("- 结束：").Append(capture.Result.StopReason)
             .Append(" @ ").Append(capture.Result.Cursor.Now.Ticks.ToString(CultureInfo.InvariantCulture))

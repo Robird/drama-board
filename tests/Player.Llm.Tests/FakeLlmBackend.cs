@@ -13,7 +13,7 @@ internal sealed class FakeLlmBackend : ILlmChatBackend
 
     public IReadOnlyList<LlmChatRequest> Requests => _requests.AsReadOnly();
 
-    public Task<string> CompleteAsync(
+    public Task<LlmChatResponse> CompleteAsync(
         LlmChatRequest request,
         CancellationToken cancellationToken)
     {
@@ -25,6 +25,6 @@ internal sealed class FakeLlmBackend : ILlmChatBackend
             throw new InvalidOperationException("The fake LLM backend has no scripted response remaining.");
         }
 
-        return Task.FromResult(response);
+        return Task.FromResult(new LlmChatResponse(response));
     }
 }

@@ -26,9 +26,11 @@ internal static class DemoMemoryProfile
 
     public static IReadOnlyList<IMemoryShardMaintainer> Maintainers(
         MemoryBank memory,
-        ILlmChatBackend backend) =>
+        Func<string, ILlmChatBackend> backendForShard) =>
         memory.Shards
-            .Select(shard => (IMemoryShardMaintainer)new LlmMemoryShardMaintainer(shard.Key, backend))
+            .Select(shard => (IMemoryShardMaintainer)new LlmMemoryShardMaintainer(
+                shard.Key,
+                backendForShard(shard.Key)))
             .ToArray();
 
     private static MemoryBank Create(

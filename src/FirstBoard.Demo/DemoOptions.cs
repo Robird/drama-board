@@ -1,4 +1,5 @@
 using System.Globalization;
+using DramaBoard.Player.Llm;
 
 namespace DramaBoard.FirstBoard.Demo;
 
@@ -17,7 +18,8 @@ internal sealed record DemoOptions(
     string? BaseUrl,
     string ApiKeyEnvironmentVariable,
     string CodexCommand,
-    string? ReasoningEffort)
+    string? ReasoningEffort,
+    MemoryMaintenanceMode MemoryMaintenanceMode)
 {
     public static DemoOptions Parse(string[] args)
     {
@@ -85,7 +87,8 @@ internal sealed record DemoOptions(
             Read(values, "codex-command", "codex"),
             values.GetValueOrDefault("reasoning") ??
                 Environment.GetEnvironmentVariable("CODEX_REASONING_EFFORT") ??
-                "low");
+                "low",
+            ReadMemoryMaintenanceMode(values));
     }
 
     public static string HelpText =>
@@ -115,7 +118,21 @@ internal sealed record DemoOptions(
           --request-timeout-seconds NUMBER Per Codex request; default: 120
           --codex-command PATH             Default: codex
           --reasoning EFFORT               Codex effort; default: low
+          --memory-maintenance MODE        blocking|pipelined; default: blocking
         """;
+
+    private static MemoryMaintenanceMode ReadMemoryMaintenanceMode(
+        IReadOnlyDictionary<string, string> values)
+    {
+        string value = Read(values, "memory-maintenance", "blocking").ToLowerInvariant();
+        return value switch
+        {
+            "blocking" => MemoryMaintenanceMode.Blocking,
+            "pipelined" => MemoryMaintenanceMode.Pipelined,
+            _ => throw new ArgumentException(
+                "--memory-maintenance must be blocking or pipelined."),
+        };
+    }
 
     private static string ReadBackend(
         IReadOnlyDictionary<string, string> values,

@@ -33,14 +33,17 @@ public sealed class CodexAppServerBackend : ILlmChatBackend, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async Task<string> CompleteAsync(
+    public async Task<LlmChatResponse> CompleteAsync(
         LlmChatRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        long queuedAt = Stopwatch.GetTimestamp();
         await _gate.WaitAsync(cancellationToken);
+        TimeSpan queueDuration = Stopwatch.GetElapsedTime(queuedAt);
+        long serviceStarted = Stopwatch.GetTimestamp();
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -50,7 +53,12 @@ public sealed class CodexAppServerBackend : ILlmChatBackend, IAsyncDisposable
             timeout.CancelAfter(_options.RequestTimeout ?? DefaultRequestTimeout);
             try
             {
-                return await _client!.CompleteAsync(request, timeout.Token);
+                string content = await _client!.CompleteAsync(request, timeout.Token);
+                return new LlmChatResponse(
+                    content,
+                    Usage: null,
+                    queueDuration,
+                    Stopwatch.GetElapsedTime(serviceStarted));
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {

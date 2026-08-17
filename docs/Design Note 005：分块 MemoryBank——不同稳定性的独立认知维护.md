@@ -82,6 +82,14 @@ maintainer 只能返回自己的：
 
 一次 actor turn 从一次调用增加为一次决策调用 + N 次分块维护调用；N 个维护调用可并行。当前优先观察认知质量，暂不增加 dirty router、分层调用频率或 batched maintainer。真实延迟/收益将决定后续是否优化。
 
+### WP23：调用观测与延迟提交流水线
+
+WP23 为每次后端调用补充统一 response metadata：OpenAI-compatible adapter 读取 provider 返回的 prompt/completion/reasoning/cache hit/cache miss token，Codex adapter 区分本地顺序门的 queue time 与 app-server service time。Demo 再按 actor、role decision / memory maintenance、shard、backend、model 与 thinking effort 实时写 `llm-runtime.jsonl`，完成或取消时生成分组摘要。实时逐调用写入意味着整体超时也不会丢掉已经完成的测量。
+
+四个 shard 早已由 `Task.WhenAll` 并行；新实验优化的是 actor turn 之间的空档。`MemoryMaintenanceMode.Pipelined` 在 role decision 解析成功后启动四块维护并立即把 `PlayerDecision` 交回 Host，不让它们阻塞其他 actor 的 role call；同一 actor 下次 `DecideAsync` 开头必须先 join、合并并提交上轮 MemoryBank。场景结束必须显式 `FlushMemoryAsync`，driver disposal 会取消仍未完成的私有维护。冻结旧 bank、单块 fallback、下一轮不读半提交状态等语义不变。
+
+该模式保留为 opt-in，默认仍是 `Blocking`。首个同 seed、同配置的 3+3 turn 混合样本中，blocking / pipelined 的观测调用跨度为 88.1s / 90.3s；pipelined 确实把峰值并发从 4 提到 5，但第二局生成的 completion/reasoning token 分别多约 38%/47%，并发请求本身也变慢。用 blocking 样本的同一组实测调用时长做反事实调度，关键路径预计仅缩短 14.7%，因为该轨迹有 Bob 连续三次决策而非严格 Alice/Bob 交替。结论是“流水线机会真实存在，但不是无条件翻倍”；需要多 seed 样本和 effort matrix 才能判断默认策略。
+
 ## 非目标
 
 - 不建立向量检索、知识图谱、事实实体归一或全局一致性协调器。

@@ -36,15 +36,15 @@ public sealed class CodexAppServerBackendTests
             return connection;
         });
 
-        string first = await backend.CompleteAsync(
+        LlmChatResponse first = await backend.CompleteAsync(
             new LlmChatRequest("system one", "user one"),
             CancellationToken.None);
-        string second = await backend.CompleteAsync(
+        LlmChatResponse second = await backend.CompleteAsync(
             new LlmChatRequest("system two", "user two"),
             CancellationToken.None);
 
-        Assert.Equal("first answer", first);
-        Assert.Equal("second answer", second);
+        Assert.Equal("first answer", first.Content);
+        Assert.Equal("second answer", second.Content);
         Assert.Equal(1, connectionCount);
 
         JsonElement[] messages = connection.Writes.Select(Parse).ToArray();
@@ -111,11 +111,11 @@ public sealed class CodexAppServerBackendTests
             () => backend.CompleteAsync(
                 new LlmChatRequest("system", "first"),
                 CancellationToken.None));
-        string result = await backend.CompleteAsync(
+        LlmChatResponse result = await backend.CompleteAsync(
             new LlmChatRequest("system", "second"),
             CancellationToken.None);
 
-        Assert.Equal("recovered answer", result);
+        Assert.Equal("recovered answer", result.Content);
         Assert.True(broken.IsDisposed);
         Assert.Empty(connections);
     }

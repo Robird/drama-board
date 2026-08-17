@@ -21,7 +21,15 @@ public sealed class OpenAiCompatBackendTests
                   },
                   "finish_reason": "stop"
                 }
-              ]
+              ],
+              "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+                "total_tokens": 150,
+                "prompt_cache_hit_tokens": 80,
+                "prompt_cache_miss_tokens": 40,
+                "completion_tokens_details": { "reasoning_tokens": 12 }
+              }
             }
             """;
         var handler = new RecordingHttpMessageHandler(
@@ -36,11 +44,19 @@ public sealed class OpenAiCompatBackendTests
             "secret-key",
             "drama-model");
 
-        string result = await backend.CompleteAsync(
+        LlmChatResponse result = await backend.CompleteAsync(
             new LlmChatRequest("system text", "user text"),
             CancellationToken.None);
 
-        Assert.Equal("【行动】{\"action\":\"action.wait\"}", result);
+        Assert.Equal("【行动】{\"action\":\"action.wait\"}", result.Content);
+        Assert.Equal(120, result.Usage!.PromptTokens);
+        Assert.Equal(30, result.Usage.CompletionTokens);
+        Assert.Equal(150, result.Usage.TotalTokens);
+        Assert.Equal(12, result.Usage.ReasoningTokens);
+        Assert.Equal(80, result.Usage.CacheReadTokens);
+        Assert.Equal(40, result.Usage.CacheMissTokens);
+        Assert.Equal(TimeSpan.Zero, result.QueueDuration);
+        Assert.True(result.ServiceDuration > TimeSpan.Zero);
         Assert.Equal(HttpMethod.Post, handler.Method);
         Assert.Equal("https://llm.example.test/v1/chat/completions", handler.Uri!.AbsoluteUri);
         Assert.Equal("Bearer", handler.AuthorizationScheme);

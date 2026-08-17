@@ -2,13 +2,13 @@
 
 **用途:跨会话/跨 agent 的工作交接快照。任何接手本项目的 coding agent 会话(无论 Copilot、codex 还是其他),在开工前读此文件恢复完整工作状态。本文档不假设你拥有之前任何会话的记忆。**
 
-**本版:2026-08-18,codex 完成 WP22。状态:第一阶段(WP0–WP11)+ 两轮攻击性评审修复(A1–A10、S1–S14)+ 第二阶段 WP12–WP22 完成;主 slnx 214 / Local.slnx 228 测试绿;下一步倾向 WP23(Passive Curator 轨迹诊断 MVP)。**
+**本版:2026-08-18,codex 完成 WP23。状态:第一阶段(WP0–WP11)+ 两轮攻击性评审修复(A1–A10、S1–S14)+ 第二阶段 WP12–WP23 完成;主 slnx 215 / Local.slnx 229 测试绿;下一步倾向 WP24(Providence Phase 0 场景与运行来源数据化)。**
 
 ---
 
 ## 1. 项目与接手者角色
 
-- 项目:DramaBoard(戏剧棋盘)——AI Player 参与的沙盒戏剧棋类。已建成:确定性 event-sourced Simulation Kernel + Protocol DTO + Host 决策编排 + FirstBoard 场景 + atelia 落盘 adapter + 双真后端 LLM Player + 可运行戏剧记录 demo + 来源/信念分离的长期材料 + 分块认知记忆 + 公共放置/检查。当前目标:继续探索最小但富戏剧表现力的动作集,并开始让系统只读识别轨迹中的停滞、信息增益与决策边界。
+- 项目:DramaBoard(戏剧棋盘)——AI Player 参与的沙盒戏剧棋类。已建成:确定性 event-sourced Simulation Kernel + Protocol DTO + Host 决策编排 + FirstBoard 场景 + atelia 落盘 adapter + 双真后端 LLM Player + 可运行戏剧记录 demo + 来源/信念分离的长期材料 + 分块认知记忆 + 公共放置/检查 + LLM 调用级 runtime profile。当前目标:在继续探索最小动作集的同时,清除 Providence/Scenario Forge 方向的场景硬编码与运行来源缺口,之后再做 Passive Curator。
 - repo:`e:\repos\drama-board`(正式名与目录名均为 DramaBoard;旧交接曾误记为 dream-board)。
 - 接手者工作模式:按"自主循环协议"(002 顶部)每轮自主规划→实现→验收→commit→更新状态表与"下一轮建议"→汇报。之前的主线会话把实现派发给 subagent;如果你是单会话 agent(如 codex),直接自己实现+自我验收即可,协议其余部分不变。方向级决策点:列选项+你的倾向,先按倾向推进不阻塞,用户异步纠偏。
 - **基调(用户明示,持续有效)**:第二阶段是探索性快速原型,**探索可能性优于严谨性与可审计性**——测试覆盖关键路径即可,不追求 property/快照级锁定,不预留抽象。但第一阶段已建成的确定性/event-sourcing 不变量不得破坏(它们是已交付资产,不是未来约束)。
@@ -58,34 +58,34 @@
 - 反序列化委托收 EventKind(upcaster 挂载点);CursorSnapshotEnvelopeCodec(读档续跑);FirstBoard 真落盘+读档续跑端到端已验收(多态 payload 用 kind→type 显式映射,评审警告的抽象类静默 {} 已规避)。
 
 ### Player.Llm(src/Player.Llm,WP13–WP21,零 NuGet,引用 Protocol+Host)
-- **ILlmChatBackend 最小端口**:`CompleteAsync(LlmChatRequest(System,User), ct) → string`。
+- **ILlmChatBackend 最小端口**:`CompleteAsync(LlmChatRequest(System,User), ct) → LlmChatResponse(Content,Usage?,QueueDuration?,ServiceDuration?)`。usage 统一 prompt/completion/total/reasoning/cache hit/miss；OpenAI-compatible 从响应读取，Codex 当前只有本地 gate queue/service timing、无 token usage。
 - **PromptRenderer(纯函数,中文)**:system=[角色卡][世界规则+四分节输出格式约定];user=[可反复查阅材料][分块内心状态][当前观察][新近变化(KnownFacts diff + RejectedIntent 反馈)][决策请求]。`ReferenceMaterial(Id,Source,Content)` 每轮保存来源/原文,system 明示不保证真实、可怀疑/重释;设计见 DN004。
 - **四分节输出解析器(宽松)**:【独白】【行动】(单 JSON 对象,字段 action/targetActor/targetObject/destination/freeText/durationMs/untilModelTimeMs,大小写不敏感,容忍围栏/杂文)【台词】(非空覆盖 freeText)【记忆】(WP21 后语义=本轮希望各分块吸收的提议,不再整体替换)。缺行动或 JSON 非法=重问一次→wait。
 - **MemoryBank/maintainer(DN005)**:`MemoryShard(Key,Title,MaintenanceInstructions,Content)`组成有序不可变快照;FirstBoard 四块=working_context/commitments/beliefs/relationships。每块一个 `LlmMemoryShardMaintainer`,都看同一个冻结旧完整 bank+材料+Observation+独白/台词/提议+尚未确认的 Intent,只输出 keep 或本块 replacement;并行执行。非法 JSON/错 key/空 replacement/异常均局部 `FallbackKeep`;外部取消传播。精确重复分块标题在边界剥离。
-- **LlmPlayerDriver : IPlayerDriver**:构造收 CharacterCard/初始 MemoryBank/决策 backend/每块 maintainer/可选 trace/materials。主认知循环解析成功后并行维护→合并 bank→发 `LlmTurnTrace`(含 memory proposal、合并文档、逐块操作);sink 抛错回滚私有状态。driver 不预验证 affordance(语义非法交给 Board 拒绝闭环)。
+- **LlmPlayerDriver : IPlayerDriver**:构造收 CharacterCard/初始 MemoryBank/决策 backend/每块 maintainer/可选 trace/materials/memory mode。`Blocking` 保持解析→并行维护→合并 bank→发 trace→返回；opt-in `Pipelined` 在解析后启动维护并先返回决定，同 actor 下一次 role call 前 `FlushMemoryAsync` join/原子提交，场终显式 flush，dispose 取消未完成维护。冻结旧 bank、下一轮不读半成品、单块 fallback 等语义不变。driver 不预验证 affordance。
 - FirstBoard 集成测试(tests/FirstBoard.Tests/LlmPlayerIntegrationTests.cs):假后端脚本化完整一局——拒绝闭环/台词入事件/记忆演进均验证。
 - **CodexAppServerBackend(主力)**:`CodexAppServerOptions(CommandPath/Model/WorkingDirectory/ReasoningEffort/RequestTimeout)`;无 BOM UTF-8 JSONL;进程复用、调用顺序门控,EOF/畸形/超时/server error 后回收且下次重启;v2 initialize/initialized;每决策 `thread/start(ephemeral=true)`→`turn/start(approval=never,readOnly,no-network)`→取 final agentMessage/turn.completed→`thread/unsubscribe`;所有 approval 反向请求拒绝。真实协议有一条关键竞态:**短 turn 的 item/turn completed 可早于 turn/start response**,实现会提前缓存,测试已锁。
 - **OpenAiCompatBackend(对照)**:构造收 HttpClient/baseUrl/apiKey?/model;POST `{baseUrl}/chat/completions`,system+user 两条 message;只取 `choices[0].message.content`;非 2xx/畸形 response 抛异常;key 不入 repo/错误文本。真 smoke 走 OpenRouter compatible 成功;官方 OpenAI key 本轮返回 429(额度外部状态)。
-- **FirstBoard.Demo**:Alice/Bob 决策 backend/model 独立,新增 `--memory-backend/model`(默认跟 Alice),可用 DeepSeek 并行维护混合角色。trace 写记忆提议+每块 Keep/Replace/FallbackKeep+完整 bank。真实资料在 git ignored `artifacts/wp15/`–`wp22/`。Windows 用户级 DeepSeek key/base URL 已正确继承,无需更多 key。注意 Demo 不在测试解的必然构建闭包内,用 `dotnet run --no-build` 前必须显式 build Demo,否则可能加载旧场景/profile 二进制。
+- **FirstBoard.Demo**:Alice/Bob 决策 backend/model 独立,`--memory-backend/model` 可用 DeepSeek 维护混合角色；`--memory-maintenance blocking|pipelined` 默认 blocking。每次调用按 actor/purpose/shard/backend/model/effort 实时写 `llm-runtime.jsonl`，汇总 mean/p50/p95/max、overlap factor、peak concurrency、provider token/cache usage；整体取消也保留部分数据。trace 仍写记忆提议+每块 Keep/Replace/FallbackKeep+完整 bank。真实资料在 git ignored `artifacts/wp15/`–`wp23/`。Windows 用户级 DeepSeek key/base URL 已正确继承,无需更多 key。注意 Demo 不在测试解的必然构建闭包内,用 `dotnet run --no-build` 前必须显式 build Demo。
 
 ## 4. 当前状态与后续计划(交接核心)
 
-- **已完成**:WP0–WP22 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12=b16ca21、WP13=c5307a2、WP14=f3d0721、WP15=930ba78、WP16=d8d06ae、WP17=e5fd4ec、WP18=a082a50、WP19=2986bcd、WP20=2eccf39、WP21=911a4f8、WP22=f22a56a。用户另在 WP22 真场期间提交 `aa82119`，新增 Providence/因果模板概念设计；后续按其 Phase 0/1 保持边界并优先 Passive Curator。
+- **已完成**:WP0–WP23 全部;A1–A10 + S1–S14 两轮评审修复全清。关键 commit:δ=cd75fcc、α=992c5a2、β=a3f78a2、γ=392a63d、WP12=b16ca21、WP13=c5307a2、WP14=f3d0721、WP15=930ba78、WP16=d8d06ae、WP17=e5fd4ec、WP18=a082a50、WP19=2986bcd、WP20=2eccf39、WP21=911a4f8、WP22=f22a56a。用户另在 WP22 真场期间提交 `aa82119`，新增 Providence/因果模板概念设计。WP23 commit 待本轮提交后回填。
 - **元教训**(评审二核心发现,后续开发警惕):Kernel 层修对的东西没有"继承机制",Host/装配层会重蹈覆辙(S4 重现 A2、S3 架空 A4、S11 架空 A7)——**修复时优先把约定变机制**(如 EventKind 相等语义)。
 - 残留风险(已留档 002,不阻塞主线):checkpoint 与 journal head 无统一事务;orphan 帧无 GC;LineageId 全局唯一性靠调用方;FirstBoard 手写 codec 新增事件需同步。
 
-### 下一步:WP23 Passive Curator 轨迹诊断 MVP
+### 下一步:WP24 Providence Phase 0 场景与运行来源数据化
 
-WP22 交付与实验:
-- `action.put`/`ObjectPlacedEvent` 已完整接入 Protocol、FirstBoard reducer/system/request projection、Prompt/Demo 文本与手写 Atelia codec。对象状态 `held(place=null,owner=actor) -> public(place=current,owner=null)`;同地下一请求可 inspect/take。放置对同场角色可感知并中断 wait;密信检查事实仍只给 inspector。正常候选路径在下一 frontier 生效;旧 frontier 越候选猜测的 TOCTOU 继续服从 source-id 顺序,暂不扩大 PendingAction/联合仲裁。
-- 成功链脚本覆盖放置→唤醒→公共检查→take;非法 put、他人物检查拒绝;持久化测试真实生成 `object.placed` 并落盘/重开/replay。主 slnx 214 / Local.slnx 228。代码 commit `f22a56a`。
-- **有效真 trace**:`artifacts/wp22/mixed-alice-deepseek-bob-luna-memory-deepseek-rebuilt/`;Alice=DeepSeek v4-flash,Bob=GPT-5.6 Luna,memory=DeepSeek,seed=20260817。显式 build 后跑到 22/24 turns,全部首轮解析;15min 整体预算在最后两轮前取消,无最终 drama-record,因此只作为 partial trace。88 次维护:working 22R;commitments 8R/14K;beliefs 16R/6K;relationships 10R/12K;0 FallbackKeep。Alice 多次要求把信放到公共环境验货;Bob 用 show 证明持有,并明确说 put 等于先失去控制而拒绝;Alice随后只 show 一枚银币而拒绝 give/put。两种模型正确理解动作,但陷入双边先履约困境。
-- `artifacts/wp22/mixed-alice-deepseek-bob-luna-memory-deepseek/` 虽完成 88 events/24 turns/约 578.2s,却因 `--no-build` 加载了 WP21 旧 Demo profile,**不得作为 WP22 验收场**;保留为旧二进制对照。以后真跑先显式 build Demo。
+WP23 交付与实验:
+- 四 shard 的 `Task.WhenAll` 早已有效；新 pipeline 优化的是 actor 之间的串行空档。pipelined 模式让 Alice role 返回后其 memory 与 Bob role 重叠，同一 Alice 下轮前强制 join；无需改 Host/Kernel。
+- `artifacts/wp23/runtime-blocking-mixed-3x/` 与 `runtime-pipelined-mixed-3x/`：同 seed，Alice=DeepSeek v4-flash，Bob=GPT-5.6 Luna low，memory=DeepSeek，双方各 3 turn。两局均 29 events/6 trace/30 backend calls/0 error。blocking 调用跨度 88.1s、peak 4；pipelined 90.3s、peak 5。流水线局 completion/reasoning token 比基线多约 38%/47%，服务波动淹没调度收益。
+- 用 blocking 局相同的逐调用实测耗时做反事实调度，pipelined 理想关键路径 88.0s→75.1s（-14.7%），不是 50%；原因是轨迹决策序列 Alice,Bob,Bob,Bob,Alice,Alice，跨 actor 可重叠窗口有限。方向结论：保留 opt-in，不改默认；后续多 seed 与 memory effort/cadence matrix 再决定。
+- 主 slnx 215 / Local.slnx 229 全绿。DN005、002、005 已同步。
 
-WP23 方向(未否决按倾向推进):
-1. A=加原子 `swap`,能解除僵局但会消灭非原子履约与背叛空间;B=加 escrow/条件交换/保留权,更细但过早扩张 Law;C=保持九动作,先做只读 Passive Curator。**倾向 C**。
-2. 第一版只消费现有 journal/turn trace,输出重复动作区段、Encounter density、信息/关系/所有权变化、高影响 DecisionPoint;用 WP21/22 资料检验能否区分“有意义的信任僵局”和普通垃圾时间。
-3. 不改 Kernel,不直接改 World,不修改 Player Prompt,不把 Curator 变成 Providence。若诊断证明同类僵局跨 seed/角色反复出现,再决定是保留为戏剧母题、加新动作,还是在未来用可追溯的世界内 intervention 扰动。
+WP24 方向(未否决按倾向推进):
+1. 最小提取 `ScenarioDefinition` / `ScenarioInstance`，让 FirstBoard 初始 actors/objects/deadline/reference materials 可复制、可参数化；不写完整 DSL。
+2. Demo 输出 run manifest，至少关联 definition hash、seed、actor/memory backend+model+effort、memory mode 与代码版本，使 fork/mutation/批量结果不再靠目录名猜配置。
+3. 不实现 Providence policy、在线干预或 drama-specific Kernel 逻辑。之后 WP25 再做 Passive Curator。方向选项 A=先 Curator，B=先 Phase 0 数据化，C=继续 runtime 优化；**倾向 B**，因为硬编码场景是 Providence/Scenario Forge 的 P0 阻碍，而 runtime profile 已能支持后续并行实验。
 
 ## 5. 工作方式约定与红线(实践验证)
 

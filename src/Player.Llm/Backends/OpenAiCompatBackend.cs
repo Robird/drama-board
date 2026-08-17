@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -34,11 +35,12 @@ public sealed class OpenAiCompatBackend : ILlmChatBackend
     }
 
     /// <inheritdoc />
-    public async Task<string> CompleteAsync(
+    public async Task<LlmChatResponse> CompleteAsync(
         LlmChatRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        long started = Stopwatch.GetTimestamp();
 
         using var message = new HttpRequestMessage(HttpMethod.Post, _completionUri);
         if (_apiKey is not null)
@@ -82,8 +84,42 @@ public sealed class OpenAiCompatBackend : ILlmChatBackend
                 "The OpenAI-compatible response did not contain choices[0].message.content text.");
         }
 
-        return text;
+        return new LlmChatResponse(
+            text,
+            TryReadUsage(document.RootElement),
+            QueueDuration: TimeSpan.Zero,
+            ServiceDuration: Stopwatch.GetElapsedTime(started));
     }
+
+    private static LlmTokenUsage? TryReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out JsonElement usage) ||
+            usage.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        long? cached = ReadInt64(usage, "prompt_cache_hit_tokens") ??
+            ReadNestedInt64(usage, "prompt_tokens_details", "cached_tokens");
+        return new LlmTokenUsage(
+            ReadInt64(usage, "prompt_tokens"),
+            ReadInt64(usage, "completion_tokens"),
+            ReadInt64(usage, "total_tokens"),
+            ReadNestedInt64(usage, "completion_tokens_details", "reasoning_tokens"),
+            cached,
+            ReadInt64(usage, "prompt_cache_miss_tokens"));
+    }
+
+    private static long? ReadInt64(JsonElement parent, string name) =>
+        parent.TryGetProperty(name, out JsonElement value) && value.TryGetInt64(out long parsed)
+            ? parsed
+            : null;
+
+    private static long? ReadNestedInt64(JsonElement parent, string name, string child) =>
+        parent.TryGetProperty(name, out JsonElement nested) &&
+        nested.ValueKind == JsonValueKind.Object
+            ? ReadInt64(nested, child)
+            : null;
 
     private static bool TryReadAssistantText(JsonElement root, out string text)
     {

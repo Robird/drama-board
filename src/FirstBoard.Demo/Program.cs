@@ -12,55 +12,68 @@ try
         $"DramaBoard FirstBoard: Alice={options.AliceBackend.Backend}/" +
         $"{options.AliceBackend.Model}; Bob={options.BobBackend.Backend}/" +
         $"{options.BobBackend.Model}; Memory={options.MemoryBackend.Backend}/" +
-        $"{options.MemoryBackend.Model}");
+        $"{options.MemoryBackend.Model}; MemoryMode={options.MemoryMaintenanceMode}");
     Console.WriteLine($"Output: {options.OutputDirectory}");
 
     using var overallTimeout = new CancellationTokenSource(options.OverallTimeout);
     var traceSink = new DemoTraceSink(options.OutputDirectory);
+    var profiler = new DemoLlmProfiler(options.OutputDirectory);
     await using DemoBackend aliceBackend = DemoBackend.Create(options, options.AliceBackend);
     DemoBackend? separateBobBackend = null;
     DemoBackend? separateMemoryBackend = null;
+    LlmPlayerDriver? aliceLlm = null;
+    LlmPlayerDriver? bobLlm = null;
 
     try
     {
-        ILlmChatBackend bobBackend;
+        ILlmChatBackend rawBobBackend;
         if (options.BobBackend == options.AliceBackend)
         {
-            bobBackend = aliceBackend.Client;
+            rawBobBackend = aliceBackend.Client;
         }
         else
         {
             separateBobBackend = DemoBackend.Create(options, options.BobBackend);
-            bobBackend = separateBobBackend.Client;
+            rawBobBackend = separateBobBackend.Client;
         }
 
-        ILlmChatBackend memoryBackend;
+        ILlmChatBackend rawMemoryBackend;
         if (options.MemoryBackend == options.AliceBackend)
         {
-            memoryBackend = aliceBackend.Client;
+            rawMemoryBackend = aliceBackend.Client;
         }
         else if (options.MemoryBackend == options.BobBackend)
         {
-            memoryBackend = bobBackend;
+            rawMemoryBackend = rawBobBackend;
         }
         else
         {
             separateMemoryBackend = DemoBackend.Create(options, options.MemoryBackend);
-            memoryBackend = separateMemoryBackend.Client;
+            rawMemoryBackend = separateMemoryBackend.Client;
         }
 
         MemoryBank aliceMemory = DemoMemoryProfile.Alice();
         MemoryBank bobMemory = DemoMemoryProfile.Bob();
+        ILlmChatBackend aliceDecisionBackend = profiler.Wrap(
+            aliceBackend.Client,
+            Descriptor(BoardIds.Alice, "role-decision", shardKey: null, options.AliceBackend));
+        ILlmChatBackend bobDecisionBackend = profiler.Wrap(
+            rawBobBackend,
+            Descriptor(BoardIds.Bob, "role-decision", shardKey: null, options.BobBackend));
 
-        var aliceLlm = new LlmPlayerDriver(
+        aliceLlm = new LlmPlayerDriver(
             new CharacterCard(
                 "爱丽丝",
                 "谨慎、敏锐，不轻易相信别人；在压力下仍保持克制",
                 "查明公爵夫人密信的下落与内容，并据此保护自己的长期利益",
                 "简短、克制，习惯用试探性问题"),
             aliceMemory,
-            aliceBackend.Client,
-            DemoMemoryProfile.Maintainers(aliceMemory, memoryBackend),
+            aliceDecisionBackend,
+            DemoMemoryProfile.Maintainers(
+                aliceMemory,
+                shardKey => profiler.Wrap(
+                    rawMemoryBackend,
+                    Descriptor(BoardIds.Alice, "memory-maintenance", shardKey, options.MemoryBackend))),
             traceSink.Record,
             referenceMaterials:
             [
@@ -72,16 +85,21 @@ try
                     "alice.meeting-note",
                     "爱丽丝昨夜与鲍勃谈过后留下的会面备忘",
                     "先去集市摊位会面；若钥匙和鲍勃都不在，至少等待五分钟，避免与返回摊位的鲍勃错身。"),
-            ]);
-        var bobLlm = new LlmPlayerDriver(
+            ],
+            options.MemoryMaintenanceMode);
+        bobLlm = new LlmPlayerDriver(
             new CharacterCard(
                 "鲍勃",
                 "务实、机会主义，但并非冷酷；喜欢掌握谈判筹码",
                 "利用黄铜钥匙和密信线索取得收益，同时避免把自己困在无法兑现的交易中",
                 "直率，偶尔讥讽，谈条件时毫不含糊"),
             bobMemory,
-            bobBackend,
-            DemoMemoryProfile.Maintainers(bobMemory, memoryBackend),
+            bobDecisionBackend,
+            DemoMemoryProfile.Maintainers(
+                bobMemory,
+                shardKey => profiler.Wrap(
+                    rawMemoryBackend,
+                    Descriptor(BoardIds.Bob, "memory-maintenance", shardKey, options.MemoryBackend))),
             traceSink.Record,
             referenceMaterials:
             [
@@ -93,7 +111,8 @@ try
                     "bob.meeting-note",
                     "鲍勃记下的昨夜会面安排",
                     "若先拿钥匙去地窖，开箱后回集市摊位至少等待十分钟；爱丽丝会先去摊位寻找鲍勃。"),
-            ]);
+            ],
+            options.MemoryMaintenanceMode);
         var alice = new DecisionBudgetPlayerDriver(aliceLlm, options.MaxTurnsPerActor);
         var bob = new DecisionBudgetPlayerDriver(bobLlm, options.MaxTurnsPerActor);
         var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
@@ -107,6 +126,9 @@ try
             options.WorldSeed,
             new ModelTime(options.UntilModelTimeMs),
             cancellationToken: overallTimeout.Token);
+        await Task.WhenAll(
+            aliceLlm.FlushMemoryAsync(overallTimeout.Token),
+            bobLlm.FlushMemoryAsync(overallTimeout.Token));
         string recordPath = DramaRecordWriter.Write(
             options,
             capture,
@@ -120,6 +142,16 @@ try
     }
     finally
     {
+        if (aliceLlm is not null)
+        {
+            await aliceLlm.DisposeAsync();
+        }
+
+        if (bobLlm is not null)
+        {
+            await bobLlm.DisposeAsync();
+        }
+
         if (separateMemoryBackend is not null)
         {
             await separateMemoryBackend.DisposeAsync();
@@ -129,7 +161,24 @@ try
         {
             await separateBobBackend.DisposeAsync();
         }
+
+        profiler.WriteSummary(options);
     }
+
+    DemoLlmCallDescriptor Descriptor(
+        string actorId,
+        string purpose,
+        string? shardKey,
+        DemoBackendOptions backend) =>
+        new(
+            actorId,
+            purpose,
+            shardKey,
+            backend.Backend,
+            backend.Model,
+            backend.Backend == "codex"
+                ? options.ReasoningEffort ?? "provider-default"
+                : "provider-default");
 }
 catch (DemoHelpRequestedException)
 {

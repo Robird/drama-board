@@ -144,7 +144,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP23）
+## 5. WP 切分草案（WP12–WP25）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -159,7 +159,9 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP20 | 叙事化长期材料：稳定保存来源/原文，不冻结角色信念 | WP19 | 完整替换 Memory 后材料仍可查，角色能明确怀疑或反转解释 |
 | WP21 | 分块 MemoryBank：独立 maintainer、keep/replace 与局部 fallback | WP20 | 不同稳定性自然出现；承诺被明确完成/放弃而非静默丢失；混合真场跑通 |
 | WP22 | 公共放置与检查：`action.put` 将持有物转为当前地点公共无主态，目标 observe 可检查本人物或同地公共物 | WP21 | 机制、落盘 replay 与模型理解均验证；保留被 take 风险和策略性拒绝空间 |
-| WP23 | Passive Curator 轨迹诊断 MVP：只读分析 journal/turn trace，不干预 Player 或 World | WP22 | 能识别重复谈判/低信息区段、相遇密度、关系/所有权变化和高影响决策点 |
+| WP23 | LLM runtime profiling 与 memory pipeline：逐调用测量 latency/token/cache/overlap；可选延迟提交维护 | WP22 | 超时局保留部分 profile；实测并反事实分析 blocking/pipelined 关键路径 |
+| WP24 | Providence Phase 0 readiness：最小 Scenario Definition/Instance 与 run provenance | WP23 | 初始场景可复制/参数化，运行可关联 seed/model/effort/config hash；不建 DSL/在线干预 |
+| WP25 | Passive Curator 轨迹诊断 MVP：只读分析 journal/turn/runtime trace，不干预 Player 或 World | WP24 | 能识别重复谈判/低信息区段、相遇密度、关系/所有权变化和高影响决策点 |
 
 ## 6. 开放问题
 

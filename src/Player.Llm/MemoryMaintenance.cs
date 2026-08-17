@@ -68,8 +68,8 @@ public sealed class LlmMemoryShardMaintainer : IMemoryShardMaintainer
         cancellationToken.ThrowIfCancellationRequested();
         MemoryShard target = context.PreviousMemory[ShardKey];
         LlmChatRequest prompt = RenderPrompt(context, target);
-        string response = await _backend.CompleteAsync(prompt, cancellationToken);
-        return ParseUpdate(response, target);
+        LlmChatResponse response = await _backend.CompleteAsync(prompt, cancellationToken);
+        return ParseUpdate(response.Content, target);
     }
 
     private LlmChatRequest RenderPrompt(MemoryMaintenanceContext context, MemoryShard target)

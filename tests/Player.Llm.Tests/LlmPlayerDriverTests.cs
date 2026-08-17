@@ -225,6 +225,55 @@ public sealed class LlmPlayerDriverTests
             trace => Assert.Equal(MemoryMaintenanceOperation.Replace, trace.Operation));
     }
 
+    [Fact]
+    public async Task DecideAsync_PipelinedMaintenance_ReturnsBeforeMaintenanceAndJoinsBeforeNextRoleCall()
+    {
+        var traces = new List<LlmTurnTrace>();
+        var actorBackend = new FakeLlmBackend(
+        [
+            Response("action.observe", "第一轮线索。"),
+            Response("action.wait", "第二轮保持。", "\"durationMs\":1000"),
+        ]);
+        var memoryBackend = new BlockingFirstLlmBackend(
+            Replace("第一轮已整理。"),
+            Keep);
+        var driver = new LlmPlayerDriver(
+            Character,
+            new MemoryBank(
+            [
+                new MemoryShard("working", "当前处境", "维护近期处境。", "初始记忆"),
+            ]),
+            actorBackend,
+            [new LlmMemoryShardMaintainer("working", memoryBackend)],
+            traces.Add,
+            memoryMaintenanceMode: MemoryMaintenanceMode.Pipelined);
+
+        PlayerDecision first = await driver.DecideAsync(CreateRequest(), CancellationToken.None);
+        await memoryBackend.FirstCallStarted.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ActionKinds.Observe, first.Intent.ActionKind);
+        Assert.Equal("初始记忆", driver.CurrentMemoryBank["working"].Content);
+        Assert.Empty(traces);
+
+        Task<PlayerDecision> secondTask = driver.DecideAsync(
+            CreateRequest() with { DecisionId = new DecisionId("decision.alice.2") },
+            CancellationToken.None).AsTask();
+        await Task.Delay(25);
+        Assert.False(secondTask.IsCompleted);
+        Assert.Single(actorBackend.Requests);
+
+        memoryBackend.ReleaseFirstCall();
+        PlayerDecision second = await secondTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await driver.FlushMemoryAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ActionKinds.Wait, second.Intent.ActionKind);
+        Assert.Equal(2, actorBackend.Requests.Count);
+        Assert.Contains("第一轮已整理。", actorBackend.Requests[1].User);
+        Assert.Equal(2, traces.Count);
+        Assert.Equal("第一轮已整理。", driver.CurrentMemoryBank["working"].Content);
+        await driver.DisposeAsync();
+    }
+
     private static LlmPlayerDriver CreateSingleShardDriver(
         string initialMemory,
         ILlmChatBackend actorBackend,
@@ -273,4 +322,41 @@ public sealed class LlmPlayerDriverTests
         JsonSerializer.Serialize(new { operation = "replace", content });
 
     private const string Keep = "{\"operation\":\"keep\"}";
+
+    private sealed class BlockingFirstLlmBackend : ILlmChatBackend
+    {
+        private readonly string _firstResponse;
+        private readonly string _laterResponse;
+        private readonly TaskCompletionSource _firstCallStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseFirstCall = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _callCount;
+
+        public BlockingFirstLlmBackend(string firstResponse, string laterResponse)
+        {
+            _firstResponse = firstResponse;
+            _laterResponse = laterResponse;
+        }
+
+        public Task FirstCallStarted => _firstCallStarted.Task;
+
+        public void ReleaseFirstCall() => _releaseFirstCall.TrySetResult();
+
+        public async Task<LlmChatResponse> CompleteAsync(
+            LlmChatRequest request,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            int call = Interlocked.Increment(ref _callCount);
+            if (call == 1)
+            {
+                _firstCallStarted.TrySetResult();
+                await _releaseFirstCall.Task.WaitAsync(cancellationToken);
+                return new LlmChatResponse(_firstResponse);
+            }
+
+            return new LlmChatResponse(_laterResponse);
+        }
+    }
 }
