@@ -17,6 +17,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Build
-        run: dotnet build -warnaserror
+        run: dotnet build DramaBoard.slnx -warnaserror
       - name: Test
-        run: dotnet test
+        run: dotnet test DramaBoard.slnx

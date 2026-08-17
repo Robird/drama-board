@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kernel\Kernel.csproj" />
+    <ProjectReference Include="..\..\..\Atelia-org\atelia\src\EventJournal\EventJournal.csproj" />
+  </ItemGroup>
+
+</Project>
