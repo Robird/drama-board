@@ -5,6 +5,7 @@
     <Project Path="src/Protocol/Protocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FirstBoard.Tests/FirstBoard.Tests.csproj" />
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/Protocol.Tests/Protocol.Tests.csproj" />
