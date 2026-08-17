@@ -63,7 +63,7 @@
 
 ### 输出格式与解析
 
-- LLM 单次调用输出四合一：**内心独白 + 选定行动（结构化）+ 台词（可选）+ 记忆文档更新**。省调用次数（订阅制下省的是速率配额，API 下省的是钱）。
+- 主 actor 单次调用仍输出四合一：**内心独白 + 选定行动（结构化）+ 台词（可选）+ 本轮记忆提议**。WP21 起不再让这一输出整体替换 Memory；独立 maintainer 根据提议维护各分块。
 - 解析器（Player 层纯函数）：宽松解析（分节标记或 JSON 块），失败→重问一次→仍失败按 driver 失败处理（已有降级路径兜底）。解析器可用录制样本做单元测试。
 
 ---
@@ -91,6 +91,15 @@
 - 第一版：记忆文档作为 Player 私有状态存文件（每决策后覆写 + 决策序号后缀留档）。
 - 演进方向（留档不立案）：记忆更新本身事件化（player-memory journal），与世界 journal 平行——"角色内心史"也可 replay 审计。
 - **边界纪律**：记忆文档**绝不**进入世界状态/journal；台词（say）进 journal（别人可感知），独白只进记忆/戏剧记录。内外之分就是信息不对称的 Player 侧延伸。
+
+### WP20/21 实验后的认知模型演进
+
+单块显式记忆的总方向保持不变，但真场证明“每轮整体替换”把近期处境、长期承诺、猜想和关系置于同一个遗忘概率中。原拟的不可变 Scene Briefing 又会把“材料写了什么”误当成“角色必须相信什么”。因此后续拆成两次独立增强：
+
+1. **WP20 叙事化长期材料**：`ReferenceMaterial(Id, Source, Content)` 每轮保存来源与原文，不保证真实；信任和解释仍由角色更新。见 Design Note 004。
+2. **WP21 分块 MemoryBank**：schema 可配的文本分块各有维护策略；独立 maintainer 看冻结旧完整 bank，只能对自己返回 keep/replace，单块错误局部 fallback keep。FirstBoard 用 working/commitments/beliefs/relationships 四块，允许重叠。见 Design Note 005。
+
+决策模型与记忆维护模型也从此解耦：混合场可由 DeepSeek 维护 DeepSeek/Luna 角色的私有认知。该维护器仍以角色身份工作，只读该角色可见输入；它不是全知摘要器。
 
 ---
 
@@ -135,7 +144,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP20）
+## 5. WP 切分草案（WP12–WP21）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -147,7 +156,8 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP17 | 谈判到世界后果：物化密信/交易筹码，优先复用 `give` 验证非原子交换 | WP16 | 真模型从议价推进到至少一次权威所有权转移；保留违约/背叛可能 |
 | WP18 | 可验证议价：最小 `action.show`/`object.shown`，展示产生目标私有事实但不转移所有权 | WP17 | 真模型以 show 回答“先验货”，再自主选择 give、拒绝或欺诈 |
 | WP19 | 目标化观察：复用 `action.observe(TargetObjectId)` 只检查自持对象，不新增 inspect/read 动词 | WP18 | 两个真后端均自主检查持有物并吸收对象特有私有事实 |
-| WP20 | 不可变 Scene Briefing/Directives：稳定场景前提每轮渲染，与可变记忆和 CharacterCard 分离 | WP19 | 多轮记忆整体替换后仍保留时限/会面前提；不由 Director 代选行动 |
+| WP20 | 叙事化长期材料：稳定保存来源/原文，不冻结角色信念 | WP19 | 完整替换 Memory 后材料仍可查，角色能明确怀疑或反转解释 |
+| WP21 | 分块 MemoryBank：独立 maintainer、keep/replace 与局部 fallback | WP20 | 不同稳定性自然出现；承诺被明确完成/放弃而非静默丢失；混合真场跑通 |
 
 ## 6. 开放问题
 
