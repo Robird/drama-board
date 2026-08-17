@@ -24,6 +24,9 @@ public static class BoardIds
     public const string ObjectHeld = "object.held";
     public const string ObjectReceived = "object.received";
     public const string ObjectShown = "object.shown";
+    public const string ObjectInspected = "object.inspected";
+    public const string LetterAuthenticityKnown = "duchess-letter.authenticity-known";
+    public const string LetterContentsKnown = "duchess-letter.contents-known";
     public const string DialogueHeard = "dialogue.heard";
     public const string LastActionOutcome = "action.last-outcome";
     public const string ActionRejected = "action.rejected";
@@ -191,7 +194,8 @@ public sealed record ActorSpokeEvent(
 
 public sealed record ActorObservedEvent(
     string ActorId,
-    IReadOnlyList<BoardFact> LearnedFacts) : BoardEventPayload;
+    IReadOnlyList<BoardFact> LearnedFacts,
+    string? TargetObjectId = null) : BoardEventPayload;
 
 public sealed record ObjectTakenEvent(
     string ActorId,
@@ -340,9 +344,7 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
                 UpdateActor(world, observed.ActorId, actor =>
                     AddFacts(
                         CompleteAction(actor),
-                        observed.LearnedFacts.Append(LastOutcome(
-                            $"You successfully observed the current place; " +
-                            $"the event reported {observed.LearnedFacts.Count} visible facts.")))),
+                        observed.LearnedFacts.Append(LastOutcome(ObservationOutcome(observed))))),
             ({ } kind, ObjectTakenEvent taken) when kind == BoardEventKinds.ObjectTaken =>
                 ApplyTaken(world, taken),
             ({ } kind, ObjectGivenEvent given) when kind == BoardEventKinds.ObjectGiven =>
@@ -594,6 +596,13 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
 
     private static BoardFact LastOutcome(string text) =>
         new(BoardIds.LastActionOutcome, RelatedId: null, Text: text);
+
+    private static string ObservationOutcome(ActorObservedEvent observed) =>
+        observed.TargetObjectId is null
+            ? $"You successfully observed the current place; " +
+              $"the event reported {observed.LearnedFacts.Count} visible facts."
+            : $"You successfully inspected {observed.TargetObjectId} while holding it; " +
+              $"the event reported {observed.LearnedFacts.Count} inspection facts.";
 
     private static FirstBoardWorld UpdateActor(
         FirstBoardWorld world,

@@ -83,7 +83,9 @@ internal static class DramaRecordWriter
             "action.travel" => $"前往 {DisplayPlace(intent.DestinationId)}",
             "action.wait" => $"等待 {intent.DurationMs?.ToString(CultureInfo.InvariantCulture) ?? "默认"}ms",
             "action.talk" => $"与 {DisplayActor(intent.TargetActorId)} 交谈",
-            "action.observe" => "观察四周",
+            "action.observe" => intent.TargetObjectId is null
+                ? "观察四周"
+                : $"检查 {DisplayObject(intent.TargetObjectId)}",
             "action.take" => $"拿取 {DisplayObject(intent.TargetObjectId)}",
             "action.give" => $"把 {DisplayObject(intent.TargetObjectId)} 交给 {DisplayActor(intent.TargetActorId)}",
             "action.show" => $"向 {DisplayActor(intent.TargetActorId)} 展示 {DisplayObject(intent.TargetObjectId)}",
@@ -105,6 +107,9 @@ internal static class DramaRecordWriter
             ActorWaitedEvent value => $"{DisplayActor(value.ActorId)}结束等待。",
             ActorSpokeEvent value =>
                 $"{DisplayActor(value.ActorId)}对{DisplayActor(value.TargetActorId)}说：“{value.Text}”",
+            ActorObservedEvent value when value.TargetObjectId is not null =>
+                $"{DisplayActor(value.ActorId)}仔细检查了{DisplayObject(value.TargetObjectId)}并确认：" +
+                string.Join("；", value.LearnedFacts.Select(fact => fact.Text)),
             ActorObservedEvent value => value.LearnedFacts.Count == 0
                 ? $"{DisplayActor(value.ActorId)}环顾四周，没有获得新线索。"
                 : $"{DisplayActor(value.ActorId)}观察并记住：{string.Join("；", value.LearnedFacts.Select(fact => fact.Text))}",

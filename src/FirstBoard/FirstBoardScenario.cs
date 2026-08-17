@@ -242,7 +242,18 @@ public static class FirstBoardScenario
                 CandidateActorIds: Array.AsReadOnly(targetActors)));
         }
 
-        actions.Add(new AvailableAction(ActionKinds.Observe));
+        string[] heldObjects =
+        [
+            .. world.Objects
+                .Where(item => item.OwnerActorId == actor.Id)
+                .OrderBy(item => item.Id)
+                .Select(item => item.Key),
+        ];
+        actions.Add(new AvailableAction(
+            ActionKinds.Observe,
+            CandidateObjectIds: heldObjects.Length == 0
+                ? null
+                : Array.AsReadOnly(heldObjects)));
 
         string[] takeableObjects =
         [
@@ -258,13 +269,6 @@ public static class FirstBoardScenario
                 CandidateObjectIds: Array.AsReadOnly(takeableObjects)));
         }
 
-        string[] heldObjects =
-        [
-            .. world.Objects
-                .Where(item => item.OwnerActorId == actor.Id)
-                .OrderBy(item => item.Id)
-                .Select(item => item.Key),
-        ];
         if (actor.PlaceId == BoardIds.Cellar &&
             !world.CellarSealed &&
             !world.ChestOpened &&
@@ -346,7 +350,7 @@ public static class FirstBoardScenario
             ActorSpokeEvent spoke =>
                 $"actor={spoke.ActorId} target={spoke.TargetActorId} text={spoke.Text}",
             ActorObservedEvent observed =>
-                $"actor={observed.ActorId} facts=" +
+                $"actor={observed.ActorId} targetObject={observed.TargetObjectId} facts=" +
                 string.Join(",", observed.LearnedFacts.Select(fact => fact.Kind)),
             ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
             ObjectGivenEvent given =>

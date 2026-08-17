@@ -104,7 +104,7 @@ public sealed class ActionResolutionSystem :
             "action.travel" => ResolveTravel(world, actor, submitted.Intent, candidate.Due),
             "action.wait" => ResolveWait(actor, submitted.Intent, candidate.Due),
             "action.talk" => ResolveTalk(world, actor, submitted.Intent),
-            "action.observe" => ResolveObserve(world, actor),
+            "action.observe" => ResolveObserve(world, actor, submitted.Intent),
             "action.take" => ResolveTake(world, actor, submitted.Intent),
             "action.give" => ResolveGive(world, actor, submitted.Intent),
             "action.show" => ResolveShow(world, actor, submitted.Intent),
@@ -216,8 +216,14 @@ public sealed class ActionResolutionSystem :
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveObserve(
         FirstBoardWorld world,
-        BoardActor actor)
+        BoardActor actor,
+        Intent intent)
     {
+        if (intent.TargetObjectId is string targetObjectId)
+        {
+            return ResolveInspectHeldObject(world, actor, intent, targetObjectId);
+        }
+
         var facts = new List<BoardFact>();
         foreach (BoardActor visibleActor in world.Actors.Where(other =>
                      other.Id != actor.Id &&
@@ -274,6 +280,54 @@ public sealed class ActionResolutionSystem :
         return Result(
             BoardEventKinds.ActorObserved,
             new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned)));
+    }
+
+    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveInspectHeldObject(
+        FirstBoardWorld world,
+        BoardActor actor,
+        Intent intent,
+        string targetObjectId)
+    {
+        BoardObject? item = world.Objects.SingleOrDefault(current => current.Key == targetObjectId);
+        if (item is null)
+        {
+            return Reject(actor, intent, "target object does not exist");
+        }
+
+        if (item.OwnerActorId != actor.Id)
+        {
+            return Reject(actor, intent, "actor may only inspect a held object");
+        }
+
+        var facts = new List<BoardFact>
+        {
+            new(
+                BoardIds.ObjectInspected,
+                item.Key,
+                $"You carefully inspected {item.Key} while holding it."),
+        };
+        if (item.Key == BoardIds.DuchessLetter)
+        {
+            facts.Add(new BoardFact(
+                BoardIds.LetterAuthenticityKnown,
+                item.Key,
+                "The duchess's signet, handwriting, and private cipher confirm that the letter is genuine."));
+            facts.Add(new BoardFact(
+                BoardIds.LetterContentsKnown,
+                item.Key,
+                "The letter orders its bearer to deliver evidence of the cellar conspiracy to the city archivist; " +
+                "the brass key is no longer required once the letter is recovered."));
+        }
+
+        BoardFact[] learned =
+        [
+            .. facts
+                .OrderBy(fact => fact.Kind, StringComparer.Ordinal)
+                .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
+        ];
+        return Result(
+            BoardEventKinds.ActorObserved,
+            new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned), item.Key));
     }
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveTake(

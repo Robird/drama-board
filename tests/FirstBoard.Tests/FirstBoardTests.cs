@@ -260,6 +260,78 @@ public sealed class FirstBoardTests
     }
 
     [Fact]
+    public async Task TargetedObserve_RejectsPublicObjectAndRevealsHeldLetterEvidence()
+    {
+        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request =>
+            {
+                AvailableAction observe = Assert.Single(
+                    request.AvailableActions,
+                    action => action.ActionKind == ActionKinds.Observe);
+                Assert.Contains(BoardIds.DuchessLetter, observe.CandidateObjectIds!);
+                Assert.Contains(BoardIds.SilverCoinOne, observe.CandidateObjectIds!);
+                Assert.DoesNotContain(BoardIds.BrassKey, observe.CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Observe,
+                    TargetObjectId: BoardIds.BrassKey));
+            },
+            request =>
+            {
+                Assert.Equal(DecisionReasons.ActionRejected, request.Reason);
+                return Decide(request, new Intent(
+                    ActionKinds.Observe,
+                    TargetObjectId: BoardIds.DuchessLetter));
+            },
+            request =>
+            {
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.LetterAuthenticityKnown &&
+                    fact.RelatedId == BoardIds.DuchessLetter);
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.LetterContentsKnown &&
+                    fact.Text.Contains("city archivist", StringComparison.Ordinal));
+                return Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000));
+            },
+        ]));
+        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 32));
+        BoardActor initialAlice = initial.Actor(BoardIds.Alice);
+        initial = initial with
+        {
+            ChestOpened = true,
+            Objects = Array.AsReadOnly(initial.Objects
+                .Select(item => item.Key == BoardIds.DuchessLetter
+                    ? item with { PlaceId = null, OwnerActorId = initialAlice.Id }
+                    : item)
+                .ToArray()),
+        };
+
+        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
+            Drivers(alice, bob),
+            worldSeed: 32,
+            new ModelTime(1),
+            initial);
+        FirstBoardWorld world = capture.Result.World;
+
+        ActionRejectedEvent rejected = Assert.IsType<ActionRejectedEvent>(Assert.Single(
+            capture.Journal.Events,
+            domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected).Payload);
+        Assert.Equal("actor may only inspect a held object", rejected.Reason);
+        ActorObservedEvent inspected = Assert.IsType<ActorObservedEvent>(Assert.Single(
+            capture.Journal.Events,
+            domainEvent => domainEvent.Kind == BoardEventKinds.ActorObserved).Payload);
+        Assert.Equal(BoardIds.DuchessLetter, inspected.TargetObjectId);
+        Assert.Equal(3, inspected.LearnedFacts.Count);
+        Assert.Equal(initialAlice.Id, world.Object(BoardIds.DuchessLetter).OwnerActorId);
+        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
+            fact.Kind == BoardIds.LetterAuthenticityKnown);
+    }
+
+    [Fact]
     public void TalkEvent_AwakensWaitingListenerAndMakesDialogueAuthoritativeInput()
     {
         FirstBoardWorld world = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 33));

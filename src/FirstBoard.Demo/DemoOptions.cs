@@ -54,7 +54,7 @@ internal sealed record DemoOptions(
             "output",
             Path.Combine(
                 "artifacts",
-                "wp18",
+                "wp19",
                 $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-" +
                 $"alice-{aliceBackend}-{aliceModel}-bob-{bobBackend}-{bobModel}"));
 
