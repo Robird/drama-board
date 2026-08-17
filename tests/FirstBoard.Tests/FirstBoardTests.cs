@@ -366,25 +366,44 @@ public sealed class FirstBoardTests
     }
 
     [Fact]
-    public void KeyContention_WinnerDoesNotDependOnActorRegistrationOrder()
+    public async Task KeyContention_HostBatchIsSymmetricAndWinnerIgnoresDriverRegistrationOrder()
     {
-        FirstBoardWorld normal = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 73));
-        FirstBoardWorld reversed = normal with
-        {
-            Actors = Array.AsReadOnly(normal.Actors.Reverse().ToArray()),
-        };
+        HostContentionCapture first = await RunHostContentionAsync(reverseDriverRegistration: false);
+        HostContentionCapture second = await RunHostContentionAsync(reverseDriverRegistration: true);
 
-        ContentionCapture first = RunContention(normal, reverseSubmissions: false);
-        ContentionCapture second = RunContention(reversed, reverseSubmissions: true);
-
-        Assert.Equal(first.WinnerActorId, second.WinnerActorId);
+        Assert.Equal(first.Run.Result.World.Object(BoardIds.BrassKey).OwnerActorId,
+            second.Run.Result.World.Object(BoardIds.BrassKey).OwnerActorId);
         Assert.Equal(
-            normal.Actor(first.WinnerActorId).Key,
-            reversed.Actor(second.WinnerActorId).Key);
+            first.Run.Result.World.Actor(first.Contention.WinnerActorId).Key,
+            second.Run.Result.World.Actor(second.Contention.WinnerActorId).Key);
         Assert.Equal(first.Contention.Sample, second.Contention.Sample);
         Assert.Equal(
-            normal.Actors.Select(actor => actor.Id).Order().ToArray(),
+            first.Run.InitialWorld.Actors.Select(actor => actor.Id).Order().ToArray(),
             first.Contention.CompetitorActorIds);
+        Assert.Equal(first.Alice.Requests[0].BasedOnWorldVersion, first.Bob.Requests[0].BasedOnWorldVersion);
+        Assert.Equal(first.Alice.Requests[0].ModelTimeMs, first.Bob.Requests[0].ModelTimeMs);
+        Assert.Contains(BoardIds.BrassKey, first.Alice.Requests[0].Observation.VisibleObjectIds);
+        Assert.Contains(BoardIds.BrassKey, first.Bob.Requests[0].Observation.VisibleObjectIds);
+        Assert.Contains(
+            Assert.Single(first.Alice.Requests[0].AvailableActions,
+                action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!,
+            objectId => objectId == BoardIds.BrassKey);
+        Assert.Contains(
+            Assert.Single(first.Bob.Requests[0].AvailableActions,
+                action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!,
+            objectId => objectId == BoardIds.BrassKey);
+
+        DomainEvent<BoardEventPayload>[] actionInputs =
+        [
+            .. first.Run.Journal.Events.Where(domainEvent =>
+                domainEvent.Kind == BoardEventKinds.TakeRequested),
+        ];
+        Assert.Equal(2, actionInputs.Length);
+        Assert.Equal(actionInputs[0].Cause, actionInputs[1].Cause);
+        Assert.Equal(CauseKind.ExternalInput, actionInputs[0].Cause.Kind);
+        Assert.True(actionInputs[^1].Timestamp < Assert.Single(
+            first.Run.Journal.Events,
+            domainEvent => domainEvent.Kind == BoardEventKinds.ObjectContentionResolved).Timestamp);
     }
 
     [Fact]
@@ -420,6 +439,7 @@ public sealed class FirstBoardTests
         ]));
         var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
         [
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks)),
             request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks)),
             request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Tavern)),
             request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
@@ -508,42 +528,41 @@ public sealed class FirstBoardTests
             new WorldVersion(FirstBoardScenario.LineageId, eventCount: 1))!;
     }
 
-    private static ContentionCapture RunContention(
-        FirstBoardWorld initialWorld,
-        bool reverseSubmissions)
+    private static async Task<HostContentionCapture> RunHostContentionAsync(
+        bool reverseDriverRegistration)
     {
-        UncommittedDomainEvent<BoardEventPayload>[] submissions =
+        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
         [
-            FirstBoardScenario.ActionInput(
-                BoardIds.Alice,
-                "contention.alice",
-                new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            FirstBoardScenario.ActionInput(
-                BoardIds.Bob,
-                "contention.bob",
-                new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-        ];
-        if (reverseSubmissions)
+            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal);
+        if (reverseDriverRegistration)
         {
-            Array.Reverse(submissions);
+            drivers.Add(BoardIds.Bob, bob);
+            drivers.Add(BoardIds.Alice, alice);
+        }
+        else
+        {
+            drivers.Add(BoardIds.Alice, alice);
+            drivers.Add(BoardIds.Bob, bob);
         }
 
-        var reducer = new FirstBoardReducer();
-        var journal = new InMemoryJournal<BoardEventPayload>();
-        SimulationRunResult<FirstBoardWorld, BoardEventPayload> result =
-            FirstBoardScenario.CreateLoop(reducer).Run(
-                initialWorld,
-                SimulationCursor.CreateInitial(FirstBoardScenario.LineageId, ModelTime.Zero),
-                ModelTime.Zero,
-                journal,
-                submissions);
+        BoardRunCapture run = await FirstBoardScenario.RunAsync(
+            drivers,
+            worldSeed: 73,
+            ModelTime.Zero,
+            BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 73)));
         DomainEvent<BoardEventPayload> contentionEvent = Assert.Single(
-            journal.Events,
+            run.Journal.Events,
             domainEvent => domainEvent.Kind == BoardEventKinds.ObjectContentionResolved);
         var contention = Assert.IsType<ObjectContentionResolvedEvent>(contentionEvent.Payload);
-        return new ContentionCapture(
-            result.World.Object(BoardIds.BrassKey).OwnerActorId!.Value,
-            contention);
+        return new HostContentionCapture(run, alice, bob, contention);
     }
 
     private sealed record ScriptedCapture(
@@ -551,8 +570,10 @@ public sealed class FirstBoardTests
         RecordingPlayerDriver Alice,
         RecordingPlayerDriver Bob);
 
-    private sealed record ContentionCapture(
-        long WinnerActorId,
+    private sealed record HostContentionCapture(
+        BoardRunCapture Run,
+        RecordingPlayerDriver Alice,
+        RecordingPlayerDriver Bob,
         ObjectContentionResolvedEvent Contention);
 
     private sealed class AlwaysIllegalTravelPlayerDriver : IPlayerDriver

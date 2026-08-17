@@ -13,7 +13,9 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         StopReason stopReason,
         int decisionCount,
         int skippedDecisionCount,
-        int forcedDecisionCount)
+        int forcedDecisionCount,
+        int pendingDecisionCount,
+        int validationFailedDecisionCount)
     {
         ArgumentNullException.ThrowIfNull(cursor);
 
@@ -24,6 +26,8 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         DecisionCount = decisionCount;
         SkippedDecisionCount = skippedDecisionCount;
         ForcedDecisionCount = forcedDecisionCount;
+        PendingDecisionCount = pendingDecisionCount;
+        ValidationFailedDecisionCount = validationFailedDecisionCount;
     }
 
     /// <summary>Gets the final replacement world value.</summary>
@@ -46,4 +50,13 @@ public sealed class PlayerDecisionSessionResult<TWorld>
 
     /// <summary>Gets the number of decisions replaced with the Host's safe default during this call.</summary>
     public int ForcedDecisionCount { get; }
+
+    /// <summary>Gets the number of requests that still need a valid answer.</summary>
+    public int PendingDecisionCount { get; }
+
+    /// <summary>Gets the number of Player answers invalidated by correlation validation during this call.</summary>
+    public int ValidationFailedDecisionCount { get; }
+
+    /// <summary>Gets the total number of invalidations recorded during this call.</summary>
+    public int InvalidatedDecisionCount => checked(SkippedDecisionCount + ValidationFailedDecisionCount);
 }

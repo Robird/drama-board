@@ -5,7 +5,7 @@ using DramaBoard.Protocol;
 
 namespace DramaBoard.Host;
 
-/// <summary>Sequentially advances a simulation and turns decision requests into external input events.</summary>
+/// <summary>Advances a simulation and submits each simultaneous decision set as one input batch.</summary>
 public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPayload>
 {
     private const long ForcedWaitDurationMs = 60_000;
@@ -19,6 +19,7 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
     private readonly int _maxConsecutiveRejectionsPerActor;
     private readonly Func<DomainEvent<TEventPayload>, string?>? _rejectionSelector;
     private readonly Dictionary<string, RejectionStreak> _rejectionStreaksByActor = new(StringComparer.Ordinal);
+    private readonly List<PendingDecision<TEventPayload>> _pendingDecisions = [];
     private TWorld _world;
     private SimulationCursor _cursor;
     private int _runInProgress;
@@ -79,6 +80,9 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         _rejectionSelector = rejectionSelector;
     }
 
+    /// <summary>Gets the decision batch currently retained by the session.</summary>
+    public IReadOnlyList<PendingDecision<TEventPayload>> PendingDecisions => _pendingDecisions.AsReadOnly();
+
     /// <summary>Runs through decision points until the simulation is exhausted or reaches the boundary.</summary>
     public ValueTask<PlayerDecisionSessionResult<TWorld>> RunUntilAsync(
         ModelTime until,
@@ -99,21 +103,26 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
     {
         try
         {
-            var pendingDecisionEvents = new Queue<DomainEvent<TEventPayload>>();
             int decisionCount = 0;
             int skippedDecisionCount = 0;
             int forcedDecisionCount = 0;
+            int validationFailedDecisionCount = 0;
 
             cancellationToken.ThrowIfCancellationRequested();
-            SimulationRunResult<TWorld, TEventPayload> run = RunSimulation(until, externalInputs: null);
-            EnqueueDecisionEvents(run, pendingDecisionEvents);
+            SimulationRunResult<TWorld, TEventPayload>? run = null;
+            if (_pendingDecisions.Count == 0)
+            {
+                run = RunSimulation(until, externalInputs: null);
+                CaptureDecisionBatch(run);
+            }
 
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!pendingDecisionEvents.TryDequeue(out DomainEvent<TEventPayload>? decisionEvent))
+                EnsureUniquePendingActors();
+                if (_pendingDecisions.Count == 0)
                 {
-                    if (run.StopReason != StopReason.DecisionRequired)
+                    if (run is not null && run.StopReason != StopReason.DecisionRequired)
                     {
                         return new PlayerDecisionSessionResult<TWorld>(
                             _world,
@@ -122,88 +131,144 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
                             run.StopReason,
                             decisionCount,
                             skippedDecisionCount,
-                            forcedDecisionCount);
+                            forcedDecisionCount,
+                            pendingDecisionCount: 0,
+                            validationFailedDecisionCount);
                     }
 
                     run = RunSimulation(until, externalInputs: null);
-                    EnqueueDecisionEvents(run, pendingDecisionEvents);
+                    CaptureDecisionBatch(run);
                     continue;
                 }
 
-                LogicalTimestamp currentTimestamp = _journal.Events[^1].Timestamp;
-                DecisionRequest? request = BuildRequest(decisionEvent, run.Version, currentTimestamp);
-                if (request is null)
+                WorldVersion batchVersion = CurrentVersion();
+                foreach (PendingDecision<TEventPayload> pending in _pendingDecisions)
                 {
-                    skippedDecisionCount = checked(skippedDecisionCount + 1);
-                    continue;
-                }
-
-                string actorId = _actorSelector(decisionEvent);
-                if (string.IsNullOrWhiteSpace(actorId))
-                {
-                    throw new InvalidOperationException("The decision actor selector returned an empty actor identifier.");
-                }
-
-                if (!string.Equals(request.ActorId, actorId, StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        $"The decision request actor '{request.ActorId}' does not match routed actor '{actorId}'.");
-                }
-
-                bool isForcedDecision = ShouldForceDecision(actorId);
-                PlayerDecision decision;
-                if (isForcedDecision)
-                {
-                    decision = ForcedWait(request);
-                    forcedDecisionCount = checked(forcedDecisionCount + 1);
-                }
-                else
-                {
-                    if (!_drivers.TryGetValue(actorId, out IPlayerDriver? driver))
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (pending.Status == PendingDecisionStatus.Answered || pending.IsTerminalInvalidation)
                     {
-                        throw new InvalidOperationException($"No Player driver is registered for actor '{actorId}'.");
+                        continue;
                     }
 
-                    decision = await driver.DecideAsync(request, cancellationToken)
-                        ?? throw new InvalidOperationException("A Player driver returned null.");
-                }
+                    DecisionRequest? request = BuildRequest(
+                        pending.RequestEvent,
+                        batchVersion,
+                        pending.RequestEvent.Timestamp);
+                    if (request is null)
+                    {
+                        pending.Status = PendingDecisionStatus.Invalidated;
+                        pending.InvalidationReason = PendingDecisionInvalidationReason.StaleRequest;
+                        continue;
+                    }
 
-                ValidateDecision(decision, request);
-
-                IReadOnlyList<UncommittedDomainEvent<TEventPayload>> decisionInputs =
-                    _decisionTranslator(decision, _world)
-                    ?? throw new InvalidOperationException("The decision translator returned null.");
-                decisionCount = checked(decisionCount + 1);
-                if (decisionInputs.Count == 0)
-                {
-                    RecordRejectedOrNonProgressing(actorId);
+                    ValidateRequestActor(request, pending.ActorId);
+                    bool isForcedDecision = ShouldForceDecision(pending.ActorId);
+                    PlayerDecision decision;
                     if (isForcedDecision)
                     {
-                        throw ForcedWaitRejected(actorId, "the decision translator produced no input events");
+                        decision = ForcedWait(request);
+                    }
+                    else
+                    {
+                        if (!_drivers.TryGetValue(pending.ActorId, out IPlayerDriver? driver))
+                        {
+                            throw new InvalidOperationException(
+                                $"No Player driver is registered for actor '{pending.ActorId}'.");
+                        }
+
+                        decision = await driver.DecideAsync(request, cancellationToken)
+                            ?? throw new InvalidOperationException("A Player driver returned null.");
                     }
 
+                    string? validationFailure = DecisionValidationFailure(decision, request);
+                    if (validationFailure is not null)
+                    {
+                        pending.Status = PendingDecisionStatus.Invalidated;
+                        pending.InvalidationReason = PendingDecisionInvalidationReason.ValidationFailed;
+                        pending.ValidationFailureCount = checked(pending.ValidationFailureCount + 1);
+                        if (pending.ValidationFailureCount >= 2)
+                        {
+                            throw new InvalidOperationException(validationFailure);
+                        }
+
+                        continue;
+                    }
+
+                    pending.Status = PendingDecisionStatus.Answered;
+                    pending.InvalidationReason = null;
+                    pending.Answer = decision;
+                    pending.IsForced = isForcedDecision;
+                }
+
+                if (_pendingDecisions.Any(pending =>
+                    pending.Status == PendingDecisionStatus.Open ||
+                    pending.InvalidationReason == PendingDecisionInvalidationReason.ValidationFailed))
+                {
                     continue;
+                }
+
+                var decisionInputs = new List<UncommittedDomainEvent<TEventPayload>>();
+                var submittedDecisions = new List<SubmittedDecision>();
+                skippedDecisionCount = checked(skippedDecisionCount + _pendingDecisions.Count(pending =>
+                    pending.IsTerminalInvalidation));
+                validationFailedDecisionCount = checked(
+                    validationFailedDecisionCount +
+                    _pendingDecisions.Sum(pending => pending.ValidationFailureCount));
+                foreach (PendingDecision<TEventPayload> pending in _pendingDecisions.Where(current =>
+                    current.Status == PendingDecisionStatus.Answered))
+                {
+                    IReadOnlyList<UncommittedDomainEvent<TEventPayload>> translated =
+                        _decisionTranslator(pending.Answer!, _world)
+                        ?? throw new InvalidOperationException("The decision translator returned null.");
+                    decisionCount = checked(decisionCount + 1);
+                    if (pending.IsForced)
+                    {
+                        forcedDecisionCount = checked(forcedDecisionCount + 1);
+                    }
+
+                    if (translated.Count == 0)
+                    {
+                        RecordRejectedOrNonProgressing(pending.ActorId);
+                        if (pending.IsForced)
+                        {
+                            throw ForcedWaitRejected(
+                                pending.ActorId,
+                                "the decision translator produced no input events");
+                        }
+                    }
+
+                    decisionInputs.AddRange(translated);
+                    submittedDecisions.Add(new SubmittedDecision(
+                        pending.ActorId,
+                        translated.Count > 0,
+                        pending.IsForced));
                 }
 
                 int firstNewEventIndex = _journal.Events.Count;
                 ModelTime previousModelTime = _cursor.Now;
                 run = RunSimulation(until, decisionInputs);
-                bool wasRejected = WasRejected(actorId, firstNewEventIndex);
-                if (isForcedDecision && wasRejected)
+                foreach (SubmittedDecision submitted in submittedDecisions.Where(current => current.HasInputs))
                 {
-                    throw ForcedWaitRejected(actorId, "the rejection selector matched a new journal event");
+                    bool wasRejected = WasRejected(submitted.ActorId, firstNewEventIndex);
+                    if (submitted.IsForced && wasRejected)
+                    {
+                        throw ForcedWaitRejected(
+                            submitted.ActorId,
+                            "the rejection selector matched a new journal event");
+                    }
+
+                    if (wasRejected && _cursor.Now == previousModelTime)
+                    {
+                        RecordRejectedOrNonProgressing(submitted.ActorId);
+                    }
+                    else
+                    {
+                        ClearConsecutiveRejections(submitted.ActorId);
+                    }
                 }
 
-                if (wasRejected && _cursor.Now == previousModelTime)
-                {
-                    RecordRejectedOrNonProgressing(actorId);
-                }
-                else
-                {
-                    ClearConsecutiveRejections(actorId);
-                }
-
-                EnqueueDecisionEvents(run, pendingDecisionEvents);
+                _pendingDecisions.Clear();
+                CaptureDecisionBatch(run);
             }
         }
         finally
@@ -299,13 +364,50 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
 
     private readonly record struct RejectionStreak(int Count, ModelTime ModelTime);
 
-    private static void EnqueueDecisionEvents(
-        SimulationRunResult<TWorld, TEventPayload> run,
-        Queue<DomainEvent<TEventPayload>> pendingDecisionEvents)
+    private readonly record struct SubmittedDecision(string ActorId, bool HasInputs, bool IsForced);
+
+    private WorldVersion CurrentVersion() => new(_cursor.LineageId, _journal.Events.Count);
+
+    private void CaptureDecisionBatch(SimulationRunResult<TWorld, TEventPayload> run)
     {
+        if (run.DecisionEvents.Count == 0)
+        {
+            return;
+        }
+
         foreach (DomainEvent<TEventPayload> decisionEvent in run.DecisionEvents)
         {
-            pendingDecisionEvents.Enqueue(decisionEvent);
+            string actorId = _actorSelector(decisionEvent);
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                throw new InvalidOperationException("The decision actor selector returned an empty actor identifier.");
+            }
+
+            _pendingDecisions.Add(new PendingDecision<TEventPayload>(decisionEvent, actorId));
+        }
+
+        EnsureUniquePendingActors();
+    }
+
+    private void EnsureUniquePendingActors()
+    {
+        string? duplicateActorId = _pendingDecisions
+            .GroupBy(pending => pending.ActorId, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1)
+            ?.Key;
+        if (duplicateActorId is not null)
+        {
+            throw new InvalidOperationException(
+                $"A simultaneous decision batch contains more than one request for actor '{duplicateActorId}'.");
+        }
+    }
+
+    private static void ValidateRequestActor(DecisionRequest request, string actorId)
+    {
+        if (!string.Equals(request.ActorId, actorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The decision request actor '{request.ActorId}' does not match routed actor '{actorId}'.");
         }
     }
 
@@ -338,23 +440,25 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         };
     }
 
-    private static void ValidateDecision(
+    private static string? DecisionValidationFailure(
         PlayerDecision decision,
         DecisionRequest request)
     {
         if (decision.DecisionId != request.DecisionId)
         {
-            throw new InvalidOperationException("The Player decision does not match the requested DecisionId.");
+            return "The Player decision does not match the requested DecisionId.";
         }
 
         if (decision.BasedOnWorldVersion != request.BasedOnWorldVersion)
         {
-            throw new InvalidOperationException("The Player decision is based on a stale world version.");
+            return "The Player decision is based on a stale world version.";
         }
 
         if (decision.LineageId != request.LineageId)
         {
-            throw new InvalidOperationException("The Player decision belongs to a different world lineage.");
+            return "The Player decision belongs to a different world lineage.";
         }
+
+        return null;
     }
 }

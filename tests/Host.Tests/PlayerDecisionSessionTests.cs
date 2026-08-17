@@ -81,11 +81,8 @@ public sealed class PlayerDecisionSessionTests
     {
         var driver = new ScriptedPlayerDriver(
         [
-            request => new PlayerDecision(
-                new DecisionId("decision.wrong"),
-                request.BasedOnWorldVersion,
-                request.LineageId,
-                new Intent(ActionKinds.Wait)),
+            WrongDecisionId,
+            WrongDecisionId,
         ]);
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -99,11 +96,8 @@ public sealed class PlayerDecisionSessionTests
     {
         var driver = new ScriptedPlayerDriver(
         [
-            request => new PlayerDecision(
-                request.DecisionId,
-                request.BasedOnWorldVersion + 1,
-                request.LineageId,
-                new Intent(ActionKinds.Wait)),
+            StaleDecision,
+            StaleDecision,
         ]);
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -117,11 +111,8 @@ public sealed class PlayerDecisionSessionTests
     {
         var driver = new ScriptedPlayerDriver(
         [
-            request => new PlayerDecision(
-                request.DecisionId,
-                request.BasedOnWorldVersion,
-                request.LineageId + 1,
-                new Intent(ActionKinds.Wait)),
+            WrongLineageDecision,
+            WrongLineageDecision,
         ]);
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -151,7 +142,7 @@ public sealed class PlayerDecisionSessionTests
     }
 
     [Fact]
-    public async Task RunUntilAsync_SecondSameBatchRequestUsesWorldAfterFirstDecision()
+    public async Task RunUntilAsync_SameBatchRequestsUseSameWorldAndSubmitOneExternalBatch()
     {
         var driver = new ScriptedPlayerDriver(
         [
@@ -165,8 +156,8 @@ public sealed class PlayerDecisionSessionTests
             request =>
             {
                 Assert.Equal("decision.b", request.DecisionId.Value);
-                Assert.Equal(3, request.BasedOnWorldVersion);
-                Assert.Equal("value.5", request.Observation.LocationId);
+                Assert.Equal(2, request.BasedOnWorldVersion);
+                Assert.Equal("value.0", request.Observation.LocationId);
                 return Wait(request);
             },
         ]);
@@ -182,6 +173,11 @@ public sealed class PlayerDecisionSessionTests
         Assert.Equal(2, capture.Result.DecisionCount);
         Assert.Equal(0, capture.Result.SkippedDecisionCount);
         Assert.Equal(new WorldVersion(88, 4), capture.Result.Version);
+        Assert.All(
+            capture.Journal.Events.Skip(2),
+            domainEvent => Assert.Equal(EventCause.FromExternalInput(batchOrdinal: 1), domainEvent.Cause));
+        Assert.Equal([0, 1, 2, 3], capture.Journal.Events.Select(domainEvent =>
+            domainEvent.Timestamp.Microstep.Value));
     }
 
     [Fact]
@@ -192,13 +188,15 @@ public sealed class PlayerDecisionSessionTests
         QueuedRunCapture capture = await RunQueuedAsync(
             driver,
             (world, decisionEvent, version) =>
-                decisionEvent.Payload.DecisionId == "decision.b" && world.Value == 5
+                decisionEvent.Payload.DecisionId == "decision.b"
                     ? null
                     : QueuedDecisionScenario.BuildRequest(world, decisionEvent, version),
             (decision, _) => QueuedDecisionScenario.Apply(decision, delta: 5));
 
         Assert.Equal(1, capture.Result.DecisionCount);
         Assert.Equal(1, capture.Result.SkippedDecisionCount);
+        Assert.Equal(1, capture.Result.InvalidatedDecisionCount);
+        Assert.Equal(0, capture.Result.PendingDecisionCount);
         Assert.Equal(5, capture.Result.World.Value);
         Assert.Equal(3, capture.Journal.Events.Count);
     }
@@ -323,7 +321,7 @@ public sealed class PlayerDecisionSessionTests
     }
 
     [Fact]
-    public async Task RunUntilAsync_BoundaryReachedStillSubmitsRemainingQueuedDecisionAtCursorNow()
+    public async Task RunUntilAsync_SimultaneousBatchSubmitsBeforeReturningAtBoundary()
     {
         var driver = new ScriptedPlayerDriver(
         [
@@ -331,8 +329,8 @@ public sealed class PlayerDecisionSessionTests
             request =>
             {
                 Assert.Equal("decision.b", request.DecisionId.Value);
-                Assert.Equal(3, request.BasedOnWorldVersion);
-                Assert.Equal("value.1", request.Observation.LocationId);
+                Assert.Equal(2, request.BasedOnWorldVersion);
+                Assert.Equal("value.0", request.Observation.LocationId);
                 return Wait(request);
             },
         ]);
@@ -350,6 +348,145 @@ public sealed class PlayerDecisionSessionTests
         Assert.Equal(0, capture.Result.SkippedDecisionCount);
         Assert.Equal([0, 1, 2, 3], capture.Journal.Events.Select(domainEvent =>
             domainEvent.Timestamp.Microstep.Value));
+    }
+
+    [Fact]
+    public async Task RunUntilAsync_CancellationRetainsAnsweredAndOpenRequestsThenResumesBatch()
+    {
+        var driver = new CancelThenResumeDriver();
+        (PlayerDecisionSession<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent> session,
+            InMemoryJournal<QueuedDecisionEvent> journal) = CreateQueuedSession(
+                driver,
+                QueuedDecisionScenario.BuildRequest,
+                (decision, _) => QueuedDecisionScenario.Apply(
+                    decision,
+                    decision.DecisionId.Value == "decision.a" ? 5 : 7));
+        using var cancellation = new CancellationTokenSource();
+        Task<PlayerDecisionSessionResult<QueuedDecisionWorld>> interrupted = session.RunUntilAsync(
+            new ModelTime(100),
+            cancellation.Token).AsTask();
+        await driver.WaitUntilBlockedAsync();
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await interrupted);
+
+        Assert.Equal(
+            [PendingDecisionStatus.Answered, PendingDecisionStatus.Open],
+            session.PendingDecisions.Select(pending => pending.Status));
+        Assert.Equal(["decision.a", "decision.b"], session.PendingDecisions.Select(pending =>
+            pending.RequestEvent.Payload.DecisionId));
+        Assert.Equal(0, session.PendingDecisions[0].RequestEvent.Timestamp.ModelTime.Ticks - 10);
+        Assert.Equal(2, journal.Events.Count);
+
+        PlayerDecisionSessionResult<QueuedDecisionWorld> resumed = await session.RunUntilAsync(
+            new ModelTime(100),
+            CancellationToken.None);
+
+        Assert.Equal(12, resumed.World.Value);
+        Assert.Equal(2, resumed.DecisionCount);
+        Assert.Equal(0, resumed.PendingDecisionCount);
+        Assert.Empty(session.PendingDecisions);
+        Assert.Equal(1, driver.ActorACallCount);
+        Assert.Equal(2, driver.ActorBCallCount);
+    }
+
+    [Fact]
+    public async Task RunUntilAsync_StaleRequestIsQueryableAsInvalidatedWhilePeerRemainsOpen()
+    {
+        var driver = new BlockingPlayerDriver();
+        (PlayerDecisionSession<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent> session, _) =
+            CreateQueuedSession(
+                driver,
+                (world, decisionEvent, version) =>
+                    decisionEvent.Payload.DecisionId == "decision.a"
+                        ? null
+                        : QueuedDecisionScenario.BuildRequest(world, decisionEvent, version),
+                (decision, _) => QueuedDecisionScenario.Apply(decision, delta: 1));
+        using var cancellation = new CancellationTokenSource();
+        Task<PlayerDecisionSessionResult<QueuedDecisionWorld>> interrupted = session.RunUntilAsync(
+            new ModelTime(100),
+            cancellation.Token).AsTask();
+        await driver.WaitUntilEnteredAsync();
+
+        Assert.Equal(PendingDecisionStatus.Invalidated, session.PendingDecisions[0].Status);
+        Assert.Equal(
+            PendingDecisionInvalidationReason.StaleRequest,
+            session.PendingDecisions[0].InvalidationReason);
+        Assert.Equal(PendingDecisionStatus.Open, session.PendingDecisions[1].Status);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await interrupted);
+
+        driver.Release();
+        PlayerDecisionSessionResult<QueuedDecisionWorld> resumed = await session.RunUntilAsync(
+            new ModelTime(100),
+            CancellationToken.None);
+
+        Assert.Equal(1, resumed.SkippedDecisionCount);
+        Assert.Equal(1, resumed.InvalidatedDecisionCount);
+        Assert.Equal(1, resumed.World.Value);
+    }
+
+    [Fact]
+    public async Task RunUntilAsync_FirstValidationFailureInvalidatesAndReasksOnce()
+    {
+        var driver = new ScriptedPlayerDriver([WrongDecisionId, Wait, Wait]);
+
+        RunCapture capture = await RunAsync(driver);
+
+        Assert.Equal(2, capture.Result.DecisionCount);
+        Assert.Equal(1, capture.Result.ValidationFailedDecisionCount);
+        Assert.Equal(1, capture.Result.InvalidatedDecisionCount);
+        Assert.Equal(StopReason.Exhausted, capture.Result.StopReason);
+    }
+
+    [Fact]
+    public async Task RunUntilAsync_WholeRunAndSplitRunHaveIdenticalJournalEvents()
+    {
+        var wholeJournal = new InMemoryJournal<TravelerEvent>();
+        PlayerDecisionSession<TravelerWorld, TravelerCandidate, TravelerEvent> wholeSession =
+            CreateTravelerSession(new NullPlayerDriver(), wholeJournal);
+        PlayerDecisionSessionResult<TravelerWorld> whole = await wholeSession.RunUntilAsync(
+            new ModelTime(100),
+            CancellationToken.None);
+
+        var splitJournal = new InMemoryJournal<TravelerEvent>();
+        PlayerDecisionSession<TravelerWorld, TravelerCandidate, TravelerEvent> splitSession =
+            CreateTravelerSession(new NullPlayerDriver(), splitJournal);
+        PlayerDecisionSessionResult<TravelerWorld> firstHalf = await splitSession.RunUntilAsync(
+            new ModelTime(15),
+            CancellationToken.None);
+        PlayerDecisionSessionResult<TravelerWorld> split = await splitSession.RunUntilAsync(
+            new ModelTime(100),
+            CancellationToken.None);
+
+        Assert.Equal(StopReason.BoundaryReached, firstHalf.StopReason);
+        Assert.Equal(whole.World, split.World);
+        Assert.Equal(DetailedSnapshots(wholeJournal), DetailedSnapshots(splitJournal));
+    }
+
+    [Fact]
+    public async Task RunUntilAsync_SameActorTwiceInBatchRetainsWholeBatchAndAlwaysThrows()
+    {
+        var driver = new CountingPlayerDriver();
+        (PlayerDecisionSession<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent> session, _) =
+            CreateQueuedSession(
+                driver,
+                QueuedDecisionScenario.BuildRequest,
+                (decision, _) => QueuedDecisionScenario.Apply(decision, delta: 1),
+                duplicateActorInInitialBatch: true);
+
+        InvalidOperationException first = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await session.RunUntilAsync(new ModelTime(100), CancellationToken.None));
+        InvalidOperationException second = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await session.RunUntilAsync(new ModelTime(100), CancellationToken.None));
+
+        Assert.Contains("more than one request", first.Message);
+        Assert.Equal(first.Message, second.Message);
+        Assert.Equal(2, session.PendingDecisions.Count);
+        Assert.All(session.PendingDecisions, pending =>
+            Assert.Equal(PendingDecisionStatus.Open, pending.Status));
+        Assert.Equal(0, driver.CallCount);
     }
 
     private static async Task<RunCapture> RunAsync(IPlayerDriver driver)
@@ -395,9 +532,31 @@ public sealed class PlayerDecisionSessionTests
         ModelTime? until = null,
         bool forecastFutureWork = false)
     {
+        (PlayerDecisionSession<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent> session,
+            InMemoryJournal<QueuedDecisionEvent> journal) = CreateQueuedSession(
+                driver,
+                requestBuilder,
+                translator,
+                forecastFutureWork);
+
+        PlayerDecisionSessionResult<QueuedDecisionWorld> result = await session.RunUntilAsync(
+            until ?? new ModelTime(100),
+            CancellationToken.None);
+        return new QueuedRunCapture(result, journal);
+    }
+
+    private static (
+        PlayerDecisionSession<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent> Session,
+        InMemoryJournal<QueuedDecisionEvent> Journal) CreateQueuedSession(
+            IPlayerDriver driver,
+            Func<QueuedDecisionWorld, DomainEvent<QueuedDecisionEvent>, WorldVersion, DecisionRequest?> requestBuilder,
+            Func<PlayerDecision, QueuedDecisionWorld, IReadOnlyList<UncommittedDomainEvent<QueuedDecisionEvent>>> translator,
+            bool forecastFutureWork = false,
+            bool duplicateActorInInitialBatch = false)
+    {
         var reducer = new QueuedDecisionReducer();
         var loop = new SimulationLoop<QueuedDecisionWorld, QueuedDecisionCandidate, QueuedDecisionEvent>(
-            [new QueuedDecisionSystem(forecastFutureWork)],
+            [new QueuedDecisionSystem(forecastFutureWork, duplicateActorInInitialBatch)],
             reducer,
             decisionRequestPredicate: domainEvent =>
                 domainEvent.Kind.Id == QueuedDecisionEventKinds.DecisionRequested.Id);
@@ -417,11 +576,7 @@ public sealed class PlayerDecisionSessionTests
             drivers,
             requestBuilder,
             translator);
-
-        PlayerDecisionSessionResult<QueuedDecisionWorld> result = await session.RunUntilAsync(
-            until ?? new ModelTime(100),
-            CancellationToken.None);
-        return new QueuedRunCapture(result, journal);
+        return (session, journal);
     }
 
     private static PlayerDecision TravelTo(DecisionRequest request, string destination) =>
@@ -436,6 +591,27 @@ public sealed class PlayerDecisionSessionTests
             request.DecisionId,
             request.BasedOnWorldVersion,
             request.LineageId,
+            new Intent(ActionKinds.Wait));
+
+    private static PlayerDecision WrongDecisionId(DecisionRequest request) =>
+        new(
+            new DecisionId("decision.wrong"),
+            request.BasedOnWorldVersion,
+            request.LineageId,
+            new Intent(ActionKinds.Wait));
+
+    private static PlayerDecision StaleDecision(DecisionRequest request) =>
+        new(
+            request.DecisionId,
+            request.BasedOnWorldVersion + 1,
+            request.LineageId,
+            new Intent(ActionKinds.Wait));
+
+    private static PlayerDecision WrongLineageDecision(DecisionRequest request) =>
+        new(
+            request.DecisionId,
+            request.BasedOnWorldVersion,
+            request.LineageId + 1,
             new Intent(ActionKinds.Wait));
 
     private static PlayerDecision RecordAndWait(
@@ -463,6 +639,14 @@ public sealed class PlayerDecisionSessionTests
             domainEvent.Kind.Id,
             domainEvent.Payload))];
 
+    private static DetailedEventSnapshot[] DetailedSnapshots(InMemoryJournal<TravelerEvent> journal) =>
+        [.. journal.Events.Select(domainEvent => new DetailedEventSnapshot(
+            domainEvent.Timestamp.ModelTime.Ticks,
+            domainEvent.Timestamp.Microstep.Value,
+            domainEvent.Cause,
+            domainEvent.Kind,
+            domainEvent.Payload))];
+
     private sealed record RunCapture(
         PlayerDecisionSessionResult<TravelerWorld> Result,
         InMemoryJournal<TravelerEvent> Journal);
@@ -476,6 +660,58 @@ public sealed class PlayerDecisionSessionTests
         int Microstep,
         string Kind,
         TravelerEvent Payload);
+
+    private sealed record DetailedEventSnapshot(
+        long ModelTime,
+        int Microstep,
+        EventCause Cause,
+        EventKind Kind,
+        TravelerEvent Payload);
+
+    private sealed class CancelThenResumeDriver : IPlayerDriver
+    {
+        private readonly TaskCompletionSource _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int ActorACallCount { get; private set; }
+
+        public int ActorBCallCount { get; private set; }
+
+        public async ValueTask<PlayerDecision> DecideAsync(
+            DecisionRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (request.ActorId == "actor.a")
+            {
+                ActorACallCount = checked(ActorACallCount + 1);
+                return Wait(request);
+            }
+
+            ActorBCallCount = checked(ActorBCallCount + 1);
+            if (ActorBCallCount == 1)
+            {
+                _blocked.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return Wait(request);
+        }
+
+        public Task WaitUntilBlockedAsync() => _blocked.Task;
+    }
+
+    private sealed class CountingPlayerDriver : IPlayerDriver
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<PlayerDecision> DecideAsync(
+            DecisionRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CallCount = checked(CallCount + 1);
+            return ValueTask.FromResult(Wait(request));
+        }
+    }
 
     private sealed class BlockingPlayerDriver : IPlayerDriver
     {

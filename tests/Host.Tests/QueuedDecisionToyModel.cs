@@ -36,10 +36,14 @@ internal sealed class QueuedDecisionSystem
 {
     private const long SourceId = 2_001;
     private readonly bool _forecastFutureWork;
+    private readonly bool _duplicateActorInInitialBatch;
 
-    public QueuedDecisionSystem(bool forecastFutureWork = false)
+    public QueuedDecisionSystem(
+        bool forecastFutureWork = false,
+        bool duplicateActorInInitialBatch = false)
     {
         _forecastFutureWork = forecastFutureWork;
+        _duplicateActorInInitialBatch = duplicateActorInInitialBatch;
     }
 
     public IReadOnlyList<EventCandidate<QueuedDecisionCandidate>> ForecastNext(
@@ -97,7 +101,9 @@ internal sealed class QueuedDecisionSystem
         return
         [
             QueuedDecisionScenario.Request("actor.a", "decision.a"),
-            QueuedDecisionScenario.Request("actor.b", "decision.b"),
+            QueuedDecisionScenario.Request(
+                _duplicateActorInInitialBatch ? "actor.a" : "actor.b",
+                "decision.b"),
         ];
     }
 }

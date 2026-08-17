@@ -8,7 +8,7 @@ namespace DramaBoard.FirstBoard.Tests;
 
 internal abstract record BoardCandidate;
 
-internal sealed record DecisionCandidate(long ActorId, long Generation) : BoardCandidate;
+internal sealed record DecisionCandidate : BoardCandidate;
 
 internal sealed record ActionCandidate(long ActorId, long Generation) : BoardCandidate;
 
@@ -21,40 +21,48 @@ internal sealed class DecisionSchedulingSystem :
 {
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
         FirstBoardWorld world,
-        ModelTime now) =>
-        [
-            .. world.Actors
-                .Where(world.IsIdle)
-                .OrderBy(actor => actor.Id)
-                .Select(actor => new EventCandidate<BoardCandidate>(
-                    new EventCandidateId(actor.Generation),
+        ModelTime now)
+    {
+        bool hasUnresolvedWorkAtNow = world.Actors.Any(actor =>
+            actor.PendingAction is not null || actor.Activity?.Due <= now);
+        return hasUnresolvedWorkAtNow || !world.Actors.Any(world.IsIdle)
+            ? []
+            :
+            [
+                new EventCandidate<BoardCandidate>(
+                    new EventCandidateId(1),
                     now,
-                    actor.Id,
-                    new DecisionCandidate(actor.Id, actor.Generation))),
-        ];
+                    world.WorldRuleSourceId,
+                    new DecisionCandidate()),
+            ];
+    }
 
     public IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Resolve(
         FirstBoardWorld world,
         EventCandidate<BoardCandidate> candidate)
     {
-        if (candidate.Payload is not DecisionCandidate decision)
+        if (candidate.Payload is not DecisionCandidate)
         {
             throw new InvalidOperationException("The decision system received another system's candidate.");
         }
 
-        BoardActor actor = world.Actor(decision.ActorId);
-        if (!world.IsIdle(actor) || actor.Generation != decision.Generation)
+        BoardActor[] idleActors = [.. world.Actors.Where(world.IsIdle).OrderBy(actor => actor.Id)];
+        if (idleActors.Length == 0 || world.Actors.Any(actor =>
+            actor.PendingAction is not null || actor.Activity?.Due <= candidate.Due))
         {
-            throw new InvalidOperationException("The decision candidate is stale for its actor.");
+            throw new InvalidOperationException("The world decision candidate is stale.");
         }
 
-        long decisionNumber = checked(actor.DecisionSequence + 1);
-        string decisionId = $"decision.{actor.Key}.{decisionNumber}";
         return
         [
-            new UncommittedDomainEvent<BoardEventPayload>(
-                BoardEventKinds.DecisionRequested,
-                new DecisionRequestedEvent(actor.Key, decisionNumber, decisionId)),
+            .. idleActors.Select(actor =>
+            {
+                long decisionNumber = checked(actor.DecisionSequence + 1);
+                string decisionId = $"decision.{actor.Key}.{decisionNumber}";
+                return new UncommittedDomainEvent<BoardEventPayload>(
+                    BoardEventKinds.DecisionRequested,
+                    new DecisionRequestedEvent(actor.Key, decisionNumber, decisionId));
+            }),
         ];
     }
 }
