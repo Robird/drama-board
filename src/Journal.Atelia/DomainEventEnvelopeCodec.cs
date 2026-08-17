@@ -10,15 +10,28 @@ namespace DramaBoard.Journal.Atelia;
 public static class DomainEventEnvelopeCodec
 {
     /// <summary>Gets the current envelope format version.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>Serializes a committed event and its opaque payload bytes.</summary>
     public static byte[] Serialize<TPayload>(
         DomainEvent<TPayload> domainEvent,
+        string payloadCodec,
+        int batchIndex,
+        int batchCount,
         Func<TPayload, byte[]> serializePayload)
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(payloadCodec);
         ArgumentNullException.ThrowIfNull(serializePayload);
+        if (batchCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchCount));
+        }
+
+        if (batchIndex < 0 || batchIndex >= batchCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchIndex));
+        }
 
         byte[] payload = serializePayload(domainEvent.Payload)
             ?? throw new InvalidOperationException("The payload serializer returned null.");
@@ -42,6 +55,9 @@ public static class DomainEventEnvelopeCodec
             writer.WriteString("id", domainEvent.Kind.Id);
             writer.WriteNumber("ver", domainEvent.Kind.Version);
             writer.WriteEndObject();
+            writer.WriteString("pc", payloadCodec);
+            writer.WriteNumber("bi", batchIndex);
+            writer.WriteNumber("bc", batchCount);
             writer.WriteBase64String("p", payload);
             writer.WriteEndObject();
         }
@@ -52,8 +68,12 @@ public static class DomainEventEnvelopeCodec
     /// <summary>Deserializes one versioned envelope into a committed domain event.</summary>
     public static DomainEvent<TPayload> Deserialize<TPayload>(
         ReadOnlySpan<byte> envelope,
-        Func<byte[], TPayload> deserializePayload)
+        string expectedPayloadCodec,
+        Func<EventKind, byte[], TPayload> deserializePayload,
+        out int batchIndex,
+        out int batchCount)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedPayloadCodec);
         ArgumentNullException.ThrowIfNull(deserializePayload);
 
         using JsonDocument document = JsonDocument.Parse(envelope.ToArray());
@@ -82,12 +102,39 @@ public static class DomainEventEnvelopeCodec
             kind.GetProperty("id").GetString()
                 ?? throw new JsonException("The event kind id cannot be null."),
             checked((ushort)kind.GetProperty("ver").GetInt32()));
+        string payloadCodec = root.GetProperty("pc").GetString()
+            ?? throw new JsonException("The payload codec identifier cannot be null.");
+        if (!string.Equals(payloadCodec, expectedPayloadCodec, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Payload codec mismatch: journal declares '{payloadCodec}', caller declares " +
+                $"'{expectedPayloadCodec}'.");
+        }
+
+        batchIndex = root.GetProperty("bi").GetInt32();
+        batchCount = root.GetProperty("bc").GetInt32();
+        if (batchCount <= 0 || batchIndex < 0 || batchIndex >= batchCount)
+        {
+            throw new IncompleteEventBatchException(
+                $"Invalid event batch position bi={batchIndex}, bc={batchCount}.");
+        }
+
         byte[] payloadBytes = root.GetProperty("p").GetBytesFromBase64();
 
         return new DomainEvent<TPayload>(
             logicalTimestamp,
             eventCause,
             eventKind,
-            deserializePayload(payloadBytes));
+            deserializePayload(eventKind, payloadBytes));
+    }
+}
+
+/// <summary>Identifies a visible physical frame that does not contain one complete logical batch.</summary>
+public sealed class IncompleteEventBatchException : IOException
+{
+    /// <summary>Initializes an incomplete-batch diagnostic.</summary>
+    public IncompleteEventBatchException(string message)
+        : base(message)
+    {
     }
 }

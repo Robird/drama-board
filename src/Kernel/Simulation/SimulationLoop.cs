@@ -204,6 +204,8 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
         ref LogicalTimestamp? lastCommittedTimestamp,
         ICollection<DomainEvent<TEventPayload>>? committedEvents = null)
     {
+        var batch = new List<DomainEvent<TEventPayload>>(events.Count);
+        LogicalTimestamp? nextTimestamp = lastCommittedTimestamp;
         foreach (UncommittedDomainEvent<TEventPayload> uncommitted in events)
         {
             if (uncommitted is null)
@@ -211,15 +213,22 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
                 throw new InvalidOperationException("A simulation system returned a null event description.");
             }
 
-            Microstep microstep = NextMicrostep(now, lastCommittedTimestamp);
+            Microstep microstep = NextMicrostep(now, nextTimestamp);
             var timestamp = new LogicalTimestamp(now, microstep);
             var domainEvent = new DomainEvent<TEventPayload>(timestamp, cause, uncommitted.Kind, uncommitted.Payload);
 
-            journal.Append(domainEvent);
-            lastCommittedTimestamp = timestamp;
+            batch.Add(domainEvent);
+            nextTimestamp = timestamp;
+        }
+
+        journal.AppendBatch(batch);
+        foreach (DomainEvent<TEventPayload> domainEvent in batch)
+        {
             world = _reducer.Apply(world, domainEvent);
             committedEvents?.Add(domainEvent);
         }
+
+        lastCommittedTimestamp = nextTimestamp;
 
         return world;
     }

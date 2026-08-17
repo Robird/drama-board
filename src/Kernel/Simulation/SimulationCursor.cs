@@ -19,6 +19,11 @@ public sealed record SimulationCursor
             throw new ArgumentOutOfRangeException(nameof(nextBatchOrdinal));
         }
 
+        if (resolveCountAtCurrentTime < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(resolveCountAtCurrentTime));
+        }
+
         LineageId = lineageId;
         Now = now;
         NextBatchOrdinal = nextBatchOrdinal;
@@ -54,6 +59,53 @@ public sealed record SimulationCursor
         long nextBatchOrdinal) =>
         new(lineageId, now, nextBatchOrdinal, 0, null, false);
 
+    /// <summary>Creates the versioned persistence-contract data for this cursor.</summary>
+    public CursorSnapshot ToSnapshot() =>
+        new(
+            LineageId,
+            Now.Ticks,
+            ResolveCountAtCurrentTime,
+            NextBatchOrdinal,
+            LastResolvedCandidate?.SourceId,
+            LastResolvedCandidate?.CandidateId.Value,
+            LastResolvedCandidate?.Due.Ticks,
+            LastResolveProducedNoEvents);
+
+    /// <summary>Restores a cursor from validated persistence-contract data.</summary>
+    public static SimulationCursor FromSnapshot(CursorSnapshot snapshot)
+    {
+        bool hasSourceId = snapshot.LastResolvedSourceId.HasValue;
+        bool hasCandidateId = snapshot.LastResolvedCandidateId.HasValue;
+        bool hasDueTicks = snapshot.LastResolvedDueTicks.HasValue;
+        if (hasSourceId != hasCandidateId || hasSourceId != hasDueTicks)
+        {
+            throw new ArgumentException(
+                "The last-resolve identity fields must either all be present or all be absent.",
+                nameof(snapshot));
+        }
+
+        ResolvedCandidateIdentity? lastResolvedCandidate = hasSourceId
+            ? new ResolvedCandidateIdentity(
+                snapshot.LastResolvedSourceId!.Value,
+                new EventCandidateId(snapshot.LastResolvedCandidateId!.Value),
+                new ModelTime(snapshot.LastResolvedDueTicks!.Value))
+            : null;
+        if (snapshot.LastResolveProducedNoEvents && lastResolvedCandidate is null)
+        {
+            throw new ArgumentException(
+                "A no-op last resolve requires a last-resolve identity.",
+                nameof(snapshot));
+        }
+
+        return new SimulationCursor(
+            snapshot.LineageId,
+            new ModelTime(snapshot.NowTicks),
+            snapshot.NextBatchOrdinal,
+            snapshot.ResolveCountAtCurrentTime,
+            lastResolvedCandidate,
+            snapshot.LastResolveProducedNoEvents);
+    }
+
     internal bool IsRepeatedNoOp(ResolvedCandidateIdentity candidate) =>
         LastResolveProducedNoEvents && LastResolvedCandidate == candidate;
 
@@ -88,3 +140,17 @@ internal readonly record struct ResolvedCandidateIdentity(
     long SourceId,
     EventCandidateId CandidateId,
     ModelTime Due);
+
+/// <summary>
+/// Pure-data snapshot of all simulation cursor state. This is part of the persistence contract;
+/// changing, adding, or removing fields requires a versioned storage-format change.
+/// </summary>
+public readonly record struct CursorSnapshot(
+    long LineageId,
+    long NowTicks,
+    int ResolveCountAtCurrentTime,
+    long NextBatchOrdinal,
+    long? LastResolvedSourceId,
+    long? LastResolvedCandidateId,
+    long? LastResolvedDueTicks,
+    bool LastResolveProducedNoEvents);

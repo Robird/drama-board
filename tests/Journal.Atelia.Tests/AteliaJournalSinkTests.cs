@@ -1,3 +1,4 @@
+using Atelia.EventJournal;
 using System.Text.Json;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
@@ -8,6 +9,30 @@ namespace DramaBoard.Journal.Atelia.Tests;
 
 public sealed class AteliaJournalSinkTests
 {
+    private const string PayloadCodec = "counter-json/1";
+    private const long DefaultLineageId = 101;
+
+    [Fact]
+    public void CursorSnapshotEnvelope_RoundTripsEveryControlField()
+    {
+        var expected = new CursorSnapshot(
+            LineageId: 41,
+            NowTicks: 1234,
+            ResolveCountAtCurrentTime: 7,
+            NextBatchOrdinal: 19,
+            LastResolvedSourceId: 23,
+            LastResolvedCandidateId: 29,
+            LastResolvedDueTicks: 1200,
+            LastResolveProducedNoEvents: true);
+
+        byte[] envelope = CursorSnapshotEnvelopeCodec.Serialize(expected);
+        CursorSnapshot actual = CursorSnapshotEnvelopeCodec.Deserialize(envelope);
+        SimulationCursor restored = SimulationCursor.FromSnapshot(actual);
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(expected, restored.ToSnapshot());
+    }
+
     [Fact]
     public void Envelope_RoundTripsEveryDomainEventField()
     {
@@ -21,17 +46,51 @@ public sealed class AteliaJournalSinkTests
             new EventKind("counter.custom", 2),
             new CounterEvent(3, -7, "round-trip"));
 
-        byte[] envelope = DomainEventEnvelopeCodec.Serialize(expected, SerializePayload);
+        EventKind? deserializedKind = null;
+        byte[] envelope = DomainEventEnvelopeCodec.Serialize(
+            expected,
+            PayloadCodec,
+            batchIndex: 1,
+            batchCount: 3,
+            SerializePayload);
         DomainEvent<CounterEvent> actual = DomainEventEnvelopeCodec.Deserialize(
             envelope,
-            DeserializePayload);
+            PayloadCodec,
+            (kind, payload) =>
+            {
+                deserializedKind = kind;
+                return DeserializePayload(kind, payload);
+            },
+            out int batchIndex,
+            out int batchCount);
 
         AssertDomainEventEqual(expected, actual);
+        Assert.Equal(expected.Kind.Id, deserializedKind?.Id);
+        Assert.Equal(expected.Kind.Version, deserializedKind?.Version);
+        Assert.Equal(1, batchIndex);
+        Assert.Equal(3, batchCount);
         using JsonDocument document = JsonDocument.Parse(envelope);
-        Assert.Equal(1, document.RootElement.GetProperty("v").GetInt32());
+        Assert.Equal(2, document.RootElement.GetProperty("v").GetInt32());
+        Assert.Equal(PayloadCodec, document.RootElement.GetProperty("pc").GetString());
+        Assert.Equal(1, document.RootElement.GetProperty("bi").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("bc").GetInt32());
         Assert.Equal(
             SerializePayload(expected.Payload),
             document.RootElement.GetProperty("p").GetBytesFromBase64());
+    }
+
+    [Fact]
+    public void Envelope_VersionOne_IsExplicitlyUnsupported()
+    {
+        NotSupportedException exception = Assert.Throws<NotSupportedException>(() =>
+            DomainEventEnvelopeCodec.Deserialize(
+                """{"v":1}"""u8,
+                PayloadCodec,
+                DeserializePayload,
+                out _,
+                out _));
+
+        Assert.Contains("version 1", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -43,7 +102,7 @@ public sealed class AteliaJournalSinkTests
         SimulationRunResult<CounterWorld, CounterEvent> runtime;
         DomainEvent<CounterEvent>[] written;
 
-        using (var sink = CreateSink(directory.Path))
+        using (var sink = CreateSink(directory.Path, lineageId: 11))
         {
             runtime = CreateLoop(reducer).Run(
                 initial,
@@ -56,6 +115,8 @@ public sealed class AteliaJournalSinkTests
         var replay = AteliaJournalSink<CounterEvent>.OpenAndReplay(
             directory.Path,
             "main",
+            11,
+            PayloadCodec,
             SerializePayload,
             DeserializePayload);
         using (replay.Sink)
@@ -76,8 +137,9 @@ public sealed class AteliaJournalSinkTests
         var reducer = new CounterReducer();
         SimulationLoop<CounterWorld, CounterCandidate, CounterEvent> loop = CreateLoop(reducer);
         SimulationRunResult<CounterWorld, CounterEvent> first;
+        string snapshotPath = Path.Combine(directory.Path, "cursor.snapshot.json");
 
-        using (var sink = CreateSink(directory.Path))
+        using (var sink = CreateSink(directory.Path, lineageId: 12))
         {
             first = loop.Run(
                 initial,
@@ -85,15 +147,21 @@ public sealed class AteliaJournalSinkTests
                 new ModelTime(20),
                 sink);
             Assert.Equal(2, sink.Events.Count);
+            File.WriteAllBytes(
+                snapshotPath,
+                CursorSnapshotEnvelopeCodec.Serialize(first.Cursor.ToSnapshot()));
         }
 
         SimulationRunResult<CounterWorld, CounterEvent> continued;
         DomainEvent<CounterEvent>[] persisted;
-        using (var reopened = CreateSink(directory.Path))
+        using (var reopened = CreateSink(directory.Path, lineageId: 12))
         {
+            CounterWorld replayedWorld = reopened.Events.Aggregate(initial, reducer.Apply);
+            CursorSnapshot persistedSnapshot = CursorSnapshotEnvelopeCodec.Deserialize(
+                File.ReadAllBytes(snapshotPath));
             continued = loop.Run(
-                first.World,
-                first.Cursor,
+                replayedWorld,
+                SimulationCursor.FromSnapshot(persistedSnapshot),
                 new ModelTime(40),
                 reopened);
             persisted = [.. reopened.Events];
@@ -118,35 +186,41 @@ public sealed class AteliaJournalSinkTests
         using var directory = new TemporaryJournalDirectory();
         var reducer = new CounterReducer();
 
-        using (var main = CreateSink(directory.Path))
+        using (var main = CreateSink(directory.Path, lineageId: 13))
         {
             _ = CreateLoop(reducer).Run(
                 InitialWorld(),
                 SimulationCursor.CreateInitial(lineageId: 13, ModelTime.Zero),
                 new ModelTime(20),
                 main);
-            main.ForkBranch("fork-1", main.Events.Count);
+            main.ForkBranch("fork-1", main.Events.Count, lineageId: 14);
         }
 
-        using (var main = CreateSink(directory.Path))
+        using (var main = CreateSink(directory.Path, lineageId: 13))
         {
             main.Append(DivergentEvent(delta: 3, route: "main"));
         }
 
-        using (var fork = CreateSink(directory.Path, "fork-1"))
+        using (var fork = CreateSink(directory.Path, "fork-1", lineageId: 14))
         {
             fork.Append(DivergentEvent(delta: 30, route: "fork-1"));
         }
 
         DomainEvent<CounterEvent>[] mainEvents;
-        using (var main = CreateSink(directory.Path))
+        long mainLineageId;
+        using (var main = CreateSink(directory.Path, lineageId: 13))
         {
+            mainLineageId = main.LineageId;
             mainEvents = [.. main.Events];
         }
 
         DomainEvent<CounterEvent>[] forkEvents;
-        using (var fork = CreateSink(directory.Path, "fork-1"))
+        long forkLineageId;
+        using (var fork = CreateSink(directory.Path, "fork-1", lineageId: 14))
         {
+            forkLineageId = fork.LineageId;
+            Assert.Equal(13, fork.ParentLineageId);
+            Assert.Equal(2, fork.ForkPrefixEventCount);
             forkEvents = [.. fork.Events];
         }
 
@@ -156,6 +230,136 @@ public sealed class AteliaJournalSinkTests
         Assert.NotEqual(mainEvents[^1].Payload, forkEvents[^1].Payload);
         Assert.Equal("main", mainEvents[^1].Payload.Route);
         Assert.Equal("fork-1", forkEvents[^1].Payload.Route);
+        Assert.Equal(mainEvents.Length, forkEvents.Length);
+        Assert.NotEqual(
+            new WorldVersion(mainLineageId, mainEvents.Length),
+            new WorldVersion(forkLineageId, forkEvents.Length));
+    }
+
+    [Fact]
+    public void Reopen_WithDifferentLineageId_ThrowsWithBothValues()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (CreateSink(directory.Path, lineageId: 71))
+        {
+        }
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => CreateSink(directory.Path, lineageId: 72));
+
+        Assert.Contains("71", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("72", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppendBatch_PersistsCompleteBatchPositionsAndRejectsMiddleForks()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        EventCause cause = EventCause.FromResolve(
+            sourceId: 101,
+            new EventCandidateId(5),
+            new ModelTime(10),
+            batchOrdinal: 0);
+        DomainEvent<CounterEvent>[] batch =
+        [
+            new(
+                new LogicalTimestamp(new ModelTime(10), new Microstep(0)),
+                cause,
+                CounterEventKinds.Advanced,
+                new CounterEvent(1, 1, "batch")),
+            new(
+                new LogicalTimestamp(new ModelTime(10), new Microstep(1)),
+                cause,
+                CounterEventKinds.Advanced,
+                new CounterEvent(2, 2, "batch")),
+            new(
+                new LogicalTimestamp(new ModelTime(10), new Microstep(2)),
+                cause,
+                CounterEventKinds.Advanced,
+                new CounterEvent(3, 3, "batch")),
+        ];
+
+        using var sink = CreateSink(directory.Path);
+        sink.AppendBatch(batch);
+
+        IReadOnlyList<byte[]> envelopes = sink.ReadStoredPayloads();
+        Assert.Equal(3, envelopes.Count);
+        for (int index = 0; index < envelopes.Count; index++)
+        {
+            using JsonDocument document = JsonDocument.Parse(envelopes[index]);
+            Assert.Equal(index, document.RootElement.GetProperty("bi").GetInt32());
+            Assert.Equal(3, document.RootElement.GetProperty("bc").GetInt32());
+        }
+
+        Assert.Throws<InvalidOperationException>(() => sink.ForkBranch("middle-1", 1, 202));
+        Assert.Throws<InvalidOperationException>(() => sink.ForkBranch("middle-2", 2, 203));
+    }
+
+    [Fact]
+    public void OrphanBatchFrame_WithoutRefAdvance_IsInvisibleOnReopen()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.Append(DivergentEvent(delta: 1, route: "visible"));
+        }
+
+        AppendDirectBatchFrame(directory.Path, batchCount: 1, advanceRef: false);
+
+        using var reopened = CreateSink(directory.Path);
+        Assert.Single(reopened.Events);
+        Assert.Equal("visible", reopened.Events[0].Payload.Route);
+        Assert.Null(reopened.ReplayRecovery);
+    }
+
+    [Fact]
+    public void VisibleIncompleteTailBatch_IsTruncatedAndReported()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.Append(DivergentEvent(delta: 1, route: "visible"));
+        }
+
+        AppendDirectBatchFrame(directory.Path, batchCount: 2, advanceRef: true);
+
+        using (var recovered = CreateSink(directory.Path))
+        {
+            Assert.Single(recovered.Events);
+            Assert.NotNull(recovered.ReplayRecovery);
+            Assert.Equal(1, recovered.ReplayRecovery.TruncatedFrameCount);
+        }
+
+        using var reopened = CreateSink(directory.Path);
+        Assert.Single(reopened.Events);
+        Assert.Null(reopened.ReplayRecovery);
+    }
+
+    [Fact]
+    public void Reopen_WithDifferentPayloadCodec_ThrowsBeforeDeserializingPayload()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.Append(DivergentEvent(delta: 1, route: "visible"));
+        }
+
+        bool deserializerCalled = false;
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            new AteliaJournalSink<CounterEvent>(
+                directory.Path,
+                DefaultLineageId,
+                "counter-json/2",
+                SerializePayload,
+                (kind, payload) =>
+                {
+                    deserializerCalled = true;
+                    return DeserializePayload(kind, payload);
+                }));
+
+        Assert.False(deserializerCalled);
+        Assert.Contains(PayloadCodec, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("counter-json/2", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -200,8 +404,9 @@ public sealed class AteliaJournalSinkTests
 
     private static AteliaJournalSink<CounterEvent> CreateSink(
         string path,
-        string branchName = "main") =>
-        new(path, SerializePayload, DeserializePayload, branchName);
+        string branchName = "main",
+        long lineageId = DefaultLineageId) =>
+        new(path, lineageId, PayloadCodec, SerializePayload, DeserializePayload, branchName);
 
     private static DomainEvent<CounterEvent> DivergentEvent(int delta, string route) =>
         new(
@@ -221,6 +426,33 @@ public sealed class AteliaJournalSinkTests
         }
 
         return sink.ReadStoredPayloads();
+    }
+
+    private static void AppendDirectBatchFrame(
+        string path,
+        int batchCount,
+        bool advanceRef)
+    {
+        using global::Atelia.EventJournal.EventJournal journal =
+            global::Atelia.EventJournal.EventJournal.OpenOrCreate(path);
+        RefId refId = journal.OpenBranch("main").Unwrap();
+        EventAddress? head = journal.GetHead(refId);
+        byte[] envelope = DomainEventEnvelopeCodec.Serialize(
+            DivergentEvent(delta: 99, route: "orphan"),
+            PayloadCodec,
+            batchIndex: 0,
+            batchCount,
+            SerializePayload);
+        byte[] framePayload = DomainEventBatchFrameCodec.Serialize([envelope]);
+        EventAddress address = journal.AppendEventFrame(
+            head,
+            framePayload,
+            AteliaJournalFrameKinds.DomainEventBatch,
+            utcUnixTimeMilliseconds: 0).Unwrap();
+        if (advanceRef)
+        {
+            _ = journal.AdvanceRef(refId, head, address).Unwrap();
+        }
     }
 
     private static void AssertStorageDirectoriesEqual(string expectedRoot, string actualRoot)
@@ -250,7 +482,7 @@ public sealed class AteliaJournalSinkTests
     private static byte[] SerializePayload(CounterEvent payload) =>
         JsonSerializer.SerializeToUtf8Bytes(payload);
 
-    private static CounterEvent DeserializePayload(byte[] payload) =>
+    private static CounterEvent DeserializePayload(EventKind kind, byte[] payload) =>
         JsonSerializer.Deserialize<CounterEvent>(payload)
         ?? throw new JsonException("Counter event payload cannot be null.");
 
