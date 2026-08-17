@@ -21,6 +21,7 @@ public sealed record AvailableAction(
 /// <param name="Observation">The actor's legal subjective observation.</param>
 /// <param name="Reason">The stable reason why this decision point was opened.</param>
 /// <param name="AvailableActions">The action affordances available at this decision point.</param>
+/// <param name="RejectedIntent">The actor's most recently rejected intent, when this request reports a rejection.</param>
 public sealed record DecisionRequest(
     DecisionId DecisionId,
     long BasedOnWorldVersion,
@@ -30,4 +31,5 @@ public sealed record DecisionRequest(
     string ActorId,
     Observation Observation,
     DecisionReason Reason,
-    IReadOnlyList<AvailableAction> AvailableActions);
+    IReadOnlyList<AvailableAction> AvailableActions,
+    Intent? RejectedIntent = null);

@@ -63,6 +63,7 @@ public sealed class FirstBoardTests
         BoardObject brassKey = world.Object(BoardIds.BrassKey);
 
         Assert.Equal(StopReason.BoundaryReached, capture.Run.Result.StopReason);
+        Assert.Equal(0, capture.Run.Result.ForcedDecisionCount);
         Assert.Equal(BoardIds.Cellar, alice.PlaceId);
         Assert.Equal(BoardIds.Tavern, bob.PlaceId);
         Assert.Equal(alice.Id, brassKey.OwnerActorId);
@@ -139,18 +140,165 @@ public sealed class FirstBoardTests
             domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected);
         var rejected = Assert.IsType<ActionRejectedEvent>(rejectedEvent.Payload);
         Assert.Equal("cellar is sealed", rejected.Reason);
+        Assert.Equal(
+            new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar),
+            rejected.RejectedIntent);
         Assert.Equal(BoardTiming.DeadlineTicks, rejectedEvent.Timestamp.ModelTime.Ticks);
 
-        DecisionRequest postDeadlineRequest = alice.Requests[2];
-        AvailableAction travel = Assert.Single(
-            postDeadlineRequest.AvailableActions,
+        DecisionRequest unwittingRequest = alice.Requests[2];
+        AvailableAction unwittingTravel = Assert.Single(
+            unwittingRequest.AvailableActions,
             action => action.ActionKind == ActionKinds.Travel);
-        Assert.DoesNotContain(BoardIds.Cellar, travel.CandidateDestinationIds!);
+        Assert.Contains(BoardIds.Cellar, unwittingTravel.CandidateDestinationIds!);
+        Assert.Equal(DecisionReasons.Scheduled, unwittingRequest.Reason);
+        Assert.Null(unwittingRequest.RejectedIntent);
+
+        DecisionRequest rejectionRequest = alice.Requests[3];
+        Assert.Equal(DecisionReasons.ActionRejected, rejectionRequest.Reason);
+        Assert.Equal(rejected.RejectedIntent, rejectionRequest.RejectedIntent);
+        Assert.Contains(rejectionRequest.Observation.KnownFacts, fact =>
+            fact.FactKind.Id == BoardIds.ActionRejected &&
+            fact.RelatedId == ActionKinds.Travel.Id &&
+            fact.Text.Contains("cellar is sealed", StringComparison.Ordinal) &&
+            fact.Text.Contains("destination=cellar", StringComparison.Ordinal));
+        Assert.Contains(rejectionRequest.Observation.KnownFacts, fact =>
+            fact.FactKind.Id == BoardIds.CellarSealedKnown);
+        AvailableAction informedTravel = Assert.Single(
+            rejectionRequest.AvailableActions,
+            action => action.ActionKind == ActionKinds.Travel);
+        Assert.DoesNotContain(BoardIds.Cellar, informedTravel.CandidateDestinationIds!);
         int sealedIndex = capture.Journal.Events.ToList().FindIndex(domainEvent =>
             domainEvent.Kind == BoardEventKinds.CellarSealed);
         int rejectedIndex = capture.Journal.Events.ToList().FindIndex(domainEvent =>
             domainEvent.Kind == BoardEventKinds.ActionRejected);
         Assert.True(sealedIndex >= 0 && sealedIndex < rejectedIndex);
+    }
+
+    [Fact]
+    public void CellarSealed_ActorsPresentInCellarImmediatelyLearnWhileRemoteActorsDoNot()
+    {
+        FirstBoardWorld initial = FirstBoardWorld.CreateInitial(worldSeed: 19);
+        initial = initial with
+        {
+            Actors = Array.AsReadOnly(initial.Actors
+                .Select(actor => actor.Key == BoardIds.Alice
+                    ? actor with { PlaceId = BoardIds.Cellar }
+                    : actor)
+                .ToArray()),
+        };
+        var sealedEvent = new DomainEvent<BoardEventPayload>(
+            new LogicalTimestamp(new ModelTime(BoardTiming.DeadlineTicks), new Microstep(0)),
+            EventCause.FromExternalInput(batchOrdinal: 0),
+            BoardEventKinds.CellarSealed,
+            new CellarSealedEvent());
+
+        FirstBoardWorld updated = new FirstBoardReducer().Apply(initial, sealedEvent);
+
+        Assert.Contains(updated.Actor(BoardIds.Alice).KnownFacts, fact =>
+            fact.Kind == BoardIds.CellarSealedKnown);
+        Assert.DoesNotContain(updated.Actor(BoardIds.Bob).KnownFacts, fact =>
+            fact.Kind == BoardIds.CellarSealedKnown);
+    }
+
+    [Fact]
+    public void BuildRequest_UnwitnessedCellarFlag_DoesNotChangeObservationOrAffordances()
+    {
+        FirstBoardWorld openWorld = FirstBoardWorld.CreateInitial(worldSeed: 23);
+        FirstBoardWorld sealedWorld = openWorld with { CellarSealed = true };
+
+        DecisionRequest openRequest = RequestFor(openWorld, BoardIds.Bob);
+        DecisionRequest sealedRequest = RequestFor(sealedWorld, BoardIds.Bob);
+
+        Assert.Equal(openRequest.Observation.LocationId, sealedRequest.Observation.LocationId);
+        Assert.Equal(openRequest.Observation.VisibleActorIds, sealedRequest.Observation.VisibleActorIds);
+        Assert.Equal(openRequest.Observation.VisibleObjectIds, sealedRequest.Observation.VisibleObjectIds);
+        Assert.Equal(openRequest.Observation.KnownFacts, sealedRequest.Observation.KnownFacts);
+        Assert.Equal(
+            Assert.Single(openRequest.AvailableActions, action => action.ActionKind == ActionKinds.Travel)
+                .CandidateDestinationIds,
+            Assert.Single(sealedRequest.AvailableActions, action => action.ActionKind == ActionKinds.Travel)
+                .CandidateDestinationIds);
+    }
+
+    [Fact]
+    public void Observation_CarriedObjectsAreVisibleOnlyToOwnerAndPlacedObjectsRemainVisible()
+    {
+        FirstBoardWorld world = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 31));
+        BoardActor bob = world.Actor(BoardIds.Bob);
+        FirstBoardWorld carriedWorld = world with
+        {
+            Objects = Array.AsReadOnly(world.Objects
+                .Select(item => item.Key == BoardIds.BrassKey
+                    ? item with { PlaceId = null, OwnerActorId = bob.Id }
+                    : item)
+                .ToArray()),
+        };
+
+        DecisionRequest aliceWithCarriedKey = RequestFor(carriedWorld, BoardIds.Alice);
+        DecisionRequest bobWithOwnKey = RequestFor(carriedWorld, BoardIds.Bob);
+        DecisionRequest aliceWithPlacedKey = RequestFor(world, BoardIds.Alice);
+
+        Assert.DoesNotContain(BoardIds.BrassKey, aliceWithCarriedKey.Observation.VisibleObjectIds);
+        Assert.Contains(BoardIds.BrassKey, bobWithOwnKey.Observation.VisibleObjectIds);
+        Assert.Contains(BoardIds.BrassKey, aliceWithPlacedKey.Observation.VisibleObjectIds);
+    }
+
+    [Fact]
+    public async Task RepeatedIllegalTravel_AfterEightRejectionsForcesWaitAndAdvancesWorld()
+    {
+        var alice = new AlwaysIllegalTravelPlayerDriver();
+        var bob = new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]);
+
+        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
+            Drivers(alice, bob),
+            worldSeed: 37,
+            new ModelTime(BoardTiming.DefaultWaitTicks - 1));
+
+        Assert.Equal(8, alice.DecisionCount);
+        Assert.Equal(1, capture.Result.ForcedDecisionCount);
+        BoardActivity forcedWait = Assert.IsType<BoardActivity>(
+            capture.Result.World.Actor(BoardIds.Alice).Activity);
+        Assert.Equal(BoardActivityKind.Wait, forcedWait.Kind);
+        Assert.Equal(BoardTiming.DefaultWaitTicks, forcedWait.Due.Ticks);
+        Assert.Equal(8, capture.Journal.Events.Count(domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ActionRejected &&
+            Assert.IsType<ActionRejectedEvent>(domainEvent.Payload).ActorId == BoardIds.Alice));
+        Assert.Single(capture.Journal.Events, domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ActorWaitStarted &&
+            Assert.IsType<ActorWaitStartedEvent>(domainEvent.Payload).ActorId == BoardIds.Alice);
+    }
+
+    [Fact]
+    public async Task ForcedWait_WhenDomainRejectsIt_ThrowsDiagnosticException()
+    {
+        ModelTime now = new(long.MaxValue - 100);
+        var journal = new InMemoryJournal<BoardEventPayload>();
+        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
+        {
+            [BoardIds.Alice] = new AlwaysIllegalTravelPlayerDriver(),
+            [BoardIds.Bob] = new NullPlayerDriver(),
+        };
+        var session = new PlayerDecisionSession<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
+            FirstBoardScenario.CreateLoop(new FirstBoardReducer()),
+            journal,
+            FirstBoardWorld.CreateInitial(worldSeed: 41) with { CellarSealed = true },
+            SimulationCursor.CreateInitial(FirstBoardScenario.LineageId, now),
+            FirstBoardScenario.SelectActor,
+            drivers,
+            FirstBoardScenario.BuildRequest,
+            FirstBoardScenario.TranslateDecision,
+            maxConsecutiveRejectionsPerActor: 1,
+            rejectionSelector: FirstBoardScenario.SelectRejectedActor);
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await session.RunUntilAsync(now, CancellationToken.None));
+
+        Assert.Contains("Forced wait", exception.Message);
+        Assert.Contains(BoardIds.Alice, exception.Message);
+        Assert.Contains(now.Ticks.ToString(), exception.Message);
     }
 
     [Fact]
@@ -338,6 +486,28 @@ public sealed class FirstBoardTests
                 .ToArray()),
         };
 
+    private static DecisionRequest RequestFor(FirstBoardWorld world, string actorId)
+    {
+        string decisionId = $"test.{actorId}";
+        FirstBoardWorld awaitingWorld = world with
+        {
+            Actors = Array.AsReadOnly(world.Actors
+                .Select(actor => actor.Key == actorId
+                    ? actor with { AwaitingDecision = true, OpenDecisionId = decisionId }
+                    : actor)
+                .ToArray()),
+        };
+        var decisionEvent = new DomainEvent<BoardEventPayload>(
+            new LogicalTimestamp(ModelTime.Zero, new Microstep(0)),
+            EventCause.FromExternalInput(batchOrdinal: 0),
+            BoardEventKinds.DecisionRequested,
+            new DecisionRequestedEvent(actorId, DecisionNumber: 1, decisionId));
+        return FirstBoardScenario.BuildRequest(
+            awaitingWorld,
+            decisionEvent,
+            new WorldVersion(FirstBoardScenario.LineageId, eventCount: 1))!;
+    }
+
     private static ContentionCapture RunContention(
         FirstBoardWorld initialWorld,
         bool reverseSubmissions)
@@ -384,4 +554,20 @@ public sealed class FirstBoardTests
     private sealed record ContentionCapture(
         long WinnerActorId,
         ObjectContentionResolvedEvent Contention);
+
+    private sealed class AlwaysIllegalTravelPlayerDriver : IPlayerDriver
+    {
+        public int DecisionCount { get; private set; }
+
+        public ValueTask<PlayerDecision> DecideAsync(
+            DecisionRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DecisionCount = checked(DecisionCount + 1);
+            return ValueTask.FromResult(Decide(
+                request,
+                new Intent(ActionKinds.Travel, DestinationId: "missing-place")));
+        }
+    }
 }

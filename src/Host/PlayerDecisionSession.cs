@@ -8,12 +8,17 @@ namespace DramaBoard.Host;
 /// <summary>Sequentially advances a simulation and turns decision requests into external input events.</summary>
 public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPayload>
 {
+    private const long ForcedWaitDurationMs = 60_000;
+
     private readonly SimulationLoop<TWorld, TCandidatePayload, TEventPayload> _loop;
     private readonly IJournalSink<TEventPayload> _journal;
     private readonly Func<DomainEvent<TEventPayload>, string> _actorSelector;
     private readonly IReadOnlyDictionary<string, IPlayerDriver> _drivers;
     private readonly Func<TWorld, DomainEvent<TEventPayload>, WorldVersion, DecisionRequest?> _requestBuilder;
     private readonly Func<PlayerDecision, TWorld, IReadOnlyList<UncommittedDomainEvent<TEventPayload>>> _decisionTranslator;
+    private readonly int _maxConsecutiveRejectionsPerActor;
+    private readonly Func<DomainEvent<TEventPayload>, string?>? _rejectionSelector;
+    private readonly Dictionary<string, RejectionStreak> _rejectionStreaksByActor = new(StringComparer.Ordinal);
     private TWorld _world;
     private SimulationCursor _cursor;
     private int _runInProgress;
@@ -27,7 +32,9 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         Func<DomainEvent<TEventPayload>, string> actorSelector,
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         Func<TWorld, DomainEvent<TEventPayload>, WorldVersion, DecisionRequest?> requestBuilder,
-        Func<PlayerDecision, TWorld, IReadOnlyList<UncommittedDomainEvent<TEventPayload>>> decisionTranslator)
+        Func<PlayerDecision, TWorld, IReadOnlyList<UncommittedDomainEvent<TEventPayload>>> decisionTranslator,
+        int maxConsecutiveRejectionsPerActor = 8,
+        Func<DomainEvent<TEventPayload>, string?>? rejectionSelector = null)
     {
         ArgumentNullException.ThrowIfNull(loop);
         ArgumentNullException.ThrowIfNull(journal);
@@ -36,6 +43,13 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(requestBuilder);
         ArgumentNullException.ThrowIfNull(decisionTranslator);
+        if (maxConsecutiveRejectionsPerActor < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxConsecutiveRejectionsPerActor),
+                maxConsecutiveRejectionsPerActor,
+                "The consecutive rejection budget must be positive.");
+        }
 
         var driverCopy = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal);
         foreach ((string actorId, IPlayerDriver driver) in drivers)
@@ -61,6 +75,8 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         _drivers = driverCopy;
         _requestBuilder = requestBuilder;
         _decisionTranslator = decisionTranslator;
+        _maxConsecutiveRejectionsPerActor = maxConsecutiveRejectionsPerActor;
+        _rejectionSelector = rejectionSelector;
     }
 
     /// <summary>Runs through decision points until the simulation is exhausted or reaches the boundary.</summary>
@@ -86,6 +102,7 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
             var pendingDecisionEvents = new Queue<DomainEvent<TEventPayload>>();
             int decisionCount = 0;
             int skippedDecisionCount = 0;
+            int forcedDecisionCount = 0;
 
             cancellationToken.ThrowIfCancellationRequested();
             SimulationRunResult<TWorld, TEventPayload> run = RunSimulation(until, externalInputs: null);
@@ -104,7 +121,8 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
                             run.Version,
                             run.StopReason,
                             decisionCount,
-                            skippedDecisionCount);
+                            skippedDecisionCount,
+                            forcedDecisionCount);
                     }
 
                     run = RunSimulation(until, externalInputs: null);
@@ -132,13 +150,24 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
                         $"The decision request actor '{request.ActorId}' does not match routed actor '{actorId}'.");
                 }
 
-                if (!_drivers.TryGetValue(actorId, out IPlayerDriver? driver))
+                bool isForcedDecision = ShouldForceDecision(actorId);
+                PlayerDecision decision;
+                if (isForcedDecision)
                 {
-                    throw new InvalidOperationException($"No Player driver is registered for actor '{actorId}'.");
+                    decision = ForcedWait(request);
+                    forcedDecisionCount = checked(forcedDecisionCount + 1);
+                }
+                else
+                {
+                    if (!_drivers.TryGetValue(actorId, out IPlayerDriver? driver))
+                    {
+                        throw new InvalidOperationException($"No Player driver is registered for actor '{actorId}'.");
+                    }
+
+                    decision = await driver.DecideAsync(request, cancellationToken)
+                        ?? throw new InvalidOperationException("A Player driver returned null.");
                 }
 
-                PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
-                    ?? throw new InvalidOperationException("A Player driver returned null.");
                 ValidateDecision(decision, request);
 
                 IReadOnlyList<UncommittedDomainEvent<TEventPayload>> decisionInputs =
@@ -147,10 +176,33 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
                 decisionCount = checked(decisionCount + 1);
                 if (decisionInputs.Count == 0)
                 {
+                    RecordRejectedOrNonProgressing(actorId);
+                    if (isForcedDecision)
+                    {
+                        throw ForcedWaitRejected(actorId, "the decision translator produced no input events");
+                    }
+
                     continue;
                 }
 
+                int firstNewEventIndex = _journal.Events.Count;
+                ModelTime previousModelTime = _cursor.Now;
                 run = RunSimulation(until, decisionInputs);
+                bool wasRejected = WasRejected(actorId, firstNewEventIndex);
+                if (isForcedDecision && wasRejected)
+                {
+                    throw ForcedWaitRejected(actorId, "the rejection selector matched a new journal event");
+                }
+
+                if (wasRejected && _cursor.Now == previousModelTime)
+                {
+                    RecordRejectedOrNonProgressing(actorId);
+                }
+                else
+                {
+                    ClearConsecutiveRejections(actorId);
+                }
+
                 EnqueueDecisionEvents(run, pendingDecisionEvents);
             }
         }
@@ -174,6 +226,78 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         _cursor = run.Cursor;
         return run;
     }
+
+    private bool ShouldForceDecision(string actorId)
+    {
+        if (_rejectionSelector is null ||
+            !_rejectionStreaksByActor.TryGetValue(actorId, out RejectionStreak streak))
+        {
+            return false;
+        }
+
+        if (streak.ModelTime != _cursor.Now)
+        {
+            _rejectionStreaksByActor.Remove(actorId);
+            return false;
+        }
+
+        return streak.Count >= _maxConsecutiveRejectionsPerActor;
+    }
+
+    private bool WasRejected(string actorId, int firstNewEventIndex)
+    {
+        if (_rejectionSelector is null)
+        {
+            return false;
+        }
+
+        for (int index = firstNewEventIndex; index < _journal.Events.Count; index++)
+        {
+            if (string.Equals(_rejectionSelector(_journal.Events[index]), actorId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void RecordRejectedOrNonProgressing(string actorId)
+    {
+        if (_rejectionSelector is null)
+        {
+            return;
+        }
+
+        int nextCount = _rejectionStreaksByActor.TryGetValue(actorId, out RejectionStreak current) &&
+            current.ModelTime == _cursor.Now
+                ? checked(current.Count + 1)
+                : 1;
+        _rejectionStreaksByActor[actorId] = new RejectionStreak(nextCount, _cursor.Now);
+    }
+
+    private void ClearConsecutiveRejections(string actorId)
+    {
+        if (_rejectionSelector is not null)
+        {
+            _rejectionStreaksByActor.Remove(actorId);
+        }
+    }
+
+    private static PlayerDecision ForcedWait(DecisionRequest request) =>
+        new(
+            request.DecisionId,
+            request.BasedOnWorldVersion,
+            request.LineageId,
+            new Intent(ActionKinds.Wait, DurationMs: ForcedWaitDurationMs));
+
+    private InvalidOperationException ForcedWaitRejected(string actorId, string detail) =>
+        new(
+            $"Forced wait for actor '{actorId}' was rejected after " +
+            $"{_maxConsecutiveRejectionsPerActor} consecutive rejected or non-progressing decisions at " +
+            $"model time {_cursor.Now.Ticks}: {detail}.");
+
+    private readonly record struct RejectionStreak(int Count, ModelTime ModelTime);
 
     private static void EnqueueDecisionEvents(
         SimulationRunResult<TWorld, TEventPayload> run,

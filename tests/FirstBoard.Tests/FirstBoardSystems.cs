@@ -99,7 +99,7 @@ internal sealed class ActionResolutionSystem :
             "action.observe" => ResolveObserve(world, actor),
             "action.take" => ResolveTake(world, actor, submitted.Intent),
             "action.give" => ResolveGive(world, actor, submitted.Intent),
-            _ => Reject(actor, submitted.Intent.ActionKind, "unknown action kind"),
+            _ => Reject(actor, submitted.Intent, "unknown action kind"),
         };
     }
 
@@ -111,23 +111,23 @@ internal sealed class ActionResolutionSystem :
     {
         if (actor.Activity is not null)
         {
-            return Reject(actor, intent.ActionKind, "actor is already busy");
+            return Reject(actor, intent, "actor is already busy");
         }
 
         string? destinationId = intent.DestinationId;
         if (destinationId is null || !world.Places.Any(place => place.Key == destinationId))
         {
-            return Reject(actor, intent.ActionKind, "destination does not exist");
+            return Reject(actor, intent, "destination does not exist");
         }
 
         if (!world.AreAdjacent(actor.PlaceId, destinationId))
         {
-            return Reject(actor, intent.ActionKind, "destination is not adjacent");
+            return Reject(actor, intent, "destination is not adjacent");
         }
 
         if (destinationId == BoardIds.Cellar && world.CellarSealed)
         {
-            return Reject(actor, intent.ActionKind, "cellar is sealed");
+            return Reject(actor, intent, "cellar is sealed");
         }
 
         return Result(
@@ -149,7 +149,7 @@ internal sealed class ActionResolutionSystem :
         {
             if (until <= now.Ticks)
             {
-                return Reject(actor, intent.ActionKind, "wait duration must be positive");
+                return Reject(actor, intent, "wait duration must be positive");
             }
 
             completeAt = new ModelTime(until);
@@ -159,12 +159,12 @@ internal sealed class ActionResolutionSystem :
             long duration = intent.DurationMs ?? BoardTiming.DefaultWaitTicks;
             if (duration <= 0)
             {
-                return Reject(actor, intent.ActionKind, "wait duration must be positive");
+                return Reject(actor, intent, "wait duration must be positive");
             }
 
             if (now.Ticks > long.MaxValue - duration)
             {
-                return Reject(actor, intent.ActionKind, "wait completion time exceeds the model-time range");
+                return Reject(actor, intent, "wait completion time exceeds the model-time range");
             }
 
             completeAt = now + new ModelDuration(duration);
@@ -183,12 +183,12 @@ internal sealed class ActionResolutionSystem :
         BoardActor? target = world.Actors.SingleOrDefault(current => current.Key == intent.TargetActorId);
         if (target is null || target.Id == actor.Id)
         {
-            return Reject(actor, intent.ActionKind, "target actor does not exist");
+            return Reject(actor, intent, "target actor does not exist");
         }
 
         if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
         {
-            return Reject(actor, intent.ActionKind, "target actor is not at the same place");
+            return Reject(actor, intent, "target actor is not at the same place");
         }
 
         string text = intent.FreeText ?? string.Empty;
@@ -196,7 +196,7 @@ internal sealed class ActionResolutionSystem :
         if (sharedFactKind is not null &&
             !actor.KnownFacts.Any(fact => fact.Kind == sharedFactKind))
         {
-            return Reject(actor, intent.ActionKind, "speaker does not know the referenced fact");
+            return Reject(actor, intent, "speaker does not know the referenced fact");
         }
 
         return Result(
@@ -269,12 +269,12 @@ internal sealed class ActionResolutionSystem :
         BoardObject? item = world.Objects.SingleOrDefault(current => current.Key == intent.TargetObjectId);
         if (item is null)
         {
-            return Reject(actor, intent.ActionKind, "target object does not exist");
+            return Reject(actor, intent, "target object does not exist");
         }
 
         if (item.OwnerActorId is not null || item.PlaceId != actor.PlaceId || !world.IsPresent(actor))
         {
-            return Reject(actor, intent.ActionKind, "target object is not available here");
+            return Reject(actor, intent, "target object is not available here");
         }
 
         long[] competitors =
@@ -327,17 +327,17 @@ internal sealed class ActionResolutionSystem :
         BoardActor? target = world.Actors.SingleOrDefault(current => current.Key == intent.TargetActorId);
         if (item is null || item.OwnerActorId != actor.Id)
         {
-            return Reject(actor, intent.ActionKind, "actor does not hold the target object");
+            return Reject(actor, intent, "actor does not hold the target object");
         }
 
         if (target is null || target.Id == actor.Id)
         {
-            return Reject(actor, intent.ActionKind, "target actor does not exist");
+            return Reject(actor, intent, "target actor does not exist");
         }
 
         if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
         {
-            return Reject(actor, intent.ActionKind, "target actor is not at the same place");
+            return Reject(actor, intent, "target actor is not at the same place");
         }
 
         return Result(
@@ -348,10 +348,7 @@ internal sealed class ActionResolutionSystem :
     private static IEnumerable<BoardObject> VisibleObjects(FirstBoardWorld world, BoardActor observer) =>
         world.Objects.Where(item =>
             item.PlaceId == observer.PlaceId ||
-            item.OwnerActorId is long ownerId &&
-            world.Actor(ownerId) is { } owner &&
-            world.IsPresent(owner) &&
-            owner.PlaceId == observer.PlaceId);
+            item.OwnerActorId == observer.Id);
 
     private static bool ActorOwns(FirstBoardWorld world, BoardActor actor, string objectId) =>
         world.Object(objectId).OwnerActorId == actor.Id;
@@ -370,11 +367,11 @@ internal sealed class ActionResolutionSystem :
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Reject(
         BoardActor actor,
-        ActionKind actionKind,
+        Intent intent,
         string reason) =>
         Result(
             BoardEventKinds.ActionRejected,
-            new ActionRejectedEvent(actor.Key, actionKind, reason));
+            new ActionRejectedEvent(actor.Key, intent, reason));
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Result(
         DramaBoard.Kernel.Journal.EventKind kind,

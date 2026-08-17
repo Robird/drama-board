@@ -12,7 +12,8 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         WorldVersion version,
         StopReason stopReason,
         int decisionCount,
-        int skippedDecisionCount)
+        int skippedDecisionCount,
+        int forcedDecisionCount)
     {
         ArgumentNullException.ThrowIfNull(cursor);
 
@@ -22,6 +23,7 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         StopReason = stopReason;
         DecisionCount = decisionCount;
         SkippedDecisionCount = skippedDecisionCount;
+        ForcedDecisionCount = forcedDecisionCount;
     }
 
     /// <summary>Gets the final replacement world value.</summary>
@@ -36,9 +38,12 @@ public sealed class PlayerDecisionSessionResult<TWorld>
     /// <summary>Gets why the simulation stopped after all pending decision requests were handled.</summary>
     public StopReason StopReason { get; }
 
-    /// <summary>Gets the number of Player decisions obtained during this call.</summary>
+    /// <summary>Gets the number of decisions submitted during this call.</summary>
     public int DecisionCount { get; }
 
     /// <summary>Gets the number of pending decision requests invalidated by the current world.</summary>
     public int SkippedDecisionCount { get; }
+
+    /// <summary>Gets the number of decisions replaced with the Host's safe default during this call.</summary>
+    public int ForcedDecisionCount { get; }
 }

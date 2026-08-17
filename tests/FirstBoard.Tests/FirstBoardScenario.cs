@@ -42,7 +42,8 @@ internal static class FirstBoardScenario
             SelectActor,
             drivers,
             BuildRequest,
-            TranslateDecision);
+            TranslateDecision,
+            rejectionSelector: SelectRejectedActor);
 
         PlayerDecisionSessionResult<FirstBoardWorld> result = await session.RunUntilAsync(
             until,
@@ -54,6 +55,11 @@ internal static class FirstBoardScenario
         decisionEvent.Payload is DecisionRequestedEvent requested
             ? requested.ActorId
             : throw new InvalidOperationException("The routed event is not a decision request.");
+
+    public static string? SelectRejectedActor(DomainEvent<BoardEventPayload> domainEvent) =>
+        domainEvent.Payload is ActionRejectedEvent rejected
+            ? rejected.ActorId
+            : null;
 
     public static DecisionRequest? BuildRequest(
         FirstBoardWorld world,
@@ -93,8 +99,11 @@ internal static class FirstBoardScenario
             Microstep: -1,
             actor.Key,
             observation,
-            DecisionReasons.Scheduled,
-            AvailableActions(world, actor));
+            actor.LastRejectedIntent is null
+                ? DecisionReasons.Scheduled
+                : DecisionReasons.ActionRejected,
+            AvailableActions(world, actor),
+            actor.LastRejectedIntent);
     }
 
     public static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> TranslateDecision(
@@ -129,7 +138,8 @@ internal static class FirstBoardScenario
                 actor.OpenDecisionId,
                 ActionSummary(actor.PendingAction),
                 ActivitySummary(actor.Activity),
-                string.Join(",", actor.KnownFacts.Select(fact => $"{fact.Kind}@{fact.RelatedId}")))));
+                string.Join(",", actor.KnownFacts.Select(fact => $"{fact.Kind}@{fact.RelatedId}")),
+                IntentSummary(actor.LastRejectedIntent))));
         string objects = string.Join(
             ";",
             world.Objects.OrderBy(item => item.Id).Select(item => string.Join(
@@ -190,7 +200,8 @@ internal static class FirstBoardScenario
         string[] destinations =
         [
             .. world.Place(actor.PlaceId).AdjacentPlaceIds
-                .Where(destination => destination != BoardIds.Cellar || !world.CellarSealed)
+                .Where(destination => destination != BoardIds.Cellar ||
+                    !actor.KnownFacts.Any(fact => fact.Kind == BoardIds.CellarSealedKnown))
                 .Order(StringComparer.Ordinal),
         ];
         if (destinations.Length > 0)
@@ -268,16 +279,20 @@ internal static class FirstBoardScenario
             return false;
         }
 
-        BoardActor owner = world.Actor(ownerId);
-        return world.IsPresent(owner) && owner.PlaceId == observer.PlaceId;
+        return ownerId == observer.Id;
     }
 
     private static string ActionSummary(SubmittedAction? action) =>
         action is null
             ? "-"
-            : $"{action.Intent.ActionKind.Id}:{action.Intent.TargetActorId}:" +
-              $"{action.Intent.TargetObjectId}:{action.Intent.DestinationId}:" +
-              $"{action.Intent.FreeText}:{action.Intent.DurationMs}:{action.Intent.UntilModelTimeMs}";
+                        : IntentSummary(action.Intent);
+
+        private static string IntentSummary(Intent? intent) =>
+                intent is null
+                        ? "-"
+                        : $"{intent.ActionKind.Id}:{intent.TargetActorId}:" +
+                            $"{intent.TargetObjectId}:{intent.DestinationId}:" +
+                            $"{intent.FreeText}:{intent.DurationMs}:{intent.UntilModelTimeMs}";
 
     private static string ActivitySummary(BoardActivity? activity) =>
         activity is null
@@ -316,7 +331,8 @@ internal static class FirstBoardScenario
                 $"sample={contention.Sample.StreamId}/{contention.Sample.Generation}/" +
                 $"{contention.Sample.SampleIndex}",
             ActionRejectedEvent rejected =>
-                $"actor={rejected.ActorId} action={rejected.ActionKind.Id} reason={rejected.Reason}",
+                $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKind.Id} " +
+                $"reason={rejected.Reason}",
             CellarSealedEvent => "place=cellar",
             _ => throw new InvalidOperationException("Unknown FirstBoard event payload."),
         };

@@ -42,6 +42,10 @@ public sealed class DtoJsonRoundTripTests
         Assert.Equal(6, roundTrippedRequest.AvailableActions.Count);
         Assert.Equal("fact.secret.known", roundTrippedRequest.Observation.KnownFacts[0].FactKind.Id);
         Assert.Equal("place.square", roundTrippedRequest.Observation.LocationId);
+        Assert.Equal(DecisionReasons.ActionRejected, roundTrippedRequest.Reason);
+        Assert.Equal(
+            new Intent(ActionKinds.Travel, DestinationId: "place.cellar"),
+            roundTrippedRequest.RejectedIntent);
     }
 
     [Fact]
@@ -52,6 +56,11 @@ public sealed class DtoJsonRoundTripTests
         KnownFact fact = new(new FactKind("fact.weather"), null, "It is raining.");
         ExpectedOutcome outcome = new("Learn what is nearby.");
         PlayerDecision decision = new(new DecisionId("decision-1"), 12, 3, intent);
+        DecisionRequest request = CreateCompleteRequest(CreateObservation(fact)) with
+        {
+            Reason = DecisionReasons.Scheduled,
+            RejectedIntent = null,
+        };
 
         AssertNullProperties(intent, nameof(Intent.TargetActorId), nameof(Intent.TargetObjectId),
             nameof(Intent.DestinationId), nameof(Intent.FreeText), nameof(Intent.DurationMs), nameof(Intent.UntilModelTimeMs));
@@ -60,12 +69,14 @@ public sealed class DtoJsonRoundTripTests
         AssertNullProperties(fact, nameof(KnownFact.RelatedId));
         AssertNullProperties(outcome, nameof(ExpectedOutcome.ExpectedCompletionModelTimeMs));
         AssertNullProperties(decision, nameof(PlayerDecision.ExpectedOutcome));
+        AssertNullProperties(request, nameof(DecisionRequest.RejectedIntent));
 
         Assert.Equal(intent, AssertRoundTrip(intent));
         Assert.Equal(availableAction, AssertRoundTrip(availableAction));
         Assert.Equal(fact, AssertRoundTrip(fact));
         Assert.Equal(outcome, AssertRoundTrip(outcome));
         Assert.Equal(decision, AssertRoundTrip(decision));
+        AssertRoundTrip(request);
     }
 
     private static Observation CreateObservation(KnownFact fact) => new(
@@ -85,7 +96,7 @@ public sealed class DtoJsonRoundTripTests
         4,
         "actor.alice",
         observation,
-        DecisionReasons.Interrupted,
+        DecisionReasons.ActionRejected,
         [
             new(ActionKinds.Travel, CandidateDestinationIds: ["place.inn"]),
             new(ActionKinds.Wait),
@@ -93,7 +104,8 @@ public sealed class DtoJsonRoundTripTests
             new(ActionKinds.Observe, CandidateActorIds: ["actor.bob"], CandidateObjectIds: ["object.letter"]),
             new(ActionKinds.Take, CandidateObjectIds: ["object.letter"]),
             new(ActionKinds.Give, CandidateActorIds: ["actor.bob"], CandidateObjectIds: ["object.letter"]),
-        ]);
+        ],
+        new Intent(ActionKinds.Travel, DestinationId: "place.cellar"));
 
     private static T AssertRoundTrip<T>(T value)
     {

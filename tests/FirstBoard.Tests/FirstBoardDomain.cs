@@ -16,6 +16,8 @@ internal static class BoardIds
     public const string LockedChest = "locked-chest";
     public const string KeyLocationKnown = "key.location-known";
     public const string ChestContainsLetter = "chest.contains-letter";
+    public const string CellarSealedKnown = "cellar.sealed-known";
+    public const string ActionRejected = "action.rejected";
 }
 
 internal static class BoardTiming
@@ -53,7 +55,8 @@ internal sealed record BoardActor(
     string? OpenDecisionId,
     SubmittedAction? PendingAction,
     BoardActivity? Activity,
-    IReadOnlyList<BoardFact> KnownFacts);
+    IReadOnlyList<BoardFact> KnownFacts,
+    Intent? LastRejectedIntent);
 
 internal sealed record BoardObject(
     long Id,
@@ -133,7 +136,8 @@ internal sealed record FirstBoardWorld(
             OpenDecisionId: null,
             PendingAction: null,
             Activity: null,
-            KnownFacts: []);
+            KnownFacts: [],
+            LastRejectedIntent: null);
 }
 
 internal abstract record BoardEventPayload;
@@ -196,7 +200,7 @@ internal sealed record ObjectContentionResolvedEvent(
 
 internal sealed record ActionRejectedEvent(
     string ActorId,
-    ActionKind ActionKind,
+    Intent RejectedIntent,
     string Reason) : BoardEventPayload;
 
 internal sealed record CellarSealedEvent : BoardEventPayload;
@@ -258,6 +262,7 @@ internal sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEv
                     AwaitingDecision = false,
                     OpenDecisionId = null,
                     PendingAction = new SubmittedAction(requested.DecisionId, requested.Intent),
+                    LastRejectedIntent = null,
                     Generation = checked(actor.Generation + 1),
                 }),
             ({ } kind, DecisionRequestedEvent requested) when kind == BoardEventKinds.DecisionRequested =>
@@ -301,12 +306,46 @@ internal sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEv
                 when kind == BoardEventKinds.ObjectContentionResolved =>
                 ApplyContention(world, resolved),
             ({ } kind, ActionRejectedEvent rejected) when kind == BoardEventKinds.ActionRejected =>
-                UpdateActor(world, rejected.ActorId, CompleteAction),
+                ApplyRejected(world, rejected),
             ({ } kind, CellarSealedEvent) when kind == BoardEventKinds.CellarSealed =>
-                world with { CellarSealed = true },
+                ApplyCellarSealed(world),
             _ => throw new InvalidOperationException(
                 $"Unknown or out-of-sequence event kind '{domainEvent.Kind.Id}'."),
         };
+
+    private static FirstBoardWorld ApplyRejected(
+        FirstBoardWorld world,
+        ActionRejectedEvent rejected)
+    {
+        var learnedFacts = new List<BoardFact>
+        {
+            RejectedActionFact(rejected.RejectedIntent, rejected.Reason),
+        };
+        if (rejected.RejectedIntent.ActionKind == ActionKinds.Travel &&
+            rejected.RejectedIntent.DestinationId == BoardIds.Cellar &&
+            rejected.Reason == "cellar is sealed")
+        {
+            learnedFacts.Add(CellarSealedFact());
+        }
+
+        return UpdateActor(world, rejected.ActorId, actor =>
+            AddFacts(CompleteAction(actor) with
+            {
+                LastRejectedIntent = rejected.RejectedIntent,
+            }, learnedFacts));
+    }
+
+    private static FirstBoardWorld ApplyCellarSealed(FirstBoardWorld world)
+    {
+        FirstBoardWorld updated = world with { CellarSealed = true };
+        foreach (BoardActor witness in world.Actors.Where(actor =>
+                     world.IsPresent(actor) && actor.PlaceId == BoardIds.Cellar))
+        {
+            updated = UpdateActor(updated, witness.Id, actor => AddFacts(actor, [CellarSealedFact()]));
+        }
+
+        return updated;
+    }
 
     private static FirstBoardWorld ApplySpoke(FirstBoardWorld world, ActorSpokeEvent spoke)
     {
@@ -385,12 +424,24 @@ internal sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEv
             .. actor.KnownFacts
                 .Concat(facts)
                 .GroupBy(fact => (fact.Kind, fact.RelatedId))
-                .Select(group => group.First())
+                .Select(group => group.Last())
                 .OrderBy(fact => fact.Kind, StringComparer.Ordinal)
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
         return actor with { KnownFacts = Array.AsReadOnly(merged) };
     }
+
+    private static BoardFact RejectedActionFact(Intent intent, string reason) =>
+        new(
+            BoardIds.ActionRejected,
+            intent.ActionKind.Id,
+            $"Action {intent.ActionKind.Id} was rejected: {reason}; " +
+            $"targetActor={intent.TargetActorId}; targetObject={intent.TargetObjectId}; " +
+            $"destination={intent.DestinationId}; durationMs={intent.DurationMs}; " +
+            $"untilModelTimeMs={intent.UntilModelTimeMs}.");
+
+    private static BoardFact CellarSealedFact() =>
+        new(BoardIds.CellarSealedKnown, BoardIds.Cellar, "The cellar is sealed.");
 
     private static BoardFact KeyLocationFact() =>
         new(BoardIds.KeyLocationKnown, BoardIds.BrassKey, "The brass key is in an actor's possession.");
