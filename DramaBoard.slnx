@@ -2,12 +2,14 @@
   <Folder Name="/src/">
     <Project Path="src/Host/Host.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
+    <Project Path="src/Player.Llm/Player.Llm.csproj" />
     <Project Path="src/Protocol/Protocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FirstBoard.Tests/FirstBoard.Tests.csproj" />
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
+    <Project Path="tests/Player.Llm.Tests/Player.Llm.Tests.csproj" />
     <Project Path="tests/Protocol.Tests/Protocol.Tests.csproj" />
   </Folder>
 </Solution>
