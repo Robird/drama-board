@@ -11,7 +11,8 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         SimulationCursor cursor,
         WorldVersion version,
         StopReason stopReason,
-        int decisionCount)
+        int decisionCount,
+        int skippedDecisionCount)
     {
         ArgumentNullException.ThrowIfNull(cursor);
 
@@ -20,6 +21,7 @@ public sealed class PlayerDecisionSessionResult<TWorld>
         Version = version;
         StopReason = stopReason;
         DecisionCount = decisionCount;
+        SkippedDecisionCount = skippedDecisionCount;
     }
 
     /// <summary>Gets the final replacement world value.</summary>
@@ -31,9 +33,12 @@ public sealed class PlayerDecisionSessionResult<TWorld>
     /// <summary>Gets the final committed journal-prefix version.</summary>
     public WorldVersion Version { get; }
 
-    /// <summary>Gets why the simulation stopped after all completed decisions were submitted.</summary>
+    /// <summary>Gets why the simulation stopped after all pending decision requests were handled.</summary>
     public StopReason StopReason { get; }
 
     /// <summary>Gets the number of Player decisions obtained during this call.</summary>
     public int DecisionCount { get; }
+
+    /// <summary>Gets the number of pending decision requests invalidated by the current world.</summary>
+    public int SkippedDecisionCount { get; }
 }
