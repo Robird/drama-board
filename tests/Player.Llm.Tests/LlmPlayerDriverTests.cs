@@ -92,6 +92,35 @@ public sealed class LlmPlayerDriverTests
         Assert.Equal(trace.Memory, driver.CurrentMemory);
     }
 
+    [Fact]
+    public async Task DecideAsync_ReferenceMaterialSurvivesFullMemoryReplacement()
+    {
+        var backend = new FakeLlmBackend(
+        [
+            Response("action.observe", "我暂时相信纸条。"),
+            Response("action.observe", "新证据让我认为纸条在说谎。"),
+        ]);
+        var driver = new LlmPlayerDriver(
+            Character,
+            "尚未判断。",
+            backend,
+            referenceMaterials:
+            [
+                new("anonymous-note", "匿名纸条", "鲍勃声称钥匙在地窖。"),
+            ]);
+
+        await driver.DecideAsync(CreateRequest(), CancellationToken.None);
+        await driver.DecideAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal("新证据让我认为纸条在说谎。", driver.CurrentMemory);
+        Assert.All(backend.Requests, request =>
+        {
+            Assert.Contains("[anonymous-note] 来源: 匿名纸条", request.User);
+            Assert.Contains("鲍勃声称钥匙在地窖。", request.User);
+        });
+        Assert.Contains("我暂时相信纸条。", backend.Requests[1].User);
+    }
+
     private static DecisionRequest CreateRequest() =>
         new(
             new DecisionId("decision.alice.1"),

@@ -68,6 +68,29 @@ public sealed class PromptRendererTests
         Assert.Contains("destination=cellar", changes);
     }
 
+    [Fact]
+    public void Render_ReferenceMaterialPreservesSourceWithoutAssertingBelief()
+    {
+        ReferenceMaterial[] materials =
+        [
+            new("anonymous-note", "夹在门缝里的匿名纸条", "鲍勃会在正午背叛你。"),
+        ];
+
+        LlmChatRequest rendered = PromptRenderer.Render(
+            Character,
+            "我怀疑纸条是在挑拨。",
+            CreateRequest(),
+            [],
+            materials);
+
+        Assert.Contains("[可反复查阅的材料]", rendered.User);
+        Assert.Contains("[anonymous-note] 来源: 夹在门缝里的匿名纸条", rendered.User);
+        Assert.Contains("原文: 鲍勃会在正午背叛你。", rendered.User);
+        Assert.Contains("我怀疑纸条是在挑拨。", rendered.User);
+        Assert.Contains("不保证内容真实", rendered.System);
+        Assert.Contains("你可以怀疑、重新解释或不再采信", rendered.User);
+    }
+
     private static DecisionRequest CreateRequest(IReadOnlyList<KnownFact>? knownFacts = null) =>
         new(
             new DecisionId("decision.alice.1"),

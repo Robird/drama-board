@@ -12,6 +12,7 @@ public sealed class LlmPlayerDriver : IPlayerDriver
     private readonly CharacterCard _characterCard;
     private readonly ILlmChatBackend _backend;
     private readonly Action<LlmTurnTrace>? _turnTraceSink;
+    private readonly IReadOnlyList<ReferenceMaterial> _referenceMaterials;
     private IReadOnlyList<KnownFact> _previousKnownFacts = [];
     private string _currentMemory;
 
@@ -20,7 +21,8 @@ public sealed class LlmPlayerDriver : IPlayerDriver
         CharacterCard characterCard,
         string initialMemory,
         ILlmChatBackend backend,
-        Action<LlmTurnTrace>? turnTraceSink = null)
+        Action<LlmTurnTrace>? turnTraceSink = null,
+        IReadOnlyList<ReferenceMaterial>? referenceMaterials = null)
     {
         ArgumentNullException.ThrowIfNull(characterCard);
         ArgumentNullException.ThrowIfNull(initialMemory);
@@ -30,6 +32,7 @@ public sealed class LlmPlayerDriver : IPlayerDriver
         _currentMemory = initialMemory;
         _backend = backend;
         _turnTraceSink = turnTraceSink;
+        _referenceMaterials = referenceMaterials is null ? [] : [.. referenceMaterials];
     }
 
     /// <summary>Gets the actor's latest complete private memory document.</summary>
@@ -47,7 +50,8 @@ public sealed class LlmPlayerDriver : IPlayerDriver
             _characterCard,
             _currentMemory,
             request,
-            _previousKnownFacts);
+            _previousKnownFacts,
+            _referenceMaterials);
         string response = await _backend.CompleteAsync(prompt, cancellationToken);
         LlmOutputParseResult parsed = LlmOutputParser.Parse(response);
         int attemptCount = 1;

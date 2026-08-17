@@ -12,12 +12,14 @@ public static class PromptRenderer
         CharacterCard characterCard,
         string memory,
         DecisionRequest request,
-        IReadOnlyList<KnownFact> previousKnownFacts)
+        IReadOnlyList<KnownFact> previousKnownFacts,
+        IReadOnlyList<ReferenceMaterial>? referenceMaterials = null)
     {
         ArgumentNullException.ThrowIfNull(characterCard);
         ArgumentNullException.ThrowIfNull(memory);
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(previousKnownFacts);
+        referenceMaterials ??= [];
 
         var system = new StringBuilder()
             .AppendLine("[角色卡]")
@@ -28,6 +30,7 @@ public static class PromptRenderer
             .AppendLine()
             .AppendLine("[世界规则]")
             .AppendLine("你只能选择决策请求中列出的动作和候选目标。行动会由世界规则校验，不要虚构不可用的能力。")
+            .AppendLine("可反复查阅的材料只保证其来源和原文稳定，不保证内容真实，也不代表你必须相信它；判断权属于你。")
             .AppendLine("观察结果会完整进入当前观察/已知事实；环境与事实没有变化时，重复观察不会发现暗格或更深线索。")
             .AppendLine("把已知事实当作权威结果，不要反复计划动作列表中不存在的后续操作；若已无可推进之事，可长时间等待。")
             .AppendLine("回复必须使用以下四个分节标记；【行动】中只放一个 JSON 对象，字段与 Intent 对齐:")
@@ -37,7 +40,9 @@ public static class PromptRenderer
             .AppendLine("【记忆】更新后的完整内心状态文档，整体替换旧文档")
             .ToString();
 
-        var user = new StringBuilder()
+        var user = new StringBuilder();
+        AppendReferenceMaterials(user, referenceMaterials);
+        user
             .AppendLine("[内心状态]")
             .AppendLine(string.IsNullOrWhiteSpace(memory) ? "（暂无）" : memory)
             .AppendLine()
@@ -85,6 +90,28 @@ public static class PromptRenderer
 
         user.Append("请按 system 中约定的四个分节作答。");
         return new LlmChatRequest(system, user.ToString());
+    }
+
+    private static void AppendReferenceMaterials(
+        StringBuilder text,
+        IReadOnlyList<ReferenceMaterial> materials)
+    {
+        text.AppendLine("[可反复查阅的材料]");
+        if (materials.Count == 0)
+        {
+            text.AppendLine("（无）").AppendLine();
+            return;
+        }
+
+        foreach (ReferenceMaterial material in materials)
+        {
+            text.Append("- [").Append(material.Id).Append("] 来源: ")
+                .AppendLine(material.Source)
+                .Append("  原文: ").AppendLine(material.Content);
+        }
+
+        text.AppendLine("以上是材料记载的内容，不是对其真伪的裁决；你可以怀疑、重新解释或不再采信。")
+            .AppendLine();
     }
 
     private static void AppendFacts(
