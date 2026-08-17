@@ -2,7 +2,7 @@
 
 **定位：第二阶段"AI Player driver"方向的设计研究文档。回答三个核心设计问题（Observation 形状 / Action 形状 / Player 内部状态），并给出 LLM 后端接入与成本策略的分析。本文档是 WP12 的产出，后续 WP13–WP16 的执行依据。**
 
-**日期：2026-08-17。基线：主 slnx 179 / Local.slnx 193 测试绿，S1–S14 门槛全修。**
+**日期：2026-08-17。基线：主 slnx 179 / Local.slnx 193 测试绿（WP12 写作时点的历史基线；最新测试数以 002 状态表为准），S1–S14 门槛全修。**
 
 ---
 
@@ -140,7 +140,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
 | WP12 | 本设计研究文档 | — | 用户对四个裁决（Q1/Q2/Q3/后端策略）异步纠偏 |
-| WP13 | src/Player.Llm 骨架：PromptRenderer（含 KnownFacts diff）+ 输出解析器 + 认知循环（LlmPlayerDriver）+ 记忆文档读写；全部纯逻辑 + 假后端单测 | WP12 | 主 slnx 测试绿；渲染/解析双向锁定；假后端跑通 FirstBoard 一局（脚本化 LLM 输出） |
+| WP13 | src/Player.Llm 骨架：PromptRenderer（含 KnownFacts diff）+ 输出解析器 + 认知循环（LlmPlayerDriver）+ 记忆文档读写（勘注：实际交付为内存态 + CurrentMemory 只读访问，落盘移至 WP15 harness）；全部纯逻辑 + 假后端单测 | WP12 | 主 slnx 测试绿；渲染/解析双向锁定；假后端跑通 FirstBoard 一局（脚本化 LLM 输出） |
 | WP14 | 两个真后端 adapter：CodexAppServerBackend（stdio JSON-RPC，协议细节此时钉死）+ OpenAiCompatBackend | WP13 | 手动连通性验证各一次（真实一问一答）；协议交互有录制样本回归测试 |
 | WP15 | Demo harness（console）：FirstBoard + LlmPlayerDriver 真跑一局，输出**戏剧记录**（journal 叙事 dump + 各角色内心独白轨迹）——顺带吸收此前"journal 可读性工具"穿插件 | WP14 | 真实完整一局跑通；戏剧记录人工可读；质量观感汇报给用户 |
 | WP16 | 质量迭代：prompt 工程、记忆压缩策略、失败模式统计（解析失败率/拒绝率/降级率） | WP15 | 视 WP15 观感定义 |
