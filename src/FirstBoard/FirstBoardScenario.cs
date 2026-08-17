@@ -278,6 +278,10 @@ public static class FirstBoardScenario
         if (heldObjects.Length > 0 && targetActors.Length > 0)
         {
             actions.Add(new AvailableAction(
+                ActionKinds.Show,
+                CandidateActorIds: Array.AsReadOnly(targetActors),
+                CandidateObjectIds: Array.AsReadOnly(heldObjects)));
+            actions.Add(new AvailableAction(
                 ActionKinds.Give,
                 CandidateActorIds: Array.AsReadOnly(targetActors),
                 CandidateObjectIds: Array.AsReadOnly(heldObjects)));
@@ -347,6 +351,8 @@ public static class FirstBoardScenario
             ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
             ObjectGivenEvent given =>
                 $"actor={given.ActorId} target={given.TargetActorId} object={given.ObjectId}",
+            ObjectShownEvent shown =>
+                $"actor={shown.ActorId} target={shown.TargetActorId} object={shown.ObjectId}",
             ChestOpenedEvent opened =>
                 $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
             ObjectContentionResolvedEvent contention =>

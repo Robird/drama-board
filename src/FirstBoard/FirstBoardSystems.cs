@@ -107,6 +107,7 @@ public sealed class ActionResolutionSystem :
             "action.observe" => ResolveObserve(world, actor),
             "action.take" => ResolveTake(world, actor, submitted.Intent),
             "action.give" => ResolveGive(world, actor, submitted.Intent),
+            "action.show" => ResolveShow(world, actor, submitted.Intent),
             "action.use" => ResolveUse(world, actor, submitted.Intent),
             _ => Reject(actor, submitted.Intent, "unknown action kind"),
         };
@@ -357,6 +358,33 @@ public sealed class ActionResolutionSystem :
         return Result(
             BoardEventKinds.ObjectGiven,
             new ObjectGivenEvent(actor.Key, target.Key, item.Key));
+    }
+
+    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveShow(
+        FirstBoardWorld world,
+        BoardActor actor,
+        Intent intent)
+    {
+        BoardObject? item = world.Objects.SingleOrDefault(current => current.Key == intent.TargetObjectId);
+        BoardActor? target = world.Actors.SingleOrDefault(current => current.Key == intent.TargetActorId);
+        if (item is null || item.OwnerActorId != actor.Id)
+        {
+            return Reject(actor, intent, "actor does not hold the target object");
+        }
+
+        if (target is null || target.Id == actor.Id)
+        {
+            return Reject(actor, intent, "target actor does not exist");
+        }
+
+        if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
+        {
+            return Reject(actor, intent, "target actor is not at the same place");
+        }
+
+        return Result(
+            BoardEventKinds.ObjectShown,
+            new ObjectShownEvent(actor.Key, target.Key, item.Key));
     }
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveUse(

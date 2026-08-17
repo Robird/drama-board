@@ -23,6 +23,7 @@ public static class BoardIds
     public const string CellarSealedKnown = "cellar.sealed-known";
     public const string ObjectHeld = "object.held";
     public const string ObjectReceived = "object.received";
+    public const string ObjectShown = "object.shown";
     public const string DialogueHeard = "dialogue.heard";
     public const string LastActionOutcome = "action.last-outcome";
     public const string ActionRejected = "action.rejected";
@@ -201,6 +202,11 @@ public sealed record ObjectGivenEvent(
     string TargetActorId,
     string ObjectId) : BoardEventPayload;
 
+public sealed record ObjectShownEvent(
+    string ActorId,
+    string TargetActorId,
+    string ObjectId) : BoardEventPayload;
+
 public sealed record ChestOpenedEvent(
     string ActorId,
     string ObjectId,
@@ -233,6 +239,7 @@ public static class BoardEventKinds
     public static EventKind ObserveRequested { get; } = new("action.observe-requested", 1);
     public static EventKind TakeRequested { get; } = new("action.take-requested", 1);
     public static EventKind GiveRequested { get; } = new("action.give-requested", 1);
+    public static EventKind ShowRequested { get; } = new("action.show-requested", 1);
     public static EventKind UseRequested { get; } = new("action.use-requested", 1);
     public static EventKind UnknownActionRequested { get; } = new("action.unknown-requested", 1);
     public static EventKind ActorDeparted { get; } = new("actor.departed", 1);
@@ -243,6 +250,7 @@ public static class BoardEventKinds
     public static EventKind ActorObserved { get; } = new("actor.observed", 1);
     public static EventKind ObjectTaken { get; } = new("object.taken", 1);
     public static EventKind ObjectGiven { get; } = new("object.given", 1);
+    public static EventKind ObjectShown { get; } = new("object.shown", 1);
     public static EventKind ChestOpened { get; } = new("chest.opened", 1);
     public static EventKind ObjectContentionResolved { get; } = new("object.contention-resolved", 1);
     public static EventKind ActionRejected { get; } = new("action.rejected", 1);
@@ -257,6 +265,7 @@ public static class BoardEventKinds
             "action.observe" => ObserveRequested,
             "action.take" => TakeRequested,
             "action.give" => GiveRequested,
+            "action.show" => ShowRequested,
             "action.use" => UseRequested,
             _ => UnknownActionRequested,
         };
@@ -268,6 +277,7 @@ public static class BoardEventKinds
         kind == ObserveRequested ||
         kind == TakeRequested ||
         kind == GiveRequested ||
+        kind == ShowRequested ||
         kind == UseRequested ||
         kind == UnknownActionRequested;
 }
@@ -337,6 +347,8 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
                 ApplyTaken(world, taken),
             ({ } kind, ObjectGivenEvent given) when kind == BoardEventKinds.ObjectGiven =>
                 ApplyGiven(world, given),
+            ({ } kind, ObjectShownEvent shown) when kind == BoardEventKinds.ObjectShown =>
+                ApplyShown(world, shown),
             ({ } kind, ChestOpenedEvent opened) when kind == BoardEventKinds.ChestOpened =>
                 ApplyChestOpened(world, opened),
             ({ } kind, ObjectContentionResolvedEvent resolved)
@@ -460,6 +472,31 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         }
 
         return UpdateActor(updated, given.TargetActorId, actor => AddFacts(actor, targetFacts));
+    }
+
+    private static FirstBoardWorld ApplyShown(FirstBoardWorld world, ObjectShownEvent shown)
+    {
+        FirstBoardWorld updated = UpdateActor(world, shown.ActorId, actor =>
+            AddFacts(CompleteAction(actor), [LastOutcome(
+                $"You successfully showed {shown.ObjectId} to {shown.TargetActorId} without giving it away.")]));
+        return UpdateActor(updated, shown.TargetActorId, actor =>
+        {
+            var facts = new List<BoardFact>
+            {
+                new(
+                    BoardIds.ObjectShown,
+                    shown.ObjectId,
+                    $"{shown.ActorId} showed you {shown.ObjectId}; you verified that they held it at that moment."),
+            };
+            if (actor.Activity?.Kind == BoardActivityKind.Wait)
+            {
+                facts.Add(LastOutcome(
+                    $"Your wait was interrupted because {shown.ActorId} showed you {shown.ObjectId}."));
+                actor = CompleteActivity(actor);
+            }
+
+            return AddFacts(actor, facts);
+        });
     }
 
     private static FirstBoardWorld ApplyChestOpened(

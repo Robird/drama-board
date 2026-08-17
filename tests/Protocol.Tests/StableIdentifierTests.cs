@@ -20,6 +20,7 @@ public sealed class StableIdentifierTests
     public void Equality_SameKindIdentifier_HasValueSemantics()
     {
         Assert.Equal(new ActionKind("action.travel"), ActionKinds.Travel);
+        Assert.Equal(new ActionKind("action.show"), ActionKinds.Show);
         Assert.Equal(new DecisionReason("decision.scheduled"), DecisionReasons.Scheduled);
         Assert.Equal(new FactKind("fact.secret.known"), new FactKind("fact.secret.known"));
     }

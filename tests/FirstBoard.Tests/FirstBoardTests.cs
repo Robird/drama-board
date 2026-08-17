@@ -539,6 +539,67 @@ public sealed class FirstBoardTests
     }
 
     [Fact]
+    public async Task ShowAction_CreatesPrivateEvidenceWithoutTransferAndInterruptsWait()
+    {
+        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+            request =>
+            {
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.ObjectShown &&
+                    fact.RelatedId == BoardIds.BrassKey &&
+                    fact.Text.Contains(BoardIds.Bob, StringComparison.Ordinal));
+                return Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000));
+            },
+        ]));
+        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request =>
+            {
+                AvailableAction show = Assert.Single(
+                    request.AvailableActions,
+                    action => action.ActionKind == ActionKinds.Show);
+                Assert.Contains(BoardIds.Alice, show.CandidateActorIds!);
+                Assert.Contains(BoardIds.BrassKey, show.CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Show,
+                    TargetActorId: BoardIds.Alice,
+                    TargetObjectId: BoardIds.BrassKey));
+            },
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 47));
+        BoardActor initialBob = initial.Actor(BoardIds.Bob);
+        initial = initial with
+        {
+            Objects = Array.AsReadOnly(initial.Objects
+                .Select(item => item.Key == BoardIds.BrassKey
+                    ? item with { PlaceId = null, OwnerActorId = initialBob.Id }
+                    : item)
+                .ToArray()),
+        };
+
+        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
+            Drivers(alice, bob),
+            worldSeed: 47,
+            new ModelTime(1),
+            initial);
+        FirstBoardWorld world = capture.Result.World;
+
+        Assert.Equal(initialBob.Id, world.Object(BoardIds.BrassKey).OwnerActorId);
+        Assert.Single(capture.Journal.Events, domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ObjectShown);
+        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
+            fact.Kind == BoardIds.ObjectShown && fact.RelatedId == BoardIds.BrassKey);
+        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
+            fact.Kind == BoardIds.ObjectShown && fact.RelatedId == BoardIds.BrassKey);
+        Assert.Equal(2, alice.Requests.Count);
+        Assert.Equal(0, alice.Requests[1].ModelTimeMs);
+        Assert.Equal(DecisionReasons.Scheduled, alice.Requests[1].Reason);
+    }
+
+    [Fact]
     public async Task KeyContention_HostBatchIsSymmetricAndWinnerIgnoresDriverRegistrationOrder()
     {
         HostContentionCapture first = await RunHostContentionAsync(reverseDriverRegistration: false);

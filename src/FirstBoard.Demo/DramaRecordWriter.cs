@@ -86,6 +86,7 @@ internal static class DramaRecordWriter
             "action.observe" => "观察四周",
             "action.take" => $"拿取 {DisplayObject(intent.TargetObjectId)}",
             "action.give" => $"把 {DisplayObject(intent.TargetObjectId)} 交给 {DisplayActor(intent.TargetActorId)}",
+            "action.show" => $"向 {DisplayActor(intent.TargetActorId)} 展示 {DisplayObject(intent.TargetObjectId)}",
             "action.use" => $"使用 {DisplayObject(intent.TargetObjectId)}",
             _ => intent.ActionKind.Id,
         };
@@ -111,6 +112,9 @@ internal static class DramaRecordWriter
                 $"{DisplayActor(value.ActorId)}拿到了{DisplayObject(value.ObjectId)}。",
             ObjectGivenEvent value =>
                 $"{DisplayActor(value.ActorId)}把{DisplayObject(value.ObjectId)}交给{DisplayActor(value.TargetActorId)}。",
+            ObjectShownEvent value =>
+                $"{DisplayActor(value.ActorId)}向{DisplayActor(value.TargetActorId)}展示了" +
+                $"{DisplayObject(value.ObjectId)}，但仍由自己持有。",
             ChestOpenedEvent value =>
                 $"{DisplayActor(value.ActorId)}用{DisplayObject(value.KeyObjectId)}打开了" +
                 $"{DisplayObject(value.ObjectId)}，找到了公爵夫人的密信。",

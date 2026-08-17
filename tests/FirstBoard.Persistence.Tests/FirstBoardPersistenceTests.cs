@@ -160,6 +160,7 @@ public sealed class FirstBoardPersistenceTests
             ActorObservedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectTakenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectGivenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
+            ObjectShownEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ChestOpenedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectContentionResolvedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ActionRejectedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
@@ -178,6 +179,7 @@ public sealed class FirstBoardPersistenceTests
             "action.observe-requested" or
             "action.take-requested" or
             "action.give-requested" or
+            "action.show-requested" or
             "action.use-requested" or
             "action.unknown-requested" => Deserialize<ActionRequestedEvent>(payload),
             "actor.departed" => Deserialize<ActorDepartedEvent>(payload),
@@ -188,6 +190,7 @@ public sealed class FirstBoardPersistenceTests
             "actor.observed" => Deserialize<ActorObservedEvent>(payload),
             "object.taken" => Deserialize<ObjectTakenEvent>(payload),
             "object.given" => Deserialize<ObjectGivenEvent>(payload),
+            "object.shown" => Deserialize<ObjectShownEvent>(payload),
             "chest.opened" => Deserialize<ChestOpenedEvent>(payload),
             "object.contention-resolved" => Deserialize<ObjectContentionResolvedEvent>(payload),
             "action.rejected" => Deserialize<ActionRejectedEvent>(payload),

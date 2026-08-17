@@ -21,6 +21,9 @@ public static class ActionKinds
     /// <summary>Identifies giving an object to another actor.</summary>
     public static ActionKind Give { get; } = new("action.give");
 
+    /// <summary>Identifies showing a held object to another actor without transferring it.</summary>
+    public static ActionKind Show { get; } = new("action.show");
+
     /// <summary>Identifies using an object or contextual capability on a target object.</summary>
     public static ActionKind Use { get; } = new("action.use");
 }

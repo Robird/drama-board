@@ -135,7 +135,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 
 ---
 
-## 5. WP 切分草案（WP12–WP18）
+## 5. WP 切分草案（WP12–WP19）
 
 | WP | 内容 | 依赖 | 验收 |
 |---|---|---|---|
@@ -146,6 +146,7 @@ ILlmChatBackend (最小端口: prompt in → text out, async)
 | WP16 | 对话反应、权威动作回执、最小 `action.use` 与真模型舞台调度实验 | WP15 | 完成：两个后端均形成真实往返；局部反应闭环进入 Board 事件链 |
 | WP17 | 谈判到世界后果：物化密信/交易筹码，优先复用 `give` 验证非原子交换 | WP16 | 真模型从议价推进到至少一次权威所有权转移；保留违约/背叛可能 |
 | WP18 | 可验证议价：最小 `action.show`/`object.shown`，展示产生目标私有事实但不转移所有权 | WP17 | 真模型以 show 回答“先验货”，再自主选择 give、拒绝或欺诈 |
+| WP19 | 目标化观察：复用 `action.observe(TargetObjectId)` 检查自持/可见对象，不新增 inspect/read 动词 | WP18 | 真模型检查取得的密信，获得真伪/内容私有事实后自主决定尾款 |
 
 ## 6. 开放问题
 
