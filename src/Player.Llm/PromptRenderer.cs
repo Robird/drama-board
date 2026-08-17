@@ -10,7 +10,7 @@ public static class PromptRenderer
     /// <summary>Renders the stable system prompt and request-specific user prompt.</summary>
     public static LlmChatRequest Render(
         CharacterCard characterCard,
-        string memory,
+        MemoryBank memory,
         DecisionRequest request,
         IReadOnlyList<KnownFact> previousKnownFacts,
         IReadOnlyList<ReferenceMaterial>? referenceMaterials = null)
@@ -31,20 +31,21 @@ public static class PromptRenderer
             .AppendLine("[世界规则]")
             .AppendLine("你只能选择决策请求中列出的动作和候选目标。行动会由世界规则校验，不要虚构不可用的能力。")
             .AppendLine("可反复查阅的材料只保证其来源和原文稳定，不保证内容真实，也不代表你必须相信它；判断权属于你。")
+            .AppendLine("台词和口头承诺本身不会转移物品；give 会转移所有权，show 只展示而不转移，带物品目标的 observe 用于仔细检查候选持有物。")
             .AppendLine("观察结果会完整进入当前观察/已知事实；环境与事实没有变化时，重复观察不会发现暗格或更深线索。")
             .AppendLine("把已知事实当作权威结果，不要反复计划动作列表中不存在的后续操作；若已无可推进之事，可长时间等待。")
             .AppendLine("回复必须使用以下四个分节标记；【行动】中只放一个 JSON 对象，字段与 Intent 对齐:")
             .AppendLine("【独白】一段内心想法")
             .AppendLine("【行动】{\"action\":\"action.wait\",\"targetActor\":null,\"targetObject\":null,\"destination\":null,\"freeText\":null,\"durationMs\":null,\"untilModelTimeMs\":null}")
             .AppendLine("【台词】可选，说出口的话")
-            .AppendLine("【记忆】更新后的完整内心状态文档，整体替换旧文档")
+            .AppendLine("【记忆】本轮希望各记忆分块吸收、修正或忘却的要点；这不是完整记忆，可以写（无）")
             .ToString();
 
         var user = new StringBuilder();
         AppendReferenceMaterials(user, referenceMaterials);
         user
             .AppendLine("[内心状态]")
-            .AppendLine(string.IsNullOrWhiteSpace(memory) ? "（暂无）" : memory)
+            .AppendLine(memory.Render())
             .AppendLine()
             .AppendLine("[当前观察]")
             .Append("时间: ").Append(request.ModelTimeMs.ToString(CultureInfo.InvariantCulture))
@@ -96,11 +97,18 @@ public static class PromptRenderer
         StringBuilder text,
         IReadOnlyList<ReferenceMaterial> materials)
     {
-        text.AppendLine("[可反复查阅的材料]");
+        text.AppendLine("[可反复查阅的材料]")
+            .AppendLine(RenderReferenceMaterials(materials))
+            .AppendLine();
+    }
+
+    internal static string RenderReferenceMaterials(IReadOnlyList<ReferenceMaterial> materials)
+    {
+        ArgumentNullException.ThrowIfNull(materials);
+        var text = new StringBuilder();
         if (materials.Count == 0)
         {
-            text.AppendLine("（无）").AppendLine();
-            return;
+            return "（无）";
         }
 
         foreach (ReferenceMaterial material in materials)
@@ -110,8 +118,8 @@ public static class PromptRenderer
                 .Append("  原文: ").AppendLine(material.Content);
         }
 
-        text.AppendLine("以上是材料记载的内容，不是对其真伪的裁决；你可以怀疑、重新解释或不再采信。")
-            .AppendLine();
+        text.Append("以上是材料记载的内容，不是对其真伪的裁决；你可以怀疑、重新解释或不再采信。");
+        return text.ToString();
     }
 
     private static void AppendFacts(
@@ -139,7 +147,7 @@ public static class PromptRenderer
             ? $"[{string.Join(", ", ids)}]"
             : "[]";
 
-    private static string RenderIntent(Intent intent) =>
+    internal static string RenderIntent(Intent intent) =>
         $"action={intent.ActionKind.Id}, targetActor={intent.TargetActorId ?? "-"}, " +
         $"targetObject={intent.TargetObjectId ?? "-"}, destination={intent.DestinationId ?? "-"}, " +
         $"freeText={intent.FreeText ?? "-"}, durationMs={intent.DurationMs?.ToString(CultureInfo.InvariantCulture) ?? "-"}, " +

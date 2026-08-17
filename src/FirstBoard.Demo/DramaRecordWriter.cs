@@ -24,6 +24,8 @@ internal static class DramaRecordWriter
             .AppendLine(options.AliceBackend.Model)
             .Append("- 鲍勃后端：").Append(options.BobBackend.Backend).Append(" / ")
             .AppendLine(options.BobBackend.Model)
+            .Append("- 记忆维护后端：").Append(options.MemoryBackend.Backend).Append(" / ")
+            .AppendLine(options.MemoryBackend.Model)
             .Append("- 世界种子：").AppendLine(options.WorldSeed.ToString(CultureInfo.InvariantCulture))
             .Append("- 结束：").Append(capture.Result.StopReason)
             .Append(" @ ").Append(capture.Result.Cursor.Now.Ticks.ToString(CultureInfo.InvariantCulture))
@@ -69,7 +71,13 @@ internal static class DramaRecordWriter
                 .AppendLine()
                 .Append("- 行动：").AppendLine(FormatIntent(trace.Decision.Intent))
                 .Append("- 台词：").AppendLine(trace.Dialogue ?? "（无）")
-                .Append("- 更新记忆：").AppendLine(trace.Memory)
+                .Append("- 记忆提议：").AppendLine(trace.MemoryProposal)
+                .Append("- 分块维护：").AppendLine(string.Join(
+                    "; ",
+                    trace.MemoryMaintenance.Select(result =>
+                        $"{result.ShardKey}={result.Operation}")))
+                .AppendLine("- 更新后 MemoryBank：")
+                .AppendLine(trace.Memory)
                 .AppendLine();
         }
 

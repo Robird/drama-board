@@ -28,14 +28,29 @@ public sealed class LlmPlayerIntegrationTests
             Response("action.take", "我拿到了黄铜钥匙。", "\"targetObject\":\"brass-key\""),
             Response("action.wait", "我带着钥匙等待。", "\"durationMs\":5000000"),
         ]);
+        var aliceMemoryBackend = new FakeLlmBackend(
+        [
+            Memory("我已前往市场。"),
+            Memory("那条路也许不存在。"),
+            Memory("非法路线被拒绝，我改为与鲍勃交谈。"),
+            Memory("我会等待时机。"),
+        ]);
+        var bobMemoryBackend = new FakeLlmBackend(
+        [
+            Memory("我等爱丽丝到市场。"),
+            Memory("我拿到了黄铜钥匙。"),
+            Memory("我带着钥匙等待。"),
+        ]);
         var alice = new LlmPlayerDriver(
             new CharacterCard("爱丽丝", "谨慎而执着", "找到密信", "克制"),
-            "尚未找到钥匙。",
-            aliceBackend);
+            InitialMemory("尚未找到钥匙。"),
+            aliceBackend,
+            [new LlmMemoryShardMaintainer("working", aliceMemoryBackend)]);
         var bob = new LlmPlayerDriver(
             new CharacterCard("鲍勃", "务实", "保护同伴", "直率"),
-            "我在市场。",
-            bobBackend);
+            InitialMemory("我在市场。"),
+            bobBackend,
+            [new LlmMemoryShardMaintainer("working", bobMemoryBackend)]);
 
         BoardRunCapture capture = await FirstBoardScenario.RunAsync(
             new Dictionary<string, DramaBoard.Host.IPlayerDriver>(StringComparer.Ordinal)
@@ -60,8 +75,8 @@ public sealed class LlmPlayerIntegrationTests
             domainEvent.Kind == BoardEventKinds.ActorSpoke &&
             Assert.IsType<ActorSpokeEvent>(domainEvent.Payload).ActorId == BoardIds.Alice);
 
-        Assert.Equal("我会等待时机。", alice.CurrentMemory);
-        Assert.Equal("我带着钥匙等待。", bob.CurrentMemory);
+        Assert.Equal("我会等待时机。", alice.CurrentMemoryBank["working"].Content);
+        Assert.Equal("我带着钥匙等待。", bob.CurrentMemoryBank["working"].Content);
         Assert.Equal(4, aliceBackend.Requests.Count);
         Assert.Equal(3, bobBackend.Requests.Count);
         string rejectionPrompt = aliceBackend.Requests[2].User;
@@ -70,6 +85,15 @@ public sealed class LlmPlayerIntegrationTests
         Assert.Contains("destination does not exist", rejectionPrompt);
         Assert.Contains("action.talk", rejectionPrompt);
     }
+
+    private static MemoryBank InitialMemory(string content) =>
+        new(
+        [
+            new MemoryShard("working", "当前处境", "维护当前处境。", content),
+        ]);
+
+    private static string Memory(string content) =>
+        $"{{\"operation\":\"replace\",\"content\":\"{content}\"}}";
 
     private static string Response(
         string action,

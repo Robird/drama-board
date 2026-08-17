@@ -15,7 +15,7 @@ public sealed class PromptRendererTests
     {
         DecisionRequest request = CreateRequest();
 
-        LlmChatRequest rendered = PromptRenderer.Render(Character, "我正在寻找钥匙。", request, []);
+        LlmChatRequest rendered = PromptRenderer.Render(Character, Memory("我正在寻找钥匙。"), request, []);
 
         Assert.Contains("[角色卡]", rendered.System);
         Assert.Contains("名字: 爱丽丝", rendered.System);
@@ -42,8 +42,8 @@ public sealed class PromptRendererTests
         DecisionRequest request = CreateRequest([oldFact, newFact]);
         KnownFact[] previous = [oldFact with { }];
 
-        LlmChatRequest first = PromptRenderer.Render(Character, "记忆", request, previous);
-        LlmChatRequest second = PromptRenderer.Render(Character, "记忆", request, previous);
+        LlmChatRequest first = PromptRenderer.Render(Character, Memory("记忆"), request, previous);
+        LlmChatRequest second = PromptRenderer.Render(Character, Memory("记忆"), request, previous);
 
         Assert.Equal(first, second);
         string changes = Section(first.User, "[新近变化]", "[决策请求]");
@@ -60,7 +60,7 @@ public sealed class PromptRendererTests
             RejectedIntent = new Intent(ActionKinds.Travel, DestinationId: "cellar"),
         };
 
-        LlmChatRequest rendered = PromptRenderer.Render(Character, "记忆", request, []);
+        LlmChatRequest rendered = PromptRenderer.Render(Character, Memory("记忆"), request, []);
 
         string changes = Section(rendered.User, "[新近变化]", "[决策请求]");
         Assert.Contains("上次尝试被拒绝", changes);
@@ -78,7 +78,7 @@ public sealed class PromptRendererTests
 
         LlmChatRequest rendered = PromptRenderer.Render(
             Character,
-            "我怀疑纸条是在挑拨。",
+            Memory("我怀疑纸条是在挑拨。"),
             CreateRequest(),
             [],
             materials);
@@ -114,6 +114,12 @@ public sealed class PromptRendererTests
                     CandidateDestinationIds: ["market"]),
                 new AvailableAction(ActionKinds.Wait),
             ]);
+
+    private static MemoryBank Memory(string content) =>
+        new(
+        [
+            new MemoryShard("working", "当前处境", "维护当前处境。", content),
+        ]);
 
     private static string Section(string text, string start, string end)
     {

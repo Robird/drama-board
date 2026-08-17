@@ -7,6 +7,7 @@ internal sealed record DemoBackendOptions(string Backend, string Model);
 internal sealed record DemoOptions(
     DemoBackendOptions AliceBackend,
     DemoBackendOptions BobBackend,
+    DemoBackendOptions MemoryBackend,
     string OutputDirectory,
     ulong WorldSeed,
     long UntilModelTimeMs,
@@ -49,18 +50,28 @@ internal sealed record DemoOptions(
             values,
             "bob-model",
             bobBackend == backend ? model : DefaultModel(bobBackend));
+        string memoryBackend = ReadBackend(values, "memory-backend", aliceBackend);
+        string memoryModel = Read(
+            values,
+            "memory-model",
+            memoryBackend == aliceBackend
+                ? aliceModel
+                : memoryBackend == bobBackend
+                    ? bobModel
+                    : DefaultModel(memoryBackend));
         string output = Read(
             values,
             "output",
             Path.Combine(
                 "artifacts",
-                "wp20",
+                "wp21",
                 $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-" +
                 $"alice-{aliceBackend}-{aliceModel}-bob-{bobBackend}-{bobModel}"));
 
         return new DemoOptions(
             new DemoBackendOptions(aliceBackend, aliceModel),
             new DemoBackendOptions(bobBackend, bobModel),
+            new DemoBackendOptions(memoryBackend, memoryModel),
             Path.GetFullPath(output),
             ReadUInt64(values, "seed", 20_260_817),
             ReadInt64(values, "until-ms", BoardTiming.RandomRunBoundaryTicks, minimum: 0),
@@ -90,6 +101,9 @@ internal sealed record DemoOptions(
           --alice-model MODEL              Override Alice model
           --bob-backend BACKEND            Override Bob backend
           --bob-model MODEL                Override Bob model
+          --memory-backend BACKEND         Backend for all private shard maintainers;
+                                           default: Alice backend
+          --memory-model MODEL             Memory maintainer model; default follows matching actor
           --base-url URL                   OpenAI-compatible base URL; env fallback:
                                            DEEPSEEK_BASE_URL, then BASE_URL
           --api-key-env NAME               Credential env name; default: DEEPSEEK_API_KEY

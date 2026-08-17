@@ -50,6 +50,16 @@ internal sealed class DemoTraceSink
             .AppendLine("### 台词")
             .AppendLine(trace.Dialogue ?? "（无）")
             .AppendLine()
+            .AppendLine("### 本轮记忆提议")
+            .AppendLine(trace.MemoryProposal)
+            .AppendLine()
+            .AppendLine("### 分块维护结果")
+            .AppendLine(string.Join(
+                Environment.NewLine,
+                trace.MemoryMaintenance.Select(result =>
+                    $"- {result.ShardKey}: {result.Operation}" +
+                    (result.Error is null ? string.Empty : $" ({result.Error})"))))
+            .AppendLine()
             .AppendLine("### 提交后的记忆")
             .AppendLine(trace.Memory)
             .AppendLine();
