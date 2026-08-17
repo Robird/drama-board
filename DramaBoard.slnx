@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/FirstBoard/FirstBoard.csproj" />
+    <Project Path="src/FirstBoard.Demo/FirstBoard.Demo.csproj" />
     <Project Path="src/Host/Host.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/Player.Llm/Player.Llm.csproj" />

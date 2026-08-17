@@ -241,6 +241,12 @@ public sealed class FirstBoardTests
         Assert.DoesNotContain(BoardIds.BrassKey, aliceWithCarriedKey.Observation.VisibleObjectIds);
         Assert.Contains(BoardIds.BrassKey, bobWithOwnKey.Observation.VisibleObjectIds);
         Assert.Contains(BoardIds.BrassKey, aliceWithPlacedKey.Observation.VisibleObjectIds);
+        Assert.DoesNotContain(aliceWithCarriedKey.Observation.KnownFacts, fact =>
+            fact.FactKind.Id == BoardIds.ObjectHeld);
+        Assert.Contains(bobWithOwnKey.Observation.KnownFacts, fact =>
+            fact.FactKind.Id == BoardIds.ObjectHeld &&
+            fact.RelatedId == BoardIds.BrassKey &&
+            fact.Text.Contains("You are carrying", StringComparison.Ordinal));
     }
 
     [Fact]

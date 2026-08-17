@@ -20,6 +20,8 @@ public sealed class PromptRendererTests
         Assert.Contains("[角色卡]", rendered.System);
         Assert.Contains("名字: 爱丽丝", rendered.System);
         Assert.Contains("[世界规则]", rendered.System);
+        Assert.Contains("重复观察不会发现暗格或更深线索", rendered.System);
+        Assert.Contains("把已知事实当作权威结果", rendered.System);
         Assert.Contains("【独白】", rendered.System);
         Assert.Contains("【行动】", rendered.System);
         Assert.Contains("【台词】", rendered.System);

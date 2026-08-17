@@ -11,14 +11,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="DramaBoard.FirstBoard" />
     <Using Include="Xunit" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Host\Host.csproj" />
-    <ProjectReference Include="..\..\src\Kernel\Kernel.csproj" />
+    <ProjectReference Include="..\..\src\FirstBoard\FirstBoard.csproj" />
     <ProjectReference Include="..\..\src\Player.Llm\Player.Llm.csproj" />
-    <ProjectReference Include="..\..\src\Protocol\Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>

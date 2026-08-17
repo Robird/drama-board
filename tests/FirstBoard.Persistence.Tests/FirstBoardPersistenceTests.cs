@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DramaBoard.FirstBoard.Tests;
+using DramaBoard.FirstBoard;
 using DramaBoard.Host;
 using DramaBoard.Journal.Atelia;
 using DramaBoard.Kernel.Journal;

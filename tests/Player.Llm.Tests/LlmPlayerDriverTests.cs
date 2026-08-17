@@ -65,6 +65,33 @@ public sealed class LlmPlayerDriverTests
         Assert.Equal(2, backend.Requests.Count);
     }
 
+    [Fact]
+    public async Task DecideAsync_SuccessEmitsTraceFromTheCommittedParsedTurn()
+    {
+        var traces = new List<LlmTurnTrace>();
+        var backend = new FakeLlmBackend(
+        [
+            "无法解析",
+            $$"""
+            【独白】我先观察四周。
+            【行动】{"action":"action.observe"}
+            【台词】有人在吗？
+            【记忆】我已决定先观察。
+            """,
+        ]);
+        var driver = new LlmPlayerDriver(Character, "初始记忆", backend, traces.Add);
+
+        PlayerDecision decision = await driver.DecideAsync(CreateRequest(), CancellationToken.None);
+
+        LlmTurnTrace trace = Assert.Single(traces);
+        Assert.Equal(decision, trace.Decision);
+        Assert.Equal("我先观察四周。", trace.Monologue);
+        Assert.Equal("有人在吗？", trace.Dialogue);
+        Assert.Equal("我已决定先观察。", trace.Memory);
+        Assert.Equal(2, trace.AttemptCount);
+        Assert.Equal(trace.Memory, driver.CurrentMemory);
+    }
+
     private static DecisionRequest CreateRequest() =>
         new(
             new DecisionId("decision.alice.1"),

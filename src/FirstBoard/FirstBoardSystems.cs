@@ -4,19 +4,19 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
 
-namespace DramaBoard.FirstBoard.Tests;
+namespace DramaBoard.FirstBoard;
 
-internal abstract record BoardCandidate;
+public abstract record BoardCandidate;
 
-internal sealed record DecisionCandidate : BoardCandidate;
+public sealed record DecisionCandidate : BoardCandidate;
 
-internal sealed record ActionCandidate(long ActorId, long Generation) : BoardCandidate;
+public sealed record ActionCandidate(long ActorId, long Generation) : BoardCandidate;
 
-internal sealed record ActivityCandidate(long ActorId, long Generation) : BoardCandidate;
+public sealed record ActivityCandidate(long ActorId, long Generation) : BoardCandidate;
 
-internal sealed record DeadlineCandidate : BoardCandidate;
+public sealed record DeadlineCandidate : BoardCandidate;
 
-internal sealed class DecisionSchedulingSystem :
+public sealed class DecisionSchedulingSystem :
     ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
@@ -67,7 +67,7 @@ internal sealed class DecisionSchedulingSystem :
     }
 }
 
-internal sealed class ActionResolutionSystem :
+public sealed class ActionResolutionSystem :
     ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
@@ -387,7 +387,7 @@ internal sealed class ActionResolutionSystem :
         [new UncommittedDomainEvent<BoardEventPayload>(kind, payload)];
 }
 
-internal sealed class ActivityCompletionSystem :
+public sealed class ActivityCompletionSystem :
     ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
@@ -437,7 +437,7 @@ internal sealed class ActivityCompletionSystem :
         [new UncommittedDomainEvent<BoardEventPayload>(kind, payload)];
 }
 
-internal sealed class CellarDeadlineSystem :
+public sealed class CellarDeadlineSystem :
     ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
     public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(

@@ -28,6 +28,8 @@ public static class PromptRenderer
             .AppendLine()
             .AppendLine("[世界规则]")
             .AppendLine("你只能选择决策请求中列出的动作和候选目标。行动会由世界规则校验，不要虚构不可用的能力。")
+            .AppendLine("观察结果会完整进入当前观察/已知事实；环境与事实没有变化时，重复观察不会发现暗格或更深线索。")
+            .AppendLine("把已知事实当作权威结果，不要反复计划动作列表中不存在的后续操作；若已无可推进之事，可长时间等待。")
             .AppendLine("回复必须使用以下四个分节标记；【行动】中只放一个 JSON 对象，字段与 Intent 对齐:")
             .AppendLine("【独白】一段内心想法")
             .AppendLine("【行动】{\"action\":\"action.wait\",\"targetActor\":null,\"targetObject\":null,\"destination\":null,\"freeText\":null,\"durationMs\":null,\"untilModelTimeMs\":null}")

@@ -3,9 +3,9 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
 
-namespace DramaBoard.FirstBoard.Tests;
+namespace DramaBoard.FirstBoard;
 
-internal static class BoardIds
+public static class BoardIds
 {
     public const string Tavern = "tavern";
     public const string Market = "market";
@@ -17,10 +17,11 @@ internal static class BoardIds
     public const string KeyLocationKnown = "key.location-known";
     public const string ChestContainsLetter = "chest.contains-letter";
     public const string CellarSealedKnown = "cellar.sealed-known";
+    public const string ObjectHeld = "object.held";
     public const string ActionRejected = "action.rejected";
 }
 
-internal static class BoardTiming
+public static class BoardTiming
 {
     public const long TravelTicks = 300_000;
     public const long DeadlineTicks = 3_600_000;
@@ -28,24 +29,24 @@ internal static class BoardTiming
     public const long RandomRunBoundaryTicks = 4_200_000;
 }
 
-internal sealed record BoardPlace(long Id, string Key, IReadOnlyList<string> AdjacentPlaceIds);
+public sealed record BoardPlace(long Id, string Key, IReadOnlyList<string> AdjacentPlaceIds);
 
-internal sealed record BoardFact(string Kind, string? RelatedId, string Text);
+public sealed record BoardFact(string Kind, string? RelatedId, string Text);
 
-internal enum BoardActivityKind
+public enum BoardActivityKind
 {
     Travel,
     Wait,
 }
 
-internal sealed record BoardActivity(
+public sealed record BoardActivity(
     BoardActivityKind Kind,
     ModelTime Due,
     string? DestinationId = null);
 
-internal sealed record SubmittedAction(string DecisionId, Intent Intent);
+public sealed record SubmittedAction(string DecisionId, Intent Intent);
 
-internal sealed record BoardActor(
+public sealed record BoardActor(
     long Id,
     string Key,
     string PlaceId,
@@ -58,14 +59,14 @@ internal sealed record BoardActor(
     IReadOnlyList<BoardFact> KnownFacts,
     Intent? LastRejectedIntent);
 
-internal sealed record BoardObject(
+public sealed record BoardObject(
     long Id,
     string Key,
     string? PlaceId,
     long? OwnerActorId,
     long ContentionRound);
 
-internal sealed record FirstBoardWorld(
+public sealed record FirstBoardWorld(
     ulong WorldSeed,
     long WorldRuleSourceId,
     long NextPersistentId,
@@ -140,72 +141,72 @@ internal sealed record FirstBoardWorld(
             LastRejectedIntent: null);
 }
 
-internal abstract record BoardEventPayload;
+public abstract record BoardEventPayload;
 
-internal sealed record DecisionRequestedEvent(
+public sealed record DecisionRequestedEvent(
     string ActorId,
     long DecisionNumber,
     string DecisionId) : BoardEventPayload;
 
-internal sealed record ActionRequestedEvent(
+public sealed record ActionRequestedEvent(
     string ActorId,
     string DecisionId,
     Intent Intent) : BoardEventPayload;
 
-internal sealed record ActorDepartedEvent(
+public sealed record ActorDepartedEvent(
     string ActorId,
     string OriginId,
     string DestinationId,
     ModelTime ArriveAt) : BoardEventPayload;
 
-internal sealed record ActorArrivedEvent(
+public sealed record ActorArrivedEvent(
     string ActorId,
     string DestinationId) : BoardEventPayload;
 
-internal sealed record ActorWaitStartedEvent(
+public sealed record ActorWaitStartedEvent(
     string ActorId,
     ModelTime CompleteAt) : BoardEventPayload;
 
-internal sealed record ActorWaitedEvent(string ActorId) : BoardEventPayload;
+public sealed record ActorWaitedEvent(string ActorId) : BoardEventPayload;
 
-internal sealed record ActorSpokeEvent(
+public sealed record ActorSpokeEvent(
     string ActorId,
     string TargetActorId,
     string Text,
     string? SharedFactKind) : BoardEventPayload;
 
-internal sealed record ActorObservedEvent(
+public sealed record ActorObservedEvent(
     string ActorId,
     IReadOnlyList<BoardFact> LearnedFacts) : BoardEventPayload;
 
-internal sealed record ObjectTakenEvent(
+public sealed record ObjectTakenEvent(
     string ActorId,
     string ObjectId) : BoardEventPayload;
 
-internal sealed record ObjectGivenEvent(
+public sealed record ObjectGivenEvent(
     string ActorId,
     string TargetActorId,
     string ObjectId) : BoardEventPayload;
 
-internal sealed record BoardRandomSample(
+public sealed record BoardRandomSample(
     ulong StreamId,
     ulong Generation,
     ulong SampleIndex);
 
-internal sealed record ObjectContentionResolvedEvent(
+public sealed record ObjectContentionResolvedEvent(
     string ObjectId,
     IReadOnlyList<long> CompetitorActorIds,
     long WinnerActorId,
     BoardRandomSample Sample) : BoardEventPayload;
 
-internal sealed record ActionRejectedEvent(
+public sealed record ActionRejectedEvent(
     string ActorId,
     Intent RejectedIntent,
     string Reason) : BoardEventPayload;
 
-internal sealed record CellarSealedEvent : BoardEventPayload;
+public sealed record CellarSealedEvent : BoardEventPayload;
 
-internal static class BoardEventKinds
+public static class BoardEventKinds
 {
     public static EventKind DecisionRequested { get; } = new("decision.requested", 1);
     public static EventKind TravelRequested { get; } = new("action.travel-requested", 1);
@@ -249,7 +250,7 @@ internal static class BoardEventKinds
         kind == UnknownActionRequested;
 }
 
-internal sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEventPayload>
+public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEventPayload>
 {
     public FirstBoardWorld Apply(
         FirstBoardWorld world,

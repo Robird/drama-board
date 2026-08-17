@@ -6,9 +6,9 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
 
-namespace DramaBoard.FirstBoard.Tests;
+namespace DramaBoard.FirstBoard;
 
-internal static class FirstBoardScenario
+public static class FirstBoardScenario
 {
     public const long LineageId = 10_001;
 
@@ -29,7 +29,8 @@ internal static class FirstBoardScenario
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ulong worldSeed,
         ModelTime until,
-        FirstBoardWorld? initialWorld = null)
+        FirstBoardWorld? initialWorld = null,
+        CancellationToken cancellationToken = default)
     {
         FirstBoardWorld world = initialWorld ?? FirstBoardWorld.CreateInitial(worldSeed);
         var reducer = new FirstBoardReducer();
@@ -47,7 +48,7 @@ internal static class FirstBoardScenario
 
         PlayerDecisionSessionResult<FirstBoardWorld> result = await session.RunUntilAsync(
             until,
-            CancellationToken.None);
+            cancellationToken);
         return new BoardRunCapture(world, result, journal);
     }
 
@@ -84,13 +85,7 @@ internal static class FirstBoardScenario
             Microstep: -1,
             VisibleActorIds: VisibleActors(world, actor),
             VisibleObjectIds: VisibleObjectIds(world, actor),
-            KnownFacts:
-            [
-                .. actor.KnownFacts.Select(fact => new KnownFact(
-                    new FactKind(fact.Kind),
-                    fact.RelatedId,
-                    fact.Text)),
-            ]);
+            KnownFacts: ObservationFacts(world, actor));
         return new DecisionRequest(
             new DecisionId(requested.DecisionId),
             BasedOnWorldVersion: -1,
@@ -179,6 +174,23 @@ internal static class FirstBoardScenario
                     actor.PlaceId == observer.PlaceId)
                 .OrderBy(actor => actor.Id)
                 .Select(actor => actor.Key),
+        ];
+
+    private static IReadOnlyList<KnownFact> ObservationFacts(
+        FirstBoardWorld world,
+        BoardActor actor) =>
+        [
+            .. actor.KnownFacts.Select(fact => new KnownFact(
+                new FactKind(fact.Kind),
+                fact.RelatedId,
+                fact.Text)),
+            .. world.Objects
+                .Where(item => item.OwnerActorId == actor.Id)
+                .OrderBy(item => item.Id)
+                .Select(item => new KnownFact(
+                    new FactKind(BoardIds.ObjectHeld),
+                    item.Key,
+                    $"You are carrying {item.Key}.")),
         ];
 
     private static IReadOnlyList<string> VisibleObjectIds(FirstBoardWorld world, BoardActor observer)
@@ -338,28 +350,7 @@ internal static class FirstBoardScenario
         };
 }
 
-internal sealed record BoardRunCapture(
+public sealed record BoardRunCapture(
     FirstBoardWorld InitialWorld,
     PlayerDecisionSessionResult<FirstBoardWorld> Result,
     InMemoryJournal<BoardEventPayload> Journal);
-
-internal sealed class RecordingPlayerDriver : IPlayerDriver
-{
-    private readonly IPlayerDriver _inner;
-    private readonly List<DecisionRequest> _requests = [];
-
-    public RecordingPlayerDriver(IPlayerDriver inner)
-    {
-        _inner = inner;
-    }
-
-    public IReadOnlyList<DecisionRequest> Requests => _requests.AsReadOnly();
-
-    public async ValueTask<PlayerDecision> DecideAsync(
-        DecisionRequest request,
-        CancellationToken cancellationToken)
-    {
-        _requests.Add(request);
-        return await _inner.DecideAsync(request, cancellationToken);
-    }
-}

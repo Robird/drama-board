@@ -11,6 +11,7 @@ public sealed class LlmPlayerDriver : IPlayerDriver
 
     private readonly CharacterCard _characterCard;
     private readonly ILlmChatBackend _backend;
+    private readonly Action<LlmTurnTrace>? _turnTraceSink;
     private IReadOnlyList<KnownFact> _previousKnownFacts = [];
     private string _currentMemory;
 
@@ -18,7 +19,8 @@ public sealed class LlmPlayerDriver : IPlayerDriver
     public LlmPlayerDriver(
         CharacterCard characterCard,
         string initialMemory,
-        ILlmChatBackend backend)
+        ILlmChatBackend backend,
+        Action<LlmTurnTrace>? turnTraceSink = null)
     {
         ArgumentNullException.ThrowIfNull(characterCard);
         ArgumentNullException.ThrowIfNull(initialMemory);
@@ -27,6 +29,7 @@ public sealed class LlmPlayerDriver : IPlayerDriver
         _characterCard = characterCard;
         _currentMemory = initialMemory;
         _backend = backend;
+        _turnTraceSink = turnTraceSink;
     }
 
     /// <summary>Gets the actor's latest complete private memory document.</summary>
@@ -47,8 +50,10 @@ public sealed class LlmPlayerDriver : IPlayerDriver
             _previousKnownFacts);
         string response = await _backend.CompleteAsync(prompt, cancellationToken);
         LlmOutputParseResult parsed = LlmOutputParser.Parse(response);
+        int attemptCount = 1;
         if (!parsed.IsSuccess)
         {
+            attemptCount = 2;
             var retry = prompt with { User = $"{prompt.User}\n\n{RetryInstruction}" };
             response = await _backend.CompleteAsync(retry, cancellationToken);
             parsed = LlmOutputParser.Parse(response);
@@ -59,9 +64,29 @@ public sealed class LlmPlayerDriver : IPlayerDriver
             return CreateDecision(request, new Intent(ActionKinds.Wait));
         }
 
+        PlayerDecision decision = CreateDecision(request, parsed.Intent!);
+        string previousMemory = _currentMemory;
+        IReadOnlyList<KnownFact> previousKnownFacts = _previousKnownFacts;
         _currentMemory = parsed.Memory;
         _previousKnownFacts = [.. request.Observation.KnownFacts];
-        return CreateDecision(request, parsed.Intent!);
+        try
+        {
+            _turnTraceSink?.Invoke(new LlmTurnTrace(
+                request,
+                decision,
+                parsed.Monologue,
+                parsed.Dialogue,
+                parsed.Memory,
+                attemptCount));
+        }
+        catch
+        {
+            _currentMemory = previousMemory;
+            _previousKnownFacts = previousKnownFacts;
+            throw;
+        }
+
+        return decision;
     }
 
     private static PlayerDecision CreateDecision(DecisionRequest request, Intent intent) =>
