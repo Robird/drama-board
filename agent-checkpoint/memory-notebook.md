@@ -57,8 +57,9 @@
 - **元教训**(评审二核心发现):Kernel 层修对的东西(A2/A4/A7)没有"继承机制",Host/装配层会重蹈覆辙(S4 重现 A2、S3 架空 A4、S11 架空 A7)——**修复时优先把约定变机制**(如 EventKind 相等语义)。
 - 残留风险(γ 报告,已留档 002):checkpoint 与 journal head 无统一事务;orphan 帧无 GC;LineageId 全局唯一性靠调用方;FirstBoard 手写 codec 新增事件需同步维护。
 - **下一轮队列**:
-  1. **等用户定向第二阶段**(愿景级,不擅自开工):AI Player driver(LLM,我的倾向;将首破零 NuGet——隔离独立项目)/ 更丰富 Board / Godot(基础设施.md 建议现阶段不做)。
-  2. 未定向时的穿插件(不越愿景边界):a) journal 可读性工具(dump 一局为可读文本,调试 AI 轨迹价值高);b) 残留风险小包;c) 第三次 adversarial review(门槛修复回归审计)。
+  1. **第二阶段方向已定(用户 2026-08-17 确认):AI Player driver(LLM 接入)**。WP12 设计研究已完成 → `docs/研发计划_005_LLM_Player设计研究.md`(四大裁决:叙事渲染层+KnownFacts diff;行动结构化/言语自由;显式记忆文档认知循环;ILlmChatBackend 双 adapter——主力 codex app-server 每决策新 thread,对照 deepseek API;零 NuGet 不必破)。
+  2. **下一轮:WP13 src/Player.Llm 骨架**(纯逻辑+假后端,进主 slnx);后续 WP14 真后端 → WP15 demo 真跑一局 → WP16 质量迭代。
+  3. 开放问题待用户异步纠偏(005 §6):独白是否展示给观众(倾向展示);工作语言(倾向中文)。未否决按倾向推进。
 
 ## 5. 协作模式要点(实践验证)
 
