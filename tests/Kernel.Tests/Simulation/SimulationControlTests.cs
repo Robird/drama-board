@@ -100,6 +100,12 @@ public sealed class SimulationControlTests
             ["first-request", "second-request"],
             result.DecisionEvents.Select(domainEvent => domainEvent.Payload.Name));
         Assert.Equal([0, 1, 2, 3], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
+        EventCause expectedCause = EventCause.FromResolve(
+            sourceId: 7,
+            new EventCandidateId(1),
+            new ModelTime(5),
+            batchOrdinal: 0);
+        Assert.All(journal.Events, domainEvent => Assert.Equal(expectedCause, domainEvent.Cause));
     }
 
     [Fact]
@@ -134,6 +140,8 @@ public sealed class SimulationControlTests
         Assert.Equal(StopReason.Exhausted, second.StopReason);
         Assert.Equal(["request", "follow-up"], journal.Events.Select(domainEvent => domainEvent.Payload.Name));
         Assert.Equal([0, 1], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
+        Assert.Equal([0L, 1L], journal.Events.Select(domainEvent => domainEvent.Cause.BatchOrdinal));
+        Assert.Equal(2, second.Cursor.NextBatchOrdinal);
         Assert.Equal(3, second.World);
     }
 
@@ -148,12 +156,13 @@ public sealed class SimulationControlTests
         var journal = new InMemoryJournal<ControlEvent>();
         journal.Append(new DomainEvent<ControlEvent>(
             new LogicalTimestamp(new ModelTime(5), new Microstep(2)),
+            EventCause.FromExternalInput(batchOrdinal: 0),
             ControlEventKind,
             new ControlEvent("prefix", 1, RequiresDecision: false)));
 
         SimulationRunResult<int, ControlEvent> result = loop.Run(
             initialWorld: 1,
-            cursor: Cursor(now: 5),
+            cursor: SimulationCursor.CreateFork(lineageId: 1, new ModelTime(5), nextBatchOrdinal: 1),
             until: new ModelTime(5),
             journal,
             externalInputs:
@@ -166,6 +175,9 @@ public sealed class SimulationControlTests
         Assert.Equal(StopReason.Exhausted, result.StopReason);
         Assert.Empty(result.DecisionEvents);
         Assert.Equal([2, 3, 4], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
+        Assert.All(
+            journal.Events.Skip(1),
+            domainEvent => Assert.Equal(EventCause.FromExternalInput(batchOrdinal: 1), domainEvent.Cause));
         Assert.Equal(7, result.World);
         Assert.Equal(result.World, replayed);
         Assert.Equal(new WorldVersion(1, 3), result.Version);

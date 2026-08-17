@@ -6,15 +6,19 @@ namespace DramaBoard.Kernel.Journal;
 public sealed class DomainEvent<TPayload>
 {
     /// <summary>Initializes a committed domain event.</summary>
-    public DomainEvent(LogicalTimestamp timestamp, EventKind kind, TPayload payload)
+    public DomainEvent(LogicalTimestamp timestamp, EventCause cause, EventKind kind, TPayload payload)
     {
         Timestamp = timestamp;
+        Cause = cause;
         Kind = kind;
         Payload = payload;
     }
 
     /// <summary>Gets the event's total-order logical timestamp.</summary>
     public LogicalTimestamp Timestamp { get; }
+
+    /// <summary>Gets the authoritative cause shared by every event in its commit batch.</summary>
+    public EventCause Cause { get; }
 
     /// <summary>Gets the stable event kind.</summary>
     public EventKind Kind { get; }

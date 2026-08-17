@@ -67,7 +67,8 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 
         if (externalInputs is { Count: > 0 })
         {
-            world = CommitAndApply(externalInputs, world, cursor.Now, journal, ref lastCommittedTimestamp);
+            EventCause cause = EventCause.FromExternalInput(cursor.NextBatchOrdinal);
+            world = CommitAndApply(externalInputs, cause, world, cursor.Now, journal, ref lastCommittedTimestamp);
             cursor = cursor.RecordExternalInputs();
         }
 
@@ -121,7 +122,15 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
                 owners[(next.SourceId, next.Id)].Resolve(world, next)
                 ?? throw new InvalidOperationException($"System resolving candidate {next.Id} returned null.");
             List<DomainEvent<TEventPayload>>? committedEvents = _decisionRequestPredicate is null ? null : [];
-            world = CommitAndApply(events, world, cursor.Now, journal, ref lastCommittedTimestamp, committedEvents);
+            EventCause cause = EventCause.FromResolve(next.SourceId, next.Id, next.Due, cursor.NextBatchOrdinal);
+            world = CommitAndApply(
+                events,
+                cause,
+                world,
+                cursor.Now,
+                journal,
+                ref lastCommittedTimestamp,
+                committedEvents);
             cursor = cursor.RecordResolve(nextIdentity, events.Count == 0);
             resolvedCandidateCount = checked(resolvedCandidateCount + 1);
 
@@ -165,6 +174,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 
     private TWorld CommitAndApply(
         IReadOnlyList<UncommittedDomainEvent<TEventPayload>> events,
+        EventCause cause,
         TWorld world,
         ModelTime now,
         IJournalSink<TEventPayload> journal,
@@ -180,7 +190,7 @@ public sealed class SimulationLoop<TWorld, TCandidatePayload, TEventPayload>
 
             Microstep microstep = NextMicrostep(now, lastCommittedTimestamp);
             var timestamp = new LogicalTimestamp(now, microstep);
-            var domainEvent = new DomainEvent<TEventPayload>(timestamp, uncommitted.Kind, uncommitted.Payload);
+            var domainEvent = new DomainEvent<TEventPayload>(timestamp, cause, uncommitted.Kind, uncommitted.Payload);
 
             journal.Append(domainEvent);
             lastCommittedTimestamp = timestamp;

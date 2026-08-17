@@ -81,9 +81,16 @@ public sealed class SimulationLoopTests
 
         Assert.Equal(["A", "B"], journal.Events.Select(domainEvent => domainEvent.Payload.Name));
         Assert.Equal([0, 1], journal.Events.Select(domainEvent => domainEvent.Timestamp.Microstep.Value));
+        Assert.Equal(
+            [
+                EventCause.FromResolve(1, new EventCandidateId(2), new ModelTime(10), batchOrdinal: 0),
+                EventCause.FromResolve(2, new EventCandidateId(1), new ModelTime(10), batchOrdinal: 1),
+            ],
+            journal.Events.Select(domainEvent => domainEvent.Cause));
         Assert.True(journal.Events[0].Timestamp <= journal.Events[1].Timestamp);
         Assert.Equal(1, result.TimeAdvanceCount);
         Assert.Equal(2, result.ResolvedCandidateCount);
+        Assert.Equal(2, result.Cursor.NextBatchOrdinal);
     }
 
     [Fact]
@@ -133,6 +140,7 @@ public sealed class SimulationLoopTests
         Assert.Equal(7, result.World);
         Assert.Equal(new ModelTime(5), result.CurrentTime);
         Assert.Equal(1, result.ResolvedCandidateCount);
+        Assert.Equal(0, result.Cursor.NextBatchOrdinal);
         Assert.Empty(journal.Events);
     }
 

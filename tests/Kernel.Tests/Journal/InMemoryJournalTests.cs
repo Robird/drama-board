@@ -12,10 +12,11 @@ public sealed class InMemoryJournalTests
     {
         var journal = new InMemoryJournal<string>();
         var timestamp = new LogicalTimestamp(new ModelTime(10), new Microstep(2));
-        journal.Append(new DomainEvent<string>(timestamp, TestKind, "first"));
+        EventCause cause = EventCause.FromExternalInput(batchOrdinal: 0);
+        journal.Append(new DomainEvent<string>(timestamp, cause, TestKind, "first"));
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            journal.Append(new DomainEvent<string>(timestamp, TestKind, "duplicate")));
+            journal.Append(new DomainEvent<string>(timestamp, cause, TestKind, "duplicate")));
 
         Assert.Contains("strictly increasing", exception.Message);
         Assert.Single(journal.Events);
@@ -33,5 +34,9 @@ public sealed class InMemoryJournalTests
     }
 
     private static DomainEvent<string> Event(long modelTime, int microstep, string payload) =>
-        new(new LogicalTimestamp(new ModelTime(modelTime), new Microstep(microstep)), TestKind, payload);
+    new(
+        new LogicalTimestamp(new ModelTime(modelTime), new Microstep(microstep)),
+        EventCause.FromExternalInput(batchOrdinal: microstep),
+        TestKind,
+        payload);
 }

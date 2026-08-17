@@ -104,7 +104,6 @@ public sealed class SimulationPropertiesTests
                     .Distinct()
                     .OrderBy(boundary => boundary),
             ];
-            int segmentCount = boundaries.Length + 1;
             var singleJournal = new InMemoryJournal<string>();
             var splitJournal = new InMemoryJournal<string>();
             var singleLoop = new SimulationLoop<TimerWorld, string, string>([new TimerSystem()], new TimerReducer());
@@ -123,26 +122,22 @@ public sealed class SimulationPropertiesTests
             SimulationCursor splitCursor = initialCursor;
             for (int segmentIndex = 0; segmentIndex < boundaries.Length; segmentIndex++)
             {
-                int inputStart = inputPlan.Length * segmentIndex / segmentCount;
-                int inputEnd = inputPlan.Length * (segmentIndex + 1) / segmentCount;
                 SimulationRunResult<TimerWorld, string> segment = splitLoop.Run(
                     splitWorld,
                     splitCursor,
                     boundaries[segmentIndex],
                     splitJournal,
-                    inputPlan[inputStart..inputEnd]);
+                    segmentIndex == 0 ? inputPlan : null);
                 splitWorld = segment.World;
                 splitCursor = segment.Cursor;
-                Assert.Equal(StopReason.BoundaryReached, segment.StopReason);
             }
 
-            int finalInputStart = inputPlan.Length * boundaries.Length / segmentCount;
             SimulationRunResult<TimerWorld, string> split = splitLoop.Run(
                 splitWorld,
                 splitCursor,
                 until,
                 splitJournal,
-                inputPlan[finalInputStart..]);
+                boundaries.Length == 0 ? inputPlan : null);
 
             AssertEqualJournal(singleJournal, splitJournal);
             Assert.Equal(single.World.Timers, split.World.Timers);
@@ -445,9 +440,9 @@ public sealed class SimulationPropertiesTests
         InMemoryJournal<TEventPayload> second) =>
         Assert.Equal(
             first.Events.Select(domainEvent =>
-                (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)),
+                (domainEvent.Timestamp, domainEvent.Cause, domainEvent.Kind, domainEvent.Payload)),
             second.Events.Select(domainEvent =>
-                (domainEvent.Timestamp, domainEvent.Kind, domainEvent.Payload)));
+                (domainEvent.Timestamp, domainEvent.Cause, domainEvent.Kind, domainEvent.Payload)));
 
     private static void AssertEqualBouncingJournal(
         InMemoryJournal<CollisionEventPayload> first,

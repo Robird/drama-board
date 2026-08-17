@@ -60,6 +60,7 @@ public sealed class MiningSystemTests
             initialWorld,
             new DomainEvent<MiningDiscovery>(
                 new LogicalTimestamp(first.Due, new Microstep(0)),
+                EventCause.FromResolve(first.SourceId, first.Id, first.Due, batchOrdinal: 0),
                 resolved.Kind,
                 resolved.Payload));
         EventCandidate<MiningForecast> next = Assert.Single(
@@ -135,6 +136,11 @@ public sealed class MiningSystemTests
         var versionTwoKind = new EventKind(MiningEventKinds.MineralDiscovered.Id, 2);
         var domainEvent = new DomainEvent<MiningDiscovery>(
             new LogicalTimestamp(discovery.DiscoveredAt, new Microstep(0)),
+            EventCause.FromResolve(
+                initialWorld.ActivityId,
+                new EventCandidateId(0),
+                discovery.DiscoveredAt,
+                batchOrdinal: 0),
             versionTwoKind,
             discovery);
 
