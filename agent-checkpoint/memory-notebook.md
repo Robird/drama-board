@@ -1,7 +1,7 @@
 # 主线会话 Checkpoint（memory-notebook）
 
 **用途：上下文压缩前的主动快照。压缩后的主线会话（我）在 Observe 阶段读此文件恢复完整工作状态。**
-**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第五轮结束（A5+WP11 完成——**WP0–WP11 全线收官，第一阶段达成**；第二次评审 S1–S14 已裁决为第二阶段门槛；主 slnx 154 / Local.slnx 159 测试绿）。**
+**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第六轮结束（**S1–S14 门槛修复全部完成**，四组 δ/α/β/γ；Local.slnx 193 测试绿；第二阶段方向待用户确认）。**
 
 ---
 
@@ -31,20 +31,23 @@
 - `src/Protocol/`：DTO 已含 LineageId/Microstep（A3 修复）。零依赖。
 - 测试 136 绿：Kernel 114 + Protocol 12 + Host 10。玩具模型新增：生灭世界（动态实体）、夹宝（仲裁）、Host 层岔路决策模型。A6d property 覆盖全部 system（曾抓到 Bouncing/InterruptedMining 的真实 now 依赖并修复）。
 
-## 4. 当前焦点：第二阶段门槛修复（下轮开始）
+## 4. 当前状态：门槛已清，第二阶段待用户定向
 
-- **WP0–WP11 全部完成**。A5 provenance（EventCause/批次/fork 边界）与 WP11 adapter（src/Journal.Atelia，双 solution：主 slnx 无 atelia 保 CI、Local.slnx 全量；JSON envelope 确定性字节已验证；CI 钉到 DramaBoard.slnx）都已落地。
-- **第二次评审（研发计划_004，攻击 Host/落盘层）S1–S14**，已裁决四个修复组（详见 002"下一轮建议"）：α 感知/反馈闭环（S1+S2+S13，FirstBoard+Protocol）→ β Host 决策状态机+同刻屏障（S4+S3+S5）→ γ 持久化契约（S6+S7+S8，含 FirstBoard 真落盘验收）→ δ 速修（S11 EventKind 相等只比 Id、S14 重入防护、S9 Intent 数值域、S10 external 批次谓词、S12 RandomDriver 坐标寻址）。
-- 关键教训留存：A2/A4/A7 的修复在 Kernel 层做对了，但没有"继承机制"——Host/装配层重蹈覆辙（S4 重现 A2、S3 架空 A4、S11 架空 A7）。修复时优先把约定变机制（如 EventKind 相等语义）。
-- 第二阶段方向（修复后，需用户确认）：AI Player driver（LLM）、更丰富 Board、Godot 前端。全部在 002"下一轮建议"留档。
+- **S1–S14 全修**（四 commit：δ cd75fcc、α 992c5a2、β a3f78a2、γ 392a63d）。重要语义变更留心：
+  - **EventKind 相等只比 Id**（Version 不参与——路由跨版本稳定）。
+  - **PlayerDecisionSession 是同刻决策屏障模式**：同批同快照问、整批提交；决策三态状态机可取消恢复；拒绝预算超阈强制 wait；Host 级切分等价成立。“逐个提交”已被推翻。
+  - **affordance 从角色信念计算**；拒绝可感知（RejectedIntent 回带）；placed/carried 可见性。
+  - **envelope v2**：+bi/bc（批次完整性，一批一帧+批级 CAS）、+pc（codec 标识）；lineage 元帧（LineageId 落盘校验）；SimulationCursor 快照（ToSnapshot/FromSnapshot，持久化契约）；IJournalSink.AppendBatch（默认逐个，Loop 改调批量）。
+  - **FirstBoard 真落盘+读档续跑已验收**（tests/FirstBoard.Persistence.Tests，只在 Local.slnx）。
+- 残留风险（γ 报告）：checkpoint 与 journal head 无统一事务；orphan 帧无 GC；LineageId 全局唯一性靠调用方；FirstBoard 手写 codec 新增事件需同步。
+- **第二阶段候选（愿景级，必须用户确认）**：AI Player driver（LLM，将首破零 NuGet 纪律——隔离独立项目）/ 更丰富 Board / Godot（基础设施.md 建议不做）。穿插候选：残留风险、speculative 语义、journal 可读性工具。
 
-## 5. 下一轮队列（也在 002"下一轮建议"，详细裁决在研发计划_004 头部）
+## 5. 下一轮队列
 
-1. 修复组 δ（速修，建议先做——S11 是机制级且波及面小）：EventKind 相等只比 Id、Session 重入防护、Intent 数值域、external 谓词扫描、RandomDriver 坐标寻址
-2. 修复组 α：感知/反馈闭环（FirstBoard affordance 从信念计算、拒绝可感知、placed/carried）
-3. 修复组 β：Host 决策生命周期状态机 + 同刻决策屏障（整批回应整批提交）
-4. 修复组 γ：持久化契约（lineage 元事件、批次完整性、cursor 快照、codec 升级、FirstBoard 真落盘）
-5. 全部完成后：第二阶段方向征询用户（AI Player/更丰富 Board/Godot）
+1. **等用户定向第二阶段**（AI Player / 更丰富 Board / 其它）——在此之前可做穿插件：
+2. 穿插候选 a：残留风险小包（orphan GC、checkpoint 事务化探索）
+3. 穿插候选 b：journal 可读性工具（dump 一局历史为可读文本——对未来调试 AI 轨迹价值高）
+4. 穿插候选 c：第三次 adversarial review（门槛修复后的回归审计，验证 S 系列修复无新引入）
 
 ## 6. 协作模式要点（实践验证过的）
 
