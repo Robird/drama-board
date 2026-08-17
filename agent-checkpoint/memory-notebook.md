@@ -1,7 +1,7 @@
 # 主线会话 Checkpoint（memory-notebook）
 
 **用途：上下文压缩前的主动快照。压缩后的主线会话（我）在 Observe 阶段读此文件恢复完整工作状态。**
-**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第四轮结束（Session 逐个提交 + WP10 FirstBoard 完成，148 测试绿）。**
+**更新时机：每次用户触发压缩前，或每轮结束时按需刷新。本版：2026-08-17 第五轮结束（A5+WP11 完成——**WP0–WP11 全线收官，第一阶段达成**；第二次评审 S1–S14 已裁决为第二阶段门槛；主 slnx 154 / Local.slnx 159 测试绿）。**
 
 ---
 
@@ -31,20 +31,20 @@
 - `src/Protocol/`：DTO 已含 LineageId/Microstep（A3 修复）。零依赖。
 - 测试 136 绿：Kernel 114 + Protocol 12 + Host 10。玩具模型新增：生灭世界（动态实体）、夹宝（仲裁）、Host 层岔路决策模型。A6d property 覆盖全部 system（曾抓到 Bouncing/InterruptedMining 的真实 now 依赖并修复）。
 
-## 4. 尚未落盘的思考：WP11 与 frontier 模式（下轮）
+## 4. 当前焦点：第二阶段门槛修复（下轮开始）
 
-- **WP10 已完成（纯装配方，三层零改动）**；tests/FirstBoard.Tests 是未来正式 Board 的参考实现。Session 已改逐个提交（FIFO、nullable requestBuilder 跳过失效请求、SkippedDecisionCount）。
-- **WP10 关键发现**：逐个提交模式逻辑上消解了同刻竞争（后决者看到先决者后果，affordance 已变）；"两 player 彼此不知情同时决策"需要 frontier 批量模式（同 frontier 收齐回应后批量提交，冲突由 A4 仲裁解）——Kernel 已能支撑（抢钥匙测试用 externalInputs 批量验证过），缺的只是 Host 编排模式。与 speculative/迟到决策同源，可缓。
-- **下轮主体：WP11 前置（A5 provenance）+ WP11 落盘**：
-  - A5：DomainEvent 加 Cause=(SourceId,CandidateId,Due)+resolve 批次序号；外部输入事件用独立标记；Fork 只接受批次边界。envelope 变更必须在落盘前——落盘后改=全历史迁移。
-  - WP11：src/Journal.Atelia → `e:\repos\Atelia-org\atelia` EventJournal（依赖闭包 Data+Primitives+Rbf+RbfSegmentStore）；引用机制（ProjectReference vs local NuGet）届时裁决——我初步倾向 ProjectReference（探索期零发布成本）但需确认 slnx 引用外部 repo 路径的可维护性；序列化用 System.Text.Json 先跑通（payload 多态是难点——FirstBoard payload 是接口多态，落盘需 discriminator，EventKindRegistry 的 kind↔type 映射正好能用）。全部在 002"下一轮建议"留档。
+- **WP0–WP11 全部完成**。A5 provenance（EventCause/批次/fork 边界）与 WP11 adapter（src/Journal.Atelia，双 solution：主 slnx 无 atelia 保 CI、Local.slnx 全量；JSON envelope 确定性字节已验证；CI 钉到 DramaBoard.slnx）都已落地。
+- **第二次评审（研发计划_004，攻击 Host/落盘层）S1–S14**，已裁决四个修复组（详见 002"下一轮建议"）：α 感知/反馈闭环（S1+S2+S13，FirstBoard+Protocol）→ β Host 决策状态机+同刻屏障（S4+S3+S5）→ γ 持久化契约（S6+S7+S8，含 FirstBoard 真落盘验收）→ δ 速修（S11 EventKind 相等只比 Id、S14 重入防护、S9 Intent 数值域、S10 external 批次谓词、S12 RandomDriver 坐标寻址）。
+- 关键教训留存：A2/A4/A7 的修复在 Kernel 层做对了，但没有"继承机制"——Host/装配层重蹈覆辙（S4 重现 A2、S3 架空 A4、S11 架空 A7）。修复时优先把约定变机制（如 EventKind 相等语义）。
+- 第二阶段方向（修复后，需用户确认）：AI Player driver（LLM）、更丰富 Board、Godot 前端。全部在 002"下一轮建议"留档。
 
-## 5. 下一轮队列（也在 002"下一轮建议"）
+## 5. 下一轮队列（也在 002"下一轮建议"，详细裁决在研发计划_004 头部）
 
-1. WP11 前置：A5 provenance envelope 变更（Cause+批次；落盘前必须）
-2. WP11 EventJournal 落盘 adapter（src/Journal.Atelia，唯一允许碰 atelia 的项目）
-3. Host frontier 批量模式（可单独小包或等 speculative 阶段）
-4. 低优先：RandomPlayerDriver 参数生成、AvailableAction 结构化参数组合
+1. 修复组 δ（速修，建议先做——S11 是机制级且波及面小）：EventKind 相等只比 Id、Session 重入防护、Intent 数值域、external 谓词扫描、RandomDriver 坐标寻址
+2. 修复组 α：感知/反馈闭环（FirstBoard affordance 从信念计算、拒绝可感知、placed/carried）
+3. 修复组 β：Host 决策生命周期状态机 + 同刻决策屏障（整批回应整批提交）
+4. 修复组 γ：持久化契约（lineage 元事件、批次完整性、cursor 快照、codec 升级、FirstBoard 真落盘）
+5. 全部完成后：第二阶段方向征询用户（AI Player/更丰富 Board/Godot）
 
 ## 6. 协作模式要点（实践验证过的）
 
