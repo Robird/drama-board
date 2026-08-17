@@ -18,6 +18,9 @@ public static class ActionKinds
     /// <summary>Identifies taking an object.</summary>
     public static ActionKind Take { get; } = new("action.take");
 
+    /// <summary>Identifies placing a held object into the actor's current public context.</summary>
+    public static ActionKind Put { get; } = new("action.put");
+
     /// <summary>Identifies giving an object to another actor.</summary>
     public static ActionKind Give { get; } = new("action.give");
 

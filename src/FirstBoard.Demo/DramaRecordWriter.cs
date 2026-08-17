@@ -95,6 +95,7 @@ internal static class DramaRecordWriter
                 ? "观察四周"
                 : $"检查 {DisplayObject(intent.TargetObjectId)}",
             "action.take" => $"拿取 {DisplayObject(intent.TargetObjectId)}",
+            "action.put" => $"把 {DisplayObject(intent.TargetObjectId)} 放到当前公共环境",
             "action.give" => $"把 {DisplayObject(intent.TargetObjectId)} 交给 {DisplayActor(intent.TargetActorId)}",
             "action.show" => $"向 {DisplayActor(intent.TargetActorId)} 展示 {DisplayObject(intent.TargetObjectId)}",
             "action.use" => $"使用 {DisplayObject(intent.TargetObjectId)}",
@@ -123,6 +124,8 @@ internal static class DramaRecordWriter
                 : $"{DisplayActor(value.ActorId)}观察并记住：{string.Join("；", value.LearnedFacts.Select(fact => fact.Text))}",
             ObjectTakenEvent value =>
                 $"{DisplayActor(value.ActorId)}拿到了{DisplayObject(value.ObjectId)}。",
+            ObjectPlacedEvent value =>
+                $"{DisplayActor(value.ActorId)}把{DisplayObject(value.ObjectId)}放在{DisplayPlace(value.PlaceId)}，任何在场者都可以检查或拿取。",
             ObjectGivenEvent value =>
                 $"{DisplayActor(value.ActorId)}把{DisplayObject(value.ObjectId)}交给{DisplayActor(value.TargetActorId)}。",
             ObjectShownEvent value =>

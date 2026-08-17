@@ -24,6 +24,7 @@ public static class BoardIds
     public const string ObjectHeld = "object.held";
     public const string ObjectReceived = "object.received";
     public const string ObjectShown = "object.shown";
+    public const string ObjectPlaced = "object.placed";
     public const string ObjectInspected = "object.inspected";
     public const string LetterAuthenticityKnown = "duchess-letter.authenticity-known";
     public const string LetterContentsKnown = "duchess-letter.contents-known";
@@ -201,6 +202,11 @@ public sealed record ObjectTakenEvent(
     string ActorId,
     string ObjectId) : BoardEventPayload;
 
+public sealed record ObjectPlacedEvent(
+    string ActorId,
+    string ObjectId,
+    string PlaceId) : BoardEventPayload;
+
 public sealed record ObjectGivenEvent(
     string ActorId,
     string TargetActorId,
@@ -242,6 +248,7 @@ public static class BoardEventKinds
     public static EventKind TalkRequested { get; } = new("action.talk-requested", 1);
     public static EventKind ObserveRequested { get; } = new("action.observe-requested", 1);
     public static EventKind TakeRequested { get; } = new("action.take-requested", 1);
+    public static EventKind PutRequested { get; } = new("action.put-requested", 1);
     public static EventKind GiveRequested { get; } = new("action.give-requested", 1);
     public static EventKind ShowRequested { get; } = new("action.show-requested", 1);
     public static EventKind UseRequested { get; } = new("action.use-requested", 1);
@@ -253,6 +260,7 @@ public static class BoardEventKinds
     public static EventKind ActorSpoke { get; } = new("actor.spoke", 1);
     public static EventKind ActorObserved { get; } = new("actor.observed", 1);
     public static EventKind ObjectTaken { get; } = new("object.taken", 1);
+    public static EventKind ObjectPlaced { get; } = new("object.placed", 1);
     public static EventKind ObjectGiven { get; } = new("object.given", 1);
     public static EventKind ObjectShown { get; } = new("object.shown", 1);
     public static EventKind ChestOpened { get; } = new("chest.opened", 1);
@@ -268,6 +276,7 @@ public static class BoardEventKinds
             "action.talk" => TalkRequested,
             "action.observe" => ObserveRequested,
             "action.take" => TakeRequested,
+            "action.put" => PutRequested,
             "action.give" => GiveRequested,
             "action.show" => ShowRequested,
             "action.use" => UseRequested,
@@ -280,6 +289,7 @@ public static class BoardEventKinds
         kind == TalkRequested ||
         kind == ObserveRequested ||
         kind == TakeRequested ||
+        kind == PutRequested ||
         kind == GiveRequested ||
         kind == ShowRequested ||
         kind == UseRequested ||
@@ -347,6 +357,8 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
                         observed.LearnedFacts.Append(LastOutcome(ObservationOutcome(observed))))),
             ({ } kind, ObjectTakenEvent taken) when kind == BoardEventKinds.ObjectTaken =>
                 ApplyTaken(world, taken),
+            ({ } kind, ObjectPlacedEvent placed) when kind == BoardEventKinds.ObjectPlaced =>
+                ApplyPlaced(world, placed),
             ({ } kind, ObjectGivenEvent given) when kind == BoardEventKinds.ObjectGiven =>
                 ApplyGiven(world, given),
             ({ } kind, ObjectShownEvent shown) when kind == BoardEventKinds.ObjectShown =>
@@ -448,6 +460,60 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
                 KeyLocationFact(),
                 LastOutcome($"You successfully took {taken.ObjectId}."),
             ]));
+    }
+
+    private static FirstBoardWorld ApplyPlaced(FirstBoardWorld world, ObjectPlacedEvent placed)
+    {
+        FirstBoardWorld updated = UpdateObject(world, placed.ObjectId, item => item with
+        {
+            PlaceId = placed.PlaceId,
+            OwnerActorId = null,
+        });
+        updated = UpdateActor(updated, placed.ActorId, actor =>
+        {
+            var facts = new List<BoardFact>
+            {
+                LastOutcome(
+                    $"You placed {placed.ObjectId} at {placed.PlaceId}; it is now public and anyone there may inspect or take it."),
+            };
+            if (placed.ObjectId == BoardIds.BrassKey)
+            {
+                facts.Add(KeyLocationFact(placed.PlaceId));
+            }
+
+            return AddFacts(CompleteAction(actor), facts);
+        });
+        foreach (BoardActor witness in world.Actors.Where(actor =>
+                     actor.Key != placed.ActorId &&
+                     world.IsPresent(actor) &&
+                     actor.PlaceId == placed.PlaceId))
+        {
+            updated = UpdateActor(updated, witness.Id, actor =>
+            {
+                var facts = new List<BoardFact>
+                {
+                    new(
+                        BoardIds.ObjectPlaced,
+                        placed.ObjectId,
+                        $"{placed.ActorId} placed {placed.ObjectId} at {placed.PlaceId}; it was publicly available at that moment."),
+                };
+                if (placed.ObjectId == BoardIds.BrassKey)
+                {
+                    facts.Add(KeyLocationFact(placed.PlaceId));
+                }
+
+                if (actor.Activity?.Kind == BoardActivityKind.Wait)
+                {
+                    facts.Add(LastOutcome(
+                        $"Your wait was interrupted because {placed.ActorId} placed {placed.ObjectId} here."));
+                    actor = CompleteActivity(actor);
+                }
+
+                return AddFacts(actor, facts);
+            });
+        }
+
+        return updated;
     }
 
     private static FirstBoardWorld ApplyGiven(FirstBoardWorld world, ObjectGivenEvent given)
@@ -591,8 +657,13 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
     private static BoardFact CellarSealedFact() =>
         new(BoardIds.CellarSealedKnown, BoardIds.Cellar, "The cellar is sealed.");
 
-    private static BoardFact KeyLocationFact() =>
-        new(BoardIds.KeyLocationKnown, BoardIds.BrassKey, "The brass key is in an actor's possession.");
+    private static BoardFact KeyLocationFact(string? publicPlaceId = null) =>
+        new(
+            BoardIds.KeyLocationKnown,
+            BoardIds.BrassKey,
+            publicPlaceId is null
+                ? "The brass key is in an actor's possession."
+                : $"The brass key was placed in the public environment at {publicPlaceId}.");
 
     private static BoardFact LastOutcome(string text) =>
         new(BoardIds.LastActionOutcome, RelatedId: null, Text: text);
@@ -601,7 +672,7 @@ public sealed class FirstBoardReducer : IEventReducer<FirstBoardWorld, BoardEven
         observed.TargetObjectId is null
             ? $"You successfully observed the current place; " +
               $"the event reported {observed.LearnedFacts.Count} visible facts."
-            : $"You successfully inspected {observed.TargetObjectId} while holding it; " +
+            : $"You successfully inspected {observed.TargetObjectId}; " +
               $"the event reported {observed.LearnedFacts.Count} inspection facts.";
 
     private static FirstBoardWorld UpdateActor(

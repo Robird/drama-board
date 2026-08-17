@@ -249,11 +249,20 @@ public static class FirstBoardScenario
                 .OrderBy(item => item.Id)
                 .Select(item => item.Key),
         ];
+        string[] inspectableObjects =
+        [
+            .. world.Objects
+                .Where(item =>
+                    item.OwnerActorId == actor.Id ||
+                    (item.OwnerActorId is null && item.PlaceId == actor.PlaceId))
+                .OrderBy(item => item.Id)
+                .Select(item => item.Key),
+        ];
         actions.Add(new AvailableAction(
             ActionKinds.Observe,
-            CandidateObjectIds: heldObjects.Length == 0
+            CandidateObjectIds: inspectableObjects.Length == 0
                 ? null
-                : Array.AsReadOnly(heldObjects)));
+                : Array.AsReadOnly(inspectableObjects)));
 
         string[] takeableObjects =
         [
@@ -277,6 +286,13 @@ public static class FirstBoardScenario
             actions.Add(new AvailableAction(
                 ActionKinds.Use,
                 CandidateObjectIds: [BoardIds.LockedChest]));
+        }
+
+        if (heldObjects.Length > 0)
+        {
+            actions.Add(new AvailableAction(
+                ActionKinds.Put,
+                CandidateObjectIds: Array.AsReadOnly(heldObjects)));
         }
 
         if (heldObjects.Length > 0 && targetActors.Length > 0)
@@ -353,6 +369,8 @@ public static class FirstBoardScenario
                 $"actor={observed.ActorId} targetObject={observed.TargetObjectId} facts=" +
                 string.Join(",", observed.LearnedFacts.Select(fact => fact.Kind)),
             ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
+            ObjectPlacedEvent placed =>
+                $"actor={placed.ActorId} object={placed.ObjectId} place={placed.PlaceId}",
             ObjectGivenEvent given =>
                 $"actor={given.ActorId} target={given.TargetActorId} object={given.ObjectId}",
             ObjectShownEvent shown =>

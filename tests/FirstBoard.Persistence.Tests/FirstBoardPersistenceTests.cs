@@ -52,6 +52,8 @@ public sealed class FirstBoardPersistenceTests
             Assert.Contains(replay.Events, domainEvent =>
                 domainEvent.Payload is ChestOpenedEvent);
             Assert.Contains(replay.Events, domainEvent =>
+                domainEvent.Payload is ObjectPlacedEvent);
+            Assert.Contains(replay.Events, domainEvent =>
                 domainEvent.Payload is CellarSealedEvent);
         }
     }
@@ -159,6 +161,7 @@ public sealed class FirstBoardPersistenceTests
             ActorSpokeEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ActorObservedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectTakenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
+            ObjectPlacedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectGivenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ObjectShownEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
             ChestOpenedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
@@ -178,6 +181,7 @@ public sealed class FirstBoardPersistenceTests
             "action.talk-requested" or
             "action.observe-requested" or
             "action.take-requested" or
+            "action.put-requested" or
             "action.give-requested" or
             "action.show-requested" or
             "action.use-requested" or
@@ -189,6 +193,7 @@ public sealed class FirstBoardPersistenceTests
             "actor.spoke" => Deserialize<ActorSpokeEvent>(payload),
             "actor.observed" => Deserialize<ActorObservedEvent>(payload),
             "object.taken" => Deserialize<ObjectTakenEvent>(payload),
+            "object.placed" => Deserialize<ObjectPlacedEvent>(payload),
             "object.given" => Deserialize<ObjectGivenEvent>(payload),
             "object.shown" => Deserialize<ObjectShownEvent>(payload),
             "chest.opened" => Deserialize<ChestOpenedEvent>(payload),
@@ -247,7 +252,10 @@ public sealed class FirstBoardPersistenceTests
                     FreeText: $"fact:{BoardIds.KeyLocationKnown}"),
                 "decision.alice.4" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar),
                 "decision.alice.5" => new Intent(ActionKinds.Use, TargetObjectId: BoardIds.LockedChest),
-                "decision.alice.6" => new Intent(ActionKinds.Wait, DurationMs: 5_000_000),
+                "decision.alice.6" => new Intent(
+                    ActionKinds.Put,
+                    TargetObjectId: BoardIds.DuchessLetter),
+                "decision.alice.7" => new Intent(ActionKinds.Wait, DurationMs: 5_000_000),
                 "decision.bob.1" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),
                 "decision.bob.2" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),
                 "decision.bob.3" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Tavern),

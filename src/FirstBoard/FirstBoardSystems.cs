@@ -106,6 +106,7 @@ public sealed class ActionResolutionSystem :
             "action.talk" => ResolveTalk(world, actor, submitted.Intent),
             "action.observe" => ResolveObserve(world, actor, submitted.Intent),
             "action.take" => ResolveTake(world, actor, submitted.Intent),
+            "action.put" => ResolvePut(world, actor, submitted.Intent),
             "action.give" => ResolveGive(world, actor, submitted.Intent),
             "action.show" => ResolveShow(world, actor, submitted.Intent),
             "action.use" => ResolveUse(world, actor, submitted.Intent),
@@ -221,7 +222,7 @@ public sealed class ActionResolutionSystem :
     {
         if (intent.TargetObjectId is string targetObjectId)
         {
-            return ResolveInspectHeldObject(world, actor, intent, targetObjectId);
+            return ResolveInspectObject(world, actor, intent, targetObjectId);
         }
 
         var facts = new List<BoardFact>();
@@ -282,7 +283,7 @@ public sealed class ActionResolutionSystem :
             new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned)));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveInspectHeldObject(
+    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveInspectObject(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
@@ -294,9 +295,13 @@ public sealed class ActionResolutionSystem :
             return Reject(actor, intent, "target object does not exist");
         }
 
-        if (item.OwnerActorId != actor.Id)
+        bool heldByActor = item.OwnerActorId == actor.Id;
+        bool publicHere = item.OwnerActorId is null &&
+            item.PlaceId == actor.PlaceId &&
+            world.IsPresent(actor);
+        if (!heldByActor && !publicHere)
         {
-            return Reject(actor, intent, "actor may only inspect a held object");
+            return Reject(actor, intent, "actor may only inspect a held or public object here");
         }
 
         var facts = new List<BoardFact>
@@ -304,7 +309,9 @@ public sealed class ActionResolutionSystem :
             new(
                 BoardIds.ObjectInspected,
                 item.Key,
-                $"You carefully inspected {item.Key} while holding it."),
+                heldByActor
+                    ? $"You carefully inspected {item.Key} while holding it."
+                    : $"You carefully inspected public {item.Key} at {actor.PlaceId}."),
         };
         if (item.Key == BoardIds.DuchessLetter)
         {
@@ -385,6 +392,27 @@ public sealed class ActionResolutionSystem :
                 Array.AsReadOnly(competitors),
                 competitors[winnerIndex],
                 new BoardRandomSample(streamId, generation, 0)));
+    }
+
+    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolvePut(
+        FirstBoardWorld world,
+        BoardActor actor,
+        Intent intent)
+    {
+        BoardObject? item = world.Objects.SingleOrDefault(current => current.Key == intent.TargetObjectId);
+        if (item is null || item.OwnerActorId != actor.Id)
+        {
+            return Reject(actor, intent, "actor does not hold the target object");
+        }
+
+        if (!world.IsPresent(actor))
+        {
+            return Reject(actor, intent, "actor is not present at a place");
+        }
+
+        return Result(
+            BoardEventKinds.ObjectPlaced,
+            new ObjectPlacedEvent(actor.Key, item.Key, actor.PlaceId));
     }
 
     private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveGive(

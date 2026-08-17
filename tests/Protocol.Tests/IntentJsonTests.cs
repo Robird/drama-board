@@ -11,6 +11,7 @@ public sealed class IntentJsonTests
         new Intent(ActionKinds.Talk, TargetActorId: "actor.bob", FreeText: "Meet me at the inn."),
         new Intent(ActionKinds.Observe, TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Take, TargetActorId: "actor.bob", TargetObjectId: "object.letter"),
+        new Intent(ActionKinds.Put, TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Give, TargetActorId: "actor.bob", TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Show, TargetActorId: "actor.bob", TargetObjectId: "object.letter"),
         new Intent(ActionKinds.Use, TargetObjectId: "object.locked-chest"),

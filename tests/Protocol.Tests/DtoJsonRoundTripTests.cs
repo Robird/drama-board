@@ -39,7 +39,7 @@ public sealed class DtoJsonRoundTripTests
         DecisionRequest roundTrippedRequest = AssertRoundTrip(request);
         AssertRoundTrip(decision);
 
-        Assert.Equal(7, roundTrippedRequest.AvailableActions.Count);
+        Assert.Equal(8, roundTrippedRequest.AvailableActions.Count);
         Assert.Equal("fact.secret.known", roundTrippedRequest.Observation.KnownFacts[0].FactKind.Id);
         Assert.Equal("place.square", roundTrippedRequest.Observation.LocationId);
         Assert.Equal(DecisionReasons.ActionRejected, roundTrippedRequest.Reason);
@@ -103,6 +103,7 @@ public sealed class DtoJsonRoundTripTests
             new(ActionKinds.Talk, CandidateActorIds: ["actor.bob"]),
             new(ActionKinds.Observe, CandidateActorIds: ["actor.bob"], CandidateObjectIds: ["object.letter"]),
             new(ActionKinds.Take, CandidateObjectIds: ["object.letter"]),
+            new(ActionKinds.Put, CandidateObjectIds: ["object.letter"]),
             new(ActionKinds.Give, CandidateActorIds: ["actor.bob"], CandidateObjectIds: ["object.letter"]),
             new(ActionKinds.Show, CandidateActorIds: ["actor.bob"], CandidateObjectIds: ["object.letter"]),
         ],

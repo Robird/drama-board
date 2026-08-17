@@ -260,7 +260,7 @@ public sealed class FirstBoardTests
     }
 
     [Fact]
-    public async Task TargetedObserve_RejectsPublicObjectAndRevealsHeldLetterEvidence()
+    public async Task TargetedObserve_InspectsPublicAndHeldObjectsButRejectsOtherActorHoldings()
     {
         var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
         [
@@ -271,10 +271,21 @@ public sealed class FirstBoardTests
                     action => action.ActionKind == ActionKinds.Observe);
                 Assert.Contains(BoardIds.DuchessLetter, observe.CandidateObjectIds!);
                 Assert.Contains(BoardIds.SilverCoinOne, observe.CandidateObjectIds!);
-                Assert.DoesNotContain(BoardIds.BrassKey, observe.CandidateObjectIds!);
+                Assert.Contains(BoardIds.BrassKey, observe.CandidateObjectIds!);
+                Assert.DoesNotContain(BoardIds.SilverCoinTwo, observe.CandidateObjectIds!);
                 return Decide(request, new Intent(
                     ActionKinds.Observe,
                     TargetObjectId: BoardIds.BrassKey));
+            },
+            request =>
+            {
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.ObjectInspected &&
+                    fact.RelatedId == BoardIds.BrassKey &&
+                    fact.Text.Contains("public", StringComparison.Ordinal));
+                return Decide(request, new Intent(
+                    ActionKinds.Observe,
+                    TargetObjectId: BoardIds.SilverCoinTwo));
             },
             request =>
             {
@@ -300,13 +311,17 @@ public sealed class FirstBoardTests
         ]));
         FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 32));
         BoardActor initialAlice = initial.Actor(BoardIds.Alice);
+        BoardActor initialBob = initial.Actor(BoardIds.Bob);
         initial = initial with
         {
             ChestOpened = true,
             Objects = Array.AsReadOnly(initial.Objects
-                .Select(item => item.Key == BoardIds.DuchessLetter
-                    ? item with { PlaceId = null, OwnerActorId = initialAlice.Id }
-                    : item)
+                .Select(item => item.Key switch
+                {
+                    BoardIds.DuchessLetter => item with { PlaceId = null, OwnerActorId = initialAlice.Id },
+                    BoardIds.SilverCoinTwo => item with { PlaceId = null, OwnerActorId = initialBob.Id },
+                    _ => item,
+                })
                 .ToArray()),
         };
 
@@ -320,15 +335,118 @@ public sealed class FirstBoardTests
         ActionRejectedEvent rejected = Assert.IsType<ActionRejectedEvent>(Assert.Single(
             capture.Journal.Events,
             domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected).Payload);
-        Assert.Equal("actor may only inspect a held object", rejected.Reason);
-        ActorObservedEvent inspected = Assert.IsType<ActorObservedEvent>(Assert.Single(
-            capture.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ActorObserved).Payload);
-        Assert.Equal(BoardIds.DuchessLetter, inspected.TargetObjectId);
-        Assert.Equal(3, inspected.LearnedFacts.Count);
+        Assert.Equal("actor may only inspect a held or public object here", rejected.Reason);
+        ActorObservedEvent[] inspected =
+        [
+            .. capture.Journal.Events
+                .Where(domainEvent => domainEvent.Kind == BoardEventKinds.ActorObserved)
+                .Select(domainEvent => Assert.IsType<ActorObservedEvent>(domainEvent.Payload)),
+        ];
+        Assert.Equal(2, inspected.Length);
+        Assert.Equal(BoardIds.BrassKey, inspected[0].TargetObjectId);
+        Assert.Equal(BoardIds.DuchessLetter, inspected[1].TargetObjectId);
+        Assert.Equal(3, inspected[1].LearnedFacts.Count);
         Assert.Equal(initialAlice.Id, world.Object(BoardIds.DuchessLetter).OwnerActorId);
+        Assert.Equal(initialBob.Id, world.Object(BoardIds.SilverCoinTwo).OwnerActorId);
+        Assert.Null(world.Object(BoardIds.BrassKey).OwnerActorId);
         Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
             fact.Kind == BoardIds.LetterAuthenticityKnown);
+    }
+
+    [Fact]
+    public async Task PutAction_MakesObjectPublicInspectableAndTakeableAndInterruptsWait()
+    {
+        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+            request =>
+            {
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.ObjectPlaced &&
+                    fact.RelatedId == BoardIds.DuchessLetter);
+                Assert.Contains(BoardIds.DuchessLetter, request.Observation.VisibleObjectIds);
+                Assert.Contains(
+                    BoardIds.DuchessLetter,
+                    Assert.Single(request.AvailableActions,
+                        action => action.ActionKind == ActionKinds.Observe).CandidateObjectIds!);
+                Assert.Contains(
+                    BoardIds.DuchessLetter,
+                    Assert.Single(request.AvailableActions,
+                        action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Observe,
+                    TargetObjectId: BoardIds.DuchessLetter));
+            },
+            request =>
+            {
+                Assert.Contains(request.Observation.KnownFacts, fact =>
+                    fact.FactKind.Id == BoardIds.LetterAuthenticityKnown &&
+                    fact.RelatedId == BoardIds.DuchessLetter);
+                return Decide(request, new Intent(
+                    ActionKinds.Take,
+                    TargetObjectId: BoardIds.DuchessLetter));
+            },
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
+        [
+            request =>
+            {
+                AvailableAction put = Assert.Single(
+                    request.AvailableActions,
+                    action => action.ActionKind == ActionKinds.Put);
+                Assert.Contains(BoardIds.DuchessLetter, put.CandidateObjectIds!);
+                return Decide(request, new Intent(
+                    ActionKinds.Put,
+                    TargetObjectId: BoardIds.DuchessLetter));
+            },
+            request => Decide(request, new Intent(
+                ActionKinds.Put,
+                TargetObjectId: BoardIds.DuchessLetter)),
+            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
+        ]));
+        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 52));
+        BoardActor initialBob = initial.Actor(BoardIds.Bob);
+        initial = initial with
+        {
+            ChestOpened = true,
+            Objects = Array.AsReadOnly(initial.Objects
+                .Select(item => item.Key == BoardIds.DuchessLetter
+                    ? item with { PlaceId = null, OwnerActorId = initialBob.Id }
+                    : item)
+                .ToArray()),
+        };
+
+        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
+            Drivers(alice, bob),
+            worldSeed: 52,
+            new ModelTime(1),
+            initial);
+        FirstBoardWorld world = capture.Result.World;
+
+        ObjectPlacedEvent placed = Assert.IsType<ObjectPlacedEvent>(Assert.Single(
+            capture.Journal.Events,
+            domainEvent => domainEvent.Kind == BoardEventKinds.ObjectPlaced).Payload);
+        Assert.Equal(BoardIds.Market, placed.PlaceId);
+        Assert.Single(capture.Journal.Events, domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ActorObserved);
+        Assert.Single(capture.Journal.Events, domainEvent =>
+            domainEvent.Kind == BoardEventKinds.ObjectTaken);
+        ActionRejectedEvent rejectedPut = Assert.IsType<ActionRejectedEvent>(Assert.Single(
+            capture.Journal.Events,
+            domainEvent =>
+                domainEvent.Kind == BoardEventKinds.ActionRejected &&
+                domainEvent.Payload is ActionRejectedEvent rejected &&
+                rejected.ActorId == BoardIds.Bob).Payload);
+        Assert.Equal("actor does not hold the target object", rejectedPut.Reason);
+        Assert.Equal(world.Actor(BoardIds.Alice).Id, world.Object(BoardIds.DuchessLetter).OwnerActorId);
+        Assert.Null(world.Object(BoardIds.DuchessLetter).PlaceId);
+        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
+            fact.Kind == BoardIds.LetterContentsKnown);
+        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
+            fact.Kind == BoardIds.LetterContentsKnown);
+        Assert.Equal(4, alice.Requests.Count);
+        Assert.Equal(0, alice.Requests[1].ModelTimeMs);
     }
 
     [Fact]
