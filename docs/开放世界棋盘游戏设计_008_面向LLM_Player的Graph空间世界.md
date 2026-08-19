@@ -24,13 +24,13 @@
 
 本文提出以下候选裁决：
 
-> **DramaBoard 的权威 RPG 空间应是一张由语义 Place、带正耗时的 Passage 和 Area containment 构成的 Graph。**
+> **DramaBoard 的权威 RPG 空间应是一张由语义 Place、正 Length 的一维 Passage 和 Area containment 构成的 Graph。**
 
 Graph 是：
 
 - 地点身份的真值；
 - 可通行关系的真值；
-- 旅行耗时与路线选择的真值；
+- Passage 长度、旅行过程与路线选择的真值；
 - Actor 当前位于地点或正在某条通路上旅行的真值。
 
 Graph 不是：
@@ -251,7 +251,7 @@ Human realization 不能：
 
 - 新增 Objective Graph 中不存在的捷径；
 - 删除必须存在的 Passage；
-- 改写权威 TravelDuration；
+- 改写权威 PassageLength 或已经提交的运动结果；
 - 让视觉表现成为新的 Simulation authority。
 
 ## 3.5 所有权冻结
@@ -260,10 +260,10 @@ Human realization 不能：
 
 | Owner | 权威拥有 | 明确不拥有 |
 |---|---|---|
-| Objective Spatial | Area / Place / Passage definition，Entity location，Traversal 时间，global Passage enabled，perception candidate | PlayerId，Confirmed facts，Claims，Observation cursor，DecisionView |
+| Objective Spatial | Area / Place / Passage definition，Entity location，Traversal 运动段，global Passage enabled，perception candidate | PlayerId，Confirmed facts，Claims，Observation cursor，DecisionView |
 | Perception | 把客观 candidate 与游戏感知规则解析成 player-scoped committed Observation | Objective topology mutation，Player belief |
 | Spatial Knowledge Projection | 从 committed Observation / ClaimAsserted / Evidence event 确定性投影 Confirmed facts、ExitStub、带来源 Claims、evidence history 与 acknowledgement cursor | Objective truth，LLM 自由解释 |
-| Game Activity | 权威拥有 TravelActivity、当前 intent、StopAtNextPlace 与自动续程意图 | Objective Spatial state，Knowledge projection |
+| Game Activity | 权威拥有 TravelActivity、当前 intent、抵达 Place 后的停留 / 自动续程意图 | Objective Spatial state，Knowledge projection |
 | Player Composition | 纯读取某个 Player 的 Knowledge snapshot、Game Activity 与 committed Observation，构造 bounded DecisionView、route tools 与 semantic actions | 持久化 Activity/cursor，读取隐藏 Objective Graph 来补全结果 |
 
 `Spatial Knowledge Projection` 可以在未来成为独立 project，也可以先由游戏层实现；但它在概念上已经是独立、event-sourced 的 authority，绝不能退化成 Objective query helper。
@@ -286,7 +286,7 @@ DecisionView or deterministic continuation built
 Player DecisionPoint or explicit next traversal command
 ```
 
-LLM 不能被调用在 candidate 与 Knowledge 更新之间。Milestone 只先产生客观 `PassageMilestoneReached`；它对某个 Player 的含义必须经过后续 Perception 与 Knowledge 处理。后续结果可以处在同一 ModelTime 的更晚 microstep，但不能倒流改变已经完成的 Spatial batch。
+LLM 不能被调用在 candidate 与 Knowledge 更新之间。途中收到消息、发现危险或其它外部事件时，也必须先提交客观结果和 player-scoped Observation，再允许 Player 决定继续前进或原路掉头。后续结果可以处在同一 ModelTime 的更晚 microstep，但不能倒流改变已经完成的 Spatial batch。
 
 这条栅栏由 **composition coordinator** 权威拥有，不能依赖多个子系统以独立、同刻 Forecast candidate 竞争出来的偶然顺序。各阶段不得相互交错；若宿主不能把 lifting 与 projection 放入同一可信提交流水线，就必须在 Spatial commit 后先把控制权交还 Host，依次完成 Observation 与 Knowledge commit，再重新 Forecast 并决定是否提交下一条 traversal command。
 
@@ -354,7 +354,7 @@ AreaDefinition
 
 首版不把 Area 直接作为 Spatial destination。`去北境寻找 Alice` 是上层 Search / Travel Activity，需要从 Player 已确认的地点中选择具体下一目标；Objective Spatial 不能从 Area 的隐藏 descendants 中替 Player 挑选终点。
 
-Objective `AreaPath` 只在 Entity `AtPlace` 时由 Place 的祖先链派生；`InTransit` 在 Spatial 核心中没有 Area membership。同 Area 从不等于 CoPresence。旅途中的区域描述由 PassageId 对应的 Game Content 提供。
+Objective `AreaPath` 只在 Entity `AtPlace` 时由 Place 的祖先链派生；`TraversingPassage` 在 Spatial 核心中没有 Area membership。同 Area 从不等于 CoPresence。旅途中的区域描述由 PassageId 对应的 Game Content 提供。
 
 Player-facing `AreaPath` 不能直接读取这条 Objective 祖先链，而必须来自 §11 中已经确认的 Area 与 containment facts。抵达 Place 是否同时确认某一级 ancestry，必须由显式 committed `SpatialContainmentConfirmed` 规则结果表达；不能顺手枚举未知 parent、sibling 或 descendant。
 
@@ -395,7 +395,7 @@ PlaceDefinition
 
 - 道路为了好看而拐弯的位置；
 - 没有事件的第七块地砖；
-- 只能路过、不能停留的风景点；
+- 不产生客观事件、只由表现层画出的风景点；
 - 纯表现用的桥墩。
 
 以下通常应当成为 Place：
@@ -407,40 +407,42 @@ PlaceDefinition
 - 能与人质交谈的牢门前；
 - 可能成为重逢地点的篝火营地。
 
-## 4.3 Passage：带时间的有向旅行机会
+## 4.3 Passage：连接两个 Place 的一维旅行空间
 
-Passage 是一等内容对象，不只是邻接表中的匿名 Link。
+Passage 是一等物理内容对象，不是某个方向的一次匿名状态转移。它与 Place 共同构成 Graph 的几何 realization：Place 是 0D 点，Passage 是只有两个端点的有限 1D 线段。
 
 候选定义：
 
 ```text
 PassageDefinition
     PassageId
-    FromPlaceId
-    ToPlaceId
-    TravelDuration
-    Milestones[]
+    EndpointAPlaceId
+    EndpointBPlaceId
+    Length: PassageLength
     InitiallyEnabled
 ```
 
 首版约束：
 
-- Passage 有方向；
-- 双向道路必须显式产生两个方向，不能从视觉布局猜测；
+- 两个 endpoint 必须存在且不同；
+- `PassageLength` 是正的强类型空间量，不是 ModelTime、ModelDuration 或 `Ticks`；
+- 首版 Passage 在 enabled 时允许从任一端进入，两个方向共享一个 PassageId；
+- 路由时可以从一个 Passage 派生 `A → B` 与 `B → A` 两个有向 arc，但 arc 不是独立世界身份；
 - 相同端点之间允许多条 Passage，例如公路、渡船和密道；
 - Objective Graph 不要求平面嵌入；两条 Passage 在示意图上交叉不代表相通，只有共享 Place 才形成分岔或路口；
-- TravelDuration 必须为正；
-- 禁止 self-loop；
-- Passage identity 全局稳定；
-- Passage 可以连接不同 Area 的 Place；
-- Passage 是否可用于新旅行是动态状态；
-- 首版不动态修改 TravelDuration。
+- Passage identity 全局稳定，可以连接不同 Area 的 Place；
+- Passage 是否允许新的进入是动态状态；
+- 首版不动态修改 Length，也不在 Passage 内声明 Site / Milestone。
 
-Actor 在途时的客观 locality 就是 PassageId。天气、风景、危险区和叙述作用域由引用 PassageId 的 Game Content 表达；首版不为一条跨境 Passage 再声明单一、可能失真的 `InteriorAreaId`。若跨越 Area 边界本身有玩法意义，应把边界做成 Place 或 milestone。
+`PassageLength` 是局部一维旅行距离，不承诺是现实米数或全局欧氏距离。配套的 `PassageOffset` 从 EndpointA 的 0 起算，到 EndpointB 的 Length 为止。长度与时间必须维度分离：旅行耗时由剩余距离和一次运动已经裁决的 SpeedSnapshot 计算，而不是静态复制在 PassageDefinition 中。
+
+首版可以让全部 Actor 使用同一个默认速度，但状态和事件必须保存本次运动的正 SpeedSnapshot，为后续 Actor、载具、负重或方向造成不同速度留下干净表达空间。SpeedSnapshot 由权威行动验证器裁决后提交给 Spatial；Spatial 在 Replay 时不重新读取 Actor 或 Passage 外部属性。
+
+Actor 在途时的客观 locality 是 PassageId，精确位置是当前运动段在给定 ModelTime 的延迟求值结果。天气、风景、危险区和叙述作用域由引用 PassageId 的 Game Content 表达；若一个途中位置需要稳定身份、可停留、可调查、可会面、可作为目标或连接其它 Passage，就把它建成 degree-2 或更高 degree 的 Place，并把原 Passage 拆开。
 
 ### Passage 不读取其它子系统
 
-Spatial 核心只知道 Passage 客观是否 enabled。
+Spatial 核心只知道 Passage 客观是否允许新的进入，以及已经提交的运动段。
 
 它不直接读取：
 
@@ -450,7 +452,7 @@ Spatial 核心只知道 Passage 客观是否 enabled。
 - Quest 是否完成；
 - Player 是否知道这条路。
 
-这些规则由权威游戏行动验证器先裁决，再把一个明确的 `BeginTraversal(EntityId, PassageId)` 意图提交给 Spatial。Spatial 只验证自己的局部客观条件，例如 Actor 当前 AtPlace、Passage 起点匹配且 global enabled。
+这些规则由权威游戏行动验证器先裁决，再把一个明确的 `BeginTraversal(EntityId, PassageId, FromEndpoint, SpeedSnapshot)` 意图提交给 Spatial。Spatial 只验证自己的局部客观条件，例如 Actor 当前 AtPlace、Place 是 Passage endpoint 且 global enabled。
 
 游戏组合层可以产生：
 
@@ -487,7 +489,7 @@ believes-connected-to
 
 ---
 
-# 5. Actor 的权威位置：AtPlace 或 InTransit
+# 5. Actor 的权威位置：AtPlace 或 TraversingPassage
 
 长途 Passage 不能继续沿用“到期前仍在起点”的客观位置语义。
 
@@ -497,20 +499,23 @@ believes-connected-to
 - 她也尚未参与修道院的共处和互动；
 - 客观事实应是她正在北路上。
 
-为避免同一 traversal 在 EntityLocation 与 Travel Activity 中重复存储，候选状态把位置引用和 traversal 事实分开：
+为避免同一 traversal 在 EntityLocation 与 Travel Activity 中重复存储，候选状态把位置引用和可逆运动段事实分开：
 
 ```text
 EntityLocation
     AtPlace(PlaceId)
-    InTransit(TraversalId)
+    TraversingPassage(TraversalId)
 
 TraversalState
     TraversalId
     EntityId
     PassageId
-    StartedAt
+    SegmentOriginOffset
+    TargetEndpoint
+    SegmentStartedAt
+    SpeedSnapshot
     ArrivalDue
-    NextMilestoneIndex
+    Generation
 ```
 
 根状态还包含：
@@ -528,78 +533,84 @@ SpatialGraphState
     NextMomentOrdinal
 ```
 
-任一已放置 Actor 在完整状态边界上恰好拥有其中一种位置。每个 `InTransit` 恰好引用一个属于该 Entity 的 TraversalState，每个 active TraversalState 也恰好被一个 EntityLocation 引用。From / To 由 PassageDefinition 唯一推导，不在动态状态中复制。
+任一已放置 Actor 在完整状态边界上恰好拥有其中一种位置。每个 `TraversingPassage` 恰好引用一个属于该 Entity 的 TraversalState，每个 active TraversalState 也恰好被一个 EntityLocation 引用。Passage endpoints 由 Definition 唯一确定；动态状态只保存本段运动需要的 origin、target、speed 与 absolute Due。
 
-TraversalId 由持久 allocator 分配、不可复用。`ArrivalDue` 必须精确等于 `checked(StartedAt + Passage.TravelDuration)`；溢出必须在开始 traversal 前原子拒绝。
+TraversalId 由持久 allocator 分配、在 Actor 离开 Passage 前保持稳定且不可复用。每次原路掉头会在当前 ModelTime 物化有效 Offset，替换运动段并严格增加 Generation；旧 Forecast 因 generation / revision 不匹配而 stale。
 
-## 5.1 InTransit 不是连续物理模拟
+## 5.1 位置延迟求值，不按 tick 推进
 
-首版不持久化：
+`PassageLength` 和 `PassageOffset` 是空间量。`Ticks` 只应出现在 ModelTime / ModelDuration 的时间表示或速度量纲中，不能充当 Passage 坐标。Kernel 可以从一个有意义事件直接跳到下一个事件，Spatial 不会逐 tick 写入 progress；这正是 Design Note 003 所说的 Elapse 与 lazy materialization。
 
-- 浮点坐标；
-- 每 tick 的 progress；
-- 速度和加速度；
-- 朝向；
-- 碰撞体；
-- 同路 Actor 的精确距离。
-
-Human renderer 可以根据起止时间自行插值动画，但这个插值不是 Spatial 查询或 gameplay authority。Milestone 到期只由 committed `StartedAt + OffsetFromStart` 决定，不依赖浮点 progress。
-
-## 5.2 Passage Milestone：途中事件阈值，不是隐藏 Place
-
-候选定义：
+概念查询是：
 
 ```text
-PassageMilestoneDefinition
-    MilestoneId
-    OffsetFromStart
+EffectiveOffset(traversal, now)
+    = SegmentOriginOffset
+      + signed DistanceAdvanced(now - SegmentStartedAt, SpeedSnapshot)
 ```
 
-约束：
-
-- `0 < OffsetFromStart < TravelDuration`；
-- 同一 Passage 内严格递增且唯一；
-- 到期时总是提交结构化 `PassageMilestoneReached(EntityId, TraversalId, MilestoneId)`，并消费 NextMilestoneIndex；
-- 不允许 Actor 在 milestone 上任意停留；
-- 不允许从 milestone 分岔；
-- 不把 milestone 当作 CoPresence locality。
-
-判断规则：
-
-> **如果一个途中点可以停留、调查、转向、等待、会面或成为移动目标，它就不是 milestone，而必须提升为 Place。**
-
-Spatial 不解释 MilestoneId 的叙事含义。Game Content、Perception、Decision 与 Providence 分别以 MilestoneId 关联自己的规则；即使没有下游效果，Spatial 仍提交已到达并已消费的事实。这一规则既切断 generic callback / content DSL，也防止 Edge Progress 演化成另一套隐蔽 GridMap。
-
-## 5.3 首版不支持任意路中停车
-
-`Cancel` 在 InTransit 状态下含义模糊：
-
-- 停在不存在的连续坐标？
-- 返回起点？
-- 立刻到终点？
-- 生成一个临时 Place？
-
-首版更诚实的上层 Travel Activity 语义是：
+而 arrival 预测是：
 
 ```text
-StopAtNextPlace
+remaining = DistanceTo(TargetEndpoint)
+duration  = TravelTime(remaining, SpeedSnapshot)
+ArrivalDue = checked(SegmentStartedAt + duration)
 ```
 
-即：
+具体软件实现必须采用确定性的整数、固定精度或有理数规则，禁止让 `double` 舍入决定 Journal；乘除、向上取整和溢出规则必须冻结。Human renderer 可以在同一运动段上私下插值，但表现位置不能回写 Spatial authority。
 
-- 当前 Passage 继续完成；
-- Spatial 到达 ToPlace 后总是结束这一次 traversal；
-- Travel Activity 可以在到达后停止，也可以稍后显式提交下一条 Passage；
-- Retarget 只更改上层 intent，不回滚当前 Passage；
-- 若产品必须允许中途掉头，应把允许掉头的位置建成 Place，或在后续规则版本中显式加入新语义。
+## 5.2 途中有意义的稳定位置统一提升为 Place
+
+首版删除 `PassageMilestone` 和 `PassageSite`。判断规则是：
+
+> **如果一个途中位置需要稳定身份、位置驱动的 Observation、调查、等待、会面、移动目标或分岔，就把它建成 Place。**
+
+Place 可以只有两条相连 Passage；它不必是岔路。路边石碑、山口、检查站、营地或必须准确触发披露的瞭望点，都可以成为 degree-2 Place。抵达 Place 也不强迫唤醒 LLM：若没有新信息，composition 可以在完成 Observation / Knowledge 栅栏后确定性继续。
+
+不依赖固定位置的途中事件仍然存在，但由真正拥有它们的子系统 Forecast：消息属于通信，疲劳属于 Needs，随机遭遇属于 Travel Activity / Providence，天气属于 Weather。事件在 T 发生时按需计算 Actor 的 EffectiveOffset；Spatial 不为此预建 Site。
+
+## 5.3 首版允许原路掉头，但不允许在 Passage 静止
+
+Passage 是可定位的客观 locality，但 V1 中 Actor 位于 Passage 时必须拥有一个正速度、有限 Due 的 active TraversalState。没有 `StationaryOnPassage`、`StopHere` 或 `Resume`。
+
+途中出现新信息或危险时，Player 可以在同一 ModelTime 选择：
+
+```text
+ContinueToCurrentEndpoint
+TurnBack
+```
+
+`TurnBack` 原子地：
+
+1. 用旧运动段在当前 ModelTime 物化 PassageOffset；
+2. 将另一端设为新 TargetEndpoint；
+3. 冻结新的 SpeedSnapshot 与 ArrivalDue；
+4. 增加 Generation，并使旧 arrival candidate stale。
+
+若当前 EffectiveOffset 仍精确位于原 endpoint，TurnBack 不创建零时长反向运动段，而是原子结束 traversal 并恢复 `AtPlace(origin)`。在 ArrivalDue 边界，arrival 必须先完成，过期的 TurnBack 不能把已经抵达的 Actor 倒流回 Passage。
+
+DecisionPoint 内 Human / LLM 的 wall-clock 思考不推进 ModelTime，所以 Actor 可以收到消息、思考并立即掉头，不需要先进入一个持久的静止状态。若 Actor 需要等待、扎营、长期交谈、调查、战斗或执行其它耗时 Activity，内容必须提供 Place。
+
+这是一项有意的玩法约束：长 Passage 表示一段只能继续或折返的承诺空间；Place 的密度决定安全停靠点和重新组织行动的机会。它消除了任意路中位置作为长期活动地点后必然出现的等待计时、对象放置、共处、恢复和无期限 Forecast 契约。
+
+完整状态机因而只有：
+
+```text
+AtPlace
+    └─ BeginTraversal ─→ TraversingPassage
+                              ├─ TurnBack ─→ TraversingPassage(new generation)
+                              └─ Arrive ───→ AtPlace
+```
+
+同一个 command batch 对同一 Entity 最多接受一个 movement lifecycle command；TurnBack 本身不产生新的 DecisionPoint，避免同一 ModelTime 的无信息反复掉头形成零时循环。
 
 ## 5.4 Passage 关闭不追溯已开始的普通旅行
 
-普通 `SetPassageEnabled(false)` 影响新的进入，不自动取消已经开始的 traversal，也不取消其尚未消费的 milestone。
+普通 `SetPassageEnabled(false)` 影响新的进入，不自动取消已经开始的 traversal。既有 Actor 仍可继续或原路掉头离开该 Passage。
 
 理由：
 
-- traversal 的 ArrivalDue 已经是 committed 因果事实；
+- 当前运动段的 ArrivalDue 已经是 committed 因果事实；
 - 远端门关闭不应让已经在路上的 Actor 瞬移；
 - 不需要在每个时刻重新解释剩余路程。
 
@@ -632,13 +643,13 @@ TravelActivity
     ActivityId
     PlayerId / EntityId
     Goal: ConfirmedPlaceId
-    StopAtNextPlace
 ```
 
 Spatial V1 只接受一条已经由上层授权的：
 
 ```text
-BeginTraversal(EntityId, PassageId)
+BeginTraversal(EntityId, PassageId, FromEndpoint, SpeedSnapshot)
+TurnBack(EntityId, ExpectedTraversalId, ExpectedGeneration, SpeedSnapshot)
 ```
 
 它不拥有 TravelActivity，不保存未来路线，也不在 arrival batch 内读取 Knowledge、Inventory 或 Player intent。
@@ -654,16 +665,33 @@ TraversalStarted
     EntityId
     TraversalId
     PassageId
-    StartedAt
+    OriginEndpoint
+    TargetEndpoint
+    SegmentStartedAt
+    SpeedSnapshot
     ArrivalDue
+    Generation
 ```
 
-`TraversalId` 必须等于并原子消费当前 `NextTraversalOrdinal`。对应的 `TraversalArrived(EntityId, TraversalId)` 必须精确匹配 Entity 当前 `InTransit` 引用；目标 Place 可以由 committed PassageDefinition 推导。这样 Reducer 不依赖 Kernel envelope 猜 aggregate identity，也不在 Replay 时重新分配 ID。
+```text
+TraversalTurnedBack
+    EntityId
+    TraversalId
+    ExpectedGeneration
+    MaterializedOffset
+    NewTargetEndpoint
+    SegmentStartedAt
+    SpeedSnapshot
+    ArrivalDue
+    NewGeneration
+```
 
-抵达 ToPlace 后，Objective Spatial 必须形成完整状态：
+`TraversalId` 必须等于并原子消费当前 `NextTraversalOrdinal`。对应的 `TraversalTurnedBack` 必须携带 expected generation、物化 Offset 和完整新运动段；`TraversalArrived(EntityId, TraversalId, ExpectedGeneration)` 必须精确匹配 Entity 当前引用。目标 Place 由 committed PassageDefinition 和 TargetEndpoint 推导。Reducer 只投影已经提交的运动事实，不重新读取 Actor 属性或计算当时应采用的速度。
+
+抵达 TargetEndpoint 对应的 Place 后，Objective Spatial 必须形成完整状态：
 
 ```text
-EntityLocation = AtPlace(ToPlace)
+EntityLocation = AtPlace(TargetEndpointPlace)
 TraversalState removed
 ```
 
@@ -713,15 +741,15 @@ Player composition 负责把 `ConfirmedPassageId` 或 ExitStub capability 安全
 
 底层算法可以相同，但输入类型和 authority 必须不同。
 
-Objective analysis 的输入是完整 Objective Place / Passage snapshot；Confirmed planning 的输入只能是 player-scoped ConfirmedSpatialSnapshot。二者都可以归一为：
+Objective analysis 的输入是完整 Objective Place / Passage snapshot 与明确 MobilityProfile；Confirmed planning 的输入只能是 player-scoped ConfirmedSpatialSnapshot 和 Player 当前拥有的估计。一个物理 Passage 在导航视图中派生两个方向 arc，二者共享 PassageId。输入可以归一为：
 
 ```text
 Start Place
 Goal Place
-Authorized directed passages
+Authorized directed traversal arcs
 ```
 
-Objective analyzer 使用权威 TravelDuration。首版中，一条 ConfirmedPassage 只有在 Knowledge Projection 同时保存了正的、player-owned duration estimate 时，才能进入 Confirmed Dijkstra；尚无估计的连接继续保持 ExitStub / Claim，或明确标记为不可用于 route planning，绝不能借用 Objective 数字。
+Objective analyzer 根据 PassageLength 与 MobilityProfile 计算正 travel cost。首版中，一条 ConfirmedPassage 只有在 Knowledge Projection 同时保存了正的、player-owned duration estimate 时，才能进入 Confirmed Dijkstra；尚无估计的连接继续保持 ExitStub / Claim，或明确标记为不可用于 route planning，绝不能借用 Objective Length、Speed 或精确 cost。
 
 Objective analyzer 输出精确 total duration；Confirmed planner 使用独立的 player-facing result contract，输出 Player 当前材料支持的估计与 assumptions：
 
@@ -734,13 +762,15 @@ FirstPassage: ConfirmedPassageId
 
 首版继续采用确定性 Dijkstra 即可：
 
-- Objective cost = 正 TravelDuration；Confirmed cost = player-owned positive estimate；未知且没有估计的 Passage 不能借用 Objective cost；
-- 允许有向边和平行边；
+- Objective cost = `TravelTime(PassageLength, MobilityProfile, direction)`；Confirmed cost = player-owned positive estimate；未知且没有估计的 Passage 不能借用 Objective cost；
+- 允许由 Passage 派生的双向 arc 和相同 endpoint 间的平行 Passage；
 - 无负权和零时长环；
 - 相同 total duration 时使用各自 authority 内的稳定 Passage / Place key tie-break；Confirmed planner 不能让隐藏 Objective ID 参与排序；
 - 路由选择不依赖集合插入顺序；
 - Reducer 不重新寻路；
 - Replay 只投影已经提交的 traversal 事实。
+
+Actor 已在 Passage 中时，重新规划不能把它当作位于任一 endpoint。Composition 在当前 ModelTime 基于 EffectiveOffset 只比较两个合法 first action：继续到当前 TargetEndpoint，或 TurnBack 去另一端；后续 Graph cost 再从相应 endpoint 计算。若前方 endpoint 尚未确认，Player-facing 结果只能表达 `ContinueUnknown`，不能借 Objective Graph 补全终点或精确剩余 ETA。
 
 ## 7.1 不使用 hop count 冒充距离
 
@@ -749,7 +779,7 @@ FirstPassage: ConfirmedPassageId
 因此：
 
 - hop count 只适合结构分析；
-- Player ETA 与默认 fastest route 使用 TravelDuration；
+- Player ETA 与默认 fastest route 使用 actor / mode 相关的正 travel-cost snapshot 或 estimate；
 - 风险、金钱和偏好是更高层 route policy；
 - 首版不建立多目标路径偏好 DSL。
 
@@ -759,7 +789,7 @@ Player composition 首版可支持：
 
 - 自动选择 Confirmed snapshot 中估计最快的路线；
 - 明确指定下一条 Passage；
-- `StopAtNextPlace`；
+- Passage 中收到新信息后明确 `Continue` 或 `TurnBack`；
 - 发现阻断后重新请求决策。
 
 首版不支持：
@@ -781,7 +811,6 @@ Spatial 仍应只向 Kernel 暴露一个最早候选：
 NextSpatialMomentDue
     = min(
         scheduled passage mutations,
-        traversal next milestones,
         traversal arrivals)
 ```
 
@@ -794,15 +823,12 @@ Phase 1
     应用 T 到期的 Passage state mutations
 
 Phase 2
-    消费 T 到期的 Passage milestones
-
-Phase 3
     同时投影全部 T 到期 traversal arrival；每个 arrival 原子地删除 TraversalState 并把 Entity 置为 AtPlace
 
-Phase 4
+Phase 3
     在完整最终状态上计算 Area membership / Place CoPresence delta
 
-Phase 5
+Phase 4
     MomentResolved
 ```
 
@@ -810,23 +836,21 @@ Passage mutation at `T`：
 
 - 影响 `T` 时刻以后新开始的 traversal；
 - 不追溯取消已经在 Passage 上、同刻到达终点的 traversal；
-- 不追溯取消既有 traversal 尚未消费的 milestone；
 - 会被 §3.6 栅栏以后新提交的 traversal command 看到。
 
-Spatial batch 内不存在自动续程，因此 milestone 的外部后果不会倒流进入当前 Phase 1，也不会在 Knowledge 尚未更新时偷偷改变下一条路线。
+Spatial batch 内不存在自动续程。TurnBack 是在客观事件、Observation 与 Knowledge 已经提交后的新显式 command，不能倒流进入当前 Phase 1，也不能在 Knowledge 尚未更新时偷偷改变方向。
 
-## 8.2 Milestone 是真实时间工作
+## 8.2 延迟求值的运动仍是可中断 Activity
 
-Milestone 不是查询时临时重算的叙事装饰。
+DEVS-like Kernel 不按 tick 推进 Actor。一个 active traversal 通常只 Forecast endpoint arrival；其它子系统若在更早的 T 产生消息、危险、疲劳或 Providence 事件，Kernel 会先 AdvanceTo(T)，然后按需求出该时刻的 EffectiveOffset。
 
-每个到期 milestone 都必须通过 Forecast 在准确 ModelTime 提交 `PassageMilestoneReached`，即使没有下游后果。Game / Perception 后续可以让它导致：
+事件之后可以：
 
-- 新 Observation；
-- World Event；
-- DecisionPoint；
-- Providence 可观察信号；
+- 不改变 traversal，并在事件提交后重新 Forecast 出等价的 arrival candidate；
+- 通过 TurnBack 提交新运动段，使原 candidate stale；
+- 在 Actor 抵达 Place 后开始等待、调查或其它 Activity。
 
-这些后果使用后续 cause / microstep，不在 Replay 时重新解释 MilestoneId。
+因此“没有逐 tick 状态”并不意味着“途中不能反应”。持续运动由少量参数延迟求值，真正有信息的中断仍然是事件。
 
 ## 8.3 Candidate 与顺序不变量
 
@@ -836,10 +860,10 @@ Milestone 不是查询时临时重算的叙事装饰。
 - Forecast 不返回 overdue candidate；
 - 同一 `(Due, PassageId)` 不允许两个结果不同的 scheduled mutation；
 - mutation 以稳定 MutationId 排序；
-- milestone 与 arrival 以稳定 EntityId、TraversalId、milestone index 排序；
+- arrival 以稳定 EntityId、TraversalId 排序；
 - derived family 和 key 使用稳定总序；
 - 非空 Resolve 恰有一个严格位于最后的 `MomentResolved`；
-- resolved work count 等于 Resolve 开始时到期的 mutation、next milestone 与 arrival 数量。
+- resolved work count 等于 Resolve 开始时到期的 mutation 与 arrival 数量。
 
 ## 8.4 同刻全部 Arrival 先完成，再计算关系
 
@@ -866,7 +890,7 @@ Milestone 不是查询时临时重算的叙事装饰。
 以下不自动产生 CoPresence：
 
 - 同属一个 Area；
-- 同时 InTransit 且引用同一 Passage；
+- 同时 TraversingPassage 且引用同一 Passage；
 - Passage 时间区间有重叠；
 - 一人在起点、一人在途中；
 - 一人从 Place 离开、另一人在同刻抵达但最终没有共同停留。
@@ -884,11 +908,11 @@ Milestone 不是查询时临时重算的叙事装饰。
 
 “同时在同一条十公里山路上”不等于能看见或交谈。
 
-自动计算相向相遇会立即引入：
+虽然 Passage 已有一维 Length，自动把它升级为 Actor 相遇模拟仍会立即引入：
 
-- Passage 几何长度；
-- 方向和速度；
-- 追及、超车和掉头；
+- interaction radius 与“擦肩而过”的离散语义；
+- 不同速度、追及与超车；
+- 移动轨迹交点的精确时刻；
 - 相遇点持久身份；
 - 两两 candidate 和去重；
 - 零时循环风险。
@@ -898,7 +922,7 @@ Milestone 不是查询时临时重算的叙事装饰。
 - 同 Passage traversal 不自动可见；
 - 不自动产生 PassedOnPassage；
 - Party / Convoy 由游戏侧 shared activity 表达；
-- 伏击、路遇和同行见闻属于引用 Passage / MilestoneId 的 Game event，不是 Spatial 推导的相遇；首版也不让这类事件暂停或改写当前 traversal；
+- 伏击、路遇和同行见闻属于 Travel Activity / Providence 或其它 Game event，不是 Spatial 自动推导的相遇；若它需要持续互动或等待，必须发生在 Place；
 - 必须可靠会面的地点应建成 Place。
 
 这是有意识牺牲几何涌现，换取确定性和可解释性。
@@ -914,7 +938,6 @@ Graph 不能从 adjacency 自动推导 visibility。
 ```text
 same-Place perception candidate
 directed ViewLink
-Passage milestone candidate
 ```
 
 ## 10.1 Same-Place candidate
@@ -957,9 +980,9 @@ ViewLinkDefinition
 
 首版只允许 `Place → Place`。路线相关的远景必须建成 Place；纯风景、某个 Entity 的识别和具体描述由引用 ViewLinkId 的 Perception / Game Content 解释。这样 Spatial 不需要验证一个外部 Landmark registry。
 
-## 10.3 Passage milestone candidate
+## 10.3 旅途中的信息来自 Place 或其它子系统事件
 
-旅途中可以在准确时刻产生：
+旅途中仍可以在准确 ModelTime 产生：
 
 ```text
 你第一次看见山谷里的修道院。
@@ -967,7 +990,7 @@ ViewLinkDefinition
 河对岸有一座桥，但这里没有通路。
 ```
 
-Spatial milestone 只提交客观 `PassageMilestoneReached`。后续 Perception 可以据此产生 player-scoped Observation；它不直接宣告 Player 的最终解释，也不能跳过 §3.6 的因果栅栏。
+若披露由固定空间位置决定，就把该位置建成 Place，并通过 arrival / ViewLink 产生候选；若披露由消息、天气、疲劳、随机遭遇或其它持续过程决定，就由相应子系统 Forecast。事件发生时可以查询 Actor 的 EffectiveOffset，但 PassageDefinition 不保存 Site，Spatial Journal 也没有通用 milestone callback。
 
 ## 10.4 “没有看到”不等于“不存在”
 
@@ -1009,7 +1032,7 @@ ConfirmedContainment
 Place 可以通过以下方式被知道：
 
 - 亲自抵达；
-- 从 ViewLink 或 milestone 直接看见；
+- 从 ViewLink 或其它 committed Observation 直接确认；
 - 由显式、committed `SpatialIdentityConfirmed` 类规则结果建立身份关联。
 
 地图、传闻和他人陈述无论看起来多可信，首版一律先进入 Claims；不能用 confidence threshold 自动升级为 Confirmed。
@@ -1095,6 +1118,7 @@ SpatialDecisionView
     TravelActivity
         CurrentGoal
         CurrentPassage
+        MovingToward
         ExpectedArrival
 
     NewObservations
@@ -1188,7 +1212,8 @@ SeekRouteToSeenPlace
 InvestigateSpatialClaim
 AskAboutPlaceOrRoute
 ContinueCurrentIntent
-StopAtNextPlace
+TurnBackOnCurrentPassage
+WaitAtCurrentPlace
 ```
 
 这些是 Player / Game semantic actions，不是全部都要进入 Spatial command handler。`Available` 表示 Player 有理由尝试，不表示 Objective 世界保证成功。
@@ -1219,25 +1244,18 @@ Graph 对 Coding Agent 友好的原因，不只是 JSON 比 Grid 简短，而是
   ],
   "passages": [
     {
-      "id": "village-to-overlook",
-      "from": "village-gate",
-      "to": "cliff-overlook",
-      "travelDuration": 30,
-      "initiallyEnabled": true,
-      "milestones": []
+      "id": "village-overlook-road",
+      "endpointA": "village-gate",
+      "endpointB": "cliff-overlook",
+      "length": 30,
+      "initiallyEnabled": true
     },
     {
-      "id": "overlook-to-monastery",
-      "from": "cliff-overlook",
-      "to": "monastery-gate",
-      "travelDuration": 90,
-      "initiallyEnabled": true,
-      "milestones": [
-        {
-          "id": "first-view-of-hostage-tower",
-          "offsetFromStart": 20
-        }
-      ]
+      "id": "overlook-monastery-road",
+      "endpointA": "cliff-overlook",
+      "endpointB": "monastery-gate",
+      "length": 90,
+      "initiallyEnabled": true
     }
   ],
   "viewLinks": [
@@ -1250,7 +1268,7 @@ Graph 对 Coding Agent 友好的原因，不只是 JSON 比 Grid 简短，而是
 }
 ```
 
-这里的 JSON 只展示信息形状，字段名和 duration 编码不是当前冻结的软件 schema。它是 authoring source，不应被运行时直接当作未验证状态。
+这里的 JSON 只展示信息形状，字段名和 Length 编码不是当前冻结的软件 schema。Length 是空间维度，速度与耗时属于运动规则 / state。它是 authoring source，不应被运行时直接当作未验证状态。
 
 它仍需经过：
 
@@ -1261,7 +1279,7 @@ parse
 → reference resolution
 → containment validation
 → graph validation
-→ duration / milestone validation
+→ length validation
 → canonicalization
 → immutable compiled definition
 → content hash
@@ -1277,11 +1295,11 @@ Graph-first 的一个直接收益，是 Agent 可以做小而可验证的修改�
 
 ```text
 添加一个 Place
-在两个 Place 间增加单向 Passage
+在两个 Place 间增加双端 Passage
 把旧路分解为两个 Passage 和一个营地 Place
 增加一条尚未被 Player 知道的密道
-调整旅行时间
-增加一个途中 milestone
+调整 PassageLength
+把有稳定语义的途中位置提升为 Place 并拆分 Passage
 让某个 Place 把远端 Place 作为感知候选
 检查删除 Passage 是否破坏可达性
 ```
@@ -1292,8 +1310,9 @@ Graph-first 的一个直接收益，是 Agent 可以做小而可验证的修改�
 create_graph_from_template
 inspect_place_or_passage
 add_or_split_place_and_passage
-set_passage_duration
-add_milestone_or_view_link
+set_passage_length
+split_passage_with_place
+add_view_link
 analyze_reachability
 preview_patch
 validate_graph
@@ -1303,7 +1322,7 @@ validate_graph
 
 - 直接改变的 Place / Passage；
 - 可达性变化；
-- 最短时间变化；
+- 基于指定 MobilityProfile 的最短时间变化；
 - 是否影响已有稳定 ID 和 content hash。
 
 Scenario invariant、Knowledge leakage 和 semantic diff 需要组合 Scenario / Knowledge context，不能由裸 Spatial Graph 工具假装单独证明。本文也不设计具体 CLI、MCP schema 或编辑事务协议。
@@ -1335,7 +1354,7 @@ Objective Graph
 
 不要一开始声称完整 gameplay bisimulation。
 
-若未来 Grid 本身允许 Human 逐格操作，就需要另写 Human realization Design Note，定义窄的 entry / exit abstraction 与 player-visible trace contract。本文不承诺任意有向 Graph 都能被一般 2D Grid 完整等价实现，也不让未来的美术约束反过来塑造 V1 Spatial。
+若未来 Grid 本身允许 Human 逐格操作，就需要另写 Human realization Design Note，定义窄的 entry / exit abstraction 与 player-visible trace contract。本文不承诺任意 Graph 都能被一般 2D Grid 完整等价实现，也不让未来的美术约束反过来塑造 V1 Spatial。
 
 ---
 
@@ -1346,33 +1365,37 @@ Objective Graph
 - Area 构成唯一 root 的无环树；
 - 每个 Place 属于恰一个 direct Area；
 - Passage endpoints 必须存在；
-- PassageId、PlaceId、AreaId、MilestoneId 稳定且唯一；
-- Passage 有向、正耗时、无 self-loop；
-- 同一 Passage 的 milestone offset 严格递增且位于内部；
+- PassageId、PlaceId、AreaId 稳定且唯一；
+- Passage 有两个不同 endpoint、正 PassageLength，且首版允许双向进入；
+- PassageDefinition 不包含 TravelDuration、Site 或 Milestone；
 - ViewLink 有向、两端 Place 必须存在，且不能暗示 Movement connectivity；
 - canonical hash 不依赖输入集合插入顺序；
 - RulesVersion 明确约束运行时解释。
 
 ## 16.2 Dynamic State
 
-- 一个 Entity 恰好 `AtPlace` 或 `InTransit(TraversalId)`；
+- 一个 Entity 恰好 `AtPlace` 或 `TraversingPassage(TraversalId)`；
 - 每个 active TraversalState 恰好被所属 Entity 引用一次；
-- Traversal 的 Passage 必须存在且起点与开始前 AtPlace 精确匹配；
-- `ArrivalDue == checked(StartedAt + Passage.TravelDuration)`；
-- 每个 milestone due 精确等于 `checked(StartedAt + OffsetFromStart)`；
-- NextMilestoneIndex 与已消费事件一致；
+- Traversal 的 Passage 必须存在，首次 origin endpoint 与开始前 AtPlace 精确匹配；
+- SegmentOriginOffset 必须位于 `[0, PassageLength]`，TargetEndpoint 必须是其一端且剩余距离为正；
+- SpeedSnapshot 必须为正，ArrivalDue 由冻结的确定性 TravelTime 规则 checked 计算且严格晚于 SegmentStartedAt；
+- active Traversal 始终在运动；不存在 StationaryOnPassage；
 - TraversalId 正值、稳定、不可复用；
-- 开始 traversal 必须原子创建 TraversalState 并把 Entity 置为 InTransit；
-- 移除 InTransit Entity 必须原子移除其 TraversalState；
+- TurnBack 保留 TraversalId、物化当前 Offset、严格增加 Generation 并完整替换运动段；
+- 在原 endpoint 的零进度 TurnBack 直接结束 traversal 并恢复 AtPlace，不创建零时长运动段；ArrivalDue 时刻则先完成 arrival；
+- 开始 traversal 必须原子创建 TraversalState 并把 Entity 置为 TraversingPassage；
+- 移除 TraversingPassage Entity 必须原子移除其 TraversalState；
 - Passage enabled override 不改写 definition；
-- 动态状态不持久化派生 progress、Area ancestry 或完整 route cache。
+- 动态状态不按 tick 持久化派生 Offset，也不持久化 Area ancestry 或完整 route cache。
 
 ## 16.3 Event / Replay
 
 - Reducer 不重新寻路；
 - Reducer 不调用 LLM；
 - Reducer 不从当前 Grid realization 重建拓扑；
-- milestone、arrival 与 mutation 由 committed absolute time 决定；
+- arrival 与 mutation 由 committed absolute time 决定；
+- Reducer 不重新裁决 SpeedSnapshot，也不从外部 Actor 状态重算历史 ArrivalDue；
+- `TraversalTurnedBack` 携带 expected generation、物化 Offset 与完整新运动段；
 - `TraversalArrived` 原子删除 traversal 并把 Entity 放到目标 Place，不留下双重位置 prefix；
 - 同刻 body state 完整后才计算 derived relation；
 - Replay 不重新决定 Player 当时是否知道某条路；
@@ -1396,13 +1419,14 @@ Objective Graph
 为了守住 Graph-first 的甜点位置，首版不做：
 
 - 通用 RDF / ontology / property graph engine；
-- 连续坐标、NavMesh 或自由移动；
-- 精确路中停车；
+- 全局 2D / 3D 连续坐标、NavMesh 或自由移动；
+- Passage 中静止、等待、扎营或执行耗时 Activity；
+- Passage Site / Milestone；
 - 同 Passage 追逐、超车、迎面相遇或碰撞；
 - Passage capacity 和 reservation；
 - actor-specific movement condition DSL；
-- actor-specific speed / dynamic traversal-duration profiles；
-- 动态修改正在 traversal 的 duration；
+- 首版的方向特定 entry / base-speed 定义；未来如需增加，只能作为同一 PassageId 的 traversal policy，不能恢复两条物理 Passage；
+- 加速度、连续变速或对已经提交运动段的隐式改速；
 - arbitrary runtime Place / Passage creation；
 - 从 Graph 自动推导几何 LOS；
 - 火、水、声音或爆炸的几何扩散；
@@ -1485,24 +1509,27 @@ T1 远端道路关闭，但 Player 没有感知。在同一个 ConfirmedSpatialS
 
 Actor 到达能够合法感知入口以后，才提交 Observation 并更新 Projection。内部 rejection code 不能提前披露远端原因。
 
-## 18.5 Passage milestone
+## 18.5 稳定途中地点使用 degree-2 Place
 
-Actor 沿长路旅行，在准确 ModelTime 经过石碑：
+山路中间有一座可调查的石碑。Objective Graph 必须把它建成 `RoadsideShrine` Place，并用两条正 Length Passage 连接前后端：
 
-- 石碑若只能看见，保留 milestone；
-- 若允许停下调查，测试必须失败并要求将其提升为 Place；
-- Journal 不产生每个表现 Cell 的无意义 step；
-- Spatial 先提交 `PassageMilestoneReached`，Perception 后提交 player Observation，Knowledge 再投影，最后才允许唯一 Decision；
-- Replay 不重新解释 milestone content。
+- 抵达时先提交 AtPlace 与合法 Observation；
+- 有新信息时可以产生 Decision；
+- 无新信息时可以在同一 ModelTime 的后续 microstep 显式开始下一 Passage；
+- 两段 Length / travel cost 的组合与原路线设计一致；
+- Definition 和 Journal 中不存在 Site / Milestone 或每个表现 Cell 的无意义 step。
 
-## 18.6 StopAtNextPlace
+## 18.6 途中信息触发原路掉头，但不能停车
 
-Actor 正在 Passage 上时改变主意：
+PassageLength = 100。Actor 在 T0 从 EndpointA 出发，按冻结速度预计 T100 抵达 EndpointB；T40 收到“前方已有埋伏”的 committed Observation，并选择 TurnBack：
 
-- 不瞬移回起点；
-- 不生成任意连续坐标；
-- 当前 traversal 正常抵达；
-- 在下一个 Place 停止并触发需要的 Decision。
+- 旧运动段在 T40 物化出确定性 PassageOffset；
+- TraversalId 保持不变、Generation 增加；
+- 新 TargetEndpoint 是 A，并产生严格晚于 T40 的新 ArrivalDue；
+- 旧 T100 candidate stale；
+- Actor 不必先走到 B，也不瞬移回 A；
+- `StopHere`、`WaitOnPassage` 与开始其它耗时 Activity 必须稳定拒绝；
+- 若 Player 需要等待或设伏，必须先抵达某一 endpoint Place 或作者提供的 degree-2 Place。
 
 ## 18.7 层级与 prompt 压缩
 
@@ -1528,11 +1555,11 @@ world → region → town → interior
 
 ## 18.9 Replay / Fork
 
-在 traversal 中途 milestone 后 Fork：
+在 traversal 中途收到消息并 TurnBack 后 Fork：
 
 - 相同 committed state 得到相同 next SpatialMoment；
 - Replay 不重新寻路；
-- 不重新调用 LLM 解释 milestone；
+- EffectiveOffset、Generation 与下一 ArrivalDue 完全一致；
 - Fork 同时复制 Confirmed / Claim evidence 与 Observation acknowledgement cursor；
 - 同一 opaque handle 及其 server-side correlation 在 Replay / Fork 后仍解析为同一个 authorized attempt，但任何 player-visible bytes 都不含 Objective ID；
 - 两支在新 evidence 出现前完全相等，之后才合法分叉；
@@ -1570,7 +1597,7 @@ LLM 枚举或猜测 secret Objective IDs：
 - 不产生 CoPresence；
 - 不产生 Passed / Saw / Encounter；
 - 不制造虚构 Place；
-- 只有显式 Game milestone / event 可以产生沿途见闻。
+- 只有显式 Game / Activity event 可以产生沿途见闻。
 
 这个测试证明首版主动牺牲了同路几何相遇，而不是把语义留在模糊地带。
 
@@ -1589,9 +1616,10 @@ Confirmed exits、claims 或 observations 超过 DecisionView cap：
 
 ## 18.16 Grid-free slice
 
-完整 Scenario 必须能够在没有 GridMap、坐标或 LOS 的情况下运行：
+完整 Scenario 必须能够在没有 GridMap、二维坐标或 LOS 的情况下运行；PassageLength / Offset 只是局部一维旅行坐标：
 
 - Actor 导航；
+- 途中收到信息并原路掉头；
 - 动态封路；
 - 途中披露；
 - 先见不可达；
@@ -1622,18 +1650,19 @@ Actor 在 T 抵达一个此前只知道入口、尚未确认内部结构的 Plac
 
 解决方向不是给 Place 加任意子坐标，而是拆成少量真正有互动意义的原子 Place，并用 Area 折叠摘要。
 
-## 19.2 InTransit 是否值得首版复杂度
+## 19.2 可逆但不可静止的 Passage traversal 是否过度约束
 
-完全不建模 InTransit，会让长途 Actor 在客观上一直留在起点。
+完全不建模 Passage traversal，会让长途 Actor 在客观上一直留在起点；允许任意路中静止，则会把等待、扎营、对象放置、共处和长期 Activity 全部引入 Passage。
 
 本文选择：
 
-- 保留 InTransit + 单一 TraversalState；
-- 不持久化连续进度；
-- 不支持任意停车；
+- 保留 TraversingPassage + 单一可逆 TraversalState；
+- 用 Length、SpeedSnapshot 和 ModelTime 延迟求值 Offset，不按 tick 持久化；
+- 允许任意事件时刻原路掉头；
+- 不支持 Passage 中静止或恢复；
 - 不推导同路相遇。
 
-这是时间真实性与模型简单性之间的甜点。
+这使 Actor 能对新信息作出可信反应，同时让所有长期活动地点继续由 Place 统一承担。它牺牲“随时在路边扎营”，换取更封闭的状态机和每个 active traversal 都有有限下一 Due 的 liveness。
 
 ## 19.3 ViewLink 会不会重新长成 LOS DSL
 
@@ -1671,7 +1700,7 @@ Actor 在 T 抵达一个此前只知道入口、尚未确认内部结构的 Plac
 ```text
 Objective topology
 + authoritative game action validation
-+ explicit BeginTraversal(EntityId, PassageId)
++ explicit BeginTraversal(EntityId, PassageId, FromEndpoint, SpeedSnapshot)
 ```
 
 剩余工程风险是跨子系统同刻原子性：必须确保 action validator 的 non-spatial precondition 与提交给 Spatial 的明确 attempt 属于同一个可信协调流程，并在 Journal 中记录当时实际接受的结果。不能让 Spatial 在 Replay 时重新读取 Inventory，也不能把内部失败原因直接当作 Player Observation。
@@ -1680,7 +1709,7 @@ Objective topology
 
 本文选择：每次 `TraversalArrived` 都形成一个真实、完整的 `AtPlace` committed boundary。Perception / Knowledge 必须先处理这个 Place 的新候选，composition 才能在后续 microstep 自动继续。
 
-因此若另一 Actor 确实停留在该 Place，arrival 可以产生真实的 same-Place perception 和 reconsideration；它不是 Spatial batch 内不可见的 transient prefix。若内容作者不希望某个纯路线点具有这种会合意义，就不应把它建成 Place，而应使用 milestone 或保持为 Passage 内部表现。
+因此若另一 Actor 确实停留在该 Place，arrival 可以产生真实的 same-Place perception 和 reconsideration；它不是 Spatial batch 内不可见的 transient prefix。若内容作者不希望某个纯表现点具有这种会合意义，就不应把它建成 Place；若又要求在那里准确触发客观事件，就说明它事实上拥有 Place 语义。
 
 ---
 
@@ -1706,10 +1735,10 @@ Places
     HostageTower
 
 Passages
-    8–12 条有向通路
+    8–12 条双端、正 Length 通路
     一条隐藏捷径
     一条定时关闭的渡船
-    一条包含 milestone 的长路
+    一条会在途中收到危险消息、允许掉头的长路
 ```
 
 角色：
@@ -1725,7 +1754,7 @@ Passages
 - 一方听到错误路线传闻；
 - 动态封路不会向不知情 Player 泄漏；
 - AI Player 使用 confirmed-route tool 作出计划；
-- Passage milestone 触发一次有意义的 reconsideration；
+- Passage 途中消息触发一次有意义的 Continue / TurnBack reconsideration；
 - Replay / Fork 能比较“透露路线”和“不透露路线”的后果。
 
 为了不把 Objective、Knowledge 和 LLM 调试混成一个巨型首包，实验分成三个 gate：
@@ -1733,8 +1762,10 @@ Passages
 ```text
 Gate A — Objective
     Area / Place / Passage
-    AtPlace / InTransit
-    单 Passage arrival / mutation / milestone
+    AtPlace / TraversingPassage
+    Length / SpeedSnapshot / lazy Offset
+    单 Passage arrival / mutation / TurnBack
+    Passage 中 Stop / Wait rejection
     Replay / Fork
 
 Gate B — Epistemic
@@ -1745,7 +1776,7 @@ Gate B — Epistemic
 
 Gate C — Product
     Human + LLM Decision
-    milestone reconsideration
+    mid-passage TurnBack reconsideration
     hidden route disclosure
     Fork outcome comparison
 ```
@@ -1798,17 +1829,17 @@ Gate C — Product
 | Grid-first | Graph-first |
 |---|---|
 | `GridMapDefinition` | `SpatialGraphDefinition` |
-| `CellRef` | `AtPlace / InTransit(TraversalId)` |
+| `CellRef` | `AtPlace / TraversingPassage(TraversalId)` |
 | Orthogonal Cell edge | Explicit Passage |
-| Portal special edge | 普通有向 Passage / traversal profile |
-| Cell MoveCost | Passage TravelDuration |
+| Portal special edge | 普通双端 Passage / movement profile |
+| Cell MoveCost | PassageLength + SpeedSnapshot → travel cost |
 | Cell / Portal override | Passage enabled override |
 | Anchor | PlaceId |
 | Zone cells | Area ancestry 或 game tags |
 | CurrentLeg cell step | Passage traversal |
-| `EntityStepped` | `TraversalStarted / PassageMilestoneReached / TraversalArrived` |
+| `EntityStepped` | `TraversalStarted / TraversalTurnedBack / TraversalArrived` |
 | Same Cell | Same Place |
-| StrictSupercover LOS | Same-place candidate / ViewLink / milestone lifting |
+| StrictSupercover LOS | Same-place candidate / ViewLink / external perception lifting |
 
 后续软件工程至少有三条候选路径：
 
@@ -1845,9 +1876,9 @@ Gate C — Product
 只实现：
 
 - immutable graph definition；
-- AtPlace / InTransit；
+- AtPlace / TraversingPassage；
 - deterministic navigator；
-- milestone / arrival Forecast；
+- lazy Offset / TurnBack / arrival Forecast；
 - bounded player view；
 - 一个真实 LLM Slice。
 
@@ -1894,7 +1925,7 @@ Hybrid Spatial Semantic Hierarchy 进一步采用“全局拓扑 + 局部度量�
 ```text
 LLM-first semantic action
 + Objective / Confirmed / Claimed spatial separation
-+ positive-time Passage
++ positive-Length reversible Passage traversal
 + Kernel Forecast / Journal / Replay / Fork
 + Providence / Scenario mutation
 + optional Human realization
@@ -1909,9 +1940,9 @@ Grid-first Spatial 的核心问题不是算法不成熟，而是它默认从 Hum
 Graph-first 选择反过来：
 
 1. 先定义对 Player 有意义的 Place；
-2. 用 Passage 定义机会、时间和路线；
+2. 用 PassageLength、运动快照与可逆 traversal 定义机会、时间和路线；
 3. 用 Area 压缩大型世界；
-4. 用 milestone 和 ViewLink 明确设计信息披露；
+4. 用有语义的 Place、ViewLink 和其它子系统事件明确设计信息披露；
 5. 用 Confirmed Spatial Projection 和 claims 保存主体差异；
 6. 只把局部、相关、可行动的信息交给 LLM；
 7. 让 Kernel 保存旅程和变化的真实时间；
