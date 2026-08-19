@@ -821,20 +821,6 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Visibility outcome sets must be canonical, disjoint, and unique.");
         }
 
-        HashSet<EntityId> trackedVisible =
-            state.TryGetEntity(visibility.ObserverId, out SpatialEntityState? observer) &&
-            observer!.ObservationEnabled
-                ? new SpatialQueries(definition)
-                    .GetVisibleEntities(state, visibility.ObserverId)
-                    .ToHashSet()
-                : [];
-        if (visibility.AddedEntityIds.Any(entityId => !trackedVisible.Contains(entityId)) ||
-            visibility.RemovedEntityIds.Any(trackedVisible.Contains))
-        {
-            throw new InvalidOperationException(
-                "Visibility outcome direction does not match the final tracked-visible entity set.");
-        }
-
         return state;
     }
 

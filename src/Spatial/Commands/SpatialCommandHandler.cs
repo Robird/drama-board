@@ -10,7 +10,7 @@ public sealed class SpatialCommandHandler
     /// <summary>Creates a command boundary pinned to one immutable spatial definition.</summary>
     public SpatialCommandHandler(SpatialDefinition definition)
     {
-        ArgumentNullException.ThrowIfNull(definition);
+        SpatialRules.EnsureSupported(definition);
         _definition = definition;
     }
 

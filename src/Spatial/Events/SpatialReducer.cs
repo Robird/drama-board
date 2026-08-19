@@ -11,7 +11,7 @@ public sealed class SpatialReducer : IEventReducer<SpatialState, SpatialEvent>
     /// <summary>Initializes a reducer bound to immutable spatial content.</summary>
     public SpatialReducer(SpatialDefinition definition)
     {
-        ArgumentNullException.ThrowIfNull(definition);
+        SpatialRules.EnsureSupported(definition);
         _definition = definition;
     }
 

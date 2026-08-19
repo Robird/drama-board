@@ -1,9 +1,12 @@
 # Design Note 007：Spatial Framework
 ## ——单向依赖 Kernel 的统一分层四向二维网格空间子系统
 
-**状态：首版实现前设计裁决稿**  
-**日期：2026-08-19**  
-**代码审计基线：`main @ 4dbde31`**  
+**状态：首版已实现，设计与实现同步**
+
+**日期：2026-08-19**
+
+**实现位置：`src/Spatial`；验收位置：`tests/Spatial.Tests`**
+
 **定位：** 定义 DramaBoard 首版框架层空间子系统的职责、依赖方向、统一网格模型、时间语义、事件边界、确定性约束与首批验证实验。
 
 本文承接：
@@ -1650,6 +1653,8 @@ handler 输出：
 4. 每个 `SpatialEventKind` 使用稳定 Id，并通过 Kernel `EventKind.Version` 声明 payload schema version。
 5. rules version 锁定 Dijkstra、LOS、phase 与 CurrentLeg 规则；content hash 不能代替它。
 6. Presentation 插值和路径缓存不属于 replay contract。
+
+当前 runtime 只执行 `SpatialRules.CurrentVersion == 1`。Definition / State 可以保留未来或归档版本的 metadata，但 Reducer、Queries、CommandHandler 与 SpatialSubsystem 在绑定不受支持的版本时必须立即失败，不能悄悄用 V1 算法解释它。
 
 `SpatialState.Create(definition)` 固定 Definition stamp；SpatialSubsystem、SpatialCommandHandler 与 SpatialQueries 的每个公开入口都先验证 stamp，SpatialQueries 还必须验证它收到的是完整 commit 边界状态。hash / rules mismatch 必须在 Forecast / Resolve 或命令 / 查询执行前失败，不能使用新规则解释旧 state。
 

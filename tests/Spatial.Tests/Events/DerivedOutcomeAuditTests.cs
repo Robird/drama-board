@@ -115,10 +115,17 @@ public sealed class DerivedOutcomeAuditTests
                 new EntityId(1),
                 [new EntityId(1)],
                 [])));
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(1),
+                [default],
+                [])));
     }
 
     [Fact]
-    public void DerivedVisibilityOutcome_RejectsDirectionContradictingFinalTrackedSet()
+    public void DerivedVisibilityOutcome_DoesNotRecomputeDirectionFromFinalLineOfSight()
     {
         SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
         SpatialState state = SpatialState.Create(definition);
@@ -144,49 +151,52 @@ public sealed class DerivedOutcomeAuditTests
             cell: TestSpatialDefinitionBuilder.Cell("world", 0, 0),
             observationEnabled: false);
 
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
+        GeometricVisibilityChangedEvent[] historicalOutcomes =
+        [
+            // Entity 2 is currently visible, but replay must not re-prove a committed removal.
             new GeometricVisibilityChangedEvent(
                 new EntityId(1),
                 addedEntityIds: [],
-                removedEntityIds: [new EntityId(2)])));
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
+                removedEntityIds: [new EntityId(2)]),
+            // Entity 3 is on another map, but replay must not run LOS to reject the committed addition.
             new GeometricVisibilityChangedEvent(
                 new EntityId(1),
                 addedEntityIds: [new EntityId(3)],
-                removedEntityIds: [])));
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
+                removedEntityIds: []),
+            // Disabled and subsequently removed observers remain valid historical correlation IDs.
             new GeometricVisibilityChangedEvent(
                 new EntityId(4),
                 addedEntityIds: [new EntityId(2)],
-                removedEntityIds: [])));
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
+                removedEntityIds: []),
             new GeometricVisibilityChangedEvent(
                 new EntityId(99),
                 addedEntityIds: [new EntityId(2)],
-                removedEntityIds: [])));
+                removedEntityIds: []),
+        ];
 
-        Assert.Same(state, SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new GeometricVisibilityChangedEvent(
-                new EntityId(1),
-                addedEntityIds: [new EntityId(2)],
-                removedEntityIds: [new EntityId(3)])));
-        Assert.Same(state, SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new GeometricVisibilityChangedEvent(
-                new EntityId(4),
-                addedEntityIds: [],
-                removedEntityIds: [new EntityId(2)])));
+        foreach (GeometricVisibilityChangedEvent historicalOutcome in historicalOutcomes)
+        {
+            Assert.Same(
+                state,
+                SpatialEventTestHarness.Apply(definition, state, historicalOutcome));
+        }
+    }
+
+    [Fact]
+    public void VisibilityEvent_RejectsEmptyDuplicateAndOverlappingSets()
+    {
+        Assert.Throws<ArgumentException>(() => new GeometricVisibilityChangedEvent(
+            new EntityId(1),
+            [],
+            []));
+        Assert.Throws<ArgumentException>(() => new GeometricVisibilityChangedEvent(
+            new EntityId(1),
+            [new EntityId(2), new EntityId(2)],
+            []));
+        Assert.Throws<ArgumentException>(() => new GeometricVisibilityChangedEvent(
+            new EntityId(1),
+            [new EntityId(2)],
+            [new EntityId(2)]));
     }
 
     [Fact]

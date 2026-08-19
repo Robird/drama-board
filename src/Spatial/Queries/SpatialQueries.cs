@@ -8,7 +8,7 @@ public sealed class SpatialQueries
     /// <summary>Initializes queries pinned to one immutable spatial definition.</summary>
     public SpatialQueries(SpatialDefinition definition)
     {
-        ArgumentNullException.ThrowIfNull(definition);
+        SpatialRules.EnsureSupported(definition);
         _definition = definition;
     }
 

@@ -14,7 +14,7 @@ public sealed class SpatialSubsystem :
     /// <summary>Initializes a Spatial system with one composition-root-reserved source identity.</summary>
     public SpatialSubsystem(SpatialDefinition definition, long sourceId)
     {
-        ArgumentNullException.ThrowIfNull(definition);
+        SpatialRules.EnsureSupported(definition);
         if (sourceId <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(sourceId), "Spatial source identifier must be positive.");
