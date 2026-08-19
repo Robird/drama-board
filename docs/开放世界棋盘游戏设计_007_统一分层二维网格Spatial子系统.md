@@ -396,6 +396,8 @@ SpatialSubsystem 构造时绑定一个定义；`SpatialState` 保存对应的 `D
 
 修改地图后，不允许旧 Journal 在没有版本声明的情况下使用新地图重新解释。
 
+`ContentHash` 由 `SpatialDefinition` 对规范化内容自行计算，不接受调用方声称的 hash。Map、Portal、Anchor、Zone 与 Zone cell 在编码前都按稳定总序排列；相同内容不因输入集合的插入顺序不同而得到不同 hash。
+
 `ContentHash` 只锁定地图内容；`SpatialRulesVersion` 另行锁定：
 
 - 邻接与边成本公式；
@@ -445,8 +447,9 @@ CellDefinition
     MoveCost
     BlocksMovement
     BlocksSight
-    ZoneIds[]
 ```
+
+Zone membership 只由 `ZoneDefinition.Cells` 权威定义；SpatialDefinition 可以建立可丢弃的 per-cell Zone 索引。不能同时让 `CellDefinition.ZoneIds` 成为第二套真理。
 
 约束：
 
@@ -464,6 +467,8 @@ SpatialState
     DefinitionId / ContentHash / SpatialRulesVersion
     Revision
     NextMomentOrdinal
+    NextJourneyOrdinal
+    NextMutationOrdinal
     Entities
     Journeys
     PortalOverrides
@@ -478,9 +483,12 @@ SpatialEntityState
     EntityId
     Cell
     ObservationEnabled
+    MovementGeneration
 ```
 
-所有已放置 Entity 都参与 Zone、CoPresence，并可作为几何可见目标；`ObservationEnabled` 只表示 Spatial 是否需要为它计算几何可见集合，不表示它真的注意、识别或记住了目标。门、墙、烟雾、路障不建模为 Entity，而是 Cell / Portal definition 或 override。
+所有已放置 Entity 都参与 Zone、CoPresence，并可作为几何可见目标；`ObservationEnabled` 只表示 Spatial 是否需要为它产生几何可见差量，不表示它真的注意、识别或记住了目标。`MovementGeneration` 是当前 Entity placement lifetime 内的移动调度代数。门、墙、烟雾、路障不建模为 Entity，而是 Cell / Portal definition 或 override。
+
+`NextJourneyOrdinal` 与 `NextMutationOrdinal` 是持久 allocator，已完成 Journey 或已消费 mutation 也不能导致 ID 复用。所有 allocator 与 revision 的递增都使用 checked arithmetic。
 
 首版不持久化 Zone membership、CoPresence pair、visible cells 或 visible entity contacts。它们都由 committed definition + state 纯推导；需要事件差量时，由统一 transition 对 pre/post 投影作比较。
 
@@ -715,16 +723,16 @@ JourneyState
 
 合法 active Journey 正常情况下恰有一个 `CurrentLeg`；只允许在同一个未完成 reducer batch 的中间态短暂无 leg，合法 commit / Fork 边界不能留下这种状态。
 
-新目标、取消、强制中断都会改变 `Generation`。
+新目标、取消、强制中断都会改变 Entity 的 `MovementGeneration`；active Journey 与 CurrentLeg 保存相同 generation。
 
 旧 candidate 在全量 re-Forecast 后自然消失，不需要 cancellation API。
 
 命令边界固定为：
 
-- `AssignMoveGoal` 只接受没有 active Journey 的 Entity；已有 Journey 必须显式 `RetargetMoveGoal`；
-- 若 Entity 当前格已经满足 Cell / Anchor / Zone goal，直接记录 `JourneyCompleted(AlreadySatisfied)`，不创建零时长 leg 或悬空 Journey；
-- `RetargetMoveGoal` 先在当前 working state 上验证目标并规划完整新 leg；若不可达，整个命令无 SpatialEvent、旧 Journey / CurrentLeg 原样保留；若成功，才原子替换旧 leg。Entity 留在 `From`，旧 leg 已投入时间不折算为新 leg 进度；
-- `CancelMoveGoal` 与 `InterruptMovement` 清除 CurrentLeg、结束 Journey，Entity 留在 `From`；
+- `AssignMoveGoal` 只接受没有 active Journey 的 Entity；已有 Journey 必须显式 `RetargetMoveGoal`。接受时递增 Entity 的 MovementGeneration；
+- 若 Entity 当前格已经满足 Cell / Anchor / Zone goal，仍分配并消费一个 JourneyId、递增 MovementGeneration，并直接记录 `JourneyCompleted(AlreadySatisfied)`；不创建零时长 leg 或悬空 Journey；
+- `RetargetMoveGoal` 先在当前 working state 上验证目标并规划完整新 leg；若不可达，整个命令无 SpatialEvent、旧 Journey / CurrentLeg 原样保留；若成功，才递增 MovementGeneration 并原子替换旧 leg。Entity 留在 `From`，旧 leg 已投入时间不折算为新 leg 进度；
+- `CancelMoveGoal` 与 `InterruptMovement` 递增 MovementGeneration、清除 CurrentLeg、结束 Journey，Entity 留在 `From`；
 - `RemoveEntity` 必须在同一权威事件中移除它的 active Journey；
 - 这些转换都递增 Journey generation，使旧 candidate 失效。
 
@@ -892,6 +900,8 @@ Actor 注册顺序、Dictionary 插入顺序和线程调度不得改变结果。
 
 所有 ID 比较都必须具有跨进程稳定总序：数值 ID 按数值比较，字符串 ID 使用 Ordinal，不使用本地文化排序。equal-cost predecessor 的替换规则也必须固定并测试，不能只固定 priority queue 的 key。
 
+首版固定为：在规范化 frontier 与邻接顺序下，equal-cost 时首次发现的 predecessor 获胜；相同 cost 不替换 predecessor，也不重复入队。
+
 ## 9.4 首版不提供路径偏好 DSL
 
 暂不提供：
@@ -957,7 +967,7 @@ CandidateId
     = SpatialState 中持久化的 NextMomentOrdinal
 ```
 
-`NextMomentOrdinal` 是下一次实际 SpatialMoment 的因果身份，不是 topology cache revision。每个成功的 SpatialMoment batch 必须恰好包含一个 `spatial.moment-resolved`，由它递增 ordinal；普通 state-changing external SpatialEvent 只递增 `Revision`，不会消耗 ordinal。派生 outcome 的 reducer case 是 no-op，不递增 revision。
+`NextMomentOrdinal` 是下一次实际 SpatialMoment 的因果身份，不是 topology cache revision。每个成功的 SpatialMoment batch 必须恰好包含一个 `spatial.moment-resolved`，由它递增 ordinal；每个改变 SpatialState 的 primary event 都将 `Revision` checked `+1`，包括 `moment-resolved`；派生 outcome 的 reducer case 是 no-op，不递增 revision。
 
 `ExpectedSpatialRevision` 用于拒绝 stale candidate。首版不再增加 `DueWorkFingerprint`：当前 Kernel 每次事件后都会重建 forecast queue，一个 Spatial source 又只产生一个 candidate，revision 已足够表达失效。若以后有明确失败案例，再引入基于 canonical work keys 的稳定摘要；绝不能使用进程相关的 `GetHashCode()`。
 
@@ -990,6 +1000,8 @@ ForecastNext(SpatialState state, ModelTime now)
 - 不依赖系统注册顺序。
 
 一个有效 SpatialMoment candidate 的 Resolve 必须产生非空 batch，并至少包含一个会消费、推进或替换当前 due work 的权威事件。idempotent scheduled mutation 也必须有 `mutation-consumed`；每个有效 moment 都以 `moment-resolved` 收尾。不能用空 Resolve 表示“检查过但没有变化”，否则会触发 Kernel 的 repeated no-op 防护。
+
+`Resolve` 收到 stale 或包装错误的 candidate 时抛出稳定异常；它必须核对 SourceId、CandidateId、payload ordinal、ExpectedSpatialRevision、当前最早 Due 与 Definition stamp，不能用空 batch 表示拒绝。
 
 ---
 
@@ -1081,6 +1093,7 @@ Actor step through door due @ T
 ```text
 spatial.entity-placed
 spatial.entity-removed
+spatial.observation-state-changed
 spatial.journey-started
 spatial.journey-retargeted
 spatial.journey-cancelled
@@ -1108,6 +1121,8 @@ spatial.geometric-visibility-changed
 ```
 
 派生 outcome 不修改 `SpatialState`；它们存在于 Journal 中是为了审计和提升产品事件，不成为比位置与 topology 更高的第二套真理。命令拒绝不是 `SpatialEvent`，Spatial 返回稳定 rejection code，由游戏层按需记录 `game.action-rejected`。
+
+正式 Reducer 必须同时核对 EventKind Id、Version 与 concrete payload type。Kernel 的 `EventKind` equality 只表示 routing identity，不能替 Spatial 完成 schema 校验。
 
 `journey-started / continued / rerouted` payload 必须携带完整 resulting `CurrentLeg`；`entity-stepped` 必须携带 `From / To / JourneyGeneration`。Reducer 不重新寻路。
 
@@ -1155,6 +1170,8 @@ Moment completion：SpatialEvent 子序列中的最后一个
 
 同一 Entity 在一个 command batch 中出现多个互斥 lifecycle / movement 命令也作为冲突组整体拒绝，不能让规范 phase 隐式选择赢家。
 
+scheduled mutation 的 Portal target 是整个 PortalId，Cell target 是整个 CellOverride；`Due` 必须严格晚于 command time。相同 target + Due + resulting value 规范化去重并让相关命令都 accepted；不同 resulting value 的整个冲突组拒绝且不消费 MutationId。
+
 ## 12.3 临时投影与正式状态
 
 所有会改变位置、Entity 集合、topology、遮挡或 observer 开关的转换，都必须经过同一个纯 `SpatialTransition`：
@@ -1179,6 +1196,8 @@ Kernel commit
 更新。
 
 Resolve 不直接返回一个旁路 WorldState，也不保留不可重放的隐藏 mutation。
+
+scratch fold 与正式 reducer 共同委托一个不依赖 `EventCause / Microstep` 的纯 `SpatialProjector`。需要参与状态语义的 ModelTime 必须来自当前 transition time 或明确 event payload；不能伪造尚未由 Kernel 分配的 DomainEvent metadata。
 
 ---
 
@@ -1274,6 +1293,8 @@ Portal
 - 算法应满足 `LOS(A, B) == LOS(B, A)`；
 - 边界、旋转与镜像结果必须由测试锁定。
 
+可编码的首版定义为：从 source cell center 到 target cell center，以整数 / 有理数比较枚举闭线段接触的全部格；精确经过角点时同时纳入两个侧邻格。source 与 target 不作为中间 blocker，不透明 target 自身可见；任一被接触的中间不透明格都足以阻挡，不要求角点两侧同时有墙。算法不得依赖浮点舍入。
+
 四方向移动消除了移动 corner-cutting，但没有自动消除斜向视线的墙角语义，所以 LOS 必须有独立规则。
 
 ## 14.2 Query 与事件
@@ -1298,6 +1319,8 @@ GeometricVisibilityChanged
 ```
 
 `GetVisibleEntities` 排除 observer 自身；同格其他 Entity 几何可见；active CurrentLeg 全程按 `From` 参与 LOS；Portal 不传播 LOS。所有已放置空间 Entity 都可成为几何目标，至于上层是否把某类对象视为可感知 subject，由 Perception 层决定。
+
+`GetVisibleCells / GetVisibleEntities` 可对任何已放置 Entity 做客观查询，不受 `ObservationEnabled` 限制。该开关只控制 transition 是否产生 visibility delta；从 true 切换到 false 时产生原可见集合的 Removed，从 false 切换到 true 时产生当前集合的 Added。
 
 该 event 只是 transition 时刻的客观几何差量，不修改 SpatialState，也不得直接当作 Protocol 的 `VisibleActorIds` 发布。
 
@@ -1509,7 +1532,7 @@ InterruptMovement
 ```text
 HandleBatch(
     SpatialState preState,
-    IReadOnlyList<SpatialCommand> simultaneousCommands,
+    IReadOnlyList<SpatialCommand> simultaneousCommands, // 每条带稳定 CommandId
     ModelTime now)
     → accepted SpatialEvents[] + per-command rejection codes
 ```
@@ -1526,6 +1549,8 @@ HandleBatch(
 ```
 
 每组接受的权威 event 都先 scratch-fold，再验证后续命令；不能让每条命令都独立读取同一个原始 pre-state。稳定 ID 必须来自显式 allocator state 或规范化 command identity，不能让两个同时 translator 各自猜测“下一个 ID”。
+
+同批 `CommandId` 必须唯一。JourneyId 与 ScheduledMutationId 由 State allocator 按规范化 CommandId 顺序分配，调用方不能提供或猜测。
 
 handler 输出：
 
@@ -1589,6 +1614,7 @@ handler 输出：
 6. Journey generation 与 CurrentLeg generation 一致。
 7. retarget / cancel / interrupt 清除旧 leg，Entity 留在 From；旧 leg 已投入时间不转移。
 8. 下一 leg 完整写入 event，Replay 不重新选路。
+9. JourneyId 与 ScheduledMutationId 由持久 allocator 产生，完成或消费后不得复用。
 
 ## 18.4 排序
 
@@ -1608,6 +1634,8 @@ handler 输出：
 4. 每个 `SpatialEventKind` 使用稳定 Id，并通过 Kernel `EventKind.Version` 声明 payload schema version。
 5. rules version 锁定 Dijkstra、LOS、phase 与 CurrentLeg 规则；content hash 不能代替它。
 6. Presentation 插值和路径缓存不属于 replay contract。
+
+`SpatialState.Create(definition)` 固定 Definition stamp；SpatialSubsystem、SpatialCommandHandler 与 SpatialQueries 的每个公开入口都先验证 stamp。hash / rules mismatch 必须在 Forecast / Resolve 或命令 / 查询执行前失败，不能使用新规则解释旧 state。
 
 ## 18.6 Fork
 
@@ -1754,7 +1782,7 @@ Spatial 首版也不是：
 
 ### Mid-step Event
 
-- 在一个长世界地图 step 中间插入外部事件；
+- 在一个长世界地图 step 中间安排一个真实到期的 scheduled spatial mutation，或先由另一个真实 candidate 将 Kernel cursor 推进到中点再提交 external input；不能把 `Run(until: midpoint)` 误认为 cursor 已自动推进到 midpoint；
 - Actor 权威位置仍为 From；
 - Journey 仍 active；
 - Actor 仍与 From 的 Entity 共处、按 From 计算几何可见；

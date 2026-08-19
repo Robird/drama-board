@@ -7,6 +7,7 @@
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/Player.Llm/Player.Llm.csproj" />
     <Project Path="src/Protocol/Protocol.csproj" />
+    <Project Path="src/Spatial/Spatial.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FirstBoard.Persistence.Tests/FirstBoard.Persistence.Tests.csproj" />
@@ -16,5 +17,6 @@
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/Player.Llm.Tests/Player.Llm.Tests.csproj" />
     <Project Path="tests/Protocol.Tests/Protocol.Tests.csproj" />
+    <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
 </Solution>
