@@ -144,6 +144,26 @@ public readonly record struct TerrainId : IComparable<TerrainId>
     public override string ToString() => Value;
 }
 
+/// <summary>Correlates one spatial command with its deterministic batch result.</summary>
+public readonly record struct SpatialCommandId : IComparable<SpatialCommandId>
+{
+    /// <summary>Initializes a command identifier from its stable value.</summary>
+    public SpatialCommandId(string value)
+    {
+        Value = StableIdentifier.Validate(value, nameof(value), "Spatial command identifier");
+    }
+
+    /// <summary>Gets the stable identifier value.</summary>
+    public string Value { get; }
+
+    /// <inheritdoc />
+    public int CompareTo(SpatialCommandId other) =>
+        StringComparer.Ordinal.Compare(Value, other.Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+}
+
 /// <summary>Identifies one spatial entity with a stable positive integer.</summary>
 public readonly record struct EntityId : IComparable<EntityId>
 {

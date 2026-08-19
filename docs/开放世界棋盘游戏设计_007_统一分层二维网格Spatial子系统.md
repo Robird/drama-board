@@ -721,7 +721,7 @@ JourneyState
     CurrentLeg
 ```
 
-合法 active Journey 正常情况下恰有一个 `CurrentLeg`；只允许在同一个未完成 reducer batch 的中间态短暂无 leg，合法 commit / Fork 边界不能留下这种状态。
+合法 active Journey 始终恰有一个非空 `CurrentLeg`。成功 step 的细粒度 reducer prefix 暂时保留刚完成的旧 leg，此时唯一允许的不完整形态是 `Entity.Cell == old CurrentLeg.To`；随后必须由 continued / completed / blocked 修复。实现不使用“先清空 leg、稍后补回”的中间态，合法 commit / Fork 边界也不能留下 step prefix。
 
 新目标、取消、强制中断都会改变 Entity 的 `MovementGeneration`；active Journey 与 CurrentLeg 保存相同 generation。
 
@@ -731,7 +731,7 @@ JourneyState
 
 - `AssignMoveGoal` 只接受没有 active Journey 的 Entity；已有 Journey 必须显式 `RetargetMoveGoal`。接受时递增 Entity 的 MovementGeneration；
 - 若 Entity 当前格已经满足 Cell / Anchor / Zone goal，仍分配并消费一个 JourneyId、递增 MovementGeneration，并直接记录 `JourneyCompleted(AlreadySatisfied)`；不创建零时长 leg 或悬空 Journey；
-- `RetargetMoveGoal` 先在当前 working state 上验证目标并规划完整新 leg；若不可达，整个命令无 SpatialEvent、旧 Journey / CurrentLeg 原样保留；若成功，才递增 MovementGeneration 并原子替换旧 leg。Entity 留在 `From`，旧 leg 已投入时间不折算为新 leg 进度；
+- `RetargetMoveGoal` 先在当前 working state 上验证目标并规划完整新 leg；若不可达，整个命令无 SpatialEvent、旧 Journey / CurrentLeg 原样保留；若成功，才递增 MovementGeneration 并原子替换旧 leg。Entity 留在 `From`，旧 leg 已投入时间不折算为新 leg 进度；若新目标已由当前格满足，则保留原 JourneyId、不消费 allocator，以 `JourneyCompleted(RetargetedAlreadySatisfied)` 单事件递增 generation 并结束 Journey；
 - `CancelMoveGoal` 与 `InterruptMovement` 递增 MovementGeneration、清除 CurrentLeg、结束 Journey，Entity 留在 `From`；
 - `RemoveEntity` 必须在同一权威事件中移除它的 active Journey；
 - 这些转换都递增 Journey generation，使旧 candidate 失效。
@@ -828,7 +828,8 @@ leg 开始后发生的 MoveCost 变化不追溯修改其 `Due`；新成本只用
 
 - 仍可通行：完成 step；
 - 已不可通行但存在替代路线：保留在 `From`，记录失败 leg 与 `JourneyRerouted`，再开始新的 leg；
-- 不再可达：保留在 `From`，产生 `JourneyBlocked`。
+- 当前 leg 已不可通行且不再可达：保留在 `From`，产生 `JourneyBlocked(LegInvalidNoRoute)`；
+- step 已成功但目标尚未满足，而从新的 `To` 不再存在 continuation：保留在 `To`，产生 `JourneyBlocked(NoContinuationAfterStep)`。
 
 因此当前 leg 表示：
 
@@ -1126,6 +1127,12 @@ spatial.geometric-visibility-changed
 
 `journey-started / continued / rerouted` payload 必须携带完整 resulting `CurrentLeg`；`entity-stepped` 必须携带 `From / To / JourneyGeneration`。Reducer 不重新寻路。
 
+任何写入 event 的新 leg 都必须在产生时精确满足：正交边 `Due == StartedAt + Map.OrthogonalStepDuration × 当前有效 target MoveCost`，Portal 边 `Due == StartedAt + Portal.TraversalDuration`；乘法与时间加法均 checked。完成旧 leg 时不按后来变化的 MoveCost 重算 Due。
+
+`JourneyCompleted` 至少区分 `ReachedGoal / AssignedAlreadySatisfied / RetargetedAlreadySatisfied`，因为三者对 Journey allocator 与 MovementGeneration 的投影不同。`JourneyBlocked` 至少区分“当前 leg 到期但已不可通行”与“已成功 step、但从新格无 continuation”两个 prefix；Reducer 只核对 event 携带的旧 leg 与局部状态形态，不重新证明“没有替代路线”。
+
+所有具体 SpatialEvent 类型可以公开供上层 pattern match，但权威 event 的构造器保持 internal，只允许统一 Handler / SpatialSubsystem 产生。`moment-resolved` payload 还携带正数 `ResolvedWorkCount`；Reducer 校验 ordinal、完整边界与没有残留 due work，但不尝试从单一收尾 event 反推整个 batch 的起始工作集。
+
 首版可以调整具体事件粒度，但必须满足：
 
 - 同一个 SpatialMoment 的事件来自同一个 Kernel Resolve batch；
@@ -1197,7 +1204,9 @@ Kernel commit
 
 Resolve 不直接返回一个旁路 WorldState，也不保留不可重放的隐藏 mutation。
 
-scratch fold 与正式 reducer 共同委托一个不依赖 `EventCause / Microstep` 的纯 `SpatialProjector`。需要参与状态语义的 ModelTime 必须来自当前 transition time 或明确 event payload；不能伪造尚未由 Kernel 分配的 DomainEvent metadata。
+scratch fold 与正式 reducer 共同委托一个不依赖 `EventCause / Microstep` 的纯 `SpatialProjector.Apply(definition, state, kind, payload, modelTime)`。Definition 显式参与 Cell、Portal、Goal、边与 sparse override 的局部校验；需要参与状态语义的 ModelTime 必须来自当前 transition time 或 committed event timestamp，不能伪造尚未由 Kernel 分配的 DomainEvent metadata。
+
+`SpatialReducer` 的逐 event API 没有 batch-end callback，因此不会在每个细粒度 prefix 后调用完整状态验证。统一 Handler / SpatialMoment 必须在 scratch-fold 完成后调用 `SpatialStateValidator.ValidateComplete`；Replay/Fork 验证器也只在完整 BatchOrdinal 边界调用。这样既允许 step prefix，又不会把不完整状态暴露为合法 Fork 边界。
 
 ---
 
@@ -1602,7 +1611,7 @@ handler 输出：
 6. 普通 Entity 数量与排列不改变 passability。
 7. Portal 与 Cell 动态状态只能由 SpatialEvent 改变。
 8. SpatialEntity、override、Journey 与 CurrentLeg 必须引用有效 definition 对象 / CellRef。
-9. `CurrentLeg.From == Entity.Cell`，其 `To` 是合法普通邻边或指定 Portal endpoint，且 `Due > StartedAt`。
+9. 完整边界上 `CurrentLeg.From == Entity.Cell`，其 `To` 是合法普通邻边或指定 Portal endpoint；新 leg 的 `Due` 必须等于 `StartedAt +` 当时有效边成本，而不只是任意正时长。
 
 ## 18.3 Journey
 
