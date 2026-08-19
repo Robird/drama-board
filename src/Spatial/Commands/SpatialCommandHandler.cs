@@ -788,14 +788,14 @@ public sealed class SpatialCommandHandler
     private static SpatialCommandRejectionCode? ValidateGoal(
         SpatialDefinition definition,
         MoveGoal goal) => goal switch
-    {
-        CellGoal cell => ValidateCell(definition, cell.Cell),
-        AnchorGoal anchor when definition.Anchors.Any(value => value.Id == anchor.AnchorId) => null,
-        AnchorGoal => SpatialCommandRejectionCode.UnknownAnchor,
-        ZoneGoal zone when definition.Zones.Any(value => value.Id == zone.ZoneId) => null,
-        ZoneGoal => SpatialCommandRejectionCode.UnknownZone,
-        _ => throw new ArgumentException($"Unsupported MoveGoal '{goal.GetType().Name}'.", nameof(goal)),
-    };
+        {
+            CellGoal cell => ValidateCell(definition, cell.Cell),
+            AnchorGoal anchor when definition.Anchors.Any(value => value.Id == anchor.AnchorId) => null,
+            AnchorGoal => SpatialCommandRejectionCode.UnknownAnchor,
+            ZoneGoal zone when definition.Zones.Any(value => value.Id == zone.ZoneId) => null,
+            ZoneGoal => SpatialCommandRejectionCode.UnknownZone,
+            _ => throw new ArgumentException($"Unsupported MoveGoal '{goal.GetType().Name}'.", nameof(goal)),
+        };
 
     private static bool TryCanonicalizeCellOverride(
         SpatialDefinition definition,
@@ -905,23 +905,23 @@ public sealed class SpatialCommandHandler
         SpatialDefinition definition,
         ScheduledSpatialMutation left,
         ScheduledSpatialMutation right) => (left, right) switch
-    {
-        (SetPortalStateMutation first, SetPortalStateMutation second) =>
-            first.IsEnabled == second.IsEnabled,
-        (SetCellOverrideMutation first, SetCellOverrideMutation second) =>
-            CanonicalCellOverrideEquals(definition, first.Cell, first.Value, second.Value),
-        _ => false,
-    };
+        {
+            (SetPortalStateMutation first, SetPortalStateMutation second) =>
+                first.IsEnabled == second.IsEnabled,
+            (SetCellOverrideMutation first, SetCellOverrideMutation second) =>
+                CanonicalCellOverrideEquals(definition, first.Cell, first.Value, second.Value),
+            _ => false,
+        };
 
     private static bool SameMutationTarget(
         ScheduledSpatialMutation left,
         ScheduledSpatialMutation right) => (left, right) switch
-    {
-        (SetPortalStateMutation first, SetPortalStateMutation second) =>
-            first.PortalId == second.PortalId,
-        (SetCellOverrideMutation first, SetCellOverrideMutation second) => first.Cell == second.Cell,
-        _ => false,
-    };
+        {
+            (SetPortalStateMutation first, SetPortalStateMutation second) =>
+                first.PortalId == second.PortalId,
+            (SetCellOverrideMutation first, SetCellOverrideMutation second) => first.Cell == second.Cell,
+            _ => false,
+        };
 
     private static bool CellOverrideEquals(CellOverride? left, CellOverride? right) => left == right;
 
