@@ -1,3 +1,5 @@
+using DramaBoard.Kernel.Time;
+
 namespace DramaBoard.Spatial.Tests;
 
 public sealed class DerivedOutcomeAuditTests
@@ -37,6 +39,66 @@ public sealed class DerivedOutcomeAuditTests
     }
 
     [Fact]
+    public void DerivedZoneOutcome_RejectsDirectionContradictingFinalPostState()
+    {
+        SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
+        SpatialState state = SpatialState.Create(definition);
+        CellRef townSquare = TestSpatialDefinitionBuilder.Cell("town", 1, 0);
+        state = SpatialEventTestHarness.Place(definition, state, entityId: 1, cell: townSquare);
+
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new ZoneLeftEvent(new EntityId(1), new ZoneId("town-square"))));
+
+        SpatialState absent = SpatialState.Create(definition);
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            absent,
+            new ZoneEnteredEvent(new EntityId(1), new ZoneId("town-square"))));
+
+        Assert.Same(state, SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new ZoneEnteredEvent(new EntityId(1), new ZoneId("town-square"))));
+        Assert.Same(absent, SpatialEventTestHarness.Apply(
+            definition,
+            absent,
+            new ZoneLeftEvent(new EntityId(1), new ZoneId("town-square"))));
+    }
+
+    [Fact]
+    public void DerivedCoPresenceOutcome_RejectsDirectionContradictingFinalPostState()
+    {
+        SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
+        SpatialState state = SpatialState.Create(definition);
+        CellRef firstCell = TestSpatialDefinitionBuilder.Cell("world", 0, 0);
+        CellRef secondCell = TestSpatialDefinitionBuilder.Cell("world", 1, 0);
+        state = SpatialEventTestHarness.Place(definition, state, entityId: 1, cell: firstCell);
+        state = SpatialEventTestHarness.Place(definition, state, entityId: 2, cell: secondCell);
+
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new CoPresenceStartedEvent(new EntityId(1), new EntityId(2))));
+
+        state = SpatialEventTestHarness.Place(definition, state, entityId: 3, cell: firstCell);
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new CoPresenceEndedEvent(new EntityId(1), new EntityId(3))));
+
+        Assert.Same(state, SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new CoPresenceStartedEvent(new EntityId(1), new EntityId(3))));
+        Assert.Same(state, SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new CoPresenceEndedEvent(new EntityId(1), new EntityId(2))));
+    }
+
+    [Fact]
     public void DerivedVisibilityOutcome_RejectsDefaultAndObserverSelfTargets()
     {
         SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
@@ -53,6 +115,118 @@ public sealed class DerivedOutcomeAuditTests
                 new EntityId(1),
                 [new EntityId(1)],
                 [])));
+    }
+
+    [Fact]
+    public void DerivedVisibilityOutcome_RejectsDirectionContradictingFinalTrackedSet()
+    {
+        SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
+        SpatialState state = SpatialState.Create(definition);
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 1,
+            cell: TestSpatialDefinitionBuilder.Cell("world", 0, 0));
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 2,
+            cell: TestSpatialDefinitionBuilder.Cell("world", 1, 0));
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 3,
+            cell: TestSpatialDefinitionBuilder.Cell("town", 0, 0));
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 4,
+            cell: TestSpatialDefinitionBuilder.Cell("world", 0, 0),
+            observationEnabled: false);
+
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(1),
+                addedEntityIds: [],
+                removedEntityIds: [new EntityId(2)])));
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(1),
+                addedEntityIds: [new EntityId(3)],
+                removedEntityIds: [])));
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(4),
+                addedEntityIds: [new EntityId(2)],
+                removedEntityIds: [])));
+        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(99),
+                addedEntityIds: [new EntityId(2)],
+                removedEntityIds: [])));
+
+        Assert.Same(state, SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(1),
+                addedEntityIds: [new EntityId(2)],
+                removedEntityIds: [new EntityId(3)])));
+        Assert.Same(state, SpatialEventTestHarness.Apply(
+            definition,
+            state,
+            new GeometricVisibilityChangedEvent(
+                new EntityId(4),
+                addedEntityIds: [],
+                removedEntityIds: [new EntityId(2)])));
+    }
+
+    [Fact]
+    public void LegalRemovalAndObserverDisableTransitions_PassDirectionalAudit()
+    {
+        SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
+        SpatialState state = SpatialState.Create(definition);
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 1,
+            cell: TestSpatialDefinitionBuilder.Cell("world", 0, 0));
+        state = SpatialEventTestHarness.Place(
+            definition,
+            state,
+            entityId: 2,
+            cell: TestSpatialDefinitionBuilder.Cell("world", 1, 0));
+
+        SpatialTransitionResult removed = SpatialTransition.Complete(
+            definition,
+            state,
+            ModelTime.Zero,
+            [new EntityRemovedEvent(
+                new EntityId(1),
+                expectedMovementGeneration: 0,
+                expectedActiveJourneyId: null)]);
+        Assert.Contains(removed.Events, value =>
+            value.Payload is GeometricVisibilityChangedEvent visibility &&
+            visibility.ObserverId == new EntityId(1) &&
+            visibility.RemovedEntityIds.SequenceEqual([new EntityId(2)]));
+
+        SpatialTransitionResult disabled = SpatialTransition.Complete(
+            definition,
+            state,
+            ModelTime.Zero,
+            [new ObservationStateChangedEvent(new EntityId(1), true, false)]);
+        Assert.Contains(disabled.Events, value =>
+            value.Payload is GeometricVisibilityChangedEvent visibility &&
+            visibility.ObserverId == new EntityId(1) &&
+            visibility.RemovedEntityIds.SequenceEqual([new EntityId(2)]));
     }
 
     [Fact]

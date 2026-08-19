@@ -16,7 +16,7 @@ internal static class SpatialProjector
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(payload);
-        SpatialStateValidator.ValidateStamp(definition, state);
+        var topology = new EffectiveSpatialTopology(definition, state);
         EventKind expectedKind = SpatialEventKinds.For(payload);
         if (!string.Equals(kind.Id, expectedKind.Id, StringComparison.Ordinal) ||
             kind.Version != expectedKind.Version)
@@ -31,31 +31,72 @@ internal static class SpatialProjector
             EntityPlacedEvent placed => ApplyEntityPlaced(definition, state, placed),
             EntityRemovedEvent removed => ApplyEntityRemoved(state, removed, modelTime),
             ObservationStateChangedEvent changed => ApplyObservationStateChanged(state, changed),
-            JourneyStartedEvent started => ApplyJourneyStarted(definition, state, started, modelTime),
-            JourneyRetargetedEvent retargeted => ApplyJourneyRetargeted(definition, state, retargeted, modelTime),
+            JourneyStartedEvent started => ApplyJourneyStarted(definition, state, topology, started, modelTime),
+            JourneyRetargetedEvent retargeted => ApplyJourneyRetargeted(
+                definition,
+                state,
+                topology,
+                retargeted,
+                modelTime),
             JourneyCancelledEvent cancelled => ApplyJourneyEndedWithGeneration(state, cancelled, modelTime),
             JourneyInterruptedEvent interrupted => ApplyJourneyEndedWithGeneration(state, interrupted, modelTime),
-            EntitySteppedEvent stepped => ApplyEntityStepped(definition, state, stepped, modelTime),
-            JourneyReroutedEvent rerouted => ApplyJourneyRerouted(definition, state, rerouted, modelTime),
-            JourneyContinuedEvent continued => ApplyJourneyContinued(definition, state, continued, modelTime),
+            EntitySteppedEvent stepped => ApplyEntityStepped(definition, state, topology, stepped, modelTime),
+            JourneyReroutedEvent rerouted => ApplyJourneyRerouted(
+                definition,
+                state,
+                topology,
+                rerouted,
+                modelTime),
+            JourneyContinuedEvent continued => ApplyJourneyContinued(
+                definition,
+                state,
+                topology,
+                continued,
+                modelTime),
             JourneyCompletedEvent completed => ApplyJourneyCompleted(definition, state, completed, modelTime),
-            JourneyBlockedEvent blocked => ApplyJourneyBlocked(definition, state, blocked, modelTime),
+            JourneyBlockedEvent blocked => ApplyJourneyBlocked(
+                definition,
+                state,
+                topology,
+                blocked,
+                modelTime),
             PortalStateChangedEvent portal => ApplyPortalStateChanged(definition, state, portal),
             CellStateChangedEvent cell => ApplyCellStateChanged(definition, state, cell),
             MutationScheduledEvent scheduled => ApplyMutationScheduled(definition, state, scheduled, modelTime),
-            MutationConsumedEvent consumed => ApplyMutationConsumed(definition, state, consumed, modelTime),
+            MutationConsumedEvent consumed => ApplyMutationConsumed(
+                state,
+                topology,
+                consumed,
+                modelTime),
             MomentResolvedEvent resolved => ApplyMomentResolved(definition, state, resolved, modelTime),
-            ZoneEnteredEvent entered => ValidateZoneOutcome(definition, state, entered.EntityId, entered.ZoneId),
-            ZoneLeftEvent left => ValidateZoneOutcome(definition, state, left.EntityId, left.ZoneId),
+            ZoneEnteredEvent entered => ValidateZoneOutcome(
+                definition,
+                state,
+                entered.EntityId,
+                entered.ZoneId,
+                expectedPresent: true),
+            ZoneLeftEvent left => ValidateZoneOutcome(
+                definition,
+                state,
+                left.EntityId,
+                left.ZoneId,
+                expectedPresent: false),
             CoPresenceStartedEvent started => ValidateCoPresenceOutcome(
+                definition,
                 state,
                 started.FirstEntityId,
-                started.SecondEntityId),
+                started.SecondEntityId,
+                expectedPresent: true),
             CoPresenceEndedEvent ended => ValidateCoPresenceOutcome(
+                definition,
                 state,
                 ended.FirstEntityId,
-                ended.SecondEntityId),
-            GeometricVisibilityChangedEvent visibility => ValidateVisibilityOutcome(state, visibility),
+                ended.SecondEntityId,
+                expectedPresent: false),
+            GeometricVisibilityChangedEvent visibility => ValidateVisibilityOutcome(
+                definition,
+                state,
+                visibility),
             _ => throw new InvalidOperationException($"Unsupported Spatial event '{payload.GetType().Name}'."),
         };
     }
@@ -136,6 +177,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyJourneyStarted(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         JourneyStartedEvent started,
         ModelTime modelTime)
     {
@@ -160,7 +202,7 @@ internal static class SpatialProjector
         }
 
         CurrentLeg leg = RequireCompleteLeg(journey);
-        ValidateNewLeg(definition, state, entity, journey.Generation, leg, modelTime);
+        ValidateNewLeg(definition, topology, entity, journey.Generation, leg, modelTime);
         SpatialStateValidator.ValidateGoal(definition, journey.Goal);
         if (GoalIsSatisfied(definition, entity.Cell, journey.Goal))
         {
@@ -177,6 +219,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyJourneyRetargeted(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         JourneyRetargetedEvent retargeted,
         ModelTime modelTime)
     {
@@ -206,7 +249,7 @@ internal static class SpatialProjector
         }
 
         CurrentLeg leg = RequireCompleteLeg(result);
-        ValidateNewLeg(definition, state, entity, result.Generation, leg, modelTime);
+        ValidateNewLeg(definition, topology, entity, result.Generation, leg, modelTime);
         SpatialStateValidator.ValidateGoal(definition, result.Goal);
         if (GoalIsSatisfied(definition, entity.Cell, result.Goal))
         {
@@ -281,6 +324,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyEntityStepped(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         EntitySteppedEvent stepped,
         ModelTime modelTime)
     {
@@ -299,7 +343,7 @@ internal static class SpatialProjector
         }
 
         SpatialStateValidator.ValidateLeg(definition, leg);
-        if (!IsLegPassable(definition, state, leg))
+        if (!topology.IsLegPassable(leg))
         {
             throw new InvalidOperationException("Entity cannot step through an impassable current leg.");
         }
@@ -310,6 +354,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyJourneyRerouted(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         JourneyReroutedEvent rerouted,
         ModelTime modelTime)
     {
@@ -323,7 +368,7 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Journey reroute does not match its failed due leg.");
         }
 
-        if (IsLegPassable(definition, state, rerouted.FailedLeg))
+        if (topology.IsLegPassable(rerouted.FailedLeg))
         {
             throw new InvalidOperationException("Journey reroute requires an invalid current leg.");
         }
@@ -333,7 +378,13 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Journey reroute must replace the failed leg.");
         }
 
-        ValidateNewLeg(definition, state, entity, journey.Generation, rerouted.ResultingLeg, modelTime);
+        ValidateNewLeg(
+            definition,
+            topology,
+            entity,
+            journey.Generation,
+            rerouted.ResultingLeg,
+            modelTime);
         return Changed(
             state,
             journeys: ReplaceJourney(state, journey.WithCurrentLeg(rerouted.ResultingLeg)));
@@ -342,6 +393,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyJourneyContinued(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         JourneyContinuedEvent continued,
         ModelTime modelTime)
     {
@@ -355,7 +407,13 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Journey continuation does not match its preceding completed leg.");
         }
 
-        ValidateNewLeg(definition, state, entity, journey.Generation, continued.ResultingLeg, modelTime);
+        ValidateNewLeg(
+            definition,
+            topology,
+            entity,
+            journey.Generation,
+            continued.ResultingLeg,
+            modelTime);
         if (GoalIsSatisfied(definition, entity.Cell, journey.Goal))
         {
             throw new InvalidOperationException("A journey at its goal must complete rather than continue.");
@@ -477,6 +535,7 @@ internal static class SpatialProjector
     private static SpatialState ApplyJourneyBlocked(
         SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         JourneyBlockedEvent blocked,
         ModelTime modelTime)
     {
@@ -506,7 +565,7 @@ internal static class SpatialProjector
         }
 
         if (blocked.Reason == JourneyBlockedReason.LegInvalidNoRoute &&
-            IsLegPassable(definition, state, blocked.Leg))
+            topology.IsLegPassable(blocked.Leg))
         {
             throw new InvalidOperationException("LegInvalidNoRoute requires an impassable current leg.");
         }
@@ -606,8 +665,8 @@ internal static class SpatialProjector
     }
 
     private static SpatialState ApplyMutationConsumed(
-        SpatialDefinition definition,
         SpatialState state,
+        EffectiveSpatialTopology topology,
         MutationConsumedEvent consumed,
         ModelTime modelTime)
     {
@@ -619,7 +678,7 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Consumed mutation does not exactly match due state.");
         }
 
-        if (!MutationResultIsApplied(definition, state, consumed.Mutation.Mutation))
+        if (!MutationResultIsApplied(topology, state, consumed.Mutation.Mutation))
         {
             throw new InvalidOperationException("Consumed mutation target has not reached its resulting value.");
         }
@@ -656,7 +715,7 @@ internal static class SpatialProjector
 
     private static void ValidateNewLeg(
         SpatialDefinition definition,
-        SpatialState state,
+        EffectiveSpatialTopology topology,
         SpatialEntityState entity,
         long generation,
         CurrentLeg leg,
@@ -670,27 +729,12 @@ internal static class SpatialProjector
         }
 
         SpatialStateValidator.ValidateLeg(definition, leg);
-        if (!IsLegPassable(definition, state, leg))
+        if (!topology.IsLegPassable(leg))
         {
             throw new InvalidOperationException("New current leg must be passable.");
         }
 
-
-        ModelTime expectedDue;
-        if (leg.EdgeKind == SpatialEdgeKind.Portal)
-        {
-            PortalDefinition portal = SpatialStateValidator.RequirePortal(definition, leg.PortalId!.Value);
-            expectedDue = modelTime + portal.TraversalDuration;
-        }
-        else
-        {
-            GridMapDefinition map = definition.GetMap(leg.To.MapId);
-            CellDefinition target = definition.GetCell(leg.To);
-            int effectiveMoveCost = state.CellOverrides.SingleOrDefault(
-                value => value.Cell == leg.To)?.Value.MoveCost ?? target.MoveCost;
-            long durationTicks = checked(map.OrthogonalStepDuration.Ticks * effectiveMoveCost);
-            expectedDue = modelTime + new ModelDuration(durationTicks);
-        }
+        ModelTime expectedDue = modelTime + topology.GetTraversalDuration(leg);
 
         if (leg.Due != expectedDue)
         {
@@ -703,22 +747,38 @@ internal static class SpatialProjector
         SpatialDefinition definition,
         SpatialState state,
         EntityId entityId,
-        ZoneId zoneId)
+        ZoneId zoneId,
+        bool expectedPresent)
     {
+        SpatialStateValidator.ValidateComplete(definition, state);
         SpatialStateValidator.EnsureEntityId(entityId, "Zone outcome");
-        if (string.IsNullOrWhiteSpace(zoneId.Value) || !definition.Zones.Any(zone => zone.Id == zoneId))
+        ZoneDefinition? zone = string.IsNullOrWhiteSpace(zoneId.Value)
+            ? null
+            : definition.Zones.SingleOrDefault(value => value.Id == zoneId);
+        if (zone is null)
         {
             throw new InvalidOperationException($"Zone outcome references undefined zone '{zoneId}'.");
+        }
+
+        bool isPresent = state.TryGetEntity(entityId, out SpatialEntityState? entity) &&
+            zone.Cells.Contains(entity!.Cell);
+        if (isPresent != expectedPresent)
+        {
+            throw new InvalidOperationException(
+                $"Zone outcome direction does not match final relation for entity '{entityId}' and zone '{zoneId}'.");
         }
 
         return state;
     }
 
     private static SpatialState ValidateCoPresenceOutcome(
+        SpatialDefinition definition,
         SpatialState state,
         EntityId firstEntityId,
-        EntityId secondEntityId)
+        EntityId secondEntityId,
+        bool expectedPresent)
     {
+        SpatialStateValidator.ValidateComplete(definition, state);
         SpatialStateValidator.EnsureEntityId(firstEntityId, "Co-presence outcome");
         SpatialStateValidator.EnsureEntityId(secondEntityId, "Co-presence outcome");
         if (firstEntityId.CompareTo(secondEntityId) >= 0)
@@ -726,13 +786,24 @@ internal static class SpatialProjector
             throw new InvalidOperationException("Co-presence outcome pair must be distinct and canonical.");
         }
 
+        bool isPresent = state.TryGetEntity(firstEntityId, out SpatialEntityState? firstEntity) &&
+            state.TryGetEntity(secondEntityId, out SpatialEntityState? secondEntity) &&
+            firstEntity!.Cell == secondEntity!.Cell;
+        if (isPresent != expectedPresent)
+        {
+            throw new InvalidOperationException(
+                "Co-presence outcome direction does not match the final entity positions.");
+        }
+
         return state;
     }
 
     private static SpatialState ValidateVisibilityOutcome(
+        SpatialDefinition definition,
         SpatialState state,
         GeometricVisibilityChangedEvent visibility)
     {
+        SpatialStateValidator.ValidateComplete(definition, state);
         SpatialStateValidator.EnsureEntityId(visibility.ObserverId, "Visibility outcome observer");
         foreach (EntityId entityId in visibility.AddedEntityIds.Concat(visibility.RemovedEntityIds))
         {
@@ -748,6 +819,20 @@ internal static class SpatialProjector
             visibility.AddedEntityIds.Intersect(visibility.RemovedEntityIds).Any())
         {
             throw new InvalidOperationException("Visibility outcome sets must be canonical, disjoint, and unique.");
+        }
+
+        HashSet<EntityId> trackedVisible =
+            state.TryGetEntity(visibility.ObserverId, out SpatialEntityState? observer) &&
+            observer!.ObservationEnabled
+                ? new SpatialQueries(definition)
+                    .GetVisibleEntities(state, visibility.ObserverId)
+                    .ToHashSet()
+                : [];
+        if (visibility.AddedEntityIds.Any(entityId => !trackedVisible.Contains(entityId)) ||
+            visibility.RemovedEntityIds.Any(trackedVisible.Contains))
+        {
+            throw new InvalidOperationException(
+                "Visibility outcome direction does not match the final tracked-visible entity set.");
         }
 
         return state;
@@ -766,42 +851,14 @@ internal static class SpatialProjector
         return true;
     }
 
-    private static bool IsLegPassable(
-        SpatialDefinition definition,
-        SpatialState state,
-        CurrentLeg leg)
-    {
-        CellDefinition targetDefinition = definition.GetCell(leg.To);
-        CellOverride? targetOverride = state.CellOverrides.SingleOrDefault(
-            value => value.Cell == leg.To)?.Value;
-        bool blocksMovement = targetOverride?.BlocksMovement ?? targetDefinition.BlocksMovement;
-        if (blocksMovement)
-        {
-            return false;
-        }
-
-        if (leg.EdgeKind != SpatialEdgeKind.Portal)
-        {
-            return true;
-        }
-
-        PortalId portalId = leg.PortalId!.Value;
-        PortalDefinition portal = SpatialStateValidator.RequirePortal(definition, portalId);
-        return state.PortalOverrides.SingleOrDefault(value => value.PortalId == portalId)?.IsEnabled
-            ?? portal.InitiallyEnabled;
-    }
-
     private static bool MutationResultIsApplied(
-        SpatialDefinition definition,
+        EffectiveSpatialTopology topology,
         SpatialState state,
         ScheduledSpatialMutation mutation) =>
         mutation switch
         {
             SetPortalStateMutation portal =>
-                (state.PortalOverrides.SingleOrDefault(
-                    value => value.PortalId == portal.PortalId)?.IsEnabled
-                    ?? SpatialStateValidator.RequirePortal(definition, portal.PortalId).InitiallyEnabled) ==
-                portal.IsEnabled,
+                topology.IsPortalEnabled(portal.PortalId) == portal.IsEnabled,
             SetCellOverrideMutation cell =>
                 state.CellOverrides.SingleOrDefault(value => value.Cell == cell.Cell)?.Value == cell.Value,
             _ => false,

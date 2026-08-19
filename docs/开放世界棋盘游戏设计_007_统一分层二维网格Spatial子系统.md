@@ -663,6 +663,8 @@ CoPresenceEnded
 
 上层规则应明确把这个意图投影成 Spatial 能理解的 blocker 或 Portal state。
 
+`BlocksMovement` 的首版语义是“禁止进入目标格”，不是“禁止从所在格离开”。因此某格在 Actor 已位于其中后变为 blocked，不会把 Actor 永久困住；Orthogonal 与 Portal 都只检查目标格以及边自身是否可用。需要禁足时应使用显式 movement interrupt 或其他上层规则。
+
 首版不引入：
 
 - 每地图 OccupancyPolicy；
@@ -1002,7 +1004,7 @@ ForecastNext(SpatialState state, ModelTime now)
 
 一个有效 SpatialMoment candidate 的 Resolve 必须产生非空 batch，并至少包含一个会消费、推进或替换当前 due work 的权威事件。idempotent scheduled mutation 也必须有 `mutation-consumed`；每个有效 moment 都以 `moment-resolved` 收尾。不能用空 Resolve 表示“检查过但没有变化”，否则会触发 Kernel 的 repeated no-op 防护。
 
-`Resolve` 收到 stale 或包装错误的 candidate 时抛出稳定异常；它必须核对 SourceId、CandidateId、payload ordinal、ExpectedSpatialRevision、当前最早 Due 与 Definition stamp，不能用空 batch 表示拒绝。
+`Resolve` 收到 stale 或包装错误的 candidate 时抛出稳定异常；它必须核对 SourceId、CandidateId、payload ordinal、ExpectedSpatialRevision、当前最早 Due 与 Definition stamp，不能用空 batch 表示拒绝。`moment-resolved.ResolvedWorkCount` 必须等于 pre-state 中 `Due == T` 的 CurrentLeg 与 scheduled mutation 总数；无到期工作、仅有未来工作或计数不符都不能借无关 primary event 消费 MomentOrdinal。
 
 ---
 
@@ -1150,13 +1152,14 @@ spatial.geometric-visibility-changed
 ```text
 Topology / Override：ScheduledMutationId
 Step：EntityId
-Journey outcome：EntityId
+Journey outcome / continuation：EntityId
 Zone：EntityId, ZoneId
 CoPresence：canonical EntityId pair
 Geometric Visibility：ObserverId；Added / Removed 数组内部按 EntityId
-Journey continuation：EntityId
 Moment completion：SpatialEvent 子序列中的最后一个
 ```
+
+全部 state-changing body primary（包括 Journey continuation）先恢复为完整 post-primary state，再统一计算 derived outcomes；不能为了展示顺序把 continuation event 倒排到 derived event 之后。这样 step mismatch prefix 最短，scratch fold 与正式 reducer fold 保持同序。
 
 游戏侧 lifting 之后仍可在同一个 Kernel batch 追加产品级 event，例如 `DecisionRequested`；因此 `moment-resolved` 不保证是整个顶层 batch 的最后一个 event。
 
@@ -1205,6 +1208,8 @@ Kernel commit
 Resolve 不直接返回一个旁路 WorldState，也不保留不可重放的隐藏 mutation。
 
 scratch fold 与正式 reducer 共同委托一个不依赖 `EventCause / Microstep` 的纯 `SpatialProjector.Apply(definition, state, kind, payload, modelTime)`。Definition 显式参与 Cell、Portal、Goal、边与 sparse override 的局部校验；需要参与状态语义的 ModelTime 必须来自当前 transition time 或 committed event timestamp，不能伪造尚未由 Kernel 分配的 DomainEvent metadata。
+
+静态定义与动态 override 合成出的有效空间规则也必须只有一份内部实现，至少统一回答 Cell 的 movement / sight blocker、MoveCost、Portal enabled、leg passability 与边耗时。Navigator、Projector、Queries 与 SpatialMoment 都委托该实现；不能各自复制一套看似相同的公式。
 
 `SpatialReducer` 的逐 event API 没有 batch-end callback，因此不会在每个细粒度 prefix 后调用完整状态验证。统一 Handler / SpatialMoment 必须在 scratch-fold 完成后调用 `SpatialStateValidator.ValidateComplete`；Replay/Fork 验证器也只在完整 BatchOrdinal 边界调用。这样既允许 step prefix，又不会把不完整状态暴露为合法 Fork 边界。
 
@@ -1316,7 +1321,7 @@ GetVisibleEntities(observerId)
 HasLineOfSight(firstCell, secondCell)
 ```
 
-这些查询完全由当前 committed position + topology 推导，不读取持久 contact cache，也不需要 Journal 每个 visible cell。
+这些查询完全由当前 committed position + topology 推导，不读取持久 contact cache，也不需要 Journal 每个 visible cell。公开 Query 只接受通过完整边界校验的 `SpatialState`，不得读取 `entity-stepped` 之后但 Journey 尚未 continued / completed / blocked 的 reducer prefix。SpatialMoment 内部的 Navigator 可以在受控 transition 中读取该合法临时 prefix，以便从新位置规划 continuation；最终关系差量只能在全部 body primary 已恢复完整状态后计算。
 
 对于 `ObservationEnabled` 的 Entity，每次统一 transition 比较 pre/post 可见 Entity 集合，并可产生：
 
@@ -1644,7 +1649,7 @@ handler 输出：
 5. rules version 锁定 Dijkstra、LOS、phase 与 CurrentLeg 规则；content hash 不能代替它。
 6. Presentation 插值和路径缓存不属于 replay contract。
 
-`SpatialState.Create(definition)` 固定 Definition stamp；SpatialSubsystem、SpatialCommandHandler 与 SpatialQueries 的每个公开入口都先验证 stamp。hash / rules mismatch 必须在 Forecast / Resolve 或命令 / 查询执行前失败，不能使用新规则解释旧 state。
+`SpatialState.Create(definition)` 固定 Definition stamp；SpatialSubsystem、SpatialCommandHandler 与 SpatialQueries 的每个公开入口都先验证 stamp，SpatialQueries 还必须验证它收到的是完整 commit 边界状态。hash / rules mismatch 必须在 Forecast / Resolve 或命令 / 查询执行前失败，不能使用新规则解释旧 state。
 
 ## 18.6 Fork
 

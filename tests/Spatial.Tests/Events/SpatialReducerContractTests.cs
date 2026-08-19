@@ -52,7 +52,10 @@ public sealed class SpatialReducerContractTests
     {
         SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
         SpatialState initial = SpatialState.Create(definition);
-        SpatialState placed = SpatialEventTestHarness.Place(definition, initial);
+        SpatialState placed = SpatialEventTestHarness.Place(
+            definition,
+            initial,
+            cell: TestSpatialDefinitionBuilder.Cell("town", 1, 0));
         SpatialState derived = SpatialEventTestHarness.Apply(
             definition,
             placed,
