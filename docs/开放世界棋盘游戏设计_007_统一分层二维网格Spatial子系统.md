@@ -833,6 +833,8 @@ leg 开始后发生的 MoveCost 变化不追溯修改其 `Due`；新成本只用
 - 当前 leg 已不可通行且不再可达：保留在 `From`，产生 `JourneyBlocked(LegInvalidNoRoute)`；
 - step 已成功但目标尚未满足，而从新的 `To` 不再存在 continuation：保留在 `To`，产生 `JourneyBlocked(NoContinuationAfterStep)`。
 
+这两个首版 reason 标识阻塞发生在 step 前还是 step 后；其中“无 route / continuation”指当前规则下不存在**可调度**的下一 leg，也包括导航总成本或下一 leg 的绝对 `Due` 超出 V1 表示范围。若产品以后必须向玩家区分地形不可达、成本溢出与时间范围耗尽，再增加正交的 cause 字段，而不是继续扩充 phase reason。
+
 因此当前 leg 表示：
 
 > **已经投入的移动时间，而不是不可撤销的穿墙许可。**
