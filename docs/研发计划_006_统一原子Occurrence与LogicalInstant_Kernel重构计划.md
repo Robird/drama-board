@@ -361,8 +361,6 @@ FirstBoard                     // 领域 source/handler 与 pure Plan
 FirstBoard.Demo                // composition/UI；经 Host 驱动
 ```
 
-本轮已经完成两个可独立验收的机械切片：建立独立 Player assembly 并去除 `Player.Llm → Host` 依赖；建立只依赖 Protocol 的 `Decision.Validation` assembly，并把现有 request/answer correlation validation 从 Host 私有方法移入其中。Host 已作为 composition root 引用二者。新的单 Step resolution integration 仍按后续波次实现；不得用临时 `Kernel → Player/Protocol/Host/Decision.Validation` 引用换取编译便利。
-
 这里区分 direct edge 与 transitive closure：当前 `Player → Kernel` 只因 `RandomPlayerDriver` 复用 `DeterministicRandom`，不会形成 `Kernel → Player` 的反向认知；`Player.Llm` 的直接引用仍只有 Player + Protocol。若未来希望 Player 连 Kernel utility 也不传递依赖，应把 deterministic-random primitive 下沉为更底层的通用程序集，不能复制算法或让 Kernel 反向引用 Player。
 
 ### 5.3 V1 Player 是 Host 侧的一种 resolver
@@ -397,11 +395,9 @@ V1 只有 `DecisionPointCandidate` 声明 deferred `ResolutionContractId`。它�
 
 ## 6. Journal、Replay、Fork 与恢复
 
-### 6.1 Journal 最终目标与当前单帧切片
+### 6.1 Journal 目标接口
 
-当前小切片仍使用 `IJournalSink.AppendBatch`；两个 sink 都遵循 single-driver 契约，append 期间禁止并发读写 `Events`。其中 `AteliaJournalSink` 强制把每个非空 batch 编码为一个 `DomainEventBatch` EventJournal Event，并落入一个 RBF EventFrame。`AppendEventFrame` 只写出尚未发布的候选 frame；`AdvanceRef(refId, expectedHead, newHead)` CAS 成功才令整批通过 active branch ref 可见。CAS 失败留下的 orphan 不在 active branch ref 的可达链上，World、cursor 与内存事件视图不得推进。serialized batch logical payload 超过 `EventJournalOptions.MaxLogicalPayloadLength` 时整批失败，该上限不得超过 RBF 单帧容量；不拆帧、不引入 Begin/Part/End。CRC 完整但 event envelope 语义非法则 fail closed 并保留证据，普通 Replay 不自动移动 ref。
-
-以下 `CommittedTransition` 接口仍是后续完整目标，不是当前单帧切片已经交付的声明：
+Atelia 适配器须把一个完整 `CommittedTransition` 编码为一个 EventJournal Event / 一个 RBF EventFrame，并以 expected-head ref CAS 作为 active branch 的发布点。serialized transition 超过 `EventJournalOptions.MaxLogicalPayloadLength` 时整批失败；不拆帧、不引入 Begin/Part/End。所有 sink 遵循 single-driver 契约，append 期间禁止并发读写事件视图。
 
 ```text
 IAtomicJournal.AppendTransition(
@@ -476,15 +472,13 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 | `Kernel/Journal/EventCause` | `ResolveBatch / ExternalInput` 是调度分类 | 改为统一 occurrence cause + provenance。 |
 | `LogicalTimestamp / Microstep` | batch 内每 fact 占一个时间 | 改为 transition 级 LogicalInstant + FactOrdinal。 |
 | `SimulationLoop.CommitAndApply` | Journal append 后才 reducer | 改为 scratch-fold/validate → atomic append → install。 |
-| `IJournalSink.AppendBatch` | 默认逐条 Append，不保证原子 | 当前先删除默认循环；InMemory 全批预检后发布，Atelia 用单 Event/单 RBF Frame 并以 expected-head ref CAS 发布。后续再替换为 `AppendTransition`。 |
+| `IJournalSink.AppendBatch` | 只能原子发布离散 DomainEvent batch，缺少 transition header、FactOrdinal、hash 与 WorldVersion 边界 | 以 `AppendTransition` 和一级 `CommittedTransition` envelope 取代。 |
 | Kernel decision predicate/stop reason | 先提交 `DecisionRequested`，再由 Host 特殊停机 | 删除；单个未完成 `Step` 在 call-local selected context 上等待 complete resolution/plan，并直接 commit 或零提交失败。 |
 | `PlayerDecisionSession` | answer 先翻译成 external event，再形成 PendingAction | 删除；Host 在同一 Step 调用链内组合 Player resolver 与 Decision.Validation，不保留 session/request/resume 或“回答成为第二轮候选”的调度器。 |
 | `FirstBoard.DecisionSchedulingSystem` | 一次产生批量 DecisionRequested facts，并用 internal-first barrier 推迟 Player | 改为每个 eligible Actor 的 `DecisionPointCandidate`，声明 versioned resolution contract；全局 arbiter 一次只选择一个 winner。 |
 | `FirstBoard.ActionResolutionSystem / PendingAction` | Player command 先写成世界 pending state、下一轮才 resolve | 删除两阶段；FirstBoard handler 从 validated domain payload 在冻结 FirstBoardWorld 上直接 pure Plan。 |
 | `FirstBoard.Demo` | 展示旧 Microstep/external cause，并通过 session 注入回答 | 跟随 LogicalInstant/FactOrdinal；UI/Host 在当前 Step 内取得 raw output，经 Decision.Validation 后返回 complete result。 |
-| `Kernel` 项目引用 | resolution 集成容易反向引用 Host/Protocol/Player | 加程序集依赖测试：Kernel 不引用 Host、Protocol、Player、Player.Llm 或 validation 实现，只接受 call-local complete resolution/plan。 |
 | `Host / Protocol / Decision.Validation` | `DecisionRequest → PlayerDecision → externalInputs` 且协议校验与 Kernel/Host 混杂 | Host 在单次 Step 调用链内组合 generic boundary 与独立 validation assembly；Protocol 提供 wire/domain DTO，validation 负责结构/schema/capability/correlation，domain Plan 负责 world-dependent legality。 |
-| `Player / Player.Llm` | Player abstraction 位于 Host，`Player.Llm → Host` | 本轮机械切片建立独立 Player assembly；Player.Llm 只引用 Player abstractions + Protocol，Host 反向组合它们。 |
 | `SpatialSubsystem` | `SpatialMoment` 批量处理同 T work、固定 phases | 拆成单 work-item candidates；必要 facts 留在 winner transition。 |
 | `SpatialCommandHandler` | simultaneous command batch、alias/conflict phase | 普通 command 独立 candidate；显式 composite command 才成一个 occurrence。 |
 | Spatial interaction watermark | 一次 Moment 消费整个 T | 改为 pair/segment/generation 或精确 interaction cursor；一个 contact 不得吞掉同 T 其它 contact。 |
@@ -521,9 +515,6 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 
 新增：
 
-- 已完成机械程序集切片：建立独立 `Player` assembly，把 Player 接口与简单实现从 Host 移出，并删除 `Player.Llm → Host`；另建只依赖 Protocol 的 `Decision.Validation`，迁出现有 correlation validation；Host 作为 composition root 引用二者；
-- 加依赖守卫，禁止 `Kernel → Host/Protocol/Player/Player.Llm`，也禁止用临时反向引用承载 resolution 获取/校验；
-
 - `CausalOrdinal`；
 - `LogicalInstant`；
 - occurrence-based `WorldVersion`；
@@ -535,15 +526,18 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 
 暂不改变业务行为，但禁止新代码继续扩散 `Microstep` 的旧语义。
 
-### 波次 2：先冻结单帧 batch，再实现完整 transition
+### 波次 2：原子 Journal 与 pure scratch transition
 
-当前小切片：
+实施：
 
-- 删除 `AppendBatch` 默认逐条循环；InMemory 全批预检，Atelia 将整批写成单 EventJournal Event / 单 RBF Frame；
-- ref CAS 是唯一 branch 可见点，orphan 在 reopen 时不可见；超限整批失败，`DomainEventBatch` 内任一 event envelope 语义非法时 fail closed；
-- 不实现 Begin/Part/End、多帧 batch 或完整 `CommittedTransition`。
+- `CommittedTransition` 一级 envelope，取代 `DomainEventBatch`；
+- `AppendTransition(expectedHead, transition)`，InMemory 与 Atelia 均以一个 transition 为发布单位；
+- Atelia 保持单 EventJournal Event / 单 RBF Frame，不引入 Begin/Part/End 或多帧 batch；
+- pure batch reducer/scratch-fold 与 final invariant/hash validation；
+- FactOrdinal 与 transition-boundary Snapshot/Fork；
+- crash-at-before/during/after-append fault injection。
 
-后续切片再交付 `CommittedTransition` envelope、`AppendTransition`、hash/WorldVersion、pure scratch-fold、FactOrdinal、transition-boundary Snapshot/Fork 及完整 fault injection。当前完成标准是在 single-driver 契约内，任何 `AppendBatch` 都不能暴露批内 prefix。
+完成后，Journal、World 与事件订阅均不能暴露 reducer prefix。
 
 ### 波次 3：统一 occurrence scheduler
 
@@ -601,7 +595,7 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 - 删除 Object contention 二次 RNG/round；
 - 两个 eligible Actor 的 DecisionPoint 由 Kernel arbiter 排序；当前 Step 只解析 winner，另一个在 commit 后重新 Forecast；
 - Protocol 定义 V1 Player wire/domain DTO；独立 validator 将 raw answer 变为 generic validated resolution，并把 Microstep 改为 CausalOrdinal；
-- Player.Llm 只实现独立 Player abstractions，不引用 Host；prompt/observation/correlation 由 Host/Protocol adapter 绑定当前 ephemeral selected context 与冻结 WorldVersion；
+- Player.Llm 的 prompt/observation/correlation 由 Host/Protocol adapter 绑定当前 ephemeral selected context 与冻结 WorldVersion；
 - Host 在同一 Step 调用中路由 selected context → Player resolver → Decision.Validation → complete result/plan；
 - Demo UI 在未完成 Step 中取得回答并校验；trace 只展示 committed LogicalInstant、FactOrdinal 与 provenance，不把 pending choice 伪装成历史。
 
@@ -714,7 +708,6 @@ Replay 旧 lineage 到完整 batch boundary
 | DOM-1 | Domain result | 结构合法但 world-dependent precondition fail 由冻结 snapshot 上的 pure Plan 提交明确 rejection，并消费 winner/generation；validation 不越权做领域裁决。 |
 | DEC-1 | A/B order | 两个同 T DecisionPoint 的当前 Step 只解析全局 winner；其 resolution 提交后才重新 Forecast 另一 Actor，Player/网络返回顺序不参与候选仲裁。 |
 | DEC-2 | Ticket race | ExpireTicket 胜出时直接提交；DecisionPoint 胜出时在同一 Step、同一 snapshot 上取得 validated UseTicketAndBoard，并可原子提交扣票+上船。 |
-| ASM-1 | Dependency graph | Player 不引用 Host；Player.Llm 的 direct references 只有 Player + Protocol；Decision.Validation 只引用 Protocol；Host 组合 Kernel、Decision.Validation、Player、Protocol；Kernel 对它们均为零引用。项目文件守卫与 assembly metadata 守卫同时通过。 |
 | RPL-1 | Replay | 普通 Replay 不 Forecast、不调用 resolver/validation/Player，重建相同 World/LogicalInstant/head hash。 |
 | RPL-2 | Audited replay | 用纯模拟 ForecastBasis 重建 contenders，重算 winner/rank；含 resolution 的 transition 使用已记录 canonical validated resolution 重跑 Plan；boundary 直接返回 plan 时验证已记录 canonical plan。两者都逐字节匹配 Facts/domain result/plan hash，不重新取得或校验 raw output。 |
 | VER-1 | Version/hash | 空 lineage、连续提交与 Fork 均满足两阶段 hash 递推，无 HeadHash 自引用且 codec bytes 稳定。 |
@@ -754,7 +747,7 @@ FirstBoard contention、Spatial fixed phase 或 Providence 本地 RNG 可能推�
 
 ### 风险 6：原子 Journal 名义化
 
-单 Event/单 RBF Frame 只保证 branch 可见性原子，不等于 frame append 与 ref advance 构成物理事务，也不等于完整 `CommittedTransition` 已实现。必须验证 orphan 不可见、语义非法 frame fail closed、超限在 ref 发布前失败；不得以默认逐条 Append 或 Begin/End 多帧协议扩大本切片。
+若只把现有 batch envelope 改名，仍会缺少 transition header、FactOrdinal、hash、scratch-fold 与 WorldVersion 边界。完整 `CommittedTransition` 必须继续使用单 Event/单 RBF Frame 和 ref 发布点，不得退回逐 fact append 或引入 Begin/End 多帧协议。
 
 ### 风险 7：未完成 Step 泄漏半状态
 
@@ -790,13 +783,12 @@ resolution boundary 等待期间若开放另一个 Step、checkpoint 或 commit�
 6. 单次 `Step: Select → await external complete resolution/plan → atomic Commit` 已完全取代 DecisionRequested-event/session/externalInputs，且没有 public/persisted request 或 Resume API；
 7. Comparator 是严格全序，Candidate/transition 都绑定并验证纯模拟 ForecastBasis；
 8. resolution 等待不 commit、不占 CausalOrdinal、不允许其他 Step；失败/取消/crash-before-append 丢弃整个 call-local context，restart 重新 Forecast；
-9. Kernel 不引用 Host、Protocol、Player、Player.Llm 或 validation 实现，不定义 Player driver/memo/retry/memory/cost；独立 validation 负责结构/schema/capability/correlation，领域 Plan 负责 world-dependent accepted/rejected；
-10. 独立 Player abstractions assembly 已建立，`Player.Llm → Host` 已删除；Host 是 Kernel、validation、Player 与 Protocol 的 composition root；
-11. V1 runtime 来源闭包成立：只有已胜出 DecisionPoint 在当前 Step 内使用 generic resolution boundary；Providence 仅 pure law、Admin runtime 禁用、Setup 仅 Genesis；
-12. FirstBoard、Demo、Host、Protocol、Player.Llm 与 Spatial 已迁移；
-13. 旧格式只读或通过明确迁移边界继续，不存在双运行时语义；
-14. P0 验收矩阵全部通过；
-15. full Forecast reference、audited Replay 与 crash recovery 证据完整。
+9. Kernel 的新 Step/resolution API 只接受 generic complete result/plan，不取得或解释 raw output，也不定义 Player driver/memo/retry/memory/cost；独立 validation 负责结构/schema/capability/correlation，领域 Plan 负责 world-dependent accepted/rejected；
+10. V1 runtime 来源闭包成立：只有已胜出 DecisionPoint 在当前 Step 内使用 generic resolution boundary；Providence 仅 pure law、Admin runtime 禁用、Setup 仅 Genesis；
+11. FirstBoard、Demo、Host、Protocol、Player.Llm 与 Spatial 已迁移；
+12. 旧格式只读或通过明确迁移边界继续，不存在双运行时语义；
+13. P0 验收矩阵全部通过；
+14. full Forecast reference、audited Replay 与 crash recovery 证据完整。
 
 最终 Kernel 应只回答一个问题：
 
