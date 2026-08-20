@@ -1,6 +1,8 @@
+using DramaBoard.Decision.Validation;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Player;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.Host;
@@ -180,15 +182,16 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
                             ?? throw new InvalidOperationException("A Player driver returned null.");
                     }
 
-                    string? validationFailure = DecisionValidationFailure(decision, request);
-                    if (validationFailure is not null)
+                    PlayerDecisionValidationResult validation =
+                        PlayerDecisionValidator.Validate(decision, request);
+                    if (!validation.IsValid)
                     {
                         pending.Status = PendingDecisionStatus.Invalidated;
                         pending.InvalidationReason = PendingDecisionInvalidationReason.ValidationFailed;
                         pending.ValidationFailureCount = checked(pending.ValidationFailureCount + 1);
                         if (pending.ValidationFailureCount >= 2)
                         {
-                            throw new InvalidOperationException(validationFailure);
+                            throw new InvalidOperationException(validation.Message);
                         }
 
                         continue;
@@ -440,25 +443,4 @@ public sealed class PlayerDecisionSession<TWorld, TCandidatePayload, TEventPaylo
         };
     }
 
-    private static string? DecisionValidationFailure(
-        PlayerDecision decision,
-        DecisionRequest request)
-    {
-        if (decision.DecisionId != request.DecisionId)
-        {
-            return "The Player decision does not match the requested DecisionId.";
-        }
-
-        if (decision.BasedOnWorldVersion != request.BasedOnWorldVersion)
-        {
-            return "The Player decision is based on a stale world version.";
-        }
-
-        if (decision.LineageId != request.LineageId)
-        {
-            return "The Player decision belongs to a different world lineage.";
-        }
-
-        return null;
-    }
 }

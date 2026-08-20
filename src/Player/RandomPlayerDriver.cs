@@ -1,7 +1,7 @@
 using DramaBoard.Kernel.Random;
 using DramaBoard.Protocol;
 
-namespace DramaBoard.Host;
+namespace DramaBoard.Player;
 
 /// <summary>Chooses uniformly from available affordances using stable request-addressed samples.</summary>
 public sealed class RandomPlayerDriver : IPlayerDriver

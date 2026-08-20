@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using DramaBoard.Player;
 using DramaBoard.Player.Llm;
 using DramaBoard.Protocol;
 
@@ -73,14 +74,14 @@ internal sealed class DemoTraceSink
     }
 }
 
-internal sealed class DecisionBudgetPlayerDriver : DramaBoard.Host.IPlayerDriver
+internal sealed class DecisionBudgetPlayerDriver : IPlayerDriver
 {
     private const long SceneEndingWaitMs = 5_000_000;
-    private readonly DramaBoard.Host.IPlayerDriver _inner;
+    private readonly IPlayerDriver _inner;
     private readonly int _maxTurns;
     private int _turns;
 
-    public DecisionBudgetPlayerDriver(DramaBoard.Host.IPlayerDriver inner, int maxTurns)
+    public DecisionBudgetPlayerDriver(IPlayerDriver inner, int maxTurns)
     {
         _inner = inner;
         _maxTurns = maxTurns;

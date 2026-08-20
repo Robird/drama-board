@@ -1,6 +1,6 @@
 using DramaBoard.Protocol;
 
-namespace DramaBoard.Host;
+namespace DramaBoard.Player;
 
 /// <summary>Answers every request with a wait intent.</summary>
 public sealed class NullPlayerDriver : IPlayerDriver

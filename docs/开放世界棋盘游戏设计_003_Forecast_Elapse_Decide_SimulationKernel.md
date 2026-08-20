@@ -41,7 +41,7 @@ Plan 并原子 Commit 一个 AtomicTransition
 
 > **小球碰撞、票据到期、Player/AI 的行动机会、天气变化以及冻结于 World/Manifest 的 Providence/预编排法则，在调度语义上没有类别差异。它们都先成为候选，只能在赢得一次全局仲裁后，以一个原子 transition 改变世界。**
 
-其中 Player 语义进一步冻结为：世界规则 Forecast 的是 `DecisionPointCandidate`，不是未来某条 Player command。DecisionPoint 成为唯一 winner 后，Kernel/Host 才 yield `DecisionInvocation` 并等待 Human/AI strategy 返回 WorldCommand；该 command 在同一个 winner、同一冻结 WorldSnapshot 上 Plan 和原子提交。等待不是另一个 external 调度路径。
+需要 winner 之外的数据才能完成的 occurrence 由同一次尚未完成的 Kernel Step 调用领域中立 resolver；resolver 返回与 basis/winner/ProposedLogicalInstant 绑定的完整 `ValidatedOccurrenceResolution`，Kernel 再让原 handler 在同一冻结 WorldSnapshot 上 Plan 和原子提交。等待 resolver 消耗零 ModelTime，期间 World 与 Journal 均不改变。DecisionPoint 只是一个领域用例，Kernel 不认识 Player、Human、AI、LLM 或其进程状态。
 
 来源、权限与干预理由仍然保留，但它们属于 provenance 与 authorization，不构成时间优先级。
 
@@ -182,7 +182,7 @@ ForecastBasis
 
 所有 Source 在同一 immutable WorldSnapshot/hash、LogicalCursor 和 Run Manifest 上联合预测。Candidate、AtomicTransitionPlan 与最终 CommittedTransition 都必须携带同一 ForecastBasis；任何世界 commit 后旧 basis 与全部旧 candidate 一起失效。
 
-Player 不是 ForecastBasis 之外的异步输入流。只有某个 `DecisionPointCandidate` 已经成为本轮唯一 winner 后，Kernel 才在这份冻结 WorldSnapshot 上调用相应 Player strategy；等待返回期间 basis 不变，也不允许提交其它 occurrence。
+Resolution 不是 ForecastBasis 之外的异步候选流。只有某个需要 resolution 的 candidate 已经成为本轮唯一 winner 后，同一个未完成 Step 才调用 generic resolver；等待完整 validated resolution 期间 basis 不变，也不允许提交其它 occurrence。
 
 ### 3.2 Candidate：尚未发生的未来提案
 
@@ -197,6 +197,7 @@ AtomicOccurrenceCandidate
     EffectiveExactDue
     HandlerId
     Payload
+    ResolutionContract?
     ForecastBasis
     Provenance
 ```
@@ -204,7 +205,7 @@ AtomicOccurrenceCandidate
 要求：
 
 - 身份稳定、可序列化、可比较；
-- `CandidateId` 由可信 Host/Source 按领域协议分配，不能直接采用 Player 可选择的命令字段；
+- `CandidateId` 由可信 Source 按领域协议分配，不能由之后提供 resolution 的一方操纵；
 - 对相同世界重复 Forecast 得到相同语义结果；
 - 不携带捕获可变内存的任意 closure；
 - 不得自行写 Journal 或修改 World；
@@ -225,10 +226,10 @@ SetPassageEnabled
 ResolveProvidenceLaw
 ```
 
-普通 rule candidate 可以直接引用 command payload 与稳定的 `HandlerId`。DecisionPointCandidate 在 Forecast 时只携带 ObservationSpec 与 WorldCommandSchema；它成为 winner 后才由 Player strategy 补全具体 WorldCommand。两者最终都由注册 handler 做 pure Plan：
+普通 candidate 可以直接引用完整 payload 与稳定的 `HandlerId`；需要补全 payload 的 candidate 只声明 `ResolutionContract`，winner 选出后由同一未完成 Step 内的独立验证边界提供完整 `ValidatedOccurrenceResolution`。两者最终都由注册 handler 做 pure Plan：
 
 ```text
-Plan(currentWorld, selectedCandidate)
+Plan(currentWorld, selectedCandidate, optional ValidatedOccurrenceResolution)
     → AtomicTransitionPlan
 ```
 
@@ -242,7 +243,7 @@ DomainFact 只在 transition 成功 commit 后成为历史。例如一个 `UseTi
 Fact[0] = TicketConsumed
 Fact[1] = TraversalStarted
 Fact[2] = TravelPartyUpdated
-Fact[3] = PlayerCommandRecorded
+Fact[3] = ResolutionRecorded
 ```
 
 这些不是四个互相竞争的 occurrence，而是同一个原子原因的审计展开。一个 `CommittedTransition` 内的全部 DomainFact **共享同一个 `LogicalInstant`**；连续的 `FactOrdinal = 0..N-1` 只负责规范化序列化、projector fold 与定位诊断。
@@ -263,7 +264,7 @@ AtomicTransitionPlan
     ForecastBasis
     ExpectedWorldVersion
     ProposedLogicalInstant
-    DecisionAudit?
+    ResolutionAudit?
     Facts[]
     CommandResult
     Provenance
@@ -271,17 +272,15 @@ AtomicTransitionPlan
 ```
 
 ```text
-DecisionAudit
-    DecisionInvocationId
-    ObservationHash
-    StrategyId / StrategyVersion
-    CanonicalWorldCommand
-    StrategyStateBaseRef / BaseHash
-    StagedProposalRef / StagedProposalHash
-    ResultStrategyStateRef / ResultStrategyStateHash
+ResolutionAudit
+    ValidatorId / ValidatorVersion
+    ResolutionContractId / ContractVersion
+    CanonicalResolutionPayload
+    ResolutionPayloadHash
+    ValidationReceiptRef / ReceiptHash
 ```
 
-Observation projection version、Observation schema codec 与 WorldCommand schema codec 必须冻结进 RunManifestVersion。DecisionAudit 是审计/恢复锚点，不使 WorldCommand 在普通 Replay 中变成可执行输入。
+Resolution contract codec、validator trust policy 与 canonical payload codec 必须冻结进 RunManifestVersion。ResolutionAudit 是审计/恢复锚点，不使 payload 在普通 Replay 中变成可执行输入。
 
 Kernel 必须：
 
@@ -300,7 +299,7 @@ Kernel 必须：
 
 这里 `AtomicTransitionPlan.ExpectedWorldVersion` 是 handler 刚刚读取并规划的当前 transition boundary，必须严格匹配；它不同于原始 command 的 `BasedOnWorldVersion`。后者通常只是 provenance，只有 command 显式声明 CAS 语义时才构成严格版本前置条件。
 
-Player 的 WorldCommand 不是一个稍后到达的 stale command：它属于 active DecisionInvocation，必须严格绑定 invocation 的 ForecastBasis/FrozenWorldSnapshot。这里允许宽松 `BasedOnWorldVersion` 的规则只适用于其它明确支持重验的 command protocol，不能让 ResumeDecision 换用新世界。
+Validated resolution 必须严格绑定本次未完成 Step 的 ForecastBasis/FrozenWorldSnapshot 与 winner。独立验证边界可以做 schema、envelope、identity 与 capability 检查；Kernel 只验证 opaque receipt/payload hash、winner binding 与 manifest-pinned validator identity，不能换用新世界。
 
 ### 3.6 TransitionHash 与 ResultingWorldVersion 的无自引用编码
 
@@ -320,7 +319,7 @@ body = CanonicalEncode(
     OccurrenceId,
     Source/Candidate/Generation/Handler,
     Provenance,
-    DecisionAudit?,
+    ResolutionAudit?,
     Facts[],
     CommandResult)
 // body 明确排除 TransitionHash 与 ResultingWorldVersion
@@ -347,7 +346,7 @@ ResultingWorldVersion = (
 V1 运行期只有两条合法 payload 来源：
 
 1. `WorldSnapshot + RunManifest` 的 pure Forecast 产生 candidate，winner 的 pure handler 产生 plan；
-2. 已经胜出的 Player `DecisionPointCandidate` 产生受 suspension 约束的 strategy continuation，Player strategy 只补全该 winner 的 command/proposal，再由 pure handler 产生 plan。
+2. 已经胜出且声明 ResolutionContract 的 candidate 在同一个未完成 Step 内调用 generic resolver；独立验证边界只补全该 winner 的 `ValidatedOccurrenceResolution`，再由同一个 pure handler 产生 plan。
 
 第一类可以覆盖：
 
@@ -358,11 +357,11 @@ V1 运行期只有两条合法 payload 来源：
 - Weather / Environment；
 - Timer / Deadline；
 - Game rules；
-- Player turn / action-opportunity rules 产生的 `DecisionPointCandidate`；
+- Player turn / action-opportunity rules 产生的 `DecisionPointCandidate`（领域 candidate，不是 Kernel 特例）；
 
-AI Player 走第二类。Providence 在 V1 只能是冻结于 World+RunManifest 的 pure law，走第一类；LLM/planner Providence 留给未来 ADR，不属于本设计，也不得复用 Player continuation 偷渡进 V1 runtime。
+Human/AI Player 的 orchestration 在 Kernel 外实现 generic resolver，把 DecisionPoint context 解析为 validated resolution。Providence 在 V1 只能是冻结于 World+RunManifest 的 pure law，走第一类；LLM/planner Providence 留给未来 ADR，不属于本设计。
 
-V1 禁止 Admin runtime live command。Setup 只负责创建 Genesis/new lineage；预编排脚本必须在运行前冻结进 World 或 RunManifest，随后由第一类 pure Forecast 读取。每个 runtime command 都必须追溯到一个已提交 World/Manifest 所产生的 winner，或 Player DecisionPoint winner 的 strategy continuation，不能来自隐藏队列、网络到达或进程内临时状态。
+V1 禁止 Admin runtime live command。Setup 只负责创建 Genesis/new lineage；预编排脚本必须在运行前冻结进 World 或 RunManifest，随后由第一类 pure Forecast 读取。每个 runtime plan 都必须追溯到一个 World/Manifest 所产生的 winner，以及必要时同一 Step 针对该 winner 获得的 validated resolution，不能来自隐藏候选队列或 spontaneous ingress。
 
 Kernel 不再调用：
 
@@ -375,7 +374,7 @@ ResolveInternalEvent(...)
 
 ```text
 Forecast(context) → candidates
-Plan(selectedWinner, optional persisted strategy proposal) → atomic transition plan
+Plan(selectedWinner, optional ValidatedOccurrenceResolution) → atomic transition plan
 ```
 
 ### 4.2 Source 的完备性契约
@@ -414,7 +413,7 @@ StableCandidateKey =
     + HandlerId
 ```
 
-其中 `CandidateId` 必须由可信 Host 或领域 Source 在调用 Player 前分配。Player strategy 返回的 WorldCommand 字段不能直接或间接改变 StableCandidateKey；否则 Player 可以通过改写命令身份磨出有利的 PRF rank。
+其中 `CandidateId` 必须由领域 Source 在调用 resolver 前分配。之后提供的 resolution payload 不能直接或间接改变 StableCandidateKey，否则 resolver 可以通过改写 payload 身份磨出有利的 PRF rank。
 
 仲裁 rank 推荐采用固定版本、无状态的 PRF：
 
@@ -467,8 +466,8 @@ Forecast all
 参考语义：
 
 ```text
-Step(until, limits):
-    require ActiveDecisionInvocation is null
+StepAsync(until, limits):
+    require no other Kernel operation is executing
 
     while true:
         basis = FreezeForecastBasis(
@@ -487,85 +486,32 @@ Step(until, limits):
 
         nextInstant = ProposeLogicalInstant(winner.Due) // pure，不推进 cursor
 
-        if winner is DecisionPointCandidate:
-            invocation = CreateDecisionInvocationDeterministically(
+        resolution = none
+        if winner declares ResolutionContract:
+            selected = CreateEphemeralSelectedWinnerContext(
                 basis, WorldSnapshot, winner, nextInstant)
-            ActiveDecisionInvocation = invocation
-            return DecisionInvocation(invocation)
+            resolution = await OccurrenceResolver.Resolve(selected)
+
+            integrity = VerifyValidatedResolutionBinding(
+                resolution.ForecastBasis == basis,
+                resolution.StableCandidateKey == winner.Key,
+                resolution.Generation == winner.Generation,
+                resolution.ProposedLogicalInstant == nextInstant,
+                resolution.ContractId/Version == winner.ResolutionContract,
+                validator identity/version is allowed by RunManifest,
+                receipt hash and payload hash are internally consistent)
+            if integrity invalid:
+                return ResolutionBindingFault(integrity.Reason) // zero commit
 
         plan = Handler(winner.HandlerId)
-            .Plan(WorldSnapshot, winner, basis, nextInstant)
+            .Plan(WorldSnapshot, winner, resolution, basis, nextInstant)
+
+        // 结构已验证但领域前置失败时，handler 返回非空 rejection plan，
+        // 并消费/推进 winner generation。
+        if resolution is not none:
+            plan = AttachResolutionAudit(plan, winner, resolution)
 
         return Commit(plan, basis, nextInstant)
-
-PrepareDecisionProposal(invocationId, rawStrategyOutput):
-    invocation = require ActiveDecisionInvocation.Id == invocationId
-    protocol = ValidateProtocolOutput(
-        invocation,
-        rawStrategyOutput, // schema/envelope/id/size/capability
-        invocation.DecisionPoint.WorldCommandSchema)
-    if protocol invalid:
-        return ProtocolRejection(invocation, protocol.Reason) // 不写 final memo
-
-    proposal = CanonicalizeDecisionProposal(rawStrategyOutput)
-    memo = PlayerDriverStore.StageAndCompareExchangeFirstWriteWins(
-        invocationId,
-        expected = absent,
-        proposal) // 私有 delta 留在 driver store，返回 opaque refs/hashes
-    if memo exists with same canonical proposal:
-        return PersistedDecisionProposal(memo) // 幂等
-    if memo exists with different proposal:
-        return DecisionProposalConflict
-    return PersistedDecisionProposal(memo) // persist-before-expose
-
-ResumeDecision(invocationId, persistedProposal):
-    existing = Journal.FindCommittedDecision(
-        invocationId,
-        DerivedOccurrenceId(invocationId))
-    if existing exists and
-       existing.StagedProposalHash == persistedProposal.StagedProposalHash:
-        return Committed(existing) // append/ACK 后重试幂等
-    if existing exists:
-        return DecisionProposalConflict
-
-    invocation = require ActiveDecisionInvocation.Id == invocationId
-    require WorldVersion == invocation.Basis.WorldVersion
-    require LogicalCursor == invocation.Basis.LogicalCursor
-
-    integrity = VerifyPersistedProposal(
-        persistedProposal was CAS-persisted-before-expose,
-        persistedProposal receipt/hash,
-        persistedProposal.StrategyStateBaseRef/Hash
-            == invocation.CommittedStrategyStateRef,
-        RevalidateProtocolEnvelopeAndCapability(
-            invocation,
-            persistedProposal))
-    if integrity invalid:
-        return DriverStoreInvariantFaultAndStop(integrity.Reason)
-        // zero commit; quarantine/repair store or implementation;
-        // final memo cannot be replaced and this is not a retryable output error.
-
-    plan = DecisionCommandHandler.Plan(
-        invocation.WorldSnapshot,
-        invocation.DecisionPoint,
-        persistedProposal.WorldCommand,
-        invocation.Basis,
-        invocation.ProposedLogicalInstant)
-
-    // Plan 对结构合法但领域前置失败的命令返回非空 rejection plan；
-    // rejection Facts 必须消费/推进 DecisionPoint generation。
-    plan = AttachDecisionAudit(
-        plan,
-        invocation.ObservationHash,
-        invocation.StrategyId/Version,
-        persistedProposal)
-
-    result = Commit(
-        plan,
-        invocation.Basis,
-        invocation.ProposedLogicalInstant)
-    ActiveDecisionInvocation = null
-    return result
 
 Commit(plan, basis, nextInstant):
         require plan.ForecastBasis == basis
@@ -576,13 +522,12 @@ Commit(plan, basis, nextInstant):
         World = scratch.FinalWorld
         WorldVersion = transition.ResultingWorldVersion
         LogicalNow = nextInstant
-        PlayerDriverStore.ProjectCommittedStrategyState(transition) // Journal-driven, retryable
 
         DiscardAllForecasts()
         return Committed(transition)
 ```
 
-`DecisionInvocationId` 由 canonical `(ForecastBasis, StableCandidateKey, winner.Generation, ProposedLogicalInstant)` 规范哈希派生。`ProposeLogicalInstant` 与 yield 都是纯计算，不推进权威 cursor；只有 Commit 成功才安装新的 LogicalInstant。Host 可以用阻塞/异步 API 调用 Human 或 AI strategy，但从 yield 到 `ResumeDecision` 成功，或合法 Pass/Wait/Fallback command 成功提交期间，任何新的 `Step`、其它 `ResumeDecision` 或 world commit 都必须以 `DecisionInProgress` 拒绝。
+`SelectedWinnerContext` 只是当前 `StepAsync` 调用栈中的 ephemeral binding，可由 canonical `(ForecastBasis, StableCandidateKey, winner.Generation, ProposedLogicalInstant, ResolutionContract)` 计算校验 hash；它不是 public/persisted request、DomainFact 或可恢复 lifecycle。`ProposeLogicalInstant` 与 resolver 等待都不推进权威 cursor；只有 Commit 成功才安装新的 LogicalInstant。等待 resolver 期间同一 Kernel instance 不接受另一个 Step 或 commit。Crash/取消发生在 append 前，则该 Step 没有发生；重启后重新 Forecast，并允许外部 resolver 给出不同 resolution。
 
 ### 5.1 Advance/Elapse 的语义
 
@@ -607,133 +552,69 @@ Commit(plan, basis, nextInstant):
 
 ---
 
-## 6. Player、AI 与 Decision 的新语义
+## 6. Unfinished-step winner resolution
 
-### 6.1 Player 是回合制策略函数，不是异步 Event Source
+### 6.1 SelectedWinnerContext 只是临时调用状态
 
-需要 Player 行动的世界规则 Forecast `DecisionPointCandidate`：
-
-```text
-DecisionPointCandidate
-    DecisionPointId
-    PlayerId
-    Due / EffectiveExactDue
-    ObservationSpec
-    WorldCommandSchema
-```
-
-它与到期、碰撞、天气和另一个 Actor 的 DecisionPoint 一样参加全局仲裁。只有它成为唯一 winner 后，Kernel 才建立尚未提交的 continuation：
+需要补全 payload 的 winner 在同一次尚未完成的 `StepAsync` 中产生：
 
 ```text
-DecisionInvocation
-    DecisionInvocationId
+SelectedWinnerContext                 // ephemeral, not persisted
     ForecastBasis
-    FrozenWorldSnapshot
-    DecisionPointCandidate
-    CanonicalObservation
-    ObservationHash
-    StrategyId / StrategyVersion
-    CommittedStrategyStateRef       // version + hash，非 ForecastBasis
+    FrozenWorldSnapshotRef / Hash
+    StableCandidateKey / Generation
+    HandlerId
+    ResolutionContractId / ContractVersion
     ProposedLogicalInstant
 ```
 
-Host 将 invocation 同步或异步交给 Human/AI strategy：
+它不是 public request、DomainFact、Journal record 或可跨进程恢复的 lifecycle。Kernel 不对外暴露 `Request → Resume` 协议，也不维护 durable active-invocation state。resolver 等待期间 Step 尚未返回，World、LogicalInstant、WorldVersion 与 Journal 全部不变；同一 Kernel instance 禁止并发 Step/commit。
+
+### 6.2 独立验证边界
+
+Kernel 不获取或解释 raw output，也不定义 Player/AI/LLM 调用。Host、Protocol 或领域 adapter 在 Kernel 外完成 schema、envelope、identity、size、capability 及产品 policy 校验；由领域中立 resolver 接口向尚未完成的 Step 返回：
 
 ```text
-DecisionProposal = await PlayerStrategy.Decide(DecisionInvocation)
-
-DecisionProposal
-    WorldCommand
-    StrategyStateBaseVersion / BaseHash
-    ProposedStrategyStateDelta
-    StrategyStateDeltaHash
-
-PersistedDecisionProposal
-    WorldCommand
-    StrategyStateBaseRef / BaseHash
-    StagedProposalRef / StagedProposalHash
-    ResultStrategyStateRef / ResultStrategyStateHash
+ValidatedOccurrenceResolution
+    ForecastBasis
+    StableCandidateKey / Generation
+    ProposedLogicalInstant
+    ResolutionContractId / ContractVersion
+    ValidatorId / ValidatorVersion
+    CanonicalPayload
+    PayloadHash
+    ValidationReceiptRef / ReceiptHash
 ```
 
-raw delta 只写入 Player driver 的私有 staged store；Kernel、World Journal、AtomicTransitionPlan 和普通 Observation 只能看到 opaque refs/hashes，不能泄漏 Player 私有 Memory。
+Kernel 仅验证这些 opaque 字段的 binding、hash、manifest-pinned validator identity 与刚选出的 winner/context 一致；失败时零提交并结束为 fault。校验边界如何重问、等待、持久化或恢复其进程状态，不属于 Kernel Law，Kernel 也不承诺 provider exactly-once。
 
-这里的异步只表示 Wall-Clock 等待，不表示 Player 是可与世界事件并发到达的 external source。等待期间 ModelTime、WorldVersion 与 Journal head 全部不变。
+### 6.3 Domain Plan 与 rejection
 
-### 6.2 `DecisionInvocation → ResumeDecision` 是同一个 winner
-
-`DecisionInvocation` 不是 DomainFact，不先提交任何“请求 Player 决策”的 world fact，也不消耗 CausalOrdinal。Player driver 返回已经 durable memoize 的 DecisionProposal 后，`ResumeDecision` 必须在 invocation 保存的同一 ForecastBasis 与 FrozenWorldSnapshot 上验证、Plan 并提交：
+binding/integrity 通过后，同一个 winner handler 在冻结 snapshot 上运行 pure Plan。结构已验证的 resolution 仍可能违反 ticket、位置、资源等 world-dependent precondition；此时 handler 必须返回非空 rejection plan，提交原因 Fact 并消费/推进 winner generation。Domain rejection 是 occurrence 的世界结果，不能重新调用 resolver 替换选择。
 
 ```text
-DecisionPointCandidate wins
-→ yield DecisionInvocation                    // zero commit
-→ await Player strategy                       // world locked at basis
-→ persist proposal by invocation-id CAS before exposure
-→ ResumeDecision(invocationId, PersistedDecisionProposal)
-→ pure Plan over frozen snapshot
-→ one global atomic CommittedTransition
-→ full re-Forecast
+StepAsync selects one winner
+→ if required, await generic resolver           // zero ModelTime, no commit
+→ verify ValidatedOccurrenceResolution binding
+→ pure Plan on the same basis/snapshot
+→ accepted or domain-rejection transition
+→ one atomic commit
+→ StepAsync returns
 ```
 
-WorldCommand、Player 的选择记录、strategy-state base/staged/result opaque refs/hashes、命令结果以及 Game/Spatial 等跨域 Facts 都属于这个 winner 的同一个 CommittedTransition，共享 ProposedLogicalInstant。raw strategy-state delta 留在 driver 私有 store，不能进入 transition。它们之间不能插入票据到期、另一个 Player 或任何 rule occurrence。
+### 6.4 DecisionPoint 领域示例
 
-### 6.3 两个 Player 的行动机会仍由全局仲裁排序
+A/B 两个 DecisionPointCandidate 同位时，global comparator 只选择一个。A 若胜出，同一个未完成 Step 只 resolve A；B 不会因 Human/AI/网络更快而插队。A resolution 原子提交后 full re-Forecast，B 的旧 candidate 失效并在新世界中重新判断。
 
-若 A 与 B 在相同 Due 各有一个 DecisionPointCandidate：
+票据竞争同样发生在 `ExpireTicket` 与 `DecisionPoint(BoardingOpportunity)` 之间。到期先胜则新 Observation 不再提供乘船；DecisionPoint 先胜则其 validated resolution 可以让同一 handler 原子提交 `TicketConsumed + TraversalStarted`，等待期间到期 occurrence 不得插入。
 
-```text
-DecisionPoint(A)
-DecisionPoint(B)
-```
+这些 Human/AI/Observation/WorldCommand 细节属于 Decision 领域与外部 orchestration；Kernel 只看到 ResolutionContract、opaque validated payload 和 pure handler。
 
-Kernel comparator 先选唯一 winner。若 A 胜出，则只调用 A，等待并原子提交 A 的 WorldCommand；随后 full re-Forecast。B 的旧 candidate 已失效，可能在新世界中消失、改变或再次成为 winner。B 的网络速度、Human 思考速度或 LLM latency 不会让 B 越过 A，也不会让 A 在思考时被 B 插队。
+### 6.5 Replay、Fork 与 crash 边界
 
-### 6.4 票据到期与行动机会
+普通 Replay 只 fold Facts，不重新取得 resolution，也不执行 ResolutionAudit payload。Audited Replay 可重建 winner，使用 Journal 中的 validated payload 重跑 pure Plan，并逐字节比较 Facts/CommandResult。
 
-正确竞争对象不是尚不存在的 `UseTicketAndBoard`，而是：
-
-```text
-ExpireTicket
-DecisionPoint(BoardingOpportunity)
-```
-
-若 `ExpireTicket` 先胜出，TicketExpired 原子提交；re-Forecast 后 Player 获得的新 DecisionPoint/Observation 不再把乘船列为合法选择，可以得到“我还是晚了一步”的信息。
-
-若 `DecisionPoint(BoardingOpportunity)` 先胜出，Kernel 锁定该 winner 并等待 Player。Player 若返回 `UseTicketAndBoard`，则 `TicketConsumed + TraversalStarted + PlayerCommandRecorded` 在同一 CommittedTransition 原子提交，之后到期候选消失。若 Player 返回明确的 `Wait/Decline`，该命令也必须产生会消费或推进 DecisionPoint generation 的 Fact，随后票据到期可以在下一轮胜出。
-
-### 6.5 非法命令、重问与 fallback
-
-Player strategy 只提出 DecisionProposal，不能直接构造成功或 rejection Facts。校验必须分成两层：
-
-1. **Protocol/output validation**：在写 final memo 前检查 InvocationId、schema、envelope、大小和 capability。失败时零 Fact、零 Journal、零 WorldVersion/CausalOrdinal 变化，不写 authoritative final memo，返回同一 invocation 的 protocol rejection 并继续挂起；
-2. **Domain planning**：protocol-valid proposal 先按 InvocationId CAS 持久化，再交给 `ResumeDecision`。pure Plan 在冻结 WorldSnapshot 上检查资源、位置、ticket 等领域前置。成功返回 accepted plan；前置失败则返回**非空 rejection plan**，原子提交 `CommandRejected(reason)` 与消费/推进 DecisionPoint generation 的 Facts。
-
-领域 rejection 是该 Player 选择在世界中的结果，会占用本 occurrence 的 LogicalInstant；它不能退回 protocol 重问，也不能让同一个 DecisionPoint 无状态复发。
-
-final CAS 之后再发现 store receipt、StagedProposalHash、StrategyStateBaseRef/Hash 或 validator 不变性不匹配，不属于可修正的 Player 输出错误；这是 `DriverStoreInvariantFault / CorruptPersistedProposal`。Kernel 必须零提交并停机隔离，不能释放 winner、重问或接受替换 proposal。只有 CAS 前的 protocol validation failure 才允许 Player 修正后重试。
-
-Kernel 不记录或解释未提交的 attempt count，也不根据重试次数、wall-clock 或断连自动选择 fallback。Protocol-invalid attempt 可以进入非权威诊断日志，但不是 final memo、不是事实且不影响世界。PlayerStrategy/driver 可以在内部重试；若 Player/Host policy 决定结束等待，它最终必须为同一 invocation 返回一个 protocol-valid、显式的 WorldCommand（通常为 `Pass/Wait/Decline`），在 CAS memo 成功后再通过 ResumeDecision/Plan/atomic commit。
-
-Wall-Clock timeout、断连或 Host 放弃不得“取消 invocation 后无提交地 re-Forecast”，否则现实延迟会改写世界因果。它们只能使 Player/Host policy 为当前 invocation 返回一个 protocol-valid、带 provenance 的 `Pass/Wait/Fallback` WorldCommand，并由已经选中的 DecisionPoint occurrence提交；若没有这种合法 command，就保持 suspended。Protocol-invalid output 同样不释放 winner，只能继续重问或走显式 fallback。
-
-DecisionInvocation、非法回答、重问、strategy memo、fallback 选择过程和 append 前 crash 都不占用 CausalOrdinal；只有最终 CommittedTransition 成功追加才消费此前 proposed 的 LogicalInstant。
-
-### 6.6 Crash、Replay 与 Fork
-
-若进程在 `AppendTransition` 前崩溃，世界中没有发生任何事。恢复后从相同 Journal head 全量 Forecast，会重新得到同一 DecisionPoint winner 与确定性派生的 `DecisionInvocationId`。
-
-底层 Human/LLM provider call 只能假定 at-least-once。Host/driver 必须先对 raw output 做纯 protocol validation；invalid output 不写 authoritative final memo。对首条 protocol-valid DecisionProposal，driver store 以 `DecisionInvocationId` 执行 first-write-wins/CAS，并且必须在向 `ResumeDecision` 暴露前完成持久化：相同 canonical payload 重试幂等返回同一 staged ref，不同 payload 返回冲突并丢弃，不得替换 winner 的选择。
-
-memo 只恢复**已经由全局仲裁选中的 winner continuation**，不进入 ForecastBasis、不生成 candidate、不开放其它操作，也不成为新的模拟输入源。raw `ProposedStrategyStateDelta` 仅存在 driver 私有 staged store；CommittedTransition 只锚定 base/staged/result opaque refs 与 hashes。
-
-不提供这种幂等 memo 的实验 driver 只能获得“未 commit 可以重新作答”的较弱语义，不能声称 crash/restart 与 one-shot byte-for-byte 等价；正式 Human/AI driver 必须满足 V1 契约。
-
-`AppendTransition(expectedHead, OccurrenceId, transition)` 必须原子且幂等。`ResumeDecision` 的第一步总是按 InvocationId/derived OccurrenceId 查询 Journal committed-decision index：若已有 transition 且 staged proposal hash 相同，直接返回既有结果；若 payload/hash 不同，返回确定性 conflict；只有尚未提交时才要求 active invocation 与相同 basis。这样 append 成功、suspension 已清除但 ACK 丢失，或进程在返回前崩溃后的重发，都不会因“没有 active invocation”失败，也不会再次调用 Player或重复执行命令。
-
-Player strategy 的 authoritative state 只能由已提交 Decision transition 推进或重建。Journal append 成功后，driver projection 才依据其中的 ResultStrategyStateRef/Hash 激活 staged delta；append 失败时 staged data 保持不可见且不能提前安装。append 成功后 crash，projection 可由 Journal refs 幂等完成激活，不需要与 driver store 建立分布式事务。
-
-普通 Replay 只 fold 已记录的 Facts（其中可含 opaque strategy-state advancement ref），不执行 WorldCommand，也不调用 Human、LLM 或 strategy；WorldCommand 只是审计 payload。Audited Replay 重建 ForecastBasis，验证当时 winner 确为该 DecisionPoint，再以 recorded WorldCommand 和 opaque strategy refs 重跑 pure Plan，要求 `Facts[]` 与 `CommandResult` 逐字节匹配；它不要求 strategy 再次产生相同选择。
-
-Fork 仍只发生在 CommittedTransition boundary，并继承 Journal 投影出的 committed strategy-state version/ref/hash。未提交的 invocation/staged delta 不属于 Fork 权威状态；从该 boundary 运行的新分支会重新得到 DecisionPoint，并允许 Player 作出不同选择。
+Fork 只发生在 CommittedTransition boundary；ephemeral SelectedWinnerContext 不属于 Fork 权威状态。若 append 前 crash/取消，没有 occurrence 被提交，整个 Step 视为没有发生；重启从相同 World/Manifest 重新 Forecast，resolver 可以给出不同结果。Kernel 不持久化 provider 状态，也不承诺 restart 与 one-shot byte-equal。append 成功后的恢复只遵循 Journal 自身的原子 commit 语义。
 
 ---
 
@@ -749,7 +630,6 @@ Provenance
     CommandId
     BasedOnWorldVersion
     DecisionId?
-    DecisionInvocationId?
     PlayerId?
     InterventionId?
     ProvidenceId?
@@ -768,7 +648,7 @@ Provenance
 
 它们不得用于给某类来源固定的调度优势。时间比较器只看 Due、合法的精确时间证据、PRF rank 与稳定身份兜底。
 
-对 Player 来源而言，这些字段描述“已胜出的 DecisionPoint 调用了谁、返回了什么 WorldCommand”，而不是建立一个可随时写入世界的 ingress。Player strategy 只能经当前 `DecisionInvocation → ResumeDecision` continuation 影响世界。
+对 DecisionPoint 领域而言，这些字段可以描述“哪个 winner 最终采用了哪个 validated resolution”，但 Kernel 不解释 PlayerId、DecisionId 或领域 payload。
 
 `Origin = Admin | Setup` 可以出现在 Genesis、离线迁移或历史 provenance 中，但不授权 V1 runtime ingress；`Origin = Providence` 必须追溯到 World+RunManifest pure law 的 winner，不能来自 runtime planner。
 
@@ -832,7 +712,7 @@ CandidateId
 Generation
 HandlerId
 Provenance
-DecisionAudit?
+ResolutionAudit?
 OrderingRulesVersion
 CodecVersion / HashRulesVersion
 Facts[]
@@ -847,7 +727,7 @@ TransitionHash
 
 ### 9.2 Replay
 
-普通 Replay 直接按 Journal 中严格递增的 `LogicalInstant` 原子 fold `Facts[]`，不执行作为审计 payload 的 WorldCommand，不需要重新 Forecast，也不需要重新调用 Player/LLM。
+普通 Replay 直接按 Journal 中严格递增的 `LogicalInstant` 原子 fold `Facts[]`，不执行 `ResolutionAudit` 中的 canonical payload，不需要重新 Forecast，也不需要重新调用任何外部 resolver。
 
 Replay 必须验证：
 
@@ -860,7 +740,7 @@ Replay 必须验证：
 
 Replay 只能在完整 transition fold 后发布新 WorldVersion、Snapshot 或订阅通知。任意 Fact prefix 都只是 reducer 内部临时值。
 
-可选的 audited Replay 按每条 transition 记录的纯模拟 ForecastBasis 重新 Forecast，验证 occurrence 是当时的全局 winner。若它来自 DecisionPoint，则以 recorded WorldCommand 与 opaque strategy refs 重跑 pure Plan，并要求所得 `Facts[]`/`CommandResult` 与 Journal 逐字节相同；不得重新调用 Human/AI strategy。这是测试与迁移工具，不是普通加载存档的必要条件。
+可选的 audited Replay 按每条 transition 记录的纯模拟 ForecastBasis 重新 Forecast，验证 occurrence 是当时的全局 winner。若 transition 带 ResolutionAudit，则以 recorded validated payload 重跑同一个 pure handler，并要求所得 `Facts[]`/`CommandResult` 与 Journal 逐字节相同；不得重新调用任何外部 resolver。这是测试与迁移工具，不是普通加载存档的必要条件。
 
 ### 9.3 Fork
 
@@ -870,12 +750,11 @@ Fork 必须复制：
 - 当前 `LogicalInstant`；
 - RunArbitrationSeed、WorldSeed、OrderingRulesVersion、RandomRulesVersion、RunManifestVersion；
 - 所有 source 的 generation、watermark 和 pending state；
-- Journal 投影出的 committed Player/AI strategy-state version/ref/hash；
 - Journal 前缀与 hash anchor。
 
-相同前缀和相同规则版本应产生相同 DecisionPoint winner；Fork 中 Player 返回不同 WorldCommand 或接受不同 intervention 后可以自然分歧。
+相同前缀和相同规则版本应产生相同 winner；Fork 中外部领域 resolver 返回不同 validated payload 后可以自然分歧。
 
-Forecast cache 和未提交的 DecisionInvocation 都不属于 Fork 权威状态；Fork 可以丢弃并全量重算。Fork point 必须是 CommittedTransition boundary，不能指向某个 FactOrdinal 或 strategy 等待中的 continuation。
+Forecast cache 和 ephemeral SelectedWinnerContext 都不属于 Fork 权威状态；Fork 可以丢弃并全量重算。Fork point 必须是 CommittedTransition boundary，不能指向某个 FactOrdinal 或未完成 Step。
 
 ---
 
@@ -885,12 +764,12 @@ Forecast cache 和未提交的 DecisionInvocation 都不属于 Fork 权威状态
 
 一次 winner 被 commit 后，必须至少满足一项：
 
-- 消费/推进 DecisionPoint 或 command opportunity；
+- 消费/推进 winner 或 resolution opportunity；
 - 推进 candidate generation；
 - 推进领域 settlement watermark；
 - 改变足以使同一 candidate 不再以相同身份 Forecast 的权威状态。
 
-不得让一个无状态 no-op candidate 在相同世界上反复获胜。Player 的 `Wait/Pass/Fallback` 也必须产生能消费或提升 DecisionPoint generation 的非空 CommittedTransition。
+不得让一个无状态 no-op candidate 在相同世界上反复获胜。Accepted 或 domain-rejected resolution 都必须产生能消费/提升 winner generation 的非空 CommittedTransition。
 
 ### 10.2 同一 ModelTime 仍可能出现零时间循环
 
@@ -911,7 +790,8 @@ Kernel 必须有：
 
 Forecast 与 Plan 之间按规范不会有其他世界 commit，但 handler 仍须防御 stale、溢出和领域不变量错误：
 
-- Player WorldCommand 不合法：保持同一 invocation，零提交并重问或使用显式 fallback；
+- Validated resolution 的 binding/integrity 不匹配：零提交并以 deterministic fault 结束本次 Step；
+- 领域前置条件失败：handler 规划非空 rejection transition 并消费 winner generation；
 - candidate/plan 的 ForecastBasis 与本轮冻结 basis 不匹配：Kernel fault，丢弃本轮并诊断 source 契约；
 - scratch-fold 或 Journal 原子提交失败：世界和 Journal 均保持原状，Kernel 停止并报告；
 - 不允许先提交一部分，再用补偿事件假装原子性。
@@ -926,7 +806,7 @@ Simulator 可以知道未来 candidate，Player 不能因此预知未来：
 Simulator foresight ≠ Player foresight
 ```
 
-Observation 只能来自冻结 WorldSnapshot 上对该 Player 的合法感知投影。Forecast queue、PRF rank、其他 Actor 的 DecisionPoint/WorldCommand 和 strategy memo 都不是 Player 信息。
+Decision 领域的 Observation 只能来自冻结 WorldSnapshot 上的合法感知投影。Forecast queue、PRF rank、其它 candidate 与 opaque resolution metadata 都不能因此成为 Player 信息；具体投影由 Kernel 外的领域 adapter 负责。
 
 Godot 的 NavMesh、动画与镜头属于 Presentation Time。视觉人物走了 38 秒还是 42 秒，不应改变 ModelTime 上已经提交的 8 分钟旅行；反过来，Presentation 也不能因为动画尚未播放完而改变 winner。
 
@@ -954,49 +834,26 @@ interface IOccurrenceHandler
     HandlerId Id { get; }
 
     AtomicTransitionPlan Plan(
-        WorldSnapshot world,
-        AtomicOccurrenceCandidate winner,
-        ForecastBasis basis,
-        LogicalInstant proposedInstant);
-}
-
-interface IDecisionOccurrenceHandler
-{
-    AtomicTransitionPlan PlanDecision(
         WorldSnapshot frozenWorld,
-        DecisionPointCandidate winner,
-        WorldCommand command,
+        AtomicOccurrenceCandidate winner,
+        ValidatedOccurrenceResolution? resolution,
         ForecastBasis basis,
         LogicalInstant proposedInstant);
 }
 
 interface ISimulationKernel
 {
-    StepResult Step(ModelTime horizon);
-
-    ResumeResult ResumeDecision(
-        DecisionInvocationId invocationId,
-        PersistedDecisionProposal proposal);
-}
-
-interface IPlayerStrategy
-{
-    // provider 可 at-least-once；raw output 先 protocol validation。
-    ValueTask<DecisionProposal> DecideAsync(
-        DecisionInvocation invocation,
+    ValueTask<StepResult> StepAsync(
+        ModelTime horizon,
         CancellationToken cancellation);
 }
 
-interface IPlayerDriverStore
+interface IOccurrenceResolver
 {
-    // 只接受 protocol-valid proposal；InvocationId first-write-wins/CAS。
-    PersistedDecisionProposal StageBeforeExpose(
-        DecisionInvocation invocation,
-        DecisionProposal proposal);
-
-    // committed Journal ref 驱动 projection 激活，append 前不得激活。
-    void ProjectCommittedStrategyState(
-        CommittedTransition transition);
+    // 输入只在本次 StepAsync 调用期间有效；实现须在 Kernel 外完成结构/权限校验。
+    ValueTask<ValidatedOccurrenceResolution> ResolveAsync(
+        SelectedWinnerContext context,
+        CancellationToken cancellation);
 }
 
 interface IAtomicJournal
@@ -1016,7 +873,9 @@ WorldSeed
 CapacityLimits
 ```
 
-`StepResult` 可以是 `Committed`、`DecisionInvocation`、`HorizonReached` 或 fault；存在 active invocation 时 `Step` 必须拒绝。Kernel 是唯一 commit authority。Source、Handler 和 Player strategy 都不获得 `IJournal` 或可变 World 的直接写权限，strategy 只能返回 WorldCommand。
+`StepResult` 可以是 `Committed`、`HorizonReached` 或 fault；`StepAsync` 未完成时同一 Kernel instance 拒绝另一个 Step/commit。Kernel 是唯一 commit authority。Source、Handler 与 Kernel 外的 resolver 都不获得 `IJournal` 或可变 World 的直接写权限。
+
+依赖方向也是本设计的 Law：**Kernel assembly 不得引用 Host、Protocol、Player、Player.Llm 或任何 orchestration implementation assembly**。`IOccurrenceResolver`、ephemeral `SelectedWinnerContext`、`ValidatedOccurrenceResolution` 及其 opaque binding/receipt 是领域中立的 inward contracts；schema/capability validator、Human/AI adapter、网络 transport 与持久化策略都在 Kernel 外实现或装配这些 contracts。Kernel 只调用抽象 resolver，不识别实现类型。
 
 ---
 
@@ -1049,7 +908,7 @@ CapacityLimits
 - `ForecastBasis`；
 - `Provenance`；
 - `RunManifestVersion / OrderingRulesVersion / RunArbitrationSeed`；
-- Observation projection/schema codec 与 WorldCommand schema codec version；
+- ResolutionContract、canonical resolution payload 与 ValidationReceipt codec/version；
 - `FactOrdinal` 与 `CommittedTransition`；
 - global epoch/unit/bucket、`EffectiveExactDue` 与 canonical serialization/comparator；
 - empty lineage、GenesisHash 与首个 CausalOrdinal goldens。
@@ -1082,20 +941,19 @@ Journal/checkpoint 先能够同时读旧格式和写新格式；存档迁移策�
 
 迁移期可用 adapter 包装旧 `ISimSystem` 或 legacy input，但 adapter 必须把结果转成统一 candidate/Plan，不能保留 external-first/internal-first 或本地优先级。此时只允许测试与迁移调用方使用，不能成为目标兼容层。
 
-### 阶段 4：迁移 Decision continuation 与 Player strategy
+### 阶段 4：迁移 generic winner resolution
 
 把流程改为：
 
 ```text
-DecisionPointCandidate wins global arbitration
-→ yield deterministic DecisionInvocation       // zero commit
-→ Host awaits idempotent Human/AI strategy
-→ ResumeDecision on the same basis/snapshot
-→ validate/retry or explicit fallback
-→ command + all cross-domain Facts commit as one transition
+candidate with ResolutionContract wins global arbitration
+→ same unfinished Step calls generic resolver         // zero ModelTime
+→ independent boundary returns ValidatedOccurrenceResolution
+→ handler Plan on the same basis/snapshot
+→ accepted or domain-rejection Facts commit as one transition
 ```
 
-实现 `Step → DecisionInvocation → ResumeDecision`、两层校验、active-invocation single-writer guard、Player driver 的 validate-before-CAS/persist-before-expose memo、opaque strategy-state staged/activation projection，以及合法 Pass/Wait command policy。删除 Host 直接把 answer 投影进 World 的路径；**本阶段结束后删除全部 live `Run(externalInputs)`/direct result-fact ingress**。补充 A/B DecisionPoint 仲裁、票据 vs 行动机会、等待期间禁止 commit、protocol invalid/domain rejection、append/ACK crash recovery 与 strategy-state Fork 测试。
+实现单次 `StepAsync → resolver → Plan → Commit`、in-flight Step single-writer guard、opaque binding/integrity 校验、domain Plan rejection 与 resolution audit。schema/envelope/identity/size/capability 等结构校验在独立边界完成；Kernel 不持有 public request、resume API、raw output、provider retry、memo 或 strategy state。删除 Host 直接把 answer 投影进 World 的路径；**本阶段结束后删除全部 live `Run(externalInputs)`/direct result-fact ingress**。补充 A/B DecisionPoint 仲裁、票据 vs 行动机会、等待期间禁止 commit、binding fault/domain rejection，以及 crash-before-commit 可重新选择测试。
 
 ### 阶段 5：迁移跨域 Game command
 
@@ -1113,9 +971,9 @@ DecisionPointCandidate wins global arbitration
 逐项目迁移：
 
 1. `src/FirstBoard`：规则、定时器与 Actor 行为改为 OccurrenceSource/Handler；
-2. `src/FirstBoard.Demo`：UI 实现 PlayerStrategy/DecisionInvocation continuation，通过 ResumeDecision 返回 WorldCommand，不再构造结果事件；
+2. `src/FirstBoard.Demo`：UI/领域 adapter 在 Kernel 外实现 generic resolver，把 DecisionPoint context 解析并验证为 `ValidatedOccurrenceResolution`，不再构造结果事件；
 3. `src/Spatial`：arrival、contact、mutation、同行关系变化统一为 candidate 或同一 transition 内的 DomainFacts；移除 Spatial 自己的外部命令同刻屏障；
-4. Host：负责调用 Player strategy、invocation-id memo、运行循环和展示；strategy 等待期间不得启动另一个 Step。
+4. Host：负责运行循环、展示及 Kernel 外的 resolution orchestration；`StepAsync` 未完成期间不得启动另一个 Step。其 transport、validator、provider 与持久化实现不得成为 Kernel 的项目依赖。
 
 若这些项目的现有 API、事件粒度或调用顺序与目标模型冲突，应修改调用方和领域边界，而不是在 Kernel 中增加兼容性分支。
 
@@ -1143,7 +1001,7 @@ contact 的 CommittedTransition 写入对应 consumed Fact；Forecast 排除完�
 - handler/source 的 Journal 直写能力；
 - 仅为旧 Demo 或 Spatial 保留的 Kernel 特例。
 
-若仍需导入旧存档或测试 fixture，应离线转换成已有的 legacy CommittedTransition，或从 transition boundary 重新建立 DecisionPoint；不得恢复运行期 Player input 旁路。
+若仍需导入旧存档或测试 fixture，应离线转换成已有的 legacy CommittedTransition，或从 transition boundary 重新建立领域 candidate；不得恢复运行期 live input 旁路。
 
 ### 阶段 8：Replay/Fork、压力测试与优化
 
@@ -1151,7 +1009,7 @@ contact 的 CommittedTransition 写入对应 consumed Fact；Forecast 排除完�
 
 - 新旧 Journal 迁移；
 - replay hash audit；
-- fork 继承 world pending state、watermark、generation 与规则版本，不继承未提交 invocation；
+- fork 继承 world pending state、watermark、generation 与规则版本，不继承未完成 Step 的 ephemeral resolver context；
 - 大量同 Due 候选的性能测试；
 - 同一 ModelTime 长因果链的 capacity 测试；
 - full re-Forecast reference 与未来 incremental implementation 的差分测试。
@@ -1180,7 +1038,7 @@ contact 的 CommittedTransition 写入对应 consumed Fact；Forecast 排除完�
 
 同 seed、规则版本和候选身份得到相同 PRF 顺序；改变 seed 可以得到另一条仍然合法、可 Replay 的顺序。
 
-Player 返回的 WorldCommand 内容或自选标识不得反向改变已经胜出的 CandidateId 或仲裁 rank；CandidateId 必须在调用 Player 前由 Host/Source 分配。
+resolver 返回的 resolution payload、receipt 或外部自选标识不得反向改变已经胜出的 CandidateId 或仲裁 rank；StableCandidateKey 必须在调用 resolver 前由 Source/Host 规范分配。
 
 ### ORD-4：精确时间优先
 
@@ -1192,22 +1050,26 @@ Player 返回的 WorldCommand 内容或自选标识不得反向改变已经胜�
 
 ### BAS-1：ForecastBasis 原子冻结
 
-所有 Source、DecisionInvocation、winner Plan 与 CommittedTransition 必须绑定同一纯模拟 `(WorldVersion, WorldSnapshotHash, LogicalCursor, RunManifestVersion)`；strategy 等待期间 basis 不变，任何 world commit 均被拒绝。
+所有 Source、ephemeral SelectedWinnerContext、validated resolution、winner Plan 与 CommittedTransition 必须绑定同一纯模拟 `(WorldVersion, WorldSnapshotHash, LogicalCursor, RunManifestVersion)`；resolver 等待期间 basis 不变，任何 world commit 均被拒绝。
 
 ### UNI-1：无 external 旁路
 
-Player/AI 只在 DecisionPointCandidate 成为唯一 winner 后被调用，其 WorldCommand 只能经 ResumeDecision 提交；不存在 Player async input source、Forecast 前直接修改 World或预先提交的决策请求 Fact。
+运行期只有 World+RunManifest pure Forecast 的 candidate 可以参与仲裁；只有声明 `ResolutionContract` 的唯一 winner 可以在同一个未完成 Step 内调用 resolver，其 validated payload 只能补全该 winner。不存在 async input source、Forecast 前直接修改 World、public request/resume 或预先提交的 request Fact。
 
 ### UNI-1A：runtime 来源闭包
 
-每个 runtime command 必须追溯到 World+RunManifest pure Forecast 的 winner，或 Player DecisionPoint winner 的 suspended strategy continuation；隐藏队列、runtime Providence planner、spontaneous Admin ingress 与运行期 Setup 均被拒绝。
+每个 runtime effect 必须追溯到 World+RunManifest pure Forecast 的 winner；需要外部补全时，还必须追溯到同一 Step 对该 winner 的 resolver 调用。隐藏队列、runtime Providence planner、spontaneous Admin ingress 与运行期 Setup 均被拒绝。
+
+### UNI-1B：assembly 依赖闭包
+
+Kernel assembly 对 Host、Protocol、Player、Player.Llm 与 orchestration implementation assembly 的项目引用数必须为零。独立 validation/provider/transport 只能依赖领域中立 resolution contracts；Kernel 不得反向调用或识别其实现类型。
 
 ### UNI-2：票据竞态
 
 覆盖两种 seed：
 
-- TicketExpired 先于 BoardingOpportunity DecisionPoint，随后 Observation 不再提供乘船并说明来迟；
-- BoardingOpportunity 先胜出，Player 选择 UseTicketAndBoard 后扣票、命令记录与 TraversalStarted 同 transition 原子成功，到期候选消失。
+- TicketExpired 先于 BoardingOpportunity DecisionPoint，随后领域 Observation 不再提供乘船并说明来迟；
+- BoardingOpportunity 先胜出，validated resolution 表示 UseTicketAndBoard 后扣票、resolution audit 与 TraversalStarted 同 transition 原子成功，到期候选消失。
 
 两者均可 Replay，且不存在部分扣票或无解释丢失。
 
@@ -1223,35 +1085,33 @@ Game scratch-fold 成功而 Spatial 失败、以及相反情况，都必须保�
 
 codec golden 固定 Empty WorldVersion/GenesisHash、第一条 CommitOrdinal 与 CausalOrdinal；TransitionHash 只计算不含自身和 ResultingWorldVersion 的 canonical body，重算结果逐字节相同。
 
-### DEC-1：Decision 生命周期
+### RES-1：单次未完成 Step
 
-DecisionPoint winner 只 yield 未提交的 DecisionInvocation；ResumeDecision 在同一 basis/snapshot 上把 Player command 与全部 Facts 作为该 occurrence 的一个 CommittedTransition 提交，只增加一次 CausalOrdinal。
+声明 ResolutionContract 的 winner 在同一个 `StepAsync` 内调用 generic resolver；validated resolution、Plan 与全部 Facts 绑定同一 basis/snapshot/ProposedLogicalInstant，最终只提交一个 CommittedTransition、增加一次 CausalOrdinal。resolver 等待不占 ModelTime 或 CausalOrdinal，Kernel 不暴露 request/resume lifecycle。
 
-### DEC-2：A/B 顺序与 suspended world
+### RES-2：A/B 顺序与 in-flight world
 
-A/B DecisionPoint 同位时只调用全局 winner；等待期间另一个 Step、B 的 Resume 或任何 commit 都返回 `DecisionInProgress`。A commit 后 full re-Forecast，B 不能因网络/LLM 更快而插队。
+A/B 两个需要 resolution 的 candidate 同位时只 resolve 全局 winner；等待期间另一个 Step 或任何 commit 都被拒绝。A commit 后 full re-Forecast，B 不能因外部 resolver 更快而插队。DecisionPoint A/B 必须作为一个领域实例覆盖。
 
-### DEC-3：非法命令、timeout 与 fallback
+### RES-3：validation boundary 与 domain rejection
 
-Protocol/envelope/InvocationId/size/capability invalid 时零提交、不写 final memo且不释放 winner，只能继续挂起/重问。结构合法但 domain precondition 失败时，pure Plan 必须提交 rejection transition 并消费 DecisionPoint generation。Kernel 不按 attempt count 或 wall-clock 自动选命令；timeout/断连只能产生 protocol-valid Pass/Wait/Fallback proposal，否则保持 suspended。
+schema/envelope/identity/size/capability 校验必须发生在 Kernel 外；Kernel 只接受 `ValidatedOccurrenceResolution`。basis/winner/proposed-instant/contract/validator receipt/payload hash 的 opaque binding 或完整性不匹配时零提交并 fault。binding 合法但 world-dependent domain precondition 失败时，pure Plan 必须提交非空 rejection transition 并消费 winner generation；不得把领域拒绝误报为 protocol retry。
 
-### DEC-4：crash 与 invocation memo
+### RES-4：crash boundary
 
-raw provider output 先 protocol validate；首个 valid proposal 必须按 InvocationId first-write-wins/CAS 且 persist-before-expose，相同 payload 幂等、不同 payload conflict。Append 前 crash 重建同一 invocation/memo；append 成功、清 suspension 后 ACK 丢失或 restart-resend 时，ResumeDecision 先查 committed index并返回既有 transition，不再次调用 Player。
+append 前 crash/取消必须留下零 Journal、零 WorldVersion、零 LogicalInstant 变化，整个 Step 视为没有发生；restart 重新 Forecast，可以由 resolver 给出不同结果。Kernel 无 durable invocation、resume、provider exactly-once 或 restart==one-shot 承诺。append 开始后的 fault injection 继续由 ATM-2 的 Journal 原子性覆盖。
 
-已 CAS 的 persisted receipt、StagedProposalHash、StrategyStateBaseRef/Hash 或 validator 不变性出现 mismatch 时，必须产生 deterministic `DriverStoreInvariantFault` 并停机隔离；不得进入 protocol 重问、释放 winner 或替换 final proposal。
+### RES-5：resolution audit
 
-### DEC-5：strategy state 原子性
-
-DecisionAudit 记录 ObservationHash、StrategyId/version 与 base/staged/result state refs/hashes，不记录 raw private delta。append 失败不能激活 staged state；append 成功后由 Journal projection 幂等激活。Fork 继承 committed result ref/hash，不继承 staged proposal。
+带 resolution 的 CommittedTransition 必须记录 `ResolutionAudit`：validator/contract 版本、canonical payload/hash 与 validation receipt ref/hash。普通 Replay 不执行这些 payload；audited Replay 才把它们交给同一个 pure handler 验证结果。
 
 ### RPL-1：Replay
 
-普通 Replay 不 Forecast、不调用 Player/LLM、不执行 WorldCommand，只 fold Facts 并重建相同 checkpoint hash 与 LogicalInstant。Audited replay 验证 DecisionPoint winner，并以 recorded DecisionAudit/WorldCommand 重跑 pure Plan，要求 Facts/CommandResult 逐字节相同。
+普通 Replay 不 Forecast、不调用任何外部 resolver、不执行 ResolutionAudit payload，只 fold Facts 并重建相同 checkpoint hash 与 LogicalInstant。Audited replay 验证 winner，并以 recorded validated payload 重跑 pure Plan，要求 Facts/CommandResult 逐字节相同。
 
 ### RPL-2：Fork
 
-相同前缀保持相同 DecisionPoint winner；Fork 继承 committed strategy-state version/ref/hash，未提交 invocation/staged proposal 不进入 Fork，分支可在相同 DecisionPoint 返回不同 WorldCommand 后自然分歧。
+相同前缀保持相同 winner；未完成 Step 的 SelectedWinnerContext 及外部 resolver 私有状态不进入 Fork。Fork 从 transition boundary 全量 Forecast，可以在相同领域 winner 获得不同 validated resolution 后自然分歧；Kernel 不对外部 resolver 的分支继承作承诺。
 
 ### LIV-1：no-op 重复
 
@@ -1277,7 +1137,7 @@ DecisionAudit 记录 ObservationHash、StrategyId/version 与 base/staged/result
 
 - 稀疏事件和小说式时间压缩；
 - Activity 作为持续行为；
-- Forecast 与 Player 认知隔离；
+- Forecast 与领域主体认知隔离；
 - Human/AI 共享 Decision 语义；
 - AI latency 不污染 ModelTime；
 - Human trajectory 可记录为 imitation learning 样本；
@@ -1306,11 +1166,11 @@ Continuous Lazy Evolution
 → Forecast global next occurrence
 → deterministic collapse
 → ordinary winner: atomic global commit
-→ DecisionPoint winner: yield/await/Resume the same winner, then atomic commit
+→ winner requiring resolution: await resolver inside the same Step, then atomic commit
 → full re-Forecast
 → repeat
 ```
 
 `ModelTime` 表达世界流过了多久；`CausalOrdinal` 表达在该时间上已经发生了多少个不可逆原因。二者共同构成严格的 `LogicalInstant`，从模型上消除“同时事件”的因果歧义。
 
-Forecast 负责看见候选未来，PRF 只在真正同位时选择顺序，AtomicTransition 负责让世界不可分割地改变，Journal 负责保存已经发生的唯一历史。DecisionPoint 则在成为唯一 winner 后暂停该 occurrence，让 Player 作为策略函数补全 WorldCommand，再由同一个 winner 原子改变世界。
+Forecast 负责看见候选未来，PRF 只在真正同位时选择顺序，AtomicTransition 负责让世界不可分割地改变，Journal 负责保存已经发生的唯一历史。若 winner 声明 ResolutionContract，同一个未完成 Step 会等待领域中立 resolver 补全并验证 resolution，再由同一个 winner 原子改变世界；等待本身没有世界内时间或状态。DecisionPoint 只是这种机制的一个领域用例。

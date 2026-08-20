@@ -1,6 +1,6 @@
 using DramaBoard.Protocol;
 
-namespace DramaBoard.Host;
+namespace DramaBoard.Player;
 
 /// <summary>Obtains one Player decision without exposing the objective world.</summary>
 public interface IPlayerDriver

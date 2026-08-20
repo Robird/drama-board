@@ -1,6 +1,6 @@
 using DramaBoard.Protocol;
 
-namespace DramaBoard.Host.Tests;
+namespace DramaBoard.Player.Tests;
 
 public sealed class PlayerDriverTests
 {

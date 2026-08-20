@@ -53,7 +53,7 @@ public sealed class LlmPlayerIntegrationTests
             [new LlmMemoryShardMaintainer("working", bobMemoryBackend)]);
 
         BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            new Dictionary<string, DramaBoard.Host.IPlayerDriver>(StringComparer.Ordinal)
+            new Dictionary<string, DramaBoard.Player.IPlayerDriver>(StringComparer.Ordinal)
             {
                 [BoardIds.Alice] = alice,
                 [BoardIds.Bob] = bob,

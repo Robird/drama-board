@@ -1,6 +1,6 @@
 using DramaBoard.Protocol;
 
-namespace DramaBoard.Host;
+namespace DramaBoard.Player;
 
 /// <summary>Answers requests from a finite, ordered sequence of decision factories.</summary>
 public sealed class ScriptedPlayerDriver : IPlayerDriver
