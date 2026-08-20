@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace DramaBoard.Journal.Atelia;
 
-/// <summary>Encodes one complete logical event batch into one atomically visible Atelia frame.</summary>
+/// <summary>Encodes one complete logical event batch into one Atelia frame for branch-level publication.</summary>
 public static class DomainEventBatchFrameCodec
 {
     /// <summary>Gets the current physical batch-frame format version.</summary>

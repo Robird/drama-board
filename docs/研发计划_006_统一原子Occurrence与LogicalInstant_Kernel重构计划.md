@@ -397,7 +397,11 @@ V1 只有 `DecisionPointCandidate` 声明 deferred `ResolutionContractId`。它�
 
 ## 6. Journal、Replay、Fork 与恢复
 
-### 6.1 Journal 目标接口
+### 6.1 Journal 最终目标与当前单帧切片
+
+当前小切片仍使用 `IJournalSink.AppendBatch`；两个 sink 都遵循 single-driver 契约，append 期间禁止并发读写 `Events`。其中 `AteliaJournalSink` 强制把每个非空 batch 编码为一个 `DomainEventBatch` EventJournal Event，并落入一个 RBF EventFrame。`AppendEventFrame` 只写出尚未发布的候选 frame；`AdvanceRef(refId, expectedHead, newHead)` CAS 成功才令整批通过 active branch ref 可见。CAS 失败留下的 orphan 不在 active branch ref 的可达链上，World、cursor 与内存事件视图不得推进。serialized batch logical payload 超过 `EventJournalOptions.MaxLogicalPayloadLength` 时整批失败，该上限不得超过 RBF 单帧容量；不拆帧、不引入 Begin/Part/End。CRC 完整但 event envelope 语义非法则 fail closed 并保留证据，普通 Replay 不自动移动 ref。
+
+以下 `CommittedTransition` 接口仍是后续完整目标，不是当前单帧切片已经交付的声明：
 
 ```text
 IAtomicJournal.AppendTransition(
@@ -472,7 +476,7 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 | `Kernel/Journal/EventCause` | `ResolveBatch / ExternalInput` 是调度分类 | 改为统一 occurrence cause + provenance。 |
 | `LogicalTimestamp / Microstep` | batch 内每 fact 占一个时间 | 改为 transition 级 LogicalInstant + FactOrdinal。 |
 | `SimulationLoop.CommitAndApply` | Journal append 后才 reducer | 改为 scratch-fold/validate → atomic append → install。 |
-| `IJournalSink.AppendBatch` | 默认逐条 Append，不保证原子 | 替换为强制 `AppendTransition`。 |
+| `IJournalSink.AppendBatch` | 默认逐条 Append，不保证原子 | 当前先删除默认循环；InMemory 全批预检后发布，Atelia 用单 Event/单 RBF Frame 并以 expected-head ref CAS 发布。后续再替换为 `AppendTransition`。 |
 | Kernel decision predicate/stop reason | 先提交 `DecisionRequested`，再由 Host 特殊停机 | 删除；单个未完成 `Step` 在 call-local selected context 上等待 complete resolution/plan，并直接 commit 或零提交失败。 |
 | `PlayerDecisionSession` | answer 先翻译成 external event，再形成 PendingAction | 删除；Host 在同一 Step 调用链内组合 Player resolver 与 Decision.Validation，不保留 session/request/resume 或“回答成为第二轮候选”的调度器。 |
 | `FirstBoard.DecisionSchedulingSystem` | 一次产生批量 DecisionRequested facts，并用 internal-first barrier 推迟 Player | 改为每个 eligible Actor 的 `DecisionPointCandidate`，声明 versioned resolution contract；全局 arbiter 一次只选择一个 winner。 |
@@ -531,19 +535,15 @@ Forecast cache 可丢弃并全量重建。Fork 只能发生在 committed transit
 
 暂不改变业务行为，但禁止新代码继续扩散 `Microstep` 的旧语义。
 
-### 波次 2：原子 Journal 与 pure scratch transition
+### 波次 2：先冻结单帧 batch，再实现完整 transition
 
-实施：
+当前小切片：
 
-- `CommittedTransition` 一级 envelope；
-- `AppendTransition(expectedHead, transition)`；
-- InMemory 与 Atelia 原子实现；
-- pure batch reducer/scratch-fold；
-- final invariant/hash validation；
-- FactOrdinal 与 transition-boundary Snapshot/Fork；
-- crash-at-before/during/after-append fault injection。
+- 删除 `AppendBatch` 默认逐条循环；InMemory 全批预检，Atelia 将整批写成单 EventJournal Event / 单 RBF Frame；
+- ref CAS 是唯一 branch 可见点，orphan 在 reopen 时不可见；超限整批失败，`DomainEventBatch` 内任一 event envelope 语义非法时 fail closed；
+- 不实现 Begin/Part/End、多帧 batch 或完整 `CommittedTransition`。
 
-完成后，任何 batch 都不能暴露 reducer prefix。
+后续切片再交付 `CommittedTransition` envelope、`AppendTransition`、hash/WorldVersion、pure scratch-fold、FactOrdinal、transition-boundary Snapshot/Fork 及完整 fault injection。当前完成标准是在 single-driver 契约内，任何 `AppendBatch` 都不能暴露批内 prefix。
 
 ### 波次 3：统一 occurrence scheduler
 
@@ -754,7 +754,7 @@ FirstBoard contention、Spatial fixed phase 或 Providence 本地 RNG 可能推�
 
 ### 风险 6：原子 Journal 名义化
 
-默认循环 Append 或 append 后 reducer 会恢复撕裂。接口不提供逐 fact commit，fault injection 覆盖每个边界。
+单 Event/单 RBF Frame 只保证 branch 可见性原子，不等于 frame append 与 ref advance 构成物理事务，也不等于完整 `CommittedTransition` 已实现。必须验证 orphan 不可见、语义非法 frame fail closed、超限在 ref 发布前失败；不得以默认逐条 Append 或 Begin/End 多帧协议扩大本切片。
 
 ### 风险 7：未完成 Step 泄漏半状态
 

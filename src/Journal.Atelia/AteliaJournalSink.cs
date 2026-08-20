@@ -29,7 +29,8 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         string payloadCodec,
         Func<TPayload, byte[]> serializePayload,
         Func<EventKind, byte[], TPayload> deserializePayload,
-        string branchName = "main")
+        string branchName = "main",
+        EventJournalOptions? journalOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(journalPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(payloadCodec);
@@ -42,7 +43,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         _deserializePayload = deserializePayload;
         BranchName = branchName;
         _eventsView = _events.AsReadOnly();
-        _journal = global::Atelia.EventJournal.EventJournal.OpenOrCreate(journalPath);
+        _journal = global::Atelia.EventJournal.EventJournal.OpenOrCreate(journalPath, journalOptions);
 
         try
         {
@@ -88,9 +89,6 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
     /// <summary>Gets the persisted fork prefix event count, if this branch was forked.</summary>
     public int? ForkPrefixEventCount => _lineageMetadata.ForkPrefixEventCount;
 
-    /// <summary>Gets details when replay defensively removed an incomplete visible tail batch.</summary>
-    public ReplayRecoveryInfo? ReplayRecovery { get; private set; }
-
     /// <summary>Gets the journal directory path.</summary>
     public string JournalPath => _journal.JournalPath;
 
@@ -133,6 +131,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         EventCause expectedCause = batch[0]?.Cause
             ?? throw new ArgumentException("A journal batch cannot contain null events.", nameof(batch));
         var envelopes = new List<byte[]>(batch.Count);
+        var validatedBatch = new DomainEvent<TPayload>[batch.Count];
         for (int index = 0; index < batch.Count; index++)
         {
             DomainEvent<TPayload> domainEvent = batch[index]
@@ -153,10 +152,17 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                 index,
                 batch.Count,
                 _serializePayload));
+            validatedBatch[index] = domainEvent;
             previousTimestamp = domainEvent.Timestamp;
         }
 
         byte[] framePayload = DomainEventBatchFrameCodec.Serialize(envelopes);
+        int resultingEventCount = checked(_events.Count + batch.Count);
+        _addresses.EnsureCapacity(resultingEventCount);
+        _storedPayloads.EnsureCapacity(resultingEventCount);
+        _batchIndices.EnsureCapacity(resultingEventCount);
+        _batchCounts.EnsureCapacity(resultingEventCount);
+        _events.EnsureCapacity(resultingEventCount);
         EventAddress address = AppendFrameAndAdvance(
             _refId,
             _head,
@@ -171,7 +177,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
             _storedPayloads.Add(envelopes[index]);
             _batchIndices.Add(index);
             _batchCounts.Add(batch.Count);
-            _events.Add(batch[index]);
+            _events.Add(validatedBatch[index]);
         }
     }
 
@@ -273,12 +279,9 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
 
         IReadOnlyList<EventAddress> chain = chainResult.Unwrap();
         EventAddress? persistedHead = _journal.GetHead(_refId);
-        EventAddress? lastValidAddress = null;
         LineageMetadata? latestMetadata = null;
-        bool recovered = false;
-        for (int frameIndex = 0; frameIndex < chain.Count; frameIndex++)
+        foreach (EventAddress address in chain)
         {
-            EventAddress address = chain[frameIndex];
             var readResult = _journal.ReadEvent(address);
             if (readResult.IsFailure)
             {
@@ -295,20 +298,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                     latestMetadata = metadata;
                     break;
                 case AteliaJournalFrameKinds.DomainEventBatch:
-                    try
-                    {
-                        ReplayBatchFrame(frame.Payload, address);
-                    }
-                    catch (IncompleteEventBatchException exception)
-                    {
-                        RecoverIncompleteTail(
-                            persistedHead,
-                            lastValidAddress,
-                            chain.Count - frameIndex,
-                            exception.Message);
-                        recovered = true;
-                    }
-
+                    ReplayBatchFrame(frame.Payload, address);
                     break;
                 default:
                     throw new InvalidDataException(
@@ -316,15 +306,9 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                         $"{frame.Header.OpaqueEventKind}.");
             }
 
-            if (recovered)
-            {
-                break;
-            }
-
-            lastValidAddress = address;
         }
 
-        _head = recovered ? lastValidAddress : persistedHead;
+        _head = persistedHead;
         _lineageMetadata = latestMetadata
             ?? throw new InvalidDataException(
                 $"Journal branch '{BranchName}' does not contain lineage metadata.");
@@ -410,23 +394,6 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         }
     }
 
-    private void RecoverIncompleteTail(
-        EventAddress? persistedHead,
-        EventAddress? lastValidAddress,
-        int truncatedFrameCount,
-        string reason)
-    {
-        var moveResult = _journal.MoveRef(_refId, persistedHead, lastValidAddress);
-        if (moveResult.IsFailure)
-        {
-            throw new InvalidDataException(
-                $"Detected an incomplete event batch but failed to truncate branch '{BranchName}': " +
-                moveResult.Error!.Message);
-        }
-
-        ReplayRecovery = new ReplayRecoveryInfo(truncatedFrameCount, reason);
-    }
-
     private EventAddress AppendFrameAndAdvance(
         RefId refId,
         EventAddress? expectedHead,
@@ -470,6 +437,3 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }
-
-/// <summary>Reports a defensive ref rewind that removed an incomplete visible tail batch.</summary>
-public sealed record ReplayRecoveryInfo(int TruncatedFrameCount, string Reason);
