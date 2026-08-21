@@ -1,308 +1,139 @@
-using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial.Tests.TestSupport;
 
-namespace DramaBoard.Spatial.Tests;
+namespace DramaBoard.Spatial.Tests.Queries;
 
 public sealed class SpatialQueriesTests
 {
     [Fact]
-    public void VisibleCells_UseManhattanRangeStableOrderAndReadOnlyResult()
+    public void GetLocation_ProjectsCeilingTraversalAndKeepsBoundaryTraversingUntilArrivalCommits()
     {
-        SpatialDefinition definition = Definition(
-            Map("map", width: 3, height: 3, visionRange: 1));
-        SpatialState state = Place(
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        GraphSpatialState state = GraphTestWorld.State(
             definition,
-            SpatialState.Create(definition),
-            entityId: 1,
-            Cell("map", 1, 1));
+            ("traveler", GraphTestWorld.A),
+            ("waiting", GraphTestWorld.B));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
         var queries = new SpatialQueries(definition);
+        var traveler = new EntityId("traveler");
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, traveler, GraphTestWorld.Bridge, speedSnapshot: 3, GraphTestWorld.Time(0)));
 
-        IReadOnlyList<CellRef> visible = queries.GetVisibleCells(state, new EntityId(1));
+        Assert.Equal(0, Assert.IsType<TraversingView>(queries.GetLocation(state, traveler, GraphTestWorld.Time(0))).Offset);
+        Assert.Equal(3, Assert.IsType<TraversingView>(queries.GetLocation(state, traveler, GraphTestWorld.Time(1))).Offset);
+        Assert.Equal(6, Assert.IsType<TraversingView>(queries.GetLocation(state, traveler, GraphTestWorld.Time(2))).Offset);
+        Assert.Equal(9, Assert.IsType<TraversingView>(queries.GetLocation(state, traveler, GraphTestWorld.Time(3))).Offset);
+        TraversingView boundary = Assert.IsType<TraversingView>(
+            queries.GetLocation(state, traveler, GraphTestWorld.Time(4)));
+        Assert.Equal(10, boundary.Offset);
+        Assert.Empty(queries.GetCoLocatedEntities(state, traveler));
+        Assert.DoesNotContain(traveler, queries.GetCoLocatedEntities(state, new EntityId("waiting")));
+
+        state = reducer.Apply(state, GraphTestWorld.Instant(4), new TraversalArrivedFact(traveler, 1));
 
         Assert.Equal(
-            [
-                Cell("map", 1, 0),
-                Cell("map", 0, 1),
-                Cell("map", 1, 1),
-                Cell("map", 2, 1),
-                Cell("map", 1, 2),
-            ],
-            visible);
-        Assert.True(queries.IsCellVisible(state, new EntityId(1), Cell("map", 2, 1)));
-        Assert.False(queries.IsCellVisible(state, new EntityId(1), Cell("map", 2, 2)));
-
-        var collection = Assert.IsAssignableFrom<ICollection<CellRef>>(visible);
-        Assert.Throws<NotSupportedException>(() => collection.Add(Cell("map", 0, 0)));
+            GraphTestWorld.B,
+            Assert.IsType<AtPlaceView>(queries.GetLocation(state, traveler, GraphTestWorld.Time(4))).PlaceId);
+        Assert.Equal([new EntityId("waiting")], queries.GetCoLocatedEntities(state, traveler));
     }
 
     [Fact]
-    public void LineOfSight_SeesOpaqueEndpointButNotBeyondItAndUsesStrictCorners()
+    public void GetExits_ReturnsParallelOpenAndClosedDirectionsInStablePassageOrder()
     {
-        SpatialDefinition definition = Definition(
-            Map("row", width: 3, height: 1, visionRange: 3, opaqueCells: [(1, 0)]),
-            Map("corner", width: 2, height: 2, visionRange: 3, opaqueCells: [(1, 0)]));
-        SpatialState state = SpatialState.Create(definition);
+        PassageDefinition bridge = GraphTestWorld.Passage(
+            GraphTestWorld.Bridge,
+            GraphTestWorld.A,
+            GraphTestWorld.B,
+            length: 10,
+            enterableFromA: true,
+            enterableFromB: false);
+        PassageDefinition ferry = GraphTestWorld.Passage(
+            GraphTestWorld.Ferry,
+            GraphTestWorld.A,
+            GraphTestWorld.B,
+            length: 5,
+            enterableFromA: false,
+            enterableFromB: true);
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.B, GraphTestWorld.A],
+            [ferry, bridge]);
+        GraphSpatialState state = GraphTestWorld.State(definition);
         var queries = new SpatialQueries(definition);
 
-        Assert.True(queries.HasLineOfSight(state, Cell("row", 0, 0), Cell("row", 1, 0)));
-        Assert.False(queries.HasLineOfSight(state, Cell("row", 0, 0), Cell("row", 2, 0)));
-        Assert.False(queries.HasLineOfSight(state, Cell("corner", 0, 0), Cell("corner", 1, 1)));
+        IReadOnlyList<PassageExit> fromA = queries.GetExits(state, GraphTestWorld.A, speedSnapshot: 3);
+        IReadOnlyList<PassageExit> fromB = queries.GetExits(state, GraphTestWorld.B, speedSnapshot: 3);
+
+        Assert.Equal([GraphTestWorld.Bridge, GraphTestWorld.Ferry], fromA.Select(value => value.PassageId));
+        Assert.Equal([true, false], fromA.Select(value => value.EffectiveEntryAllowed));
+        Assert.Equal([4L, 2L], fromA.Select(value => value.ExpectedDuration.Ticks));
+        Assert.All(fromA, value => Assert.Equal(GraphTestWorld.B, value.DestinationPlaceId));
+        Assert.Equal([false, true], fromB.Select(value => value.EffectiveEntryAllowed));
+        Assert.All(fromB, value => Assert.Equal(GraphTestWorld.A, value.DestinationPlaceId));
     }
 
     [Fact]
-    public void VisibleEntities_ExcludeSelfCrossMapAndPortalButIncludeSameCellWhenObservationDisabled()
+    public void CurrentRelations_AreDerivedFromExclusiveLocationAndFutureWorldline()
     {
-        GridMapDefinition firstMap = Map("first", width: 3, height: 1, visionRange: 3);
-        GridMapDefinition secondMap = Map("second", width: 1, height: 1, visionRange: 3);
-        SpatialDefinition definition = Definition(
-            [firstMap, secondMap],
-            [
-                new PortalDefinition(
-                    new PortalId("open-portal"),
-                    Cell("first", 2, 0),
-                    Cell("second", 0, 0),
-                    ModelDuration.FromSeconds(1),
-                    initiallyEnabled: true),
-            ]);
-        SpatialState state = SpatialState.Create(definition);
-        state = Place(definition, state, entityId: 10, Cell("first", 0, 0), observationEnabled: false);
-        state = Place(definition, state, entityId: 3, Cell("first", 0, 0));
-        state = Place(definition, state, entityId: 2, Cell("first", 1, 0));
-        state = Place(definition, state, entityId: 4, Cell("second", 0, 0));
-        var queries = new SpatialQueries(definition);
-
-        IReadOnlyList<EntityId> visible = queries.GetVisibleEntities(state, new EntityId(10));
-
-        Assert.Equal([new EntityId(2), new EntityId(3)], visible);
-        Assert.False(queries.HasLineOfSight(
-            state,
-            Cell("first", 2, 0),
-            Cell("second", 0, 0)));
-        var collection = Assert.IsAssignableFrom<ICollection<EntityId>>(visible);
-        Assert.Throws<NotSupportedException>(() => collection.Add(new EntityId(20)));
-    }
-
-    [Fact]
-    public void DynamicSightOverride_ImmediatelyChangesObjectiveQueriesAndCanBeCleared()
-    {
-        SpatialDefinition definition = Definition(Map("map", width: 3, height: 1, visionRange: 3));
-        SpatialState state = SpatialState.Create(definition);
-        state = Place(definition, state, entityId: 1, Cell("map", 0, 0));
-        state = Place(definition, state, entityId: 2, Cell("map", 2, 0));
-        var queries = new SpatialQueries(definition);
-        CellRef middle = Cell("map", 1, 0);
-        var opaque = new CellOverride(blocksSight: true);
-
-        Assert.Equal([new EntityId(2)], queries.GetVisibleEntities(state, new EntityId(1)));
-        state = SpatialEventTestHarness.Apply(
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        GraphSpatialState state = GraphTestWorld.State(
             definition,
-            state,
-            new CellStateChangedEvent(middle, expectedOverride: null, resultingOverride: opaque));
+            ("target", GraphTestWorld.A),
+            ("companion-z", GraphTestWorld.A),
+            ("companion-a", GraphTestWorld.A),
+            ("opposite", GraphTestWorld.B),
+            ("waiting", GraphTestWorld.A));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        foreach (string id in new[] { "target", "companion-z", "companion-a", "opposite" })
+        {
+            state = GraphTestWorld.Fold(
+                reducer,
+                state,
+                GraphTestWorld.Instant(0),
+                planner.TryStartTraversal(
+                    state,
+                    new EntityId(id),
+                    GraphTestWorld.Bridge,
+                    speedSnapshot: 1,
+                    GraphTestWorld.Time(0)));
+        }
 
-        Assert.True(queries.IsCellVisible(state, new EntityId(1), middle));
-        Assert.Empty(queries.GetVisibleEntities(state, new EntityId(1)));
-
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new CellStateChangedEvent(middle, expectedOverride: opaque, resultingOverride: null));
-        Assert.Equal([new EntityId(2)], queries.GetVisibleEntities(state, new EntityId(1)));
-    }
-
-    [Fact]
-    public void DynamicSightOverride_CanOpenStaticOpaqueCellAndClearingRestoresIt()
-    {
-        SpatialDefinition definition = Definition(
-            Map("map", width: 3, height: 1, visionRange: 3, opaqueCells: [(1, 0)]));
-        SpatialState state = SpatialState.Create(definition);
-        state = Place(definition, state, entityId: 1, Cell("map", 0, 0));
-        state = Place(definition, state, entityId: 2, Cell("map", 2, 0));
         var queries = new SpatialQueries(definition);
-        CellRef middle = Cell("map", 1, 0);
-        var transparent = new CellOverride(blocksSight: false);
+        var target = new EntityId("target");
+        IReadOnlyList<SamePassageRelation> relations =
+            queries.GetSamePassageRelations(state, target, GraphTestWorld.Time(5));
 
-        Assert.Empty(queries.GetVisibleEntities(state, new EntityId(1)));
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new CellStateChangedEvent(middle, expectedOverride: null, resultingOverride: transparent));
-        Assert.Equal([new EntityId(2)], queries.GetVisibleEntities(state, new EntityId(1)));
-
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new CellStateChangedEvent(middle, expectedOverride: transparent, resultingOverride: null));
-        Assert.Empty(queries.GetVisibleEntities(state, new EntityId(1)));
+        Assert.Equal(
+            [new EntityId("companion-a"), new EntityId("companion-z"), new EntityId("opposite")],
+            relations.Select(value => value.OtherEntityId));
+        Assert.Equal([true, true, false], relations.Select(value => value.IsCoTraveling));
+        Assert.Equal([new EntityId("companion-a"), new EntityId("companion-z")],
+            queries.GetCoTravelingEntities(state, target, GraphTestWorld.Time(5)));
+        Assert.Empty(queries.GetCoLocatedEntities(state, target));
+        Assert.DoesNotContain(target, queries.GetCoLocatedEntities(state, new EntityId("waiting")));
     }
 
     [Fact]
-    public void VisionRangeZero_OnlySeesSourceCellAndSourceOpacityDoesNotBlockSight()
+    public void Query_DistinguishesUnknownReferencesFromValidEmptyResults()
     {
-        SpatialDefinition zeroRange = Definition(
-            Map("zero", width: 2, height: 1, visionRange: 0, opaqueCells: [(0, 0)]));
-        SpatialState zeroState = SpatialState.Create(zeroRange);
-        zeroState = Place(zeroRange, zeroState, entityId: 1, Cell("zero", 0, 0));
-        zeroState = Place(zeroRange, zeroState, entityId: 2, Cell("zero", 0, 0));
-        zeroState = Place(zeroRange, zeroState, entityId: 3, Cell("zero", 1, 0));
-        var zeroQueries = new SpatialQueries(zeroRange);
-
-        Assert.Equal([Cell("zero", 0, 0)], zeroQueries.GetVisibleCells(zeroState, new EntityId(1)));
-        Assert.Equal([new EntityId(2)], zeroQueries.GetVisibleEntities(zeroState, new EntityId(1)));
-        Assert.False(zeroQueries.IsCellVisible(zeroState, new EntityId(1), Cell("zero", 1, 0)));
-
-        SpatialDefinition opaqueSource = Definition(
-            Map("opaque", width: 2, height: 1, visionRange: 1, opaqueCells: [(0, 0)]));
-        SpatialState opaqueState = Place(
-            opaqueSource,
-            SpatialState.Create(opaqueSource),
-            entityId: 1,
-            Cell("opaque", 0, 0));
-        var opaqueQueries = new SpatialQueries(opaqueSource);
-
-        Assert.True(opaqueQueries.IsCellVisible(
-            opaqueState,
-            new EntityId(1),
-            Cell("opaque", 1, 0)));
-    }
-
-    [Fact]
-    public void ActiveJourney_RemainsQueryableAtAuthoritativeFromCellUntilStepCommits()
-    {
-        SpatialDefinition definition = Definition(Map("map", width: 3, height: 1, visionRange: 1));
-        SpatialState state = SpatialState.Create(definition);
-        state = Place(definition, state, entityId: 1, Cell("map", 0, 0));
-        state = Place(definition, state, entityId: 2, Cell("map", 1, 0));
-        CurrentLeg leg = SpatialEventTestHarness.Leg(
-            Cell("map", 1, 0),
-            Cell("map", 2, 0),
-            generation: 1);
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new JourneyStartedEvent(new JourneyState(
-                new JourneyId(1),
-                new EntityId(2),
-                new CellGoal(Cell("map", 2, 0)),
-                generation: 1,
-                leg)));
+        GraphDefinition definition = GraphDefinition.Create([GraphTestWorld.A], []);
+        GraphSpatialState state = GraphTestWorld.State(definition, ("alone", GraphTestWorld.A));
         var queries = new SpatialQueries(definition);
 
-        Assert.Equal(Cell("map", 1, 0), state.Entities.Single(entity => entity.Id == new EntityId(2)).Cell);
-        Assert.Equal([new EntityId(2)], queries.GetVisibleEntities(state, new EntityId(1)));
+        Assert.Empty(queries.GetExits(state, GraphTestWorld.A, speedSnapshot: 1));
+        Assert.Empty(queries.GetCoLocatedEntities(state, new EntityId("alone")));
+        Assert.Throws<KeyNotFoundException>(() =>
+            queries.GetLocation(state, new EntityId("missing"), GraphTestWorld.Time(0)));
+        Assert.Throws<KeyNotFoundException>(() =>
+            queries.GetExits(state, GraphTestWorld.B, speedSnapshot: 1));
+        Assert.Throws<KeyNotFoundException>(() =>
+            queries.GetPassageEntryAccess(state, GraphTestWorld.Bridge));
     }
-
-    [Fact]
-    public void EveryPublicEntryRejectsStampMismatchAndObserverQueriesRequirePlacedEntity()
-    {
-        SpatialDefinition definition = Definition(Map("expected", width: 1, height: 1, visionRange: 1));
-        SpatialDefinition other = Definition(Map("other", width: 1, height: 1, visionRange: 1));
-        SpatialState mismatched = SpatialState.Create(other);
-        SpatialState state = SpatialState.Create(definition);
-        var queries = new SpatialQueries(definition);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleCells(mismatched, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleEntities(mismatched, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.IsCellVisible(mismatched, new EntityId(1), Cell("expected", 0, 0)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.HasLineOfSight(mismatched, Cell("expected", 0, 0), Cell("expected", 0, 0)));
-
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleCells(state, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleEntities(state, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.IsCellVisible(state, new EntityId(1), Cell("expected", 0, 0)));
-    }
-
-    [Fact]
-    public void EveryPublicEntryRejectsAnotherActorsUnfinishedStepPrefix()
-    {
-        SpatialDefinition definition = Definition(Map("map", width: 3, height: 1, visionRange: 3));
-        SpatialState state = SpatialState.Create(definition);
-        state = Place(definition, state, entityId: 1, Cell("map", 0, 0));
-        state = Place(definition, state, entityId: 2, Cell("map", 1, 0));
-        CurrentLeg leg = SpatialEventTestHarness.Leg(
-            Cell("map", 1, 0),
-            Cell("map", 2, 0),
-            generation: 1);
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new JourneyStartedEvent(new JourneyState(
-                new JourneyId(1),
-                new EntityId(2),
-                new CellGoal(Cell("map", 0, 0)),
-                generation: 1,
-                leg)));
-        state = SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            new EntitySteppedEvent(
-                new EntityId(2),
-                new JourneyId(1),
-                Cell("map", 1, 0),
-                Cell("map", 2, 0),
-                journeyGeneration: 1),
-            SpatialEventTestHarness.AtSecond(1));
-        var queries = new SpatialQueries(definition);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleCells(state, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.GetVisibleEntities(state, new EntityId(1)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.IsCellVisible(state, new EntityId(1), Cell("map", 0, 0)));
-        Assert.Throws<InvalidOperationException>(() =>
-            queries.HasLineOfSight(state, Cell("map", 0, 0), Cell("map", 1, 0)));
-    }
-
-    [Fact]
-    public void HasLineOfSight_RequiresDefinedCells()
-    {
-        SpatialDefinition definition = Definition(Map("map", width: 1, height: 1, visionRange: 1));
-        SpatialState state = SpatialState.Create(definition);
-        var queries = new SpatialQueries(definition);
-
-        Assert.Throws<InvalidOperationException>(() => queries.HasLineOfSight(
-            state,
-            Cell("map", 0, 0),
-            Cell("map", 1, 0)));
-    }
-
-    private static SpatialState Place(
-        SpatialDefinition definition,
-        SpatialState state,
-        long entityId,
-        CellRef cell,
-        bool observationEnabled = true) =>
-        SpatialEventTestHarness.Place(definition, state, entityId, cell, observationEnabled);
-
-    private static SpatialDefinition Definition(params GridMapDefinition[] maps) => Definition(maps, []);
-
-    private static SpatialDefinition Definition(
-        IReadOnlyList<GridMapDefinition> maps,
-        IReadOnlyList<PortalDefinition> portals) =>
-        TestSpatialDefinitionBuilder.Create(maps, portals);
-
-    private static GridMapDefinition Map(
-        string id,
-        int width,
-        int height,
-        int visionRange,
-        IReadOnlyList<(int X, int Y)>? opaqueCells = null)
-    {
-        var opaque = (opaqueCells ?? []).ToHashSet();
-        CellDefinition[] cells =
-        [
-            .. Enumerable.Range(0, height).SelectMany(y =>
-                Enumerable.Range(0, width).Select(x =>
-                    TestSpatialDefinitionBuilder.Floor(blocksSight: opaque.Contains((x, y))))),
-        ];
-        return TestSpatialDefinitionBuilder.Map(id, width, height, visionRange: visionRange, cells: cells);
-    }
-
-    private static CellRef Cell(string mapId, int x, int y) =>
-        TestSpatialDefinitionBuilder.Cell(mapId, x, y);
 }

@@ -1,5 +1,6 @@
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.FirstBoard;
 
@@ -7,7 +8,15 @@ public static class BoardIds
 {
     public const string Tavern = "tavern";
     public const string Market = "market";
+    public const string CellarGate = "cellar-gate-front";
     public const string Cellar = "cellar";
+
+    public const string TavernMarketRoad = "tavern-market-road";
+    public const string TavernMarketFerry = "tavern-market-ferry";
+    public const string MarketTavernCart = "market-tavern-cart";
+    public const string MarketCellarApproach = "market-cellar-approach";
+    public const string CellarGatePassage = "cellar-gate-passage";
+
     public const string Alice = "alice";
     public const string Bob = "bob";
     public const string BrassKey = "brass-key";
@@ -33,55 +42,38 @@ public static class BoardIds
 
 public static class BoardTiming
 {
-    public const long TravelTicks = 300_000;
+    public const long TravelSpeed = 1;
     public const long DeadlineTicks = 3_600_000;
     public const long DefaultWaitTicks = 60_000;
     public const long RandomRunBoundaryTicks = 4_200_000;
 }
 
-public sealed record BoardPlace(long Id, string Key, IReadOnlyList<string> AdjacentPlaceIds);
-
 public sealed record BoardFact(string Kind, string? RelatedId, string Text);
 
-public enum BoardActivityKind
-{
-    Travel,
-    Wait,
-}
-
-public sealed record BoardActivity(
-    BoardActivityKind Kind,
-    ModelTime Due,
-    string? DestinationId = null);
+public sealed record BoardWaitActivity(ModelTime Due);
 
 public sealed record BoardActor(
     long Id,
     string Key,
-    string PlaceId,
     long Generation,
     long DecisionSequence,
-    BoardActivity? Activity,
+    BoardWaitActivity? Activity,
     IReadOnlyList<BoardFact> KnownFacts);
 
 public sealed record BoardObject(
     long Id,
     string Key,
-    string? PlaceId,
     long? OwnerActorId);
 
-public sealed record FirstBoardWorld(
+public sealed record FirstBoardGameState(
     ulong WorldSeed,
     long NextPersistentId,
     ModelTime Now,
-    IReadOnlyList<BoardPlace> Places,
     IReadOnlyList<BoardActor> Actors,
     IReadOnlyList<BoardObject> Objects,
     bool CellarSealed,
     bool ChestOpened)
 {
-    public static FirstBoardWorld CreateInitial(ulong worldSeed) =>
-        ScenarioInstance.CreateDefault(worldSeed).CreateInitialWorld();
-
     public BoardActor Actor(string actorId) =>
         Actors.Single(actor => actor.Key == actorId);
 
@@ -91,31 +83,66 @@ public sealed record FirstBoardWorld(
     public BoardObject Object(string objectId) =>
         Objects.Single(item => item.Key == objectId);
 
-    public BoardPlace Place(string placeId) =>
-        Places.Single(place => place.Key == placeId);
+    public bool IsIdle(BoardActor actor) => actor.Activity is null;
+}
 
-    public bool AreAdjacent(string firstPlaceId, string secondPlaceId) =>
-        Place(firstPlaceId).AdjacentPlaceIds.Contains(secondPlaceId, StringComparer.Ordinal);
+/// <summary>Owns the complete Game + objective Graph Spatial committed world.</summary>
+public sealed record FirstBoardWorld(
+    FirstBoardGameState Game,
+    GraphSpatialState Spatial)
+{
+    public ulong WorldSeed => Game.WorldSeed;
+    public ModelTime Now => Game.Now;
+    public IReadOnlyList<BoardActor> Actors => Game.Actors;
+    public IReadOnlyList<BoardObject> Objects => Game.Objects;
+    public bool CellarSealed => Game.CellarSealed;
+    public bool ChestOpened => Game.ChestOpened;
 
-    public bool IsIdle(BoardActor actor) =>
-        actor.Activity is null;
+    public static FirstBoardWorld CreateInitial(ulong worldSeed) =>
+        ScenarioInstance.CreateDefault(worldSeed).CreateInitialWorld();
 
-    public bool IsPresent(BoardActor actor) =>
-        actor.Activity?.Kind != BoardActivityKind.Travel;
+    public BoardActor Actor(string actorId) => Game.Actor(actorId);
+    public BoardActor Actor(long actorId) => Game.Actor(actorId);
+    public BoardObject Object(string objectId) => Game.Object(objectId);
 
+    public bool IsAtPlace(string entityId, PlaceId placeId) =>
+        Spatial.TryGetEntity(new EntityId(entityId), out SpatialEntity? entity) &&
+        entity!.Location is AtPlaceLocation atPlace &&
+        atPlace.PlaceId == placeId;
+
+    public bool TryGetPlace(string entityId, out PlaceId placeId)
+    {
+        if (Spatial.TryGetEntity(new EntityId(entityId), out SpatialEntity? entity) &&
+            entity!.Location is AtPlaceLocation atPlace)
+        {
+            placeId = atPlace.PlaceId;
+            return true;
+        }
+
+        placeId = default;
+        return false;
+    }
+
+    public bool IsReadyForDecision(BoardActor actor) =>
+        Game.IsIdle(actor) && TryGetPlace(actor.Key, out _);
+
+    public bool AreCoLocated(string firstEntityId, string secondEntityId) =>
+        TryGetPlace(firstEntityId, out PlaceId first) &&
+        TryGetPlace(secondEntityId, out PlaceId second) &&
+        first == second;
 }
 
 public abstract record BoardEventPayload;
 
-public sealed record ActorDepartedEvent(
+/// <summary>Records Game decision progress without owning location or arrival time.</summary>
+public sealed record ActorTravelStartedEvent(
     string ActorId,
-    string OriginId,
-    string DestinationId,
-    ModelTime ArriveAt) : BoardEventPayload;
-
-public sealed record ActorArrivedEvent(
-    string ActorId,
+    string ExitId,
     string DestinationId) : BoardEventPayload;
+
+public sealed record TicketConsumedEvent(
+    string ActorId,
+    string TicketObjectId) : BoardEventPayload;
 
 public sealed record ActorWaitStartedEvent(
     string ActorId,
@@ -165,74 +192,149 @@ public sealed record ActionRejectedEvent(
 
 public sealed record CellarSealedEvent : BoardEventPayload;
 
+/// <summary>Exact Host fact union; every batch may combine Game and Spatial facts.</summary>
+public abstract record FirstBoardFact;
+
+public sealed record GameBoardFact(BoardEventPayload Value) : FirstBoardFact;
+
+public sealed record SpatialBoardFact(GraphSpatialFact Value) : FirstBoardFact;
+
+/// <summary>Folds the Host union while leaving cross-domain validation to the batch boundary.</summary>
 public sealed class FirstBoardReducer
 {
+    private readonly GraphDefinition _definition;
+    private readonly GraphSpatialReducer _spatialReducer;
+
+    public FirstBoardReducer(GraphDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        _definition = definition;
+        _spatialReducer = new GraphSpatialReducer(definition);
+    }
+
     public FirstBoardWorld Apply(
         FirstBoardWorld world,
         LogicalInstant instant,
-        BoardEventPayload fact)
+        FirstBoardFact fact)
     {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(fact);
+
         FirstBoardWorld updated = fact switch
         {
-            ActorDepartedEvent departed =>
-                UpdateActor(world, departed.ActorId, actor =>
-                    AddFacts(CompleteDecision(actor) with
-                    {
-                        Activity = new BoardActivity(
-                            BoardActivityKind.Travel,
-                            departed.ArriveAt,
-                            departed.DestinationId),
-                        PlaceId = departed.OriginId,
-                    }, [LastOutcome(
-                        $"Your travel to {departed.DestinationId} was accepted; arrival is pending.")])),
-            ActorArrivedEvent arrived =>
-                UpdateActor(world, arrived.ActorId, actor =>
-                    AddFacts(CompleteActivity(actor) with
-                    {
-                        PlaceId = arrived.DestinationId,
-                    }, [LastOutcome($"You successfully arrived at {arrived.DestinationId}.")])),
-            ActorWaitStartedEvent waited =>
-                UpdateActor(world, waited.ActorId, actor =>
-                    AddFacts(CompleteDecision(actor) with
-                    {
-                        Activity = new BoardActivity(BoardActivityKind.Wait, waited.CompleteAt),
-                    }, [LastOutcome(
-                        $"Your wait was accepted until model time {waited.CompleteAt.Ticks}ms.")])),
-            ActorWaitedEvent waited =>
-                UpdateActor(world, waited.ActorId, actor =>
-                    AddFacts(CompleteActivity(actor), [LastOutcome(
-                        $"You successfully finished waiting at model time " +
-                        $"{instant.ModelTime.Ticks}ms.")])),
-            ActorSpokeEvent spoke =>
-                ApplySpoke(world, spoke),
-            ActorObservedEvent observed =>
-                UpdateActor(world, observed.ActorId, actor =>
-                    AddFacts(
-                        CompleteDecision(actor),
-                        observed.LearnedFacts.Append(LastOutcome(ObservationOutcome(observed))))),
-            ObjectTakenEvent taken =>
-                ApplyTaken(world, taken),
-            ObjectPlacedEvent placed =>
-                ApplyPlaced(world, placed),
-            ObjectGivenEvent given =>
-                ApplyGiven(world, given),
-            ObjectShownEvent shown =>
-                ApplyShown(world, shown),
-            ChestOpenedEvent opened =>
-                ApplyChestOpened(world, opened),
-            ActionRejectedEvent rejected =>
-                ApplyRejected(world, rejected),
-            CellarSealedEvent =>
-                ApplyCellarSealed(world),
+            GameBoardFact game => world with
+            {
+                Game = ApplyGame(world, instant, game.Value),
+            },
+            SpatialBoardFact spatial => world with
+            {
+                Spatial = _spatialReducer.Apply(world.Spatial, instant, spatial.Value),
+            },
             _ => throw new InvalidOperationException(
                 $"Unknown FirstBoard fact '{fact.GetType().Name}'."),
         };
 
-        return updated with { Now = instant.ModelTime };
+        return updated with
+        {
+            Game = updated.Game with { Now = instant.ModelTime },
+        };
     }
 
-    private static FirstBoardWorld ApplyRejected(
+    public void Validate(FirstBoardWorld world)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        GraphSpatialStateValidator.ValidateComplete(_definition, world.Spatial);
+        EnsureUnique(world.Actors.Select(actor => actor.Id), "actor id");
+        EnsureUnique(world.Actors.Select(actor => actor.Key), "actor key");
+        EnsureUnique(world.Objects.Select(item => item.Id), "object id");
+        EnsureUnique(world.Objects.Select(item => item.Key), "object key");
+
+        var actorIds = world.Actors.Select(actor => actor.Id).ToHashSet();
+        if (world.Objects.Any(item =>
+                item.OwnerActorId is long ownerId && !actorIds.Contains(ownerId)))
+        {
+            throw new InvalidOperationException("A FirstBoard object owner must exist.");
+        }
+
+        foreach (BoardActor actor in world.Actors)
+        {
+            if (!world.Spatial.TryGetEntity(new EntityId(actor.Key), out SpatialEntity? entity))
+            {
+                throw new InvalidOperationException(
+                    $"Actor '{actor.Key}' must have one objective Spatial entity.");
+            }
+
+            if (actor.Activity is not null && entity!.Location is not AtPlaceLocation)
+            {
+                throw new InvalidOperationException(
+                    $"Traversing actor '{actor.Key}' cannot also own a Wait activity.");
+            }
+        }
+
+        foreach (BoardObject item in world.Objects)
+        {
+            bool hasSpatialEntity = world.Spatial.TryGetEntity(new EntityId(item.Key), out _);
+            if (item.OwnerActorId is not null && hasSpatialEntity)
+            {
+                throw new InvalidOperationException(
+                    $"Owned object '{item.Key}' cannot also have a standalone Spatial location.");
+            }
+        }
+    }
+
+    private static FirstBoardGameState ApplyGame(
         FirstBoardWorld world,
+        LogicalInstant instant,
+        BoardEventPayload fact)
+    {
+        FirstBoardGameState game = world.Game;
+        return fact switch
+        {
+            ActorTravelStartedEvent started =>
+                UpdateActor(game, started.ActorId, actor =>
+                    AddFacts(CompleteDecision(actor), [LastOutcome(
+                        $"Your travel via {started.ExitId} to {started.DestinationId} was accepted.")])),
+            TicketConsumedEvent consumed =>
+                ConsumeTicket(game, consumed),
+            ActorWaitStartedEvent waited =>
+                UpdateActor(game, waited.ActorId, actor =>
+                    AddFacts(CompleteDecision(actor) with
+                    {
+                        Activity = new BoardWaitActivity(waited.CompleteAt),
+                    }, [LastOutcome(
+                        $"Your wait was accepted until model time {waited.CompleteAt.Ticks}ms.")])),
+            ActorWaitedEvent waited =>
+                UpdateActor(game, waited.ActorId, actor =>
+                    AddFacts(CompleteActivity(actor), [LastOutcome(
+                        $"You successfully finished waiting at model time {instant.ModelTime.Ticks}ms.")])),
+            ActorSpokeEvent spoke =>
+                ApplySpoke(game, spoke),
+            ActorObservedEvent observed =>
+                UpdateActor(game, observed.ActorId, actor =>
+                    AddFacts(
+                        CompleteDecision(actor),
+                        observed.LearnedFacts.Append(LastOutcome(ObservationOutcome(observed))))),
+            ObjectTakenEvent taken =>
+                ApplyTaken(game, taken),
+            ObjectPlacedEvent placed =>
+                ApplyPlaced(world, game, placed),
+            ObjectGivenEvent given =>
+                ApplyGiven(game, given),
+            ObjectShownEvent shown =>
+                ApplyShown(game, shown),
+            ChestOpenedEvent opened =>
+                ApplyChestOpened(game, opened),
+            ActionRejectedEvent rejected =>
+                ApplyRejected(game, rejected),
+            CellarSealedEvent =>
+                ApplyCellarSealed(world, game),
+            _ => throw new InvalidOperationException(
+                $"Unknown FirstBoard Game fact '{fact.GetType().Name}'."),
+        };
+    }
+
+    private static FirstBoardGameState ApplyRejected(
+        FirstBoardGameState game,
         ActionRejectedEvent rejected)
     {
         var learnedFacts = new List<BoardFact>
@@ -242,35 +344,39 @@ public sealed class FirstBoardReducer
                 $"{rejected.Reason}."),
         };
         if (rejected.RejectedIntent.ActionKind == ActionKinds.Travel &&
-            rejected.RejectedIntent.DestinationId == BoardIds.Cellar &&
             rejected.Reason == "cellar is sealed")
         {
             learnedFacts.Add(CellarSealedFact());
         }
 
-        return UpdateActor(world, rejected.ActorId, actor =>
+        return UpdateActor(game, rejected.ActorId, actor =>
             AddFacts(CompleteDecision(actor), learnedFacts));
     }
 
-    private static FirstBoardWorld ApplyCellarSealed(FirstBoardWorld world)
+    private static FirstBoardGameState ApplyCellarSealed(
+        FirstBoardWorld world,
+        FirstBoardGameState game)
     {
-        FirstBoardWorld updated = world with { CellarSealed = true };
-        foreach (BoardActor witness in world.Actors.Where(actor =>
-                     world.IsPresent(actor) && actor.PlaceId == BoardIds.Cellar))
+        FirstBoardGameState updated = game with { CellarSealed = true };
+        foreach (BoardActor witness in game.Actors.Where(actor =>
+                     world.IsAtPlace(actor.Key, new PlaceId(BoardIds.Cellar))))
         {
-            updated = UpdateActor(updated, witness.Id, actor => AddFacts(actor, [CellarSealedFact()]));
+            updated = UpdateActor(updated, witness.Id, actor =>
+                AddFacts(actor, [CellarSealedFact()]));
         }
 
         return updated;
     }
 
-    private static FirstBoardWorld ApplySpoke(FirstBoardWorld world, ActorSpokeEvent spoke)
+    private static FirstBoardGameState ApplySpoke(
+        FirstBoardGameState game,
+        ActorSpokeEvent spoke)
     {
-        BoardActor speaker = world.Actor(spoke.ActorId);
+        BoardActor speaker = game.Actor(spoke.ActorId);
         BoardFact? sharedFact = spoke.SharedFactKind is null
             ? null
             : speaker.KnownFacts.Single(fact => fact.Kind == spoke.SharedFactKind);
-        FirstBoardWorld afterSpeaker = UpdateActor(world, spoke.ActorId, actor =>
+        FirstBoardGameState afterSpeaker = UpdateActor(game, spoke.ActorId, actor =>
             AddFacts(CompleteDecision(actor), [LastOutcome(
                 $"You successfully spoke to {spoke.TargetActorId}: {spoke.Text}")]));
         return UpdateActor(afterSpeaker, spoke.TargetActorId, actor =>
@@ -287,7 +393,7 @@ public sealed class FirstBoardReducer
                 facts.Add(sharedFact);
             }
 
-            if (actor.Activity?.Kind == BoardActivityKind.Wait)
+            if (actor.Activity is not null)
             {
                 facts.Add(LastOutcome(
                     $"Your wait was interrupted because {spoke.ActorId} spoke to you."));
@@ -298,12 +404,13 @@ public sealed class FirstBoardReducer
         });
     }
 
-    private static FirstBoardWorld ApplyTaken(FirstBoardWorld world, ObjectTakenEvent taken)
+    private static FirstBoardGameState ApplyTaken(
+        FirstBoardGameState game,
+        ObjectTakenEvent taken)
     {
-        BoardActor actor = world.Actor(taken.ActorId);
-        FirstBoardWorld updated = UpdateObject(world, taken.ObjectId, item => item with
+        BoardActor actor = game.Actor(taken.ActorId);
+        FirstBoardGameState updated = UpdateObject(game, taken.ObjectId, item => item with
         {
-            PlaceId = null,
             OwnerActorId = actor.Id,
         });
         return UpdateActor(updated, taken.ActorId, current =>
@@ -314,11 +421,13 @@ public sealed class FirstBoardReducer
             ]));
     }
 
-    private static FirstBoardWorld ApplyPlaced(FirstBoardWorld world, ObjectPlacedEvent placed)
+    private static FirstBoardGameState ApplyPlaced(
+        FirstBoardWorld world,
+        FirstBoardGameState game,
+        ObjectPlacedEvent placed)
     {
-        FirstBoardWorld updated = UpdateObject(world, placed.ObjectId, item => item with
+        FirstBoardGameState updated = UpdateObject(game, placed.ObjectId, item => item with
         {
-            PlaceId = placed.PlaceId,
             OwnerActorId = null,
         });
         updated = UpdateActor(updated, placed.ActorId, actor =>
@@ -335,10 +444,10 @@ public sealed class FirstBoardReducer
 
             return AddFacts(CompleteDecision(actor), facts);
         });
-        foreach (BoardActor witness in world.Actors.Where(actor =>
+
+        foreach (BoardActor witness in game.Actors.Where(actor =>
                      actor.Key != placed.ActorId &&
-                     world.IsPresent(actor) &&
-                     actor.PlaceId == placed.PlaceId))
+                     world.IsAtPlace(actor.Key, new PlaceId(placed.PlaceId))))
         {
             updated = UpdateActor(updated, witness.Id, actor =>
             {
@@ -354,7 +463,7 @@ public sealed class FirstBoardReducer
                     facts.Add(KeyLocationFact(placed.PlaceId));
                 }
 
-                if (actor.Activity?.Kind == BoardActivityKind.Wait)
+                if (actor.Activity is not null)
                 {
                     facts.Add(LastOutcome(
                         $"Your wait was interrupted because {placed.ActorId} placed {placed.ObjectId} here."));
@@ -368,12 +477,13 @@ public sealed class FirstBoardReducer
         return updated;
     }
 
-    private static FirstBoardWorld ApplyGiven(FirstBoardWorld world, ObjectGivenEvent given)
+    private static FirstBoardGameState ApplyGiven(
+        FirstBoardGameState game,
+        ObjectGivenEvent given)
     {
-        BoardActor target = world.Actor(given.TargetActorId);
-        FirstBoardWorld updated = UpdateObject(world, given.ObjectId, item => item with
+        BoardActor target = game.Actor(given.TargetActorId);
+        FirstBoardGameState updated = UpdateObject(game, given.ObjectId, item => item with
         {
-            PlaceId = null,
             OwnerActorId = target.Id,
         });
         updated = UpdateActor(updated, given.ActorId, actor =>
@@ -391,12 +501,15 @@ public sealed class FirstBoardReducer
             targetFacts.Add(KeyLocationFact());
         }
 
-        return UpdateActor(updated, given.TargetActorId, actor => AddFacts(actor, targetFacts));
+        return UpdateActor(updated, given.TargetActorId, actor =>
+            AddFacts(actor, targetFacts));
     }
 
-    private static FirstBoardWorld ApplyShown(FirstBoardWorld world, ObjectShownEvent shown)
+    private static FirstBoardGameState ApplyShown(
+        FirstBoardGameState game,
+        ObjectShownEvent shown)
     {
-        FirstBoardWorld updated = UpdateActor(world, shown.ActorId, actor =>
+        FirstBoardGameState updated = UpdateActor(game, shown.ActorId, actor =>
             AddFacts(CompleteDecision(actor), [LastOutcome(
                 $"You successfully showed {shown.ObjectId} to {shown.TargetActorId} without giving it away.")]));
         return UpdateActor(updated, shown.TargetActorId, actor =>
@@ -408,7 +521,7 @@ public sealed class FirstBoardReducer
                     shown.ObjectId,
                     $"{shown.ActorId} showed you {shown.ObjectId}; you verified that they held it at that moment."),
             };
-            if (actor.Activity?.Kind == BoardActivityKind.Wait)
+            if (actor.Activity is not null)
             {
                 facts.Add(LastOutcome(
                     $"Your wait was interrupted because {shown.ActorId} showed you {shown.ObjectId}."));
@@ -419,17 +532,16 @@ public sealed class FirstBoardReducer
         });
     }
 
-    private static FirstBoardWorld ApplyChestOpened(
-        FirstBoardWorld world,
+    private static FirstBoardGameState ApplyChestOpened(
+        FirstBoardGameState game,
         ChestOpenedEvent opened)
     {
-        FirstBoardWorld updated = UpdateObject(
-            world with { ChestOpened = true },
+        FirstBoardGameState updated = UpdateObject(
+            game with { ChestOpened = true },
             BoardIds.DuchessLetter,
             letter => letter with
             {
-                PlaceId = null,
-                OwnerActorId = world.Actor(opened.ActorId).Id,
+                OwnerActorId = game.Actor(opened.ActorId).Id,
             });
         return UpdateActor(updated, opened.ActorId, actor =>
             AddFacts(CompleteDecision(actor),
@@ -442,6 +554,26 @@ public sealed class FirstBoardReducer
                     $"You successfully used {opened.KeyObjectId} to open {opened.ObjectId} " +
                     "and took the duchess's letter."),
             ]));
+    }
+
+    private static FirstBoardGameState ConsumeTicket(
+        FirstBoardGameState game,
+        TicketConsumedEvent consumed)
+    {
+        BoardActor actor = game.Actor(consumed.ActorId);
+        BoardObject ticket = game.Object(consumed.TicketObjectId);
+        if (ticket.OwnerActorId != actor.Id)
+        {
+            throw new InvalidOperationException(
+                $"Ticket '{ticket.Key}' is not owned by actor '{actor.Key}'.");
+        }
+
+        return game with
+        {
+            Objects = Array.AsReadOnly(game.Objects
+                .Where(item => item.Id != ticket.Id)
+                .ToArray()),
+        };
     }
 
     private static BoardActor CompleteDecision(BoardActor actor) =>
@@ -478,11 +610,11 @@ public sealed class FirstBoardReducer
             intent.ActionKind.Id,
             $"Action {intent.ActionKind.Id} was rejected: {reason}; " +
             $"targetActor={intent.TargetActorId}; targetObject={intent.TargetObjectId}; " +
-            $"destination={intent.DestinationId}; durationMs={intent.DurationMs}; " +
+            $"exit={intent.ExitId}; destination={intent.DestinationId}; durationMs={intent.DurationMs}; " +
             $"untilModelTimeMs={intent.UntilModelTimeMs}.");
 
     private static BoardFact CellarSealedFact() =>
-        new(BoardIds.CellarSealedKnown, BoardIds.Cellar, "The cellar is sealed.");
+        new(BoardIds.CellarSealedKnown, BoardIds.Cellar, "The cellar is sealed against entry.");
 
     private static BoardFact KeyLocationFact(string? publicPlaceId = null) =>
         new(
@@ -502,39 +634,49 @@ public sealed class FirstBoardReducer
             : $"You successfully inspected {observed.TargetObjectId}; " +
               $"the event reported {observed.LearnedFacts.Count} inspection facts.";
 
-    private static FirstBoardWorld UpdateActor(
-        FirstBoardWorld world,
+    private static FirstBoardGameState UpdateActor(
+        FirstBoardGameState game,
         string actorId,
         Func<BoardActor, BoardActor> update) =>
-        world with
+        game with
         {
-            Actors = Array.AsReadOnly(world.Actors
+            Actors = Array.AsReadOnly(game.Actors
                 .Select(actor => actor.Key == actorId ? update(actor) : actor)
                 .OrderBy(actor => actor.Id)
                 .ToArray()),
         };
 
-    private static FirstBoardWorld UpdateActor(
-        FirstBoardWorld world,
+    private static FirstBoardGameState UpdateActor(
+        FirstBoardGameState game,
         long actorId,
         Func<BoardActor, BoardActor> update) =>
-        world with
+        game with
         {
-            Actors = Array.AsReadOnly(world.Actors
+            Actors = Array.AsReadOnly(game.Actors
                 .Select(actor => actor.Id == actorId ? update(actor) : actor)
                 .OrderBy(actor => actor.Id)
                 .ToArray()),
         };
 
-    private static FirstBoardWorld UpdateObject(
-        FirstBoardWorld world,
+    private static FirstBoardGameState UpdateObject(
+        FirstBoardGameState game,
         string objectId,
         Func<BoardObject, BoardObject> update) =>
-        world with
+        game with
         {
-            Objects = Array.AsReadOnly(world.Objects
+            Objects = Array.AsReadOnly(game.Objects
                 .Select(item => item.Key == objectId ? update(item) : item)
                 .OrderBy(item => item.Id)
                 .ToArray()),
         };
+
+    private static void EnsureUnique<T>(IEnumerable<T> values, string description)
+    {
+        var known = new HashSet<T>();
+        if (values.Any(value => !known.Add(value)))
+        {
+            throw new InvalidOperationException(
+                $"FirstBoard {description} values must be unique.");
+        }
+    }
 }

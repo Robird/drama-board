@@ -2,28 +2,32 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.FirstBoard;
 
-/// <summary>Defines one place and its directed travel connections.</summary>
-public sealed record ScenarioPlaceDefinition(
-    string Id,
-    IReadOnlyList<string> AdjacentPlaceIds);
+public sealed record ScenarioPlaceDefinition(string Id);
 
-/// <summary>Defines one private source that an actor may repeatedly consult.</summary>
+public sealed record ScenarioPassageDefinition(
+    string Id,
+    string EndpointAId,
+    string EndpointBId,
+    long Length,
+    bool EnterableFromA,
+    bool EnterableFromB,
+    string? RequiredTicketObjectId = null);
+
 public sealed record ScenarioReferenceMaterialDefinition(
     string Id,
     string Source,
     string Content);
 
-/// <summary>Defines one initial private-memory shard without depending on an LLM runtime.</summary>
 public sealed record ScenarioMemoryShardDefinition(
     string Key,
     string Title,
     string MaintenanceInstructions,
     string InitialContent);
 
-/// <summary>Defines the narrative role assigned to one scenario actor.</summary>
 public sealed record ScenarioRoleDefinition(
     string Name,
     string Traits,
@@ -32,52 +36,62 @@ public sealed record ScenarioRoleDefinition(
     IReadOnlyList<ScenarioReferenceMaterialDefinition> ReferenceMaterials,
     IReadOnlyList<ScenarioMemoryShardDefinition> InitialMemoryShards);
 
-/// <summary>Defines one actor's stable identity, initial location, and private role material.</summary>
 public sealed record ScenarioActorDefinition(
     string Id,
     string InitialPlaceId,
     ScenarioRoleDefinition Role);
 
-/// <summary>Defines one world object's initial public location, owner, or hidden state.</summary>
+/// <summary>An object starts public at one Place, carried by one actor, or hidden when both are null.</summary>
 public sealed record ScenarioObjectDefinition(
     string Id,
     string? InitialPlaceId,
     string? InitialOwnerActorId);
 
-/// <summary>Contains the immutable, seed-independent content of a FirstBoard scenario.</summary>
+/// <summary>Contains immutable FirstBoard content and adapts its spatial portion to GraphDefinition.</summary>
 public sealed record ScenarioDefinition(
     string Id,
     int Revision,
     string RulesetId,
     long CellarDeadlineMs,
     IReadOnlyList<ScenarioPlaceDefinition> Places,
+    IReadOnlyList<ScenarioPassageDefinition> Passages,
     IReadOnlyList<ScenarioActorDefinition> Actors,
     IReadOnlyList<ScenarioObjectDefinition> Objects)
 {
-    public const string FirstBoardRuleset = "firstboard.duchess-letter/1";
+    public const string FirstBoardRuleset = "firstboard.duchess-letter/2";
 
-    /// <summary>Gets the current hand-authored FirstBoard scenario as immutable data.</summary>
     public static ScenarioDefinition Default { get; } = CreateDefault();
 
-    /// <summary>Returns the actor definition with the requested stable id.</summary>
     public ScenarioActorDefinition Actor(string actorId) =>
         Actors.Single(actor => actor.Id == actorId);
 
-    /// <summary>Builds the objective initial world for one seeded scenario instance.</summary>
-    public FirstBoardWorld CreateInitialWorld(ulong worldSeed)
+    public GraphDefinition CreateGraphDefinition()
     {
         Validate();
+        return GraphDefinition.Create(
+            Places.Select(place => new PlaceId(place.Id)),
+            Passages.Select(passage => new PassageDefinition(
+                new PassageId(passage.Id),
+                new PlaceId(passage.EndpointAId),
+                new PlaceId(passage.EndpointBId),
+                passage.Length,
+                new PassageEntryAccess(
+                    passage.EnterableFromA,
+                    passage.EnterableFromB))));
+    }
+
+    public string? RequiredTicket(PassageId passageId) =>
+        Passages.Single(passage => passage.Id == passageId.Value).RequiredTicketObjectId;
+
+    public FirstBoardWorld CreateInitialWorld(ulong worldSeed)
+    {
+        GraphDefinition graph = CreateGraphDefinition();
         long nextId = 1;
-        BoardPlace[] places =
-        [
-            .. Places.Select(place => new BoardPlace(
-                nextId++,
-                place.Id,
-                Array.AsReadOnly(place.AdjacentPlaceIds.ToArray()))),
-        ];
         BoardActor[] actors =
         [
-            .. Actors.Select(actor => NewActor(nextId++, actor.Id, actor.InitialPlaceId)),
+            .. Actors
+                .OrderBy(actor => actor.Id, StringComparer.Ordinal)
+                .Select(actor => NewActor(nextId++, actor.Id)),
         ];
         IReadOnlyDictionary<string, long> actorIds = actors.ToDictionary(
             actor => actor.Key,
@@ -85,25 +99,43 @@ public sealed record ScenarioDefinition(
             StringComparer.Ordinal);
         BoardObject[] objects =
         [
-            .. Objects.Select(item => new BoardObject(
-                nextId++,
-                item.Id,
-                item.InitialPlaceId,
-                item.InitialOwnerActorId is null ? null : actorIds[item.InitialOwnerActorId])),
+            .. Objects
+                .OrderBy(item => item.Id, StringComparer.Ordinal)
+                .Select(item => new BoardObject(
+                    nextId++,
+                    item.Id,
+                    item.InitialOwnerActorId is null ? null : actorIds[item.InitialOwnerActorId])),
         ];
 
-        return new FirstBoardWorld(
+        EntityPlacement[] placements =
+        [
+            .. Actors.Select(actor =>
+                new EntityPlacement(
+                    new EntityId(actor.Id),
+                    new PlaceId(actor.InitialPlaceId))),
+            .. Objects
+                .Where(item => item.InitialPlaceId is not null)
+                .Select(item =>
+                    new EntityPlacement(
+                        new EntityId(item.Id),
+                        new PlaceId(item.InitialPlaceId!))),
+            new(
+                new EntityId(BoardIds.LockedChest),
+                new PlaceId(BoardIds.Cellar)),
+        ];
+        var game = new FirstBoardGameState(
             worldSeed,
             nextId,
             ModelTime.Zero,
-            Array.AsReadOnly(places),
             Array.AsReadOnly(actors),
             Array.AsReadOnly(objects),
             CellarSealed: false,
             ChestOpened: false);
+        return new FirstBoardWorld(
+            game,
+            GraphSpatialState.Create(graph, placements));
     }
 
-    /// <summary>Returns canonical UTF-8 JSON whose bytes define the scenario hash contract.</summary>
     public byte[] ToCanonicalJsonUtf8()
     {
         Validate();
@@ -111,12 +143,13 @@ public sealed record ScenarioDefinition(
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteString("schema", "dramaboard.scenario-definition/1");
+            writer.WriteString("schema", "dramaboard.scenario-definition/2");
             writer.WriteString("id", Id);
             writer.WriteNumber("revision", Revision);
             writer.WriteString("rulesetId", RulesetId);
             writer.WriteNumber("cellarDeadlineMs", CellarDeadlineMs);
             WritePlaces(writer);
+            WritePassages(writer);
             WriteActors(writer);
             WriteObjects(writer);
             writer.WriteEndObject();
@@ -125,37 +158,41 @@ public sealed record ScenarioDefinition(
         return stream.ToArray();
     }
 
-    /// <summary>Returns a stable SHA-256 hex digest of the canonical scenario definition.</summary>
     public string ComputeSha256() =>
         Convert.ToHexString(SHA256.HashData(ToCanonicalJsonUtf8())).ToLowerInvariant();
 
-    /// <summary>Deep-copies all collections into read-only snapshots at an instance boundary.</summary>
     public ScenarioDefinition Freeze()
     {
         Validate();
         return this with
         {
-            Places = Array.AsReadOnly(
-                Places.Select(place => place with
-                {
-                    AdjacentPlaceIds = Array.AsReadOnly(place.AdjacentPlaceIds.ToArray()),
-                }).ToArray()),
-            Actors = Array.AsReadOnly(
-                Actors.Select(actor => actor with
+            Places = Array.AsReadOnly(Places
+                .OrderBy(place => place.Id, StringComparer.Ordinal)
+                .ToArray()),
+            Passages = Array.AsReadOnly(Passages
+                .OrderBy(passage => passage.Id, StringComparer.Ordinal)
+                .ToArray()),
+            Actors = Array.AsReadOnly(Actors
+                .OrderBy(actor => actor.Id, StringComparer.Ordinal)
+                .Select(actor => actor with
                 {
                     Role = actor.Role with
                     {
-                        ReferenceMaterials = Array.AsReadOnly(
-                            actor.Role.ReferenceMaterials.ToArray()),
-                        InitialMemoryShards = Array.AsReadOnly(
-                            actor.Role.InitialMemoryShards.ToArray()),
+                        ReferenceMaterials = Array.AsReadOnly(actor.Role.ReferenceMaterials
+                            .OrderBy(material => material.Id, StringComparer.Ordinal)
+                            .ToArray()),
+                        InitialMemoryShards = Array.AsReadOnly(actor.Role.InitialMemoryShards
+                            .OrderBy(shard => shard.Key, StringComparer.Ordinal)
+                            .ToArray()),
                     },
-                }).ToArray()),
-            Objects = Array.AsReadOnly(Objects.ToArray()),
+                })
+                .ToArray()),
+            Objects = Array.AsReadOnly(Objects
+                .OrderBy(item => item.Id, StringComparer.Ordinal)
+                .ToArray()),
         };
     }
 
-    /// <summary>Rejects broken references before a definition becomes a world or manifest.</summary>
     public void Validate()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Id);
@@ -177,12 +214,39 @@ public sealed record ScenarioDefinition(
         }
 
         ArgumentNullException.ThrowIfNull(Places);
+        ArgumentNullException.ThrowIfNull(Passages);
         ArgumentNullException.ThrowIfNull(Actors);
         ArgumentNullException.ThrowIfNull(Objects);
         HashSet<string> placeIds = UniqueIds(Places.Select(place => place.Id), "place");
+        HashSet<string> passageIds = UniqueIds(Passages.Select(passage => passage.Id), "passage");
         HashSet<string> actorIds = UniqueIds(Actors.Select(actor => actor.Id), "actor");
         HashSet<string> objectIds = UniqueIds(Objects.Select(item => item.Id), "object");
-        RequireIds(placeIds, "place", BoardIds.Tavern, BoardIds.Market, BoardIds.Cellar);
+
+        string[] sharedEntityIds =
+        [
+            .. actorIds.Intersect(objectIds, StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal),
+        ];
+        if (sharedEntityIds.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"Actor and object identifiers share the Spatial entity namespace: " +
+                $"{string.Join(", ", sharedEntityIds)}.");
+        }
+
+        if (actorIds.Contains(BoardIds.LockedChest) || objectIds.Contains(BoardIds.LockedChest))
+        {
+            throw new InvalidOperationException(
+                $"Spatial entity identifier '{BoardIds.LockedChest}' is reserved for the synthetic chest.");
+        }
+
+        RequireIds(
+            placeIds,
+            "place",
+            BoardIds.Tavern,
+            BoardIds.Market,
+            BoardIds.CellarGate,
+            BoardIds.Cellar);
         RequireIds(actorIds, "actor", BoardIds.Alice, BoardIds.Bob);
         RequireIds(
             objectIds,
@@ -191,17 +255,46 @@ public sealed record ScenarioDefinition(
             BoardIds.DuchessLetter,
             BoardIds.SilverCoinOne,
             BoardIds.SilverCoinTwo);
+        RequireIds(passageIds, "passage", BoardIds.CellarGatePassage);
 
-        foreach (ScenarioPlaceDefinition place in Places)
+        ScenarioPassageDefinition cellarGate = Passages.Single(
+            passage => passage.Id == BoardIds.CellarGatePassage);
+        if (cellarGate.EndpointAId != BoardIds.CellarGate ||
+            cellarGate.EndpointBId != BoardIds.Cellar)
         {
-            ArgumentNullException.ThrowIfNull(place.AdjacentPlaceIds);
-            foreach (string adjacentId in place.AdjacentPlaceIds)
+            throw new InvalidOperationException(
+                $"Passage '{BoardIds.CellarGatePassage}' must run from " +
+                $"'{BoardIds.CellarGate}' (A) to '{BoardIds.Cellar}' (B).");
+        }
+
+        foreach (ScenarioPassageDefinition passage in Passages)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(passage.EndpointAId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(passage.EndpointBId);
+            if (!placeIds.Contains(passage.EndpointAId) ||
+                !placeIds.Contains(passage.EndpointBId))
             {
-                if (!placeIds.Contains(adjacentId))
-                {
-                    throw new InvalidOperationException(
-                        $"Place '{place.Id}' references unknown place '{adjacentId}'.");
-                }
+                throw new InvalidOperationException(
+                    $"Passage '{passage.Id}' references an unknown endpoint.");
+            }
+
+            if (passage.EndpointAId == passage.EndpointBId)
+            {
+                throw new InvalidOperationException(
+                    $"Passage '{passage.Id}' endpoints must differ.");
+            }
+
+            if (passage.Length <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Passage '{passage.Id}' length must be positive.");
+            }
+
+            if (passage.RequiredTicketObjectId is string ticketId &&
+                !objectIds.Contains(ticketId))
+            {
+                throw new InvalidOperationException(
+                    $"Passage '{passage.Id}' requires unknown ticket '{ticketId}'.");
             }
         }
 
@@ -219,32 +312,22 @@ public sealed record ScenarioDefinition(
 
         foreach (ScenarioObjectDefinition item in Objects)
         {
-            if (item.InitialPlaceId is not null)
-            {
-                ArgumentException.ThrowIfNullOrWhiteSpace(item.InitialPlaceId);
-            }
-
-            if (item.InitialOwnerActorId is not null)
-            {
-                ArgumentException.ThrowIfNullOrWhiteSpace(item.InitialOwnerActorId);
-            }
-
             if (item.InitialPlaceId is not null && item.InitialOwnerActorId is not null)
             {
                 throw new InvalidOperationException(
                     $"Object '{item.Id}' cannot start both placed and owned.");
             }
 
-            if (item.InitialPlaceId is not null && !placeIds.Contains(item.InitialPlaceId))
+            if (item.InitialPlaceId is string placeId && !placeIds.Contains(placeId))
             {
                 throw new InvalidOperationException(
-                    $"Object '{item.Id}' starts at unknown place '{item.InitialPlaceId}'.");
+                    $"Object '{item.Id}' starts at unknown place '{placeId}'.");
             }
 
-            if (item.InitialOwnerActorId is not null && !actorIds.Contains(item.InitialOwnerActorId))
+            if (item.InitialOwnerActorId is string actorId && !actorIds.Contains(actorId))
             {
                 throw new InvalidOperationException(
-                    $"Object '{item.Id}' starts with unknown owner '{item.InitialOwnerActorId}'.");
+                    $"Object '{item.Id}' starts with unknown owner '{actorId}'.");
             }
         }
     }
@@ -252,14 +335,54 @@ public sealed record ScenarioDefinition(
     private static ScenarioDefinition CreateDefault() =>
         new(
             "firstboard.duchess-letter-market",
-            Revision: 1,
+            Revision: 2,
             FirstBoardRuleset,
             BoardTiming.DeadlineTicks,
             Array.AsReadOnly<ScenarioPlaceDefinition>(
             [
-                new(BoardIds.Tavern, [BoardIds.Market]),
-                new(BoardIds.Market, [BoardIds.Tavern, BoardIds.Cellar]),
-                new(BoardIds.Cellar, [BoardIds.Market]),
+                new(BoardIds.Tavern),
+                new(BoardIds.Market),
+                new(BoardIds.CellarGate),
+                new(BoardIds.Cellar),
+            ]),
+            Array.AsReadOnly<ScenarioPassageDefinition>(
+            [
+                new(
+                    BoardIds.TavernMarketRoad,
+                    BoardIds.Tavern,
+                    BoardIds.Market,
+                    Length: 300_000,
+                    EnterableFromA: true,
+                    EnterableFromB: true),
+                new(
+                    BoardIds.TavernMarketFerry,
+                    BoardIds.Tavern,
+                    BoardIds.Market,
+                    Length: 180_000,
+                    EnterableFromA: true,
+                    EnterableFromB: true,
+                    RequiredTicketObjectId: BoardIds.SilverCoinOne),
+                new(
+                    BoardIds.MarketTavernCart,
+                    BoardIds.Market,
+                    BoardIds.Tavern,
+                    Length: 240_000,
+                    EnterableFromA: true,
+                    EnterableFromB: false),
+                new(
+                    BoardIds.MarketCellarApproach,
+                    BoardIds.Market,
+                    BoardIds.CellarGate,
+                    Length: 180_000,
+                    EnterableFromA: true,
+                    EnterableFromB: true),
+                new(
+                    BoardIds.CellarGatePassage,
+                    BoardIds.CellarGate,
+                    BoardIds.Cellar,
+                    Length: 120_000,
+                    EnterableFromA: true,
+                    EnterableFromB: true),
             ]),
             Array.AsReadOnly<ScenarioActorDefinition>(
             [
@@ -276,41 +399,41 @@ public sealed record ScenarioDefinition(
                             new(
                                 "alice.case-notes",
                                 "爱丽丝在酒馆根据零散传闻写下的案情笔记",
-                                "公爵夫人的密信可能锁在地窖箱中；黄铜钥匙最近在集市出现；地窖门口公告称一小时后永久封闭。"),
+                                "公爵夫人的密信可能锁在地窖箱中；黄铜钥匙最近在集市出现；地窖门口公告称一小时后封闭。"),
                             new(
                                 "alice.meeting-note",
                                 "爱丽丝昨夜与鲍勃谈过后留下的会面备忘",
-                                "先去集市摊位会面；若钥匙和鲍勃都不在，至少等待五分钟，避免与返回摊位的鲍勃错身。"),
+                                "先去集市会面；若钥匙和鲍勃都不在，至少等待五分钟。"),
                         ]),
                         DefaultMemory(
-                            "我在酒馆，准备按案情笔记去集市寻找钥匙和鲍勃；当前尚未核实密信、钥匙或地窖传闻。",
-                            "我目前打算遵守 alice.meeting-note：若在集市与鲍勃错身，至少等五分钟。若鲍勃持有密信，我会优先要求他把信放到公共环境供我亲自检查，再决定是否支付余款；我知道放下后在场者都能拿走。情况明显变化时可以明确修改计划。",
-                            "案情笔记只是零散传闻。钥匙很可能与地窖箱有关；鲍勃可能帮忙，也可能借机要挟。",
-                            "我对鲍勃保持戒备，但目前没有足够证据认定他会违约；双方尚无已履行的交易债务。"))),
+                            "我在酒馆，准备去集市寻找钥匙和鲍勃。",
+                            "若在集市与鲍勃错身，至少等五分钟；情况变化时可修改计划。",
+                            "钥匙很可能与地窖箱有关，但传闻尚未核实。",
+                            "我对鲍勃保持戒备，但仍把他视为潜在合作对象。"))),
                 new(
                     BoardIds.Bob,
                     BoardIds.Market,
                     new ScenarioRoleDefinition(
                         "鲍勃",
                         "务实、机会主义，但并非冷酷；喜欢掌握谈判筹码",
-                        "利用黄铜钥匙和密信线索取得收益，同时避免把自己困在无法兑现的交易中",
+                        "利用黄铜钥匙和密信线索取得收益，同时避免无法兑现的交易",
                         "直率，偶尔讥讽，谈条件时毫不含糊",
                         Array.AsReadOnly<ScenarioReferenceMaterialDefinition>(
                         [
                             new(
                                 "bob.lead-ledger",
                                 "鲍勃自己的生意账本边角记录",
-                                "摊位附近可能有一把黄铜钥匙；爱丽丝正在追查地窖中的密信；地窖门口公告称一小时后封闭。"),
+                                "摊位附近可能有一把黄铜钥匙；爱丽丝正在追查地窖中的密信；地窖一小时后封闭。"),
                             new(
                                 "bob.meeting-note",
                                 "鲍勃记下的昨夜会面安排",
-                                "若先拿钥匙去地窖，开箱后回集市摊位至少等待十分钟；爱丽丝会先去摊位寻找鲍勃。"),
+                                "若先拿钥匙去地窖，开箱后回集市至少等待十分钟。"),
                         ]),
                         DefaultMemory(
-                            "我在集市，准备先确认摊位附近的钥匙是否还在；当前尚未核实账本边角记录。",
-                            "我目前愿意遵守 bob.meeting-note：若先去地窖开箱，之后回集市至少等爱丽丝十分钟。为促成交易，我可以把密信放到公共环境让爱丽丝亲自检查，但这会放弃控制并允许她直接拿走；若风险过高，可改用 show 或明确改主意。",
-                            "钥匙可能让我取得密信筹码，但拖得太久可能一无所获。爱丽丝似乎很在意那封信。",
-                            "我把爱丽丝视为潜在交易对象而不是同盟；是否履约取决于她实际展示或交付的筹码。"))),
+                            "我在集市，准备先确认钥匙是否还在。",
+                            "若先去地窖开箱，之后回集市至少等爱丽丝十分钟。",
+                            "钥匙可能让我取得密信筹码，但拖得太久可能一无所获。",
+                            "我把爱丽丝视为潜在交易对象而不是同盟。"))),
             ]),
             Array.AsReadOnly<ScenarioObjectDefinition>(
             [
@@ -327,26 +450,10 @@ public sealed record ScenarioDefinition(
         string relationships) =>
         Array.AsReadOnly<ScenarioMemoryShardDefinition>(
         [
-            new(
-                "working_context",
-                "当前处境与未决线索",
-                "快速更新当前处境、近期经历和仍需处理的线索；无需重复 Observation 已直接给出的琐碎状态。",
-                working),
-            new(
-                "commitments",
-                "承诺与计划",
-                "保存约定、承诺、期限和多步计划。未完成事项默认 keep；只有完成、明确放弃、已不可能或被新计划取代时才修改，并写明理由。",
-                commitments),
-            new(
-                "beliefs",
-                "判断与假说",
-                "维护角色自己的猜想、证据来源、反证和置信变化；区分材料写了什么、他人说了什么与自己相信什么。",
-                beliefs),
-            new(
-                "relationships",
-                "关系与社会账本",
-                "缓慢维护信任、戒备、情绪、恩怨和已履行或未履行的债务；中性事件通常 keep，变化应保留依据。",
-                relationships),
+            new("working_context", "当前处境与未决线索", "维护当前处境与近期变化。", working),
+            new("commitments", "承诺与计划", "维护未完成约定、期限和多步计划。", commitments),
+            new("beliefs", "判断与假说", "区分材料、他人说法和自己的判断。", beliefs),
+            new("relationships", "关系与社会账本", "缓慢维护信任、戒备和债务。", relationships),
         ]);
 
     private static void ValidateRole(ScenarioActorDefinition actor)
@@ -360,19 +467,6 @@ public sealed record ScenarioDefinition(
         ArgumentNullException.ThrowIfNull(actor.Role.InitialMemoryShards);
         UniqueIds(actor.Role.ReferenceMaterials.Select(material => material.Id), "reference material");
         UniqueIds(actor.Role.InitialMemoryShards.Select(shard => shard.Key), "memory shard");
-        foreach (ScenarioReferenceMaterialDefinition material in actor.Role.ReferenceMaterials)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(material.Source);
-            ArgumentException.ThrowIfNullOrWhiteSpace(material.Content);
-        }
-
-        foreach (ScenarioMemoryShardDefinition shard in actor.Role.InitialMemoryShards)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(shard.Title);
-            ArgumentException.ThrowIfNullOrWhiteSpace(shard.MaintenanceInstructions);
-            ArgumentException.ThrowIfNullOrWhiteSpace(shard.InitialContent);
-        }
-
         if (actor.Role.InitialMemoryShards.Count == 0)
         {
             throw new InvalidOperationException(
@@ -413,17 +507,39 @@ public sealed record ScenarioDefinition(
     private void WritePlaces(Utf8JsonWriter writer)
     {
         writer.WriteStartArray("places");
-        foreach (ScenarioPlaceDefinition place in Places)
+        foreach (ScenarioPlaceDefinition place in Places.OrderBy(
+                     place => place.Id,
+                     StringComparer.Ordinal))
+        {
+            writer.WriteStringValue(place.Id);
+        }
+
+        writer.WriteEndArray();
+    }
+
+    private void WritePassages(Utf8JsonWriter writer)
+    {
+        writer.WriteStartArray("passages");
+        foreach (ScenarioPassageDefinition passage in Passages.OrderBy(
+                     passage => passage.Id,
+                     StringComparer.Ordinal))
         {
             writer.WriteStartObject();
-            writer.WriteString("id", place.Id);
-            writer.WriteStartArray("adjacentPlaceIds");
-            foreach (string adjacentId in place.AdjacentPlaceIds)
+            writer.WriteString("id", passage.Id);
+            writer.WriteString("endpointAId", passage.EndpointAId);
+            writer.WriteString("endpointBId", passage.EndpointBId);
+            writer.WriteNumber("length", passage.Length);
+            writer.WriteBoolean("enterableFromA", passage.EnterableFromA);
+            writer.WriteBoolean("enterableFromB", passage.EnterableFromB);
+            if (passage.RequiredTicketObjectId is null)
             {
-                writer.WriteStringValue(adjacentId);
+                writer.WriteNull("requiredTicketObjectId");
+            }
+            else
+            {
+                writer.WriteString("requiredTicketObjectId", passage.RequiredTicketObjectId);
             }
 
-            writer.WriteEndArray();
             writer.WriteEndObject();
         }
 
@@ -433,18 +549,20 @@ public sealed record ScenarioDefinition(
     private void WriteActors(Utf8JsonWriter writer)
     {
         writer.WriteStartArray("actors");
-        foreach (ScenarioActorDefinition actor in Actors)
+        foreach (ScenarioActorDefinition actor in Actors.OrderBy(
+                     actor => actor.Id,
+                     StringComparer.Ordinal))
         {
             writer.WriteStartObject();
             writer.WriteString("id", actor.Id);
             writer.WriteString("initialPlaceId", actor.InitialPlaceId);
-            writer.WriteStartObject("role");
             writer.WriteString("name", actor.Role.Name);
             writer.WriteString("traits", actor.Role.Traits);
             writer.WriteString("goal", actor.Role.Goal);
             writer.WriteString("voice", actor.Role.Voice);
             writer.WriteStartArray("referenceMaterials");
-            foreach (ScenarioReferenceMaterialDefinition material in actor.Role.ReferenceMaterials)
+            foreach (ScenarioReferenceMaterialDefinition material in actor.Role.ReferenceMaterials
+                         .OrderBy(material => material.Id, StringComparer.Ordinal))
             {
                 writer.WriteStartObject();
                 writer.WriteString("id", material.Id);
@@ -455,7 +573,8 @@ public sealed record ScenarioDefinition(
 
             writer.WriteEndArray();
             writer.WriteStartArray("initialMemoryShards");
-            foreach (ScenarioMemoryShardDefinition shard in actor.Role.InitialMemoryShards)
+            foreach (ScenarioMemoryShardDefinition shard in actor.Role.InitialMemoryShards
+                         .OrderBy(shard => shard.Key, StringComparer.Ordinal))
             {
                 writer.WriteStartObject();
                 writer.WriteString("key", shard.Key);
@@ -467,7 +586,6 @@ public sealed record ScenarioDefinition(
 
             writer.WriteEndArray();
             writer.WriteEndObject();
-            writer.WriteEndObject();
         }
 
         writer.WriteEndArray();
@@ -476,7 +594,9 @@ public sealed record ScenarioDefinition(
     private void WriteObjects(Utf8JsonWriter writer)
     {
         writer.WriteStartArray("objects");
-        foreach (ScenarioObjectDefinition item in Objects)
+        foreach (ScenarioObjectDefinition item in Objects.OrderBy(
+                     item => item.Id,
+                     StringComparer.Ordinal))
         {
             writer.WriteStartObject();
             writer.WriteString("id", item.Id);
@@ -504,57 +624,47 @@ public sealed record ScenarioDefinition(
         writer.WriteEndArray();
     }
 
-    private static BoardActor NewActor(long id, string key, string placeId) =>
+    private static BoardActor NewActor(long id, string key) =>
         new(
             id,
             key,
-            placeId,
             Generation: 0,
             DecisionSequence: 0,
             Activity: null,
             KnownFacts: []);
 }
 
-/// <summary>Binds an immutable scenario definition to the random seed of one instance.</summary>
 public sealed record ScenarioInstance
 {
-    /// <summary>Freezes one definition and binds it to an objective-world random seed.</summary>
     public ScenarioInstance(ScenarioDefinition definition, ulong worldSeed)
     {
         ArgumentNullException.ThrowIfNull(definition);
         Definition = definition.Freeze();
+        Graph = Definition.CreateGraphDefinition();
         WorldSeed = worldSeed;
         DefinitionSha256 = Definition.ComputeSha256();
         InstanceSha256 = ComputeInstanceSha256(DefinitionSha256, worldSeed);
     }
 
-    /// <summary>Gets the frozen seed-independent scenario content.</summary>
     public ScenarioDefinition Definition { get; }
-
-    /// <summary>Gets the deterministic random seed of the objective world.</summary>
+    public GraphDefinition Graph { get; }
     public ulong WorldSeed { get; }
-
-    /// <summary>Gets the stable content hash shared by all seeds of this definition.</summary>
     public string DefinitionSha256 { get; }
-
-    /// <summary>Gets the full stable identity of this frozen definition and seed.</summary>
     public string InstanceSha256 { get; }
 
-    /// <summary>Gets a compact stable identity for this concrete seeded instance.</summary>
     public string Id => FormattableString.Invariant(
         $"{Definition.Id}@{Definition.Revision}/{DefinitionSha256[..12]}/seed-{WorldSeed}");
 
-    /// <summary>Creates the current default scenario with the requested world seed.</summary>
     public static ScenarioInstance CreateDefault(ulong worldSeed) =>
         new(ScenarioDefinition.Default, worldSeed);
 
-    /// <summary>Builds this instance's objective initial world.</summary>
-    public FirstBoardWorld CreateInitialWorld() => Definition.CreateInitialWorld(WorldSeed);
+    public FirstBoardWorld CreateInitialWorld() =>
+        Definition.CreateInitialWorld(WorldSeed);
 
     private static string ComputeInstanceSha256(string definitionSha256, ulong worldSeed)
     {
         string canonical = FormattableString.Invariant(
-            $"dramaboard.scenario-instance/1\n{definitionSha256}\n{worldSeed}");
+            $"dramaboard.scenario-instance/2\n{definitionSha256}\n{worldSeed}");
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))
             .ToLowerInvariant();
     }

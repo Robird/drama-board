@@ -154,7 +154,7 @@ public sealed class LlmPlayerDriverTests
         ]);
         var actorBackend = new FakeLlmBackend(
         [
-            Response("action.travel", "已经动身。", "\"destination\":\"market\""),
+            Response("action.travel", "已经动身。", "\"exit\":\"exit.market.bridge\""),
         ]);
         var workingBackend = new FakeLlmBackend([Keep]);
         var commitmentsBackend = new FakeLlmBackend(
@@ -182,6 +182,7 @@ public sealed class LlmPlayerDriverTests
         Assert.Contains("去集市等鲍勃五分钟。", workingBackend.Requests[0].User);
         Assert.Contains("我在酒馆。", commitmentsBackend.Requests[0].User);
         Assert.Contains("去集市等鲍勃五分钟。", commitmentsBackend.Requests[0].User);
+        Assert.Contains("exit=exit.market.bridge", workingBackend.Requests[0].User);
         Assert.Collection(
             Assert.Single(traces).MemoryMaintenance,
             trace => Assert.Equal(MemoryMaintenanceOperation.Keep, trace.Operation),
@@ -254,7 +255,7 @@ public sealed class LlmPlayerDriverTests
         Assert.Empty(traces);
 
         Task<PlayerDecision> secondTask = driver.DecideAsync(
-            CreateRequest() with { DecisionId = new DecisionId("decision.alice.2") },
+            CreateRequest("decision.alice.2"),
             CancellationToken.None).AsTask();
         await Task.Delay(25);
         Assert.False(secondTask.IsCompleted);
@@ -289,15 +290,16 @@ public sealed class LlmPlayerDriverTests
             traceSink,
             referenceMaterials);
 
-    private static DecisionRequest CreateRequest() =>
+    private static DecisionRequest CreateRequest(string decisionId = "decision.alice.1") =>
         new(
-            new DecisionId("decision.alice.1"),
+            new DecisionId(decisionId),
             ActorId: "alice",
             ModelTimeMs: 300_000,
             new Observation(
                 "alice",
                 "tavern",
                 ModelTimeMs: 300_000,
+                Exits: [new ObservedExit("exit.market.bridge", "market", 60_000, true)],
                 VisibleActorIds: [],
                 VisibleObjectIds: [],
                 KnownFacts: []),

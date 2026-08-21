@@ -125,6 +125,7 @@ public static class LlmOutputParser
             string.IsNullOrWhiteSpace(actionElement.GetString()) ||
             !TryReadOptionalString(json, "targetActor", out string? targetActor) ||
             !TryReadOptionalString(json, "targetObject", out string? targetObject) ||
+            !TryReadOptionalString(json, "exit", out string? exit) ||
             !TryReadOptionalString(json, "destination", out string? destination) ||
             !TryReadOptionalString(json, "freeText", out string? freeText) ||
             !TryReadOptionalInt64(json, "durationMs", out long? durationMs) ||
@@ -137,6 +138,7 @@ public static class LlmOutputParser
             new ActionKind(actionElement.GetString()!),
             TargetActorId: targetActor,
             TargetObjectId: targetObject,
+            ExitId: exit,
             DestinationId: destination,
             FreeText: dialogue ?? freeText,
             DurationMs: durationMs,

@@ -101,6 +101,8 @@ public sealed class LlmMemoryShardMaintainer : IMemoryShardMaintainer
             .Append("ms; 位置: ").AppendLine(context.Request.Observation.LocationId)
             .Append("在场角色: ").AppendLine(RenderIds(context.Request.Observation.VisibleActorIds))
             .Append("可见物品: ").AppendLine(RenderIds(context.Request.Observation.VisibleObjectIds))
+            .AppendLine("出口:")
+            .AppendLine(PromptRenderer.RenderExits(context.Request.Observation.Exits))
             .AppendLine("已知事实:");
         if (context.Request.Observation.KnownFacts.Count == 0)
         {

@@ -2,273 +2,203 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>Finds deterministic shortest next steps over the current grid-dominant topology.</summary>
-internal static class SpatialNavigator
+/// <summary>Finds deterministic minimum-duration routes on the current effective directed graph.</summary>
+public sealed class SpatialNavigator
 {
-    private static readonly OrthogonalOffset[] OrthogonalOffsets =
-    [
-        new(Direction.North, 0, -1),
-        new(Direction.East, 1, 0),
-        new(Direction.South, 0, 1),
-        new(Direction.West, -1, 0),
-    ];
+    private readonly GraphDefinition _definition;
 
-    /// <summary>Finds one shortest next step without persisting or exposing the complete route.</summary>
-    internal static PathSearchResult FindNextStep(
-        SpatialDefinition definition,
-        SpatialState state,
-        CellRef start,
-        MoveGoal goal)
+    public SpatialNavigator(GraphDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(goal);
-        var topology = new EffectiveSpatialTopology(definition, state);
-        SpatialStateValidator.EnsureCellExists(definition, start, "Navigation start");
-        SpatialStateValidator.ValidateGoal(definition, goal);
+        _definition = definition;
+    }
 
-        IReadOnlySet<CellRef> goals = ResolveGoalCells(definition, goal);
-        if (goals.Contains(start))
+    public RouteResult FindRoute(
+        GraphSpatialState state,
+        PlaceId startPlaceId,
+        PlaceId goalPlaceId,
+        long speedSnapshot)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        GraphSpatialStateValidator.ValidateComplete(_definition, state);
+        if (!_definition.Contains(startPlaceId))
         {
-            return new PathSearchResult.AlreadySatisfied(start);
+            return new UnknownStart();
         }
 
-        var labels = new Dictionary<CellRef, PathLabel>
+        if (!_definition.Contains(goalPlaceId))
         {
-            [start] = new PathLabel(0, Predecessor: null, IncomingEdge: null, IncomingEdgeKey.Start),
-        };
-        var frontier = new PriorityQueue<FrontierEntry, FrontierKey>(FrontierKeyComparer.Instance);
-        frontier.Enqueue(
-            new FrontierEntry(start, 0, IncomingEdgeKey.Start),
-            new FrontierKey(0, start, IncomingEdgeKey.Start));
+            return new UnknownGoal();
+        }
 
-        while (frontier.TryDequeue(out FrontierEntry entry, out _))
+        if (speedSnapshot <= 0)
         {
-            if (!labels.TryGetValue(entry.Cell, out PathLabel? current) ||
-                current.TotalCostTicks != entry.TotalCostTicks ||
-                current.IncomingKey != entry.IncomingKey)
+            return new InvalidSpeed();
+        }
+
+        if (startPlaceId == goalPlaceId)
+        {
+            return new AlreadyAtGoal();
+        }
+
+        var best = new Dictionary<PlaceId, PathLabel>();
+        var frontier = new PriorityQueue<PathLabel, PathLabel>(PathLabelComparer.Instance);
+        var start = new PathLabel(startPlaceId, 0, []);
+        best.Add(startPlaceId, start);
+        frontier.Enqueue(start, start);
+
+        while (frontier.TryDequeue(out PathLabel? current, out _))
+        {
+            if (!best.TryGetValue(current.PlaceId, out PathLabel? known) ||
+                PathLabelComparer.Instance.Compare(current, known) != 0)
             {
                 continue;
             }
 
-            if (goals.Contains(entry.Cell))
+            if (current.PlaceId == goalPlaceId)
             {
-                if (entry.TotalCostTicks > (UInt128)long.MaxValue)
-                {
-                    return new PathSearchResult.CostOverflow();
-                }
-
-                NavigationEdge firstEdge = ReconstructFirstEdge(start, entry.Cell, labels);
-                return new PathSearchResult.NextStep(
-                    firstEdge,
-                    entry.Cell,
-                    checked((long)entry.TotalCostTicks));
+                return new RouteFound(new ModelDuration(current.Cost), current.Legs);
             }
 
-            foreach (EdgeCandidate edge in EnumerateOutgoingEdges(definition, topology, entry.Cell))
+            foreach (DirectedPassage edge in Outgoing(state, current.PlaceId))
             {
-                NavigationEdge navigationEdge = edge.Edge;
-                UInt128 candidateCost = checked(
-                    entry.TotalCostTicks + (UInt128)(ulong)navigationEdge.Duration.Ticks);
-
-                if (labels.TryGetValue(navigationEdge.To, out PathLabel? known) &&
-                    candidateCost >= known.TotalCostTicks)
+                long resultingCost;
+                try
                 {
-                    // In particular, equal-cost predecessors never replace the first canonical discovery.
+                    resultingCost = checked(
+                        current.Cost + SpatialMath.TravelDuration(edge.Passage.Length, speedSnapshot).Ticks);
+                }
+                catch (OverflowException)
+                {
                     continue;
                 }
 
-                labels[navigationEdge.To] = new PathLabel(
-                    candidateCost,
-                    entry.Cell,
-                    navigationEdge,
-                    edge.IncomingKey);
-                var nextEntry = new FrontierEntry(navigationEdge.To, candidateCost, edge.IncomingKey);
-                frontier.Enqueue(
-                    nextEntry,
-                    new FrontierKey(candidateCost, navigationEdge.To, edge.IncomingKey));
+                RouteLeg[] resultingLegs =
+                [
+                    .. current.Legs,
+                    new RouteLeg(edge.Passage.Id, current.PlaceId, edge.Destination),
+                ];
+                var resulting = new PathLabel(edge.Destination, resultingCost, resultingLegs);
+                if (!best.TryGetValue(edge.Destination, out PathLabel? previous) ||
+                    PathLabelComparer.Instance.ComparePath(resulting, previous) < 0)
+                {
+                    best[edge.Destination] = resulting;
+                    frontier.Enqueue(resulting, resulting);
+                }
             }
         }
 
-        return new PathSearchResult.Unreachable();
+        return IsReachable(state, startPlaceId, goalPlaceId)
+            ? new CostOverflow()
+            : new NoRoute();
     }
 
-    private static IReadOnlySet<CellRef> ResolveGoalCells(SpatialDefinition definition, MoveGoal goal) =>
-        goal switch
-        {
-            CellGoal cellGoal => new HashSet<CellRef> { cellGoal.Cell },
-            AnchorGoal anchorGoal => new HashSet<CellRef>
-            {
-                definition.Anchors.Single(anchor => anchor.Id == anchorGoal.AnchorId).Cell,
-            },
-            ZoneGoal zoneGoal => definition.Zones.Single(zone => zone.Id == zoneGoal.ZoneId).Cells.ToHashSet(),
-            _ => throw new InvalidOperationException($"Unsupported movement goal '{goal.GetType().Name}'."),
-        };
-
-    private static IEnumerable<EdgeCandidate> EnumerateOutgoingEdges(
-        SpatialDefinition definition,
-        EffectiveSpatialTopology topology,
-        CellRef from)
+    private IEnumerable<DirectedPassage> Outgoing(GraphSpatialState state, PlaceId placeId)
     {
-        GridMapDefinition map = definition.GetMap(from.MapId);
-        foreach (OrthogonalOffset offset in OrthogonalOffsets)
+        foreach (PassageDefinition passage in _definition.Passages)
         {
-            int targetX = from.X + offset.DeltaX;
-            int targetY = from.Y + offset.DeltaY;
-            if (targetX < 0 || targetX >= map.Width || targetY < 0 || targetY >= map.Height)
+            if (EffectiveGraph.TryResolveDirection(
+                    _definition,
+                    state,
+                    passage,
+                    placeId,
+                    out PlaceId destination,
+                    out bool entryAllowed) &&
+                entryAllowed)
             {
-                continue;
+                yield return new DirectedPassage(passage, destination);
             }
-
-            var target = new CellRef(from.MapId, targetX, targetY);
-            if (topology.BlocksMovement(target))
-            {
-                continue;
-            }
-
-            ModelDuration duration = topology.GetTraversalDuration(
-                SpatialEdgeKind.Orthogonal,
-                target,
-                portalId: null);
-
-            var edge = new NavigationEdge(
-                from,
-                target,
-                SpatialEdgeKind.Orthogonal,
-                PortalId: null,
-                duration);
-            yield return new EdgeCandidate(edge, IncomingEdgeKey.Orthogonal(offset.Direction));
-        }
-
-        foreach (PortalDefinition portal in definition.Portals
-                     .Where(portal => portal.From == from)
-                     .OrderBy(portal => portal.Id))
-        {
-            if (!topology.IsPortalEnabled(portal.Id) || topology.BlocksMovement(portal.To))
-            {
-                continue;
-            }
-
-            ModelDuration duration = topology.GetTraversalDuration(
-                SpatialEdgeKind.Portal,
-                portal.To,
-                portal.Id);
-
-            var edge = new NavigationEdge(
-                from,
-                portal.To,
-                SpatialEdgeKind.Portal,
-                portal.Id,
-                duration);
-            yield return new EdgeCandidate(edge, IncomingEdgeKey.Portal(portal.Id));
         }
     }
 
-    private static NavigationEdge ReconstructFirstEdge(
-        CellRef start,
-        CellRef selectedGoal,
-        IReadOnlyDictionary<CellRef, PathLabel> labels)
+    private bool IsReachable(GraphSpatialState state, PlaceId start, PlaceId goal)
     {
-        CellRef currentCell = selectedGoal;
-        PathLabel current = labels[currentCell];
-        while (current.Predecessor is CellRef predecessor && predecessor != start)
+        var visited = new HashSet<PlaceId> { start };
+        var pending = new Queue<PlaceId>();
+        pending.Enqueue(start);
+        while (pending.TryDequeue(out PlaceId current))
         {
-            currentCell = predecessor;
-            current = labels[currentCell];
+            foreach (DirectedPassage edge in Outgoing(state, current))
+            {
+                if (edge.Destination == goal)
+                {
+                    return true;
+                }
+
+                if (visited.Add(edge.Destination))
+                {
+                    pending.Enqueue(edge.Destination);
+                }
+            }
         }
 
-        return current.IncomingEdge ?? throw new InvalidOperationException(
-            "A non-satisfied navigation result must have a first incoming edge.");
+        return false;
     }
 
-    private enum Direction
+    private sealed record DirectedPassage(PassageDefinition Passage, PlaceId Destination);
+
+    private sealed record PathLabel(PlaceId PlaceId, long Cost, IReadOnlyList<RouteLeg> Legs);
+
+    private sealed class PathLabelComparer : IComparer<PathLabel>
     {
-        North = 0,
-        East = 1,
-        South = 2,
-        West = 3,
-    }
+        internal static PathLabelComparer Instance { get; } = new();
 
-    private readonly record struct OrthogonalOffset(
-        Direction Direction,
-        int DeltaX,
-        int DeltaY);
-
-    private sealed record PathLabel(
-        UInt128 TotalCostTicks,
-        CellRef? Predecessor,
-        NavigationEdge? IncomingEdge,
-        IncomingEdgeKey IncomingKey);
-
-    private readonly record struct FrontierEntry(
-        CellRef Cell,
-        UInt128 TotalCostTicks,
-        IncomingEdgeKey IncomingKey);
-
-    private readonly record struct EdgeCandidate(
-        NavigationEdge Edge,
-        IncomingEdgeKey IncomingKey);
-
-    private readonly record struct FrontierKey(
-        UInt128 TotalCostTicks,
-        CellRef Cell,
-        IncomingEdgeKey IncomingKey);
-
-    private readonly record struct IncomingEdgeKey(
-        int KindOrder,
-        int DirectionOrder,
-        PortalId PortalId) : IComparable<IncomingEdgeKey>
-    {
-        public static IncomingEdgeKey Start => new(0, -1, default);
-
-        public static IncomingEdgeKey Orthogonal(Direction direction) =>
-            new(1, (int)direction, default);
-
-        public static IncomingEdgeKey Portal(PortalId portalId) => new(2, -1, portalId);
-
-        public int CompareTo(IncomingEdgeKey other)
+        public int Compare(PathLabel? left, PathLabel? right)
         {
-            int kind = KindOrder.CompareTo(other.KindOrder);
-            if (kind != 0)
+            if (ReferenceEquals(left, right))
             {
-                return kind;
+                return 0;
             }
 
-            if (KindOrder == 1)
+            if (left is null)
             {
-                return DirectionOrder.CompareTo(other.DirectionOrder);
+                return -1;
             }
 
-            return KindOrder == 2 ? PortalId.CompareTo(other.PortalId) : 0;
+            if (right is null)
+            {
+                return 1;
+            }
+
+            int pathComparison = ComparePath(left, right);
+            return pathComparison != 0
+                ? pathComparison
+                : left.PlaceId.CompareTo(right.PlaceId);
         }
-    }
 
-    private sealed class FrontierKeyComparer : IComparer<FrontierKey>
-    {
-        public static FrontierKeyComparer Instance { get; } = new();
-
-        public int Compare(FrontierKey left, FrontierKey right)
+        internal int ComparePath(PathLabel left, PathLabel right)
         {
-            int cost = left.TotalCostTicks.CompareTo(right.TotalCostTicks);
-            if (cost != 0)
+            int costComparison = left.Cost.CompareTo(right.Cost);
+            if (costComparison != 0)
             {
-                return cost;
+                return costComparison;
             }
 
-            int map = left.Cell.MapId.CompareTo(right.Cell.MapId);
-            if (map != 0)
+            int common = Math.Min(left.Legs.Count, right.Legs.Count);
+            for (int index = 0; index < common; index++)
             {
-                return map;
+                int legComparison = CompareLeg(left.Legs[index], right.Legs[index]);
+                if (legComparison != 0)
+                {
+                    return legComparison;
+                }
             }
 
-            int y = left.Cell.Y.CompareTo(right.Cell.Y);
-            if (y != 0)
+            return left.Legs.Count.CompareTo(right.Legs.Count);
+        }
+
+        private static int CompareLeg(RouteLeg left, RouteLeg right)
+        {
+            int passageComparison = left.PassageId.CompareTo(right.PassageId);
+            if (passageComparison != 0)
             {
-                return y;
+                return passageComparison;
             }
 
-            int x = left.Cell.X.CompareTo(right.Cell.X);
-            return x != 0 ? x : left.IncomingKey.CompareTo(right.IncomingKey);
+            int fromComparison = left.FromPlaceId.CompareTo(right.FromPlaceId);
+            return fromComparison != 0
+                ? fromComparison
+                : left.ToPlaceId.CompareTo(right.ToPlaceId);
         }
     }
 }

@@ -32,7 +32,10 @@ public sealed class PromptRendererTests
         Assert.Contains("[新近变化]", rendered.User);
         Assert.Contains("[决策请求]", rendered.User);
         Assert.Contains("action.travel", rendered.User);
-        Assert.Contains("destinationCandidates=[market]", rendered.User);
+        Assert.Contains("exit=exit.market.bridge, destination=market, expectedDurationMs=60000, available=true", rendered.User);
+        Assert.Contains("exit=exit.market.ferry, destination=market, expectedDurationMs=90000, available=false", rendered.User);
+        Assert.Contains("exitCandidates=[exit.market.bridge]", rendered.User);
+        Assert.Contains("\"exit\":null", rendered.System);
     }
 
     [Fact]
@@ -84,13 +87,18 @@ public sealed class PromptRendererTests
                 "alice",
                 "tavern",
                 ModelTimeMs: 300_000,
+                Exits:
+                [
+                    new ObservedExit("exit.market.bridge", "market", 60_000, true),
+                    new ObservedExit("exit.market.ferry", "market", 90_000, false),
+                ],
                 VisibleActorIds: ["bob"],
                 VisibleObjectIds: ["brass-key"],
                 KnownFacts: knownFacts ?? []),
             [
                 new AvailableAction(
                     ActionKinds.Travel,
-                    CandidateDestinationIds: ["market"]),
+                    CandidateExitIds: ["exit.market.bridge"]),
                 new AvailableAction(ActionKinds.Wait),
             ]);
 

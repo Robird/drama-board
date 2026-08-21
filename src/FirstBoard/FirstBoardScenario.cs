@@ -6,6 +6,7 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
 using DramaBoard.Protocol;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.FirstBoard;
 
@@ -14,10 +15,10 @@ public static class FirstBoardScenario
     public const long LineageId = 10_001;
     private const int MaxTransitionsPerModelTime = 10_000;
 
-    public static SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateKernel(
+    public static SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> CreateKernel(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ScenarioInstance instance,
-        IJournalSink<BoardEventPayload> journal,
+        IJournalSink<FirstBoardFact> journal,
         FirstBoardWorld world,
         WorldVersion? version = null,
         LogicalInstant? lastCommittedInstant = null)
@@ -34,38 +35,40 @@ public static class FirstBoardScenario
                 nameof(world));
         }
 
-        var reducer = new FirstBoardReducer();
-        return new SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
+        var reducer = new FirstBoardReducer(instance.Graph);
+        reducer.Validate(world);
+        return new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
             world,
             version ?? new WorldVersion(journal.LineageId, journal.Batches.Count),
             world.Now,
             lastCommittedInstant,
             new SimulationRules(instance.WorldSeed, MaxTransitionsPerModelTime),
             [
-                new CellarDeadlineRule(instance.Definition.CellarDeadlineMs),
+                new CellarDeadlineRule(
+                    instance.Graph,
+                    instance.Definition.CellarDeadlineMs),
                 new ActivityCompletionRule(),
-                new DecisionPointRule(drivers),
+                new SpatialHostOccurrenceRule(instance.Graph),
+                new DecisionPointRule(drivers, instance),
             ],
             journal,
             reducer.Apply,
-            ValidateWorld);
+            reducer.Validate);
     }
 
-    /// <summary>Runs the default definition with a backward-compatible explicit seed.</summary>
-    public static async Task<BoardRunCapture> RunAsync(
+    public static Task<BoardRunCapture> RunAsync(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ulong worldSeed,
         ModelTime until,
         FirstBoardWorld? initialWorld = null,
         CancellationToken cancellationToken = default) =>
-        await RunAsync(
+        RunAsync(
             drivers,
             ScenarioInstance.CreateDefault(worldSeed),
             until,
             initialWorld,
             cancellationToken);
 
-    /// <summary>Runs one frozen seeded scenario instance.</summary>
     public static async Task<BoardRunCapture> RunAsync(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ScenarioInstance instance,
@@ -82,8 +85,8 @@ public static class FirstBoardScenario
                 nameof(initialWorld));
         }
 
-        var journal = new InMemoryJournal<BoardEventPayload>(LineageId);
-        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+        var journal = new InMemoryJournal<FirstBoardFact>(LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             CreateKernel(drivers, instance, journal, world);
         HostRunResult<FirstBoardWorld> result = await SimulationHost.RunUntilAsync(
             kernel,
@@ -93,28 +96,35 @@ public static class FirstBoardScenario
     }
 
     public static DecisionRequest BuildRequest(
+        ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
         ModelTime modelTime)
     {
-        if (!world.IsIdle(actor))
+        ArgumentNullException.ThrowIfNull(instance);
+        if (!world.IsReadyForDecision(actor) ||
+            !world.TryGetPlace(actor.Key, out PlaceId placeId))
         {
-            throw new InvalidOperationException("Only an idle actor can receive a decision request.");
+            throw new InvalidOperationException(
+                "Only an idle actor at a Place can receive a decision request.");
         }
 
+        IReadOnlyList<ObservedExit> exits =
+            FirstBoardSpatialProjection.ObserveExits(instance, world, actor);
         var observation = new Observation(
             actor.Key,
-            actor.PlaceId,
+            placeId.Value,
             ModelTimeMs: modelTime.Ticks,
+            Exits: exits,
             VisibleActorIds: VisibleActors(world, actor),
-            VisibleObjectIds: VisibleObjectIds(world, actor),
+            VisibleObjectIds: VisibleObjectIds(world, actor, placeId),
             KnownFacts: ObservationFacts(world, actor));
         return new DecisionRequest(
             new DecisionId($"decision.{actor.Key}.{actor.DecisionSequence + 1}"),
             actor.Key,
             ModelTimeMs: modelTime.Ticks,
             observation,
-            AvailableActions(world, actor));
+            AvailableActions(instance, world, actor, placeId, exits));
     }
 
     public static string WorldSnapshot(FirstBoardWorld world)
@@ -125,31 +135,46 @@ public static class FirstBoardScenario
                 "|",
                 actor.Id.ToString(CultureInfo.InvariantCulture),
                 actor.Key,
-                actor.PlaceId,
                 actor.Generation.ToString(CultureInfo.InvariantCulture),
                 actor.DecisionSequence.ToString(CultureInfo.InvariantCulture),
-                ActivitySummary(actor.Activity),
-                string.Join(",", actor.KnownFacts.Select(fact => $"{fact.Kind}@{fact.RelatedId}")))));
+                actor.Activity?.Due.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
+                string.Join(",", actor.KnownFacts.Select(fact =>
+                    $"{fact.Kind}@{fact.RelatedId}")))));
         string objects = string.Join(
             ";",
             world.Objects.OrderBy(item => item.Id).Select(item => string.Join(
                 "|",
                 item.Id.ToString(CultureInfo.InvariantCulture),
                 item.Key,
-                item.PlaceId,
-                item.OwnerActorId?.ToString(CultureInfo.InvariantCulture))));
-        return FormattableString.Invariant(
-            $"seed={world.WorldSeed};now={world.Now.Ticks};sealed={world.CellarSealed};chestOpened={world.ChestOpened};actors={actors};objects={objects}");
+                item.OwnerActorId?.ToString(CultureInfo.InvariantCulture) ?? "-")));
+        string entities = string.Join(
+            ";",
+            world.Spatial.Entities.Select(entity =>
+                $"{entity.Id.Value}|{entity.MovementGeneration}|" +
+                LocationSnapshot(entity.Location)));
+        string overrides = string.Join(
+            ";",
+            world.Spatial.PassageEntryAccessOverrides.Select(value =>
+                $"{value.PassageId.Value}:{value.Access.EnterableFromA}:" +
+                value.Access.EnterableFromB));
+        string schedules = string.Join(
+            ";",
+            world.Spatial.ScheduledPassageEntryChanges.Select(value =>
+                $"{value.PassageId.Value}:{value.Due.Ticks}:" +
+                $"{value.Patch.EnterableFromA}:{value.Patch.EnterableFromB}"));
+        return $"seed={world.WorldSeed};now={world.Now.Ticks};sealed={world.CellarSealed};" +
+            $"chestOpened={world.ChestOpened};actors={actors};objects={objects};" +
+            $"entities={entities};overrides={overrides};schedules={schedules}";
     }
 
-    public static string[] EventSnapshots(InMemoryJournal<BoardEventPayload> journal) =>
+    public static string[] EventSnapshots(InMemoryJournal<FirstBoardFact> journal) =>
         [
             .. journal.Batches.SelectMany(batch => batch.Facts.Select((fact, index) =>
-                FormattableString.Invariant(
-                    $"{batch.Instant.ModelTime.Ticks}:{batch.Instant.CausalOrdinal} #{index} {FactName(fact)} {PayloadSummary(fact)}"))),
+                $"{batch.Instant.ModelTime.Ticks}:{batch.Instant.CausalOrdinal} " +
+                $"#{index} {FactName(fact)} {PayloadSummary(fact)}")),
         ];
 
-    public static string FormatJournal(InMemoryJournal<BoardEventPayload> journal)
+    public static string FormatJournal(InMemoryJournal<FirstBoardFact> journal)
     {
         var text = new StringBuilder();
         foreach (string snapshot in EventSnapshots(journal))
@@ -160,13 +185,21 @@ public static class FirstBoardScenario
         return text.ToString();
     }
 
-    private static IReadOnlyList<string> VisibleActors(FirstBoardWorld world, BoardActor observer) =>
+    public static string FactName(FirstBoardFact fact) => fact switch
+    {
+        GameBoardFact game => GameFactName(game.Value),
+        SpatialBoardFact spatial => SpatialFactName(spatial.Value),
+        _ => throw new InvalidOperationException("Unknown FirstBoard Host fact."),
+    };
+
+    private static IReadOnlyList<string> VisibleActors(
+        FirstBoardWorld world,
+        BoardActor observer) =>
         [
             .. world.Actors
                 .Where(actor =>
                     actor.Id != observer.Id &&
-                    world.IsPresent(actor) &&
-                    actor.PlaceId == observer.PlaceId)
+                    world.AreCoLocated(observer.Key, actor.Key))
                 .OrderBy(actor => actor.Id)
                 .Select(actor => actor.Key),
         ];
@@ -188,34 +221,42 @@ public static class FirstBoardScenario
                     $"You are carrying {item.Key}.")),
         ];
 
-    private static IReadOnlyList<string> VisibleObjectIds(FirstBoardWorld world, BoardActor observer)
+    private static IReadOnlyList<string> VisibleObjectIds(
+        FirstBoardWorld world,
+        BoardActor observer,
+        PlaceId observerPlace)
     {
         IEnumerable<string> portableObjects = world.Objects
-            .Where(item => IsVisible(world, observer, item))
+            .Where(item =>
+                item.OwnerActorId == observer.Id ||
+                (item.OwnerActorId is null && world.IsAtPlace(item.Key, observerPlace)))
             .OrderBy(item => item.Id)
             .Select(item => item.Key);
-        return observer.PlaceId == BoardIds.Cellar
+        return world.IsAtPlace(BoardIds.LockedChest, observerPlace)
             ? [.. portableObjects, BoardIds.LockedChest]
             : [.. portableObjects];
     }
 
     private static IReadOnlyList<AvailableAction> AvailableActions(
+        ScenarioInstance instance,
         FirstBoardWorld world,
-        BoardActor actor)
+        BoardActor actor,
+        PlaceId actorPlace,
+        IReadOnlyList<ObservedExit> exits)
     {
         var actions = new List<AvailableAction>();
-        string[] destinations =
+        string[] exitIds =
         [
-            .. world.Place(actor.PlaceId).AdjacentPlaceIds
-                .Where(destination => destination != BoardIds.Cellar ||
-                    !actor.KnownFacts.Any(fact => fact.Kind == BoardIds.CellarSealedKnown))
-                .Order(StringComparer.Ordinal),
+            .. exits
+                .Where(exit => exit.IsAvailable)
+                .OrderBy(exit => exit.ExitId, StringComparer.Ordinal)
+                .Select(exit => exit.ExitId),
         ];
-        if (destinations.Length > 0)
+        if (exitIds.Length > 0)
         {
             actions.Add(new AvailableAction(
                 ActionKinds.Travel,
-                CandidateDestinationIds: Array.AsReadOnly(destinations)));
+                CandidateExitIds: Array.AsReadOnly(exitIds)));
         }
 
         actions.Add(new AvailableAction(ActionKinds.Wait));
@@ -225,8 +266,7 @@ public static class FirstBoardScenario
             .. world.Actors
                 .Where(target =>
                     target.Id != actor.Id &&
-                    world.IsPresent(target) &&
-                    target.PlaceId == actor.PlaceId)
+                    world.AreCoLocated(actor.Key, target.Key))
                 .OrderBy(target => target.Id)
                 .Select(target => target.Key),
         ];
@@ -244,14 +284,22 @@ public static class FirstBoardScenario
                 .OrderBy(item => item.Id)
                 .Select(item => item.Key),
         ];
-        string[] inspectableObjects =
+        string[] publicObjects =
         [
             .. world.Objects
                 .Where(item =>
-                    item.OwnerActorId == actor.Id ||
-                    (item.OwnerActorId is null && item.PlaceId == actor.PlaceId))
+                    item.OwnerActorId is null &&
+                    world.IsAtPlace(item.Key, actorPlace))
                 .OrderBy(item => item.Id)
                 .Select(item => item.Key),
+        ];
+        string[] inspectableObjects =
+        [
+            .. heldObjects,
+            .. publicObjects,
+            .. world.IsAtPlace(BoardIds.LockedChest, actorPlace)
+                ? [BoardIds.LockedChest]
+                : Array.Empty<string>(),
         ];
         actions.Add(new AvailableAction(
             ActionKinds.Observe,
@@ -259,21 +307,14 @@ public static class FirstBoardScenario
                 ? null
                 : Array.AsReadOnly(inspectableObjects)));
 
-        string[] takeableObjects =
-        [
-            .. world.Objects
-                .Where(item => item.OwnerActorId is null && item.PlaceId == actor.PlaceId)
-                .OrderBy(item => item.Id)
-                .Select(item => item.Key),
-        ];
-        if (takeableObjects.Length > 0)
+        if (publicObjects.Length > 0)
         {
             actions.Add(new AvailableAction(
                 ActionKinds.Take,
-                CandidateObjectIds: Array.AsReadOnly(takeableObjects)));
+                CandidateObjectIds: Array.AsReadOnly(publicObjects)));
         }
 
-        if (actor.PlaceId == BoardIds.Cellar &&
+        if (world.AreCoLocated(actor.Key, BoardIds.LockedChest) &&
             !world.CellarSealed &&
             !world.ChestOpened &&
             heldObjects.Contains(BoardIds.BrassKey, StringComparer.Ordinal))
@@ -302,68 +343,83 @@ public static class FirstBoardScenario
                 CandidateObjectIds: Array.AsReadOnly(heldObjects)));
         }
 
+        _ = instance;
         return actions.AsReadOnly();
     }
 
-    private static bool IsVisible(
-        FirstBoardWorld world,
-        BoardActor observer,
-        BoardObject item)
-    {
-        if (item.PlaceId == observer.PlaceId)
+    private static string LocationSnapshot(SpatialLocation location) =>
+        location switch
         {
-            return true;
-        }
-
-        if (item.OwnerActorId is not long ownerId)
-        {
-            return false;
-        }
-
-        return ownerId == observer.Id;
-    }
-
-    private static string ActivitySummary(BoardActivity? activity) =>
-        activity is null
-            ? "-"
-            : FormattableString.Invariant($"{activity.Kind}:{activity.Due.Ticks}:{activity.DestinationId}");
-
-    private static string PayloadSummary(BoardEventPayload payload) =>
-        payload switch
-        {
-            ActorDepartedEvent departed =>
-                $"actor={departed.ActorId} origin={departed.OriginId} " +
-                $"destination={departed.DestinationId} arriveAt={departed.ArriveAt.Ticks}",
-            ActorArrivedEvent arrived =>
-                $"actor={arrived.ActorId} destination={arrived.DestinationId}",
-            ActorWaitStartedEvent waited =>
-                $"actor={waited.ActorId} completeAt={waited.CompleteAt.Ticks}",
-            ActorWaitedEvent waited => $"actor={waited.ActorId}",
-            ActorSpokeEvent spoke =>
-                $"actor={spoke.ActorId} target={spoke.TargetActorId} text={spoke.Text}",
-            ActorObservedEvent observed =>
-                $"actor={observed.ActorId} targetObject={observed.TargetObjectId} facts=" +
-                string.Join(",", observed.LearnedFacts.Select(fact => fact.Kind)),
-            ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
-            ObjectPlacedEvent placed =>
-                $"actor={placed.ActorId} object={placed.ObjectId} place={placed.PlaceId}",
-            ObjectGivenEvent given =>
-                $"actor={given.ActorId} target={given.TargetActorId} object={given.ObjectId}",
-            ObjectShownEvent shown =>
-                $"actor={shown.ActorId} target={shown.TargetActorId} object={shown.ObjectId}",
-            ChestOpenedEvent opened =>
-                $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
-            ActionRejectedEvent rejected =>
-                $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKind.Id} " +
-                $"reason={rejected.Reason}",
-            CellarSealedEvent => "place=cellar",
-            _ => throw new InvalidOperationException("Unknown FirstBoard event payload."),
+            AtPlaceLocation atPlace => $"place:{atPlace.PlaceId.Value}",
+            TraversingLocation traversing =>
+                $"passage:{traversing.PassageId.Value}:{traversing.FromPlaceId.Value}:" +
+                $"{traversing.ToPlaceId.Value}:{traversing.StartedAt.Ticks}:" +
+                $"{traversing.SpeedSnapshot}:{traversing.ArrivalDue.Ticks}",
+            _ => throw new InvalidOperationException("Unknown Spatial location."),
         };
 
-    public static string FactName(BoardEventPayload fact) => fact switch
+    private static string PayloadSummary(FirstBoardFact fact) => fact switch
     {
-        ActorDepartedEvent => "actor.departed",
-        ActorArrivedEvent => "actor.arrived",
+        GameBoardFact game => GamePayloadSummary(game.Value),
+        SpatialBoardFact spatial => SpatialPayloadSummary(spatial.Value),
+        _ => throw new InvalidOperationException("Unknown FirstBoard Host fact."),
+    };
+
+    private static string GamePayloadSummary(BoardEventPayload payload) => payload switch
+    {
+        ActorTravelStartedEvent started =>
+            $"actor={started.ActorId} exit={started.ExitId} destination={started.DestinationId}",
+        TicketConsumedEvent consumed =>
+            $"actor={consumed.ActorId} ticket={consumed.TicketObjectId}",
+        ActorWaitStartedEvent waited =>
+            $"actor={waited.ActorId} completeAt={waited.CompleteAt.Ticks}",
+        ActorWaitedEvent waited => $"actor={waited.ActorId}",
+        ActorSpokeEvent spoke =>
+            $"actor={spoke.ActorId} target={spoke.TargetActorId} text={spoke.Text}",
+        ActorObservedEvent observed =>
+            $"actor={observed.ActorId} targetObject={observed.TargetObjectId} facts=" +
+            string.Join(",", observed.LearnedFacts.Select(value => value.Kind)),
+        ObjectTakenEvent taken => $"actor={taken.ActorId} object={taken.ObjectId}",
+        ObjectPlacedEvent placed =>
+            $"actor={placed.ActorId} object={placed.ObjectId} place={placed.PlaceId}",
+        ObjectGivenEvent given =>
+            $"actor={given.ActorId} target={given.TargetActorId} object={given.ObjectId}",
+        ObjectShownEvent shown =>
+            $"actor={shown.ActorId} target={shown.TargetActorId} object={shown.ObjectId}",
+        ChestOpenedEvent opened =>
+            $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
+        ActionRejectedEvent rejected =>
+            $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKind.Id} " +
+            $"reason={rejected.Reason}",
+        CellarSealedEvent => "place=cellar",
+        _ => throw new InvalidOperationException("Unknown FirstBoard Game payload."),
+    };
+
+    private static string SpatialPayloadSummary(GraphSpatialFact payload) => payload switch
+    {
+        EntityPlacedFact placed =>
+            $"entity={placed.EntityId.Value} place={placed.PlaceId.Value}",
+        EntityRemovedFact removed =>
+            $"entity={removed.EntityId.Value}",
+        TraversalStartedFact started =>
+            $"entity={started.EntityId.Value} passage={started.PassageId.Value} " +
+            $"from={started.FromPlaceId.Value} speed={started.SpeedSnapshot}",
+        TraversalArrivedFact arrived =>
+            $"entity={arrived.EntityId.Value} generation={arrived.ExpectedMovementGeneration}",
+        PassageEntryAccessChangedFact changed =>
+            $"passage={changed.PassageId.Value} a={changed.ResultAccess.EnterableFromA} " +
+            $"b={changed.ResultAccess.EnterableFromB}",
+        PassageEntryChangeScheduledFact scheduled =>
+            $"passage={scheduled.PassageId.Value} due={scheduled.Due.Ticks}",
+        ScheduledPassageEntryChangeAppliedFact applied =>
+            $"passage={applied.PassageId.Value} due={applied.Due.Ticks}",
+        _ => throw new InvalidOperationException("Unknown Spatial payload."),
+    };
+
+    private static string GameFactName(BoardEventPayload fact) => fact switch
+    {
+        ActorTravelStartedEvent => "actor.travel-started",
+        TicketConsumedEvent => "ticket.consumed",
         ActorWaitStartedEvent => "actor.wait-started",
         ActorWaitedEvent => "actor.waited",
         ActorSpokeEvent => "actor.spoke",
@@ -375,26 +431,23 @@ public static class FirstBoardScenario
         ChestOpenedEvent => "chest.opened",
         ActionRejectedEvent => "action.rejected",
         CellarSealedEvent => "cellar.sealed",
-        _ => throw new InvalidOperationException("Unknown FirstBoard fact."),
+        _ => throw new InvalidOperationException("Unknown FirstBoard Game fact."),
     };
 
-    private static void ValidateWorld(FirstBoardWorld world)
+    private static string SpatialFactName(GraphSpatialFact fact) => fact switch
     {
-        if (world.Actors.Select(actor => actor.Id).Distinct().Count() != world.Actors.Count ||
-            world.Actors.Select(actor => actor.Key).Distinct(StringComparer.Ordinal).Count() != world.Actors.Count)
-        {
-            throw new InvalidOperationException("FirstBoard actor identities must be unique.");
-        }
-
-        if (world.Objects.Select(item => item.Id).Distinct().Count() != world.Objects.Count ||
-            world.Objects.Select(item => item.Key).Distinct(StringComparer.Ordinal).Count() != world.Objects.Count)
-        {
-            throw new InvalidOperationException("FirstBoard object identities must be unique.");
-        }
-    }
+        EntityPlacedFact => "spatial.entity-placed",
+        EntityRemovedFact => "spatial.entity-removed",
+        TraversalStartedFact => "spatial.traversal-started",
+        TraversalArrivedFact => "spatial.traversal-arrived",
+        PassageEntryAccessChangedFact => "spatial.passage-entry-access-changed",
+        PassageEntryChangeScheduledFact => "spatial.passage-entry-change-scheduled",
+        ScheduledPassageEntryChangeAppliedFact => "spatial.scheduled-passage-entry-change-applied",
+        _ => throw new InvalidOperationException("Unknown Spatial fact."),
+    };
 }
 
 public sealed record BoardRunCapture(
     FirstBoardWorld InitialWorld,
     HostRunResult<FirstBoardWorld> Result,
-    InMemoryJournal<BoardEventPayload> Journal);
+    InMemoryJournal<FirstBoardFact> Journal);

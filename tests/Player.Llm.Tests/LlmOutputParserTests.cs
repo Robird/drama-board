@@ -50,10 +50,10 @@ public sealed class LlmOutputParserTests
     public void Parse_JsonFenceAndWhitespaceAroundMarkers_Succeeds()
     {
         const string response = """
-              【 独白 】 前往市场。
+            【 独白 】 前往市场。
               【 行动 】
             ```json
-            {"action":"action.travel","destination":"market"}
+            {"action":"action.travel","exit":"exit.market.bridge"}
             ```
               【 记忆 】 去市场找钥匙。
             """;
@@ -62,7 +62,8 @@ public sealed class LlmOutputParserTests
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(ActionKinds.Travel, result.Intent!.ActionKind);
-        Assert.Equal("market", result.Intent.DestinationId);
+        Assert.Equal("exit.market.bridge", result.Intent.ExitId);
+        Assert.Null(result.Intent.DestinationId);
     }
 
     [Fact]

@@ -8,6 +8,7 @@
     <ProjectReference Include="..\FirstBoard\FirstBoard.csproj" />
     <ProjectReference Include="..\Player\Player.csproj" />
     <ProjectReference Include="..\Player.Llm\Player.Llm.csproj" />
+    <ProjectReference Include="..\Spatial\Spatial.csproj" />
   </ItemGroup>
 
 </Project>

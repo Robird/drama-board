@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\FirstBoard\FirstBoard.csproj" />
     <ProjectReference Include="..\..\src\Journal.Atelia\Journal.Atelia.csproj" />
     <ProjectReference Include="..\..\src\Player\Player.csproj" />
+    <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
   </ItemGroup>
 
 </Project>

@@ -4,6 +4,7 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
 using DramaBoard.Protocol;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.FirstBoard;
 
@@ -15,15 +16,22 @@ public sealed record ActivityCandidate(long ActorId, long Generation) : BoardCan
 
 public sealed record DeadlineCandidate : BoardCandidate;
 
+public sealed record SpatialBoardCandidate(SpatialOccurrenceData Value) : BoardCandidate;
+
 public sealed class DecisionPointRule :
-    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
 {
     private readonly IReadOnlyDictionary<string, IPlayerDriver> _drivers;
+    private readonly ScenarioInstance _instance;
 
-    public DecisionPointRule(IReadOnlyDictionary<string, IPlayerDriver> drivers)
+    public DecisionPointRule(
+        IReadOnlyDictionary<string, IPlayerDriver> drivers,
+        ScenarioInstance instance)
     {
         ArgumentNullException.ThrowIfNull(drivers);
+        ArgumentNullException.ThrowIfNull(instance);
         _drivers = new Dictionary<string, IPlayerDriver>(drivers, StringComparer.Ordinal);
+        _instance = instance;
     }
 
     public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
@@ -31,7 +39,7 @@ public sealed class DecisionPointRule :
         SimulationRules rules) =>
         [
             .. world.Actors
-                .Where(world.IsIdle)
+                .Where(world.IsReadyForDecision)
                 .OrderBy(actor => actor.Id)
                 .Select(actor => new OccurrenceCandidate<BoardCandidate>(
                     CandidateKey.FromUtf8(
@@ -40,7 +48,7 @@ public sealed class DecisionPointRule :
                     new DecisionPointCandidate(actor.Id, actor.Generation))),
         ];
 
-    public async ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
+    public async ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
         FirstBoardWorld world,
         OccurrenceCandidate<BoardCandidate> winner,
         CancellationToken cancellationToken)
@@ -51,7 +59,7 @@ public sealed class DecisionPointRule :
         }
 
         BoardActor actor = world.Actor(decisionPoint.ActorId);
-        if (!world.IsIdle(actor) || actor.Generation != decisionPoint.Generation)
+        if (!world.IsReadyForDecision(actor) || actor.Generation != decisionPoint.Generation)
         {
             throw new InvalidOperationException("The selected decision point is stale.");
         }
@@ -62,6 +70,7 @@ public sealed class DecisionPointRule :
         }
 
         DecisionRequest request = FirstBoardScenario.BuildRequest(
+            _instance,
             world,
             actor,
             winner.Due.ModelTime);
@@ -73,74 +82,107 @@ public sealed class DecisionPointRule :
             throw new InvalidOperationException(validation.Message);
         }
 
-        return new TransitionDraft<BoardEventPayload>(
-            FirstBoardActionPlanner.Plan(world, actor, decision.Intent, winner.Due.ModelTime));
+        return new TransitionDraft<FirstBoardFact>(
+            FirstBoardActionPlanner.Plan(
+                _instance,
+                world,
+                actor,
+                decision.Intent,
+                winner.Due.ModelTime));
     }
 }
 
 public static class FirstBoardActionPlanner
 {
-    public static IReadOnlyList<BoardEventPayload> Plan(
+    public static IReadOnlyList<FirstBoardFact> Plan(
+        ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
-        ModelTime now)
-    {
-        return intent.ActionKind.Id switch
+        ModelTime now) =>
+        intent.ActionKind.Id switch
         {
-            "action.travel" => ResolveTravel(world, actor, intent, now),
-            "action.wait" => ResolveWait(actor, intent, now),
+            "action.travel" => ResolveTravel(instance, world, actor, intent, now),
+            "action.wait" => ResolveWait(world, actor, intent, now),
             "action.talk" => ResolveTalk(world, actor, intent),
             "action.observe" => ResolveObserve(world, actor, intent),
-            "action.take" => ResolveTake(world, actor, intent),
-            "action.put" => ResolvePut(world, actor, intent),
+            "action.take" => ResolveTake(instance, world, actor, intent),
+            "action.put" => ResolvePut(instance, world, actor, intent),
             "action.give" => ResolveGive(world, actor, intent),
             "action.show" => ResolveShow(world, actor, intent),
             "action.use" => ResolveUse(world, actor, intent),
             _ => Reject(actor, intent, "unknown action kind"),
         };
-    }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveTravel(
+    private static IReadOnlyList<FirstBoardFact> ResolveTravel(
+        ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
         ModelTime now)
     {
-        if (actor.Activity is not null)
+        if (!world.IsReadyForDecision(actor))
         {
-            return Reject(actor, intent, "actor is already busy");
+            return Reject(actor, intent, "actor is not idle at a place");
         }
 
-        string? destinationId = intent.DestinationId;
-        if (destinationId is null || !world.Places.Any(place => place.Key == destinationId))
+        FirstBoardExit? selected = FirstBoardSpatialProjection
+            .GetExits(instance, world, actor)
+            .SingleOrDefault(exit => exit.ExitId == intent.ExitId);
+        if (selected is null)
         {
-            return Reject(actor, intent, "destination does not exist");
+            return Reject(actor, intent, "exit does not exist here");
         }
 
-        if (!world.AreAdjacent(actor.PlaceId, destinationId))
+        if (!selected.CanTakeNow)
         {
-            return Reject(actor, intent, "destination is not adjacent");
+            string reason = selected.Objective.PassageId ==
+                    new PassageId(BoardIds.CellarGatePassage) &&
+                world.CellarSealed
+                ? "cellar is sealed"
+                : "exit is not currently available";
+            return Reject(actor, intent, reason);
         }
 
-        if (destinationId == BoardIds.Cellar && world.CellarSealed)
+        var planner = new SpatialPlanner(instance.Graph);
+        SpatialPlanResult movement = planner.TryStartTraversal(
+            world.Spatial,
+            new EntityId(actor.Key),
+            selected.Objective.PassageId,
+            BoardTiming.TravelSpeed,
+            now);
+        if (movement is not SpatialPlanAccepted accepted)
         {
-            return Reject(actor, intent, "cellar is sealed");
+            string reason = ((SpatialPlanRejected)movement).Reason;
+            throw new InvalidOperationException(
+                $"An advertised FirstBoard exit was rejected by Spatial: {reason}");
         }
 
-        return Result(
-            new ActorDepartedEvent(
-                actor.Key,
-                actor.PlaceId,
-                destinationId,
-                now + new ModelDuration(BoardTiming.TravelTicks)));
+        var facts = new List<FirstBoardFact>();
+        if (selected.RequiredTicketObjectId is string ticket)
+        {
+            facts.Add(new GameBoardFact(new TicketConsumedEvent(actor.Key, ticket)));
+        }
+
+        facts.Add(new GameBoardFact(new ActorTravelStartedEvent(
+            actor.Key,
+            selected.ExitId,
+            selected.Objective.DestinationPlaceId.Value)));
+        facts.AddRange(accepted.Facts.Select(fact => new SpatialBoardFact(fact)));
+        return facts.AsReadOnly();
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveWait(
+    private static IReadOnlyList<FirstBoardFact> ResolveWait(
+        FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
         ModelTime now)
     {
+        if (!world.IsReadyForDecision(actor))
+        {
+            return Reject(actor, intent, "actor is not idle at a place");
+        }
+
         ModelTime completeAt;
         if (intent.UntilModelTimeMs is long until)
         {
@@ -167,11 +209,10 @@ public static class FirstBoardActionPlanner
             completeAt = now + new ModelDuration(duration);
         }
 
-        return Result(
-            new ActorWaitStartedEvent(actor.Key, completeAt));
+        return GameResult(new ActorWaitStartedEvent(actor.Key, completeAt));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveTalk(
+    private static IReadOnlyList<FirstBoardFact> ResolveTalk(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -182,7 +223,7 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "target actor does not exist");
         }
 
-        if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
+        if (!world.AreCoLocated(actor.Key, target.Key))
         {
             return Reject(actor, intent, "target actor is not at the same place");
         }
@@ -195,38 +236,45 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "speaker does not know the referenced fact");
         }
 
-        return Result(
-            new ActorSpokeEvent(actor.Key, target.Key, text, sharedFactKind));
+        return GameResult(new ActorSpokeEvent(
+            actor.Key,
+            target.Key,
+            text,
+            sharedFactKind));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveObserve(
+    private static IReadOnlyList<FirstBoardFact> ResolveObserve(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
     {
+        if (!world.TryGetPlace(actor.Key, out PlaceId actorPlace))
+        {
+            return Reject(actor, intent, "actor is not present at a place");
+        }
+
         if (intent.TargetObjectId is string targetObjectId)
         {
-            return ResolveInspectObject(world, actor, intent, targetObjectId);
+            return ResolveInspectObject(world, actor, intent, targetObjectId, actorPlace);
         }
 
         var facts = new List<BoardFact>();
         foreach (BoardActor visibleActor in world.Actors.Where(other =>
                      other.Id != actor.Id &&
-                     world.IsPresent(other) &&
-                     other.PlaceId == actor.PlaceId))
+                     world.AreCoLocated(actor.Key, other.Key)))
         {
             facts.Add(new BoardFact(
                 "actor.present",
                 visibleActor.Key,
-                $"{visibleActor.Key} is present at {actor.PlaceId}."));
+                $"{visibleActor.Key} is present at {actorPlace.Value}."));
         }
 
-        foreach (BoardObject visibleObject in VisibleObjects(world, actor))
+        foreach (BoardObject visibleObject in VisiblePortableObjects(world, actor, actorPlace))
         {
             facts.Add(new BoardFact(
                 "object.visible",
                 visibleObject.Key,
-                $"{visibleObject.Key} is visible at {actor.PlaceId}."));
+                $"{visibleObject.Key} is visible at {actorPlace.Value}."));
             if (visibleObject.Key == BoardIds.BrassKey)
             {
                 facts.Add(new BoardFact(
@@ -236,14 +284,14 @@ public static class FirstBoardActionPlanner
             }
         }
 
-        if (actor.PlaceId == BoardIds.Cellar)
+        if (world.IsAtPlace(BoardIds.LockedChest, actorPlace))
         {
             facts.Add(new BoardFact(
                 "cellar.locked-chest-visible",
                 BoardIds.LockedChest,
                 world.ChestOpened
-                    ? "An opened chest is visible in the cellar."
-                    : "A locked chest is visible in the cellar."));
+                    ? "An opened chest is visible here."
+                    : "A locked chest is visible here."));
             if (world.ChestOpened)
             {
                 BoardObject letter = world.Object(BoardIds.DuchessLetter);
@@ -262,16 +310,34 @@ public static class FirstBoardActionPlanner
                 .OrderBy(fact => fact.Kind, StringComparer.Ordinal)
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
-        return Result(
-            new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned)));
+        return GameResult(new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned)));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveInspectObject(
+    private static IReadOnlyList<FirstBoardFact> ResolveInspectObject(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
-        string targetObjectId)
+        string targetObjectId,
+        PlaceId actorPlace)
     {
+        if (targetObjectId == BoardIds.LockedChest)
+        {
+            if (!world.IsAtPlace(BoardIds.LockedChest, actorPlace))
+            {
+                return Reject(actor, intent, "target object is not available here");
+            }
+
+            return GameResult(new ActorObservedEvent(
+                actor.Key,
+                [new BoardFact(
+                    BoardIds.ObjectInspected,
+                    BoardIds.LockedChest,
+                    world.ChestOpened
+                        ? "The opened chest is empty."
+                        : "The chest is locked and bears the brass-key mark.")],
+                BoardIds.LockedChest));
+        }
+
         BoardObject? item = world.Objects.SingleOrDefault(current => current.Key == targetObjectId);
         if (item is null)
         {
@@ -280,8 +346,7 @@ public static class FirstBoardActionPlanner
 
         bool heldByActor = item.OwnerActorId == actor.Id;
         bool publicHere = item.OwnerActorId is null &&
-            item.PlaceId == actor.PlaceId &&
-            world.IsPresent(actor);
+            world.IsAtPlace(item.Key, actorPlace);
         if (!heldByActor && !publicHere)
         {
             return Reject(actor, intent, "actor may only inspect a held or public object here");
@@ -294,7 +359,7 @@ public static class FirstBoardActionPlanner
                 item.Key,
                 heldByActor
                     ? $"You carefully inspected {item.Key} while holding it."
-                    : $"You carefully inspected public {item.Key} at {actor.PlaceId}."),
+                    : $"You carefully inspected public {item.Key} at {actorPlace.Value}."),
         };
         if (item.Key == BoardIds.DuchessLetter)
         {
@@ -305,8 +370,7 @@ public static class FirstBoardActionPlanner
             facts.Add(new BoardFact(
                 BoardIds.LetterContentsKnown,
                 item.Key,
-                "The letter orders its bearer to deliver evidence of the cellar conspiracy to the city archivist; " +
-                "the brass key is no longer required once the letter is recovered."));
+                "The letter orders its bearer to deliver evidence of the cellar conspiracy to the city archivist."));
         }
 
         BoardFact[] learned =
@@ -315,11 +379,14 @@ public static class FirstBoardActionPlanner
                 .OrderBy(fact => fact.Kind, StringComparer.Ordinal)
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
-        return Result(
-            new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned), item.Key));
+        return GameResult(new ActorObservedEvent(
+            actor.Key,
+            Array.AsReadOnly(learned),
+            item.Key));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveTake(
+    private static IReadOnlyList<FirstBoardFact> ResolveTake(
+        ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -330,16 +397,32 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "target object does not exist");
         }
 
-        if (item.OwnerActorId is not null || item.PlaceId != actor.PlaceId || !world.IsPresent(actor))
+        if (!world.TryGetPlace(actor.Key, out PlaceId actorPlace) ||
+            item.OwnerActorId is not null ||
+            !world.IsAtPlace(item.Key, actorPlace))
         {
             return Reject(actor, intent, "target object is not available here");
         }
 
-        return Result(
-            new ObjectTakenEvent(actor.Key, item.Key));
+        var planner = new SpatialPlanner(instance.Graph);
+        SpatialPlanResult removal = planner.TryRemoveEntity(
+            world.Spatial,
+            new EntityId(item.Key));
+        if (removal is not SpatialPlanAccepted accepted)
+        {
+            throw new InvalidOperationException(
+                $"A visible loose object could not be removed: {((SpatialPlanRejected)removal).Reason}");
+        }
+
+        return
+        [
+            new GameBoardFact(new ObjectTakenEvent(actor.Key, item.Key)),
+            .. accepted.Facts.Select(fact => new SpatialBoardFact(fact)),
+        ];
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolvePut(
+    private static IReadOnlyList<FirstBoardFact> ResolvePut(
+        ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -350,16 +433,30 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "actor does not hold the target object");
         }
 
-        if (!world.IsPresent(actor))
+        if (!world.TryGetPlace(actor.Key, out PlaceId actorPlace))
         {
             return Reject(actor, intent, "actor is not present at a place");
         }
 
-        return Result(
-            new ObjectPlacedEvent(actor.Key, item.Key, actor.PlaceId));
+        var planner = new SpatialPlanner(instance.Graph);
+        SpatialPlanResult placement = planner.TryPlaceEntity(
+            world.Spatial,
+            new EntityId(item.Key),
+            actorPlace);
+        if (placement is not SpatialPlanAccepted accepted)
+        {
+            throw new InvalidOperationException(
+                $"A held object could not be placed: {((SpatialPlanRejected)placement).Reason}");
+        }
+
+        return
+        [
+            new GameBoardFact(new ObjectPlacedEvent(actor.Key, item.Key, actorPlace.Value)),
+            .. accepted.Facts.Select(fact => new SpatialBoardFact(fact)),
+        ];
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveGive(
+    private static IReadOnlyList<FirstBoardFact> ResolveGive(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -376,16 +473,15 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "target actor does not exist");
         }
 
-        if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
+        if (!world.AreCoLocated(actor.Key, target.Key))
         {
             return Reject(actor, intent, "target actor is not at the same place");
         }
 
-        return Result(
-            new ObjectGivenEvent(actor.Key, target.Key, item.Key));
+        return GameResult(new ObjectGivenEvent(actor.Key, target.Key, item.Key));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveShow(
+    private static IReadOnlyList<FirstBoardFact> ResolveShow(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -402,16 +498,15 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "target actor does not exist");
         }
 
-        if (!world.IsPresent(actor) || !world.IsPresent(target) || target.PlaceId != actor.PlaceId)
+        if (!world.AreCoLocated(actor.Key, target.Key))
         {
             return Reject(actor, intent, "target actor is not at the same place");
         }
 
-        return Result(
-            new ObjectShownEvent(actor.Key, target.Key, item.Key));
+        return GameResult(new ObjectShownEvent(actor.Key, target.Key, item.Key));
     }
 
-    private static IReadOnlyList<BoardEventPayload> ResolveUse(
+    private static IReadOnlyList<FirstBoardFact> ResolveUse(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -421,7 +516,7 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "target object cannot be used here");
         }
 
-        if (!world.IsPresent(actor) || actor.PlaceId != BoardIds.Cellar)
+        if (!world.AreCoLocated(actor.Key, BoardIds.LockedChest))
         {
             return Reject(actor, intent, "locked chest is not at the actor's current place");
         }
@@ -441,17 +536,22 @@ public static class FirstBoardActionPlanner
             return Reject(actor, intent, "actor does not hold the brass key");
         }
 
-        return Result(
-            new ChestOpenedEvent(actor.Key, BoardIds.LockedChest, BoardIds.BrassKey));
+        return GameResult(new ChestOpenedEvent(
+            actor.Key,
+            BoardIds.LockedChest,
+            BoardIds.BrassKey));
     }
 
-    private static IEnumerable<BoardObject> VisibleObjects(FirstBoardWorld world, BoardActor observer) =>
+    private static IEnumerable<BoardObject> VisiblePortableObjects(
+        FirstBoardWorld world,
+        BoardActor observer,
+        PlaceId observerPlace) =>
         world.Objects.Where(item =>
-            item.PlaceId == observer.PlaceId ||
-            item.OwnerActorId == observer.Id);
+            item.OwnerActorId == observer.Id ||
+            (item.OwnerActorId is null && world.IsAtPlace(item.Key, observerPlace)));
 
     private static bool ActorOwns(FirstBoardWorld world, BoardActor actor, string objectId) =>
-        world.Object(objectId).OwnerActorId == actor.Id;
+        world.Objects.SingleOrDefault(item => item.Key == objectId)?.OwnerActorId == actor.Id;
 
     private static string? ParseFactReference(string text)
     {
@@ -465,20 +565,18 @@ public static class FirstBoardActionPlanner
         return factKind.Length == 0 ? null : factKind;
     }
 
-    private static IReadOnlyList<BoardEventPayload> Reject(
+    private static IReadOnlyList<FirstBoardFact> Reject(
         BoardActor actor,
         Intent intent,
         string reason) =>
-        Result(
-            new ActionRejectedEvent(actor.Key, intent, reason));
+        GameResult(new ActionRejectedEvent(actor.Key, intent, reason));
 
-    private static IReadOnlyList<BoardEventPayload> Result(
-        BoardEventPayload payload) =>
-        [payload];
+    private static IReadOnlyList<FirstBoardFact> GameResult(BoardEventPayload payload) =>
+        [new GameBoardFact(payload)];
 }
 
 public sealed class ActivityCompletionRule :
-    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
 {
     public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
         FirstBoardWorld world,
@@ -489,12 +587,12 @@ public sealed class ActivityCompletionRule :
                 .OrderBy(actor => actor.Id)
                 .Select(actor => new OccurrenceCandidate<BoardCandidate>(
                     CandidateKey.FromUtf8(
-                        $"firstboard/activity/{actor.Key}/{actor.Generation}"),
+                        $"firstboard/wait/{actor.Key}/{actor.Generation}"),
                     new CandidateDue(actor.Activity!.Due),
                     new ActivityCandidate(actor.Id, actor.Generation))),
         ];
 
-    public ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
+    public ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
         FirstBoardWorld world,
         OccurrenceCandidate<BoardCandidate> winner,
         CancellationToken cancellationToken)
@@ -506,41 +604,35 @@ public sealed class ActivityCompletionRule :
         }
 
         BoardActor actor = world.Actor(activity.ActorId);
-        if (actor.Activity is not BoardActivity current ||
+        if (actor.Activity is not BoardWaitActivity current ||
             actor.Generation != activity.Generation ||
             current.Due != winner.Due.ModelTime)
         {
-            throw new InvalidOperationException("The activity candidate is stale for its actor.");
+            throw new InvalidOperationException("The wait candidate is stale for its actor.");
         }
 
-        BoardEventPayload fact = current.Kind switch
-        {
-            BoardActivityKind.Travel when current.DestinationId is not null =>
-                new ActorArrivedEvent(actor.Key, current.DestinationId),
-            BoardActivityKind.Wait =>
-                new ActorWaitedEvent(actor.Key),
-            _ => throw new InvalidOperationException("The actor activity is invalid."),
-        };
-        return ValueTask.FromResult(new TransitionDraft<BoardEventPayload>([fact]));
+        return ValueTask.FromResult(new TransitionDraft<FirstBoardFact>(
+            [new GameBoardFact(new ActorWaitedEvent(actor.Key))]));
     }
 }
 
 public sealed class CellarDeadlineRule :
-    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
 {
     private readonly long _deadlineMs;
+    private readonly SpatialPlanner _spatialPlanner;
 
-    /// <summary>Creates the deadline rule with a scenario-provided model time.</summary>
-    public CellarDeadlineRule(long deadlineMs = BoardTiming.DeadlineTicks)
+    public CellarDeadlineRule(
+        GraphDefinition definition,
+        long deadlineMs = BoardTiming.DeadlineTicks)
     {
         if (deadlineMs < 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(deadlineMs),
-                "The deadline cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(deadlineMs));
         }
 
         _deadlineMs = deadlineMs;
+        _spatialPlanner = new SpatialPlanner(definition);
     }
 
     public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
@@ -550,24 +642,85 @@ public sealed class CellarDeadlineRule :
             ? []
             :
             [
-                new OccurrenceCandidate<BoardCandidate>(
+                new(
                     CandidateKey.FromUtf8("firstboard/deadline/cellar-seal"),
                     new CandidateDue(new ModelTime(_deadlineMs)),
                     new DeadlineCandidate()),
             ];
 
-    public ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
+    public ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
         FirstBoardWorld world,
         OccurrenceCandidate<BoardCandidate> winner,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (winner.Data is not DeadlineCandidate || world.CellarSealed)
+        if (winner.Data is not DeadlineCandidate ||
+            world.CellarSealed ||
+            winner.Due.ModelTime != new ModelTime(_deadlineMs))
         {
             throw new InvalidOperationException("The cellar deadline candidate is stale.");
         }
 
-        return ValueTask.FromResult(
-            new TransitionDraft<BoardEventPayload>([new CellarSealedEvent()]));
+        SpatialPlanResult access = _spatialPlanner.TrySetPassageEntryAccess(
+            world.Spatial,
+            new PassageId(BoardIds.CellarGatePassage),
+            new PassageEntryPatch(enterableFromA: false, enterableFromB: null));
+        if (access is not SpatialPlanAccepted accepted)
+        {
+            throw new InvalidOperationException(
+                $"The cellar gate could not be closed: {((SpatialPlanRejected)access).Reason}");
+        }
+
+        FirstBoardFact[] facts =
+        [
+            new GameBoardFact(new CellarSealedEvent()),
+            .. accepted.Facts.Select(fact => new SpatialBoardFact(fact)),
+        ];
+        return ValueTask.FromResult(new TransitionDraft<FirstBoardFact>(facts));
+    }
+}
+
+/// <summary>Wraps pure Spatial mutation and arrival occurrences in the product Host union.</summary>
+public sealed class SpatialHostOccurrenceRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
+{
+    private readonly SpatialOccurrenceRule _inner;
+
+    public SpatialHostOccurrenceRule(GraphDefinition definition)
+    {
+        _inner = new SpatialOccurrenceRule(definition);
+    }
+
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
+        FirstBoardWorld world,
+        SimulationRules rules) =>
+        [
+            .. _inner.Forecast(world.Spatial, rules)
+                .Select(candidate => new OccurrenceCandidate<BoardCandidate>(
+                    candidate.Key,
+                    candidate.Due,
+                    new SpatialBoardCandidate(candidate.Data))),
+        ];
+
+    public async ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
+    {
+        if (winner.Data is not SpatialBoardCandidate spatial)
+        {
+            throw new InvalidOperationException("The Spatial Host rule received another rule's candidate.");
+        }
+
+        var innerWinner = new OccurrenceCandidate<SpatialOccurrenceData>(
+            winner.Key,
+            winner.Due,
+            spatial.Value);
+        TransitionDraft<GraphSpatialFact> innerDraft = await _inner.PlanSelectedAsync(
+            world.Spatial,
+            innerWinner,
+            cancellationToken);
+        return new TransitionDraft<FirstBoardFact>(
+            innerDraft.Facts.Select(fact => new SpatialBoardFact(fact)));
     }
 }

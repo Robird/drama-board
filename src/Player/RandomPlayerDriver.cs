@@ -38,7 +38,8 @@ public sealed class RandomPlayerDriver : IPlayerDriver
             availableAction.ActionKind,
             TargetActorId: ChooseCandidate(request, availableAction.CandidateActorIds, choiceIndex: 1),
             TargetObjectId: ChooseCandidate(request, availableAction.CandidateObjectIds, choiceIndex: 2),
-            DestinationId: ChooseCandidate(request, availableAction.CandidateDestinationIds, choiceIndex: 3));
+            ExitId: ChooseCandidate(request, availableAction.CandidateExitIds, choiceIndex: 3),
+            DestinationId: ChooseCandidate(request, availableAction.CandidateDestinationIds, choiceIndex: 4));
 
     private string? ChooseCandidate(
         DecisionRequest request,

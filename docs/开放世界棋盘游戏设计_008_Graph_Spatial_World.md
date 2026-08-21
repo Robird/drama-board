@@ -1,7 +1,7 @@
 # Design Note 008：Graph Spatial World
 ## ——建立在统一原子 Occurrence Kernel 上、面向 AI Player 的故事世界空间框架
 
-**状态：修订草案；Kernel、空间语义与施工切换路线已冻结，Graph 竖切仍待实施**
+**状态：Slice 1 已实施并通过验收；Slice 2+ 按重开条件延期**
 
 **本次修订：2026-08-22**
 
@@ -283,7 +283,7 @@ TravelDuration(distance, speed)
 ```text
 SpatialEntity
     EntityId
-    MovementGeneration              // >= 0; motion law 每次替换时 +1
+    MovementGeneration              // >= 0; 本次连续 placement lifetime 内每次替换 motion law 时 +1
     Location
         AtPlace(PlaceId)
         Traversing(
@@ -295,7 +295,7 @@ SpatialEntity
             ArrivalDue)
 ```
 
-`MovementGeneration` 同时区分同一 Entity 的 successive segments，并参与 arrival/contact CandidateKey。它替代旧草案中的 `TraversalId + Generation + StateRevision`。
+`MovementGeneration` 在 Entity 的一次连续 placement lifetime 内区分 successive segments，并参与 arrival/contact CandidateKey。`EntityRemoved` 结束该 lifetime；以后用同一稳定 `EntityId` 再次 `EntityPlaced` 被视为一个从 generation 0 开始的新实例，而不是恢复被删除的 movement lineage。它替代旧草案中的 `TraversalId + Generation + StateRevision`。
 
 active traversal 必须满足：
 
@@ -802,6 +802,8 @@ ReverseCurrentTraversal
 
 对 immediate traversal，Game 用 frozen `AffordanceId` 精确映射唯一 objective Passage，因而 ferry 与 bridge 即使同终点也不会混淆。`DestinationHandle` 只用于显示或创建 Game-owned `TravelTo` 长期目标；Navigator / controller 再为它选择下一 Passage。Player 不直接提交 Spatial fact、CandidateKey、offset 或 hidden PassageId。
 
+“frozen”也是对象边界不变量，而不只是使用约定：DecisionRequest、Observation、AvailableAction 及其嵌套候选集合在构造时复制为只读快照；Observed ExitId 在一次 Observation 内唯一；任一 CandidateExitId 必须精确命中一个 `IsAvailable=true` 的 ObservedExit。Player 因而不能通过修改收到的集合、引用一个关闭出口或伪造未观察出口来扩张本次能力。
+
 以下不得进入 Player observation：
 
 - full objective Graph；
@@ -911,7 +913,7 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 
 - Entity 恰好 `AtPlace | Traversing`；
 - 一个 Entity 至多一条 active segment；
-- movement generation 单调且只标识 motion law；
+- movement generation 在一次连续 placement lifetime 内单调，且只标识 motion law；
 - traversal math 与 ArrivalDue 完整一致；
 - sparse entry-access override 保存完整两位结果且 canonical；
 - active segment 可以属于当前已经关闭的方向，因为合法性在 segment 创建时裁决；
@@ -1100,6 +1102,24 @@ Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁
 - ViewLink；
 - content writer/hash；
 - performance index。
+
+## 8.9 Slice 1 实施记录（2026-08-22）
+
+本节记录当前代码事实；若后续实现演进，应同步更新这里与 §7.2 的验收矩阵。
+
+| 范围 | 已落地结果 |
+|---|---|
+| Spatial 本体 | 保留 `Spatial.csproj` 与仅依赖 Kernel 的程序集边界；Grid 源码原位删除，加入 Graph definition/state、typed IDs、facts、reducer/validator、planner、queries、Navigator 与 occurrence rule |
+| 方向与门禁 | `PassageEntryAccess` 分别控制 A/B 端进入；start/query/Navigator 共用 effective direction；arrival 不复查入口，关闭后在途 Actor 仍可抵达 |
+| Host composition | `FirstBoardWorld(Game, Spatial)` 与 `FirstBoardFact` composite union 成为唯一提交边界；所有 Host fact 都推进 Game-owned `Now`，跨域不变量只在完整 batch fold 后验证 |
+| 唯一空间 authority | 删除 Board actor/place/object 的 location、adjacency 与 travel clock；Actor、loose object、locked chest 的客观位置只由 `GraphSpatialState` 表达 |
+| 原子行动 | ticket consumption + traversal start、take/put 的 custody + placement、Cellar story state + endpoint entry change 均在一个 Host draft 中全成全败 |
+| AI Player | Observation 暴露有 ETA/availability 的精确 exit；Travel intent 选择 ExitId，不用 DestinationId 猜 Passage；请求与嵌套候选在边界冻结，并验证出口唯一、可见且可用 |
+| 产品地图 | Tavern、Market、CellarGate、Cellar；两条 Tavern—Market 平行 Passage、一条 Market→Tavern 单向 Passage，以及可单向关闭的 Cellar gate Passage |
+| Replay / persistence / Demo | 当前格式 composite fact codec 与 replay 已切换到 Graph；旧格式不读取、不迁移；Demo 直接投影 Graph travel、arrival、object 与 entry-change facts |
+| 验收 | Spatial acceptance、FirstBoard composite Host、失败零提交、Protocol capability、Player/LLM、current-format replay 与本地 persistence 测试均已落地 |
+
+本次 cutover 未修改 `src/Kernel`。途中 contact、Reverse、Encounter、战争迷雾、Area/ViewLink、旧格式迁移和审计型 hash/version 仍按 §8.7、§8.8 与 §9 延期；当前代码没有为它们预留第二套 authority 或兼容层。
 
 ---
 

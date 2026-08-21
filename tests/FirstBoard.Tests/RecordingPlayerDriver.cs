@@ -1,25 +1,30 @@
-using DramaBoard.Player;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.FirstBoard.Tests;
 
 internal sealed class RecordingPlayerDriver : IPlayerDriver
 {
-    private readonly IPlayerDriver _inner;
+    private readonly Queue<Func<DecisionRequest, PlayerDecision>> _decisions;
     private readonly List<DecisionRequest> _requests = [];
 
-    public RecordingPlayerDriver(IPlayerDriver inner)
+    public RecordingPlayerDriver(params Func<DecisionRequest, PlayerDecision>[] decisions)
     {
-        _inner = inner;
+        _decisions = new Queue<Func<DecisionRequest, PlayerDecision>>(decisions);
     }
 
     public IReadOnlyList<DecisionRequest> Requests => _requests.AsReadOnly();
 
-    public async ValueTask<PlayerDecision> DecideAsync(
+    public ValueTask<PlayerDecision> DecideAsync(
         DecisionRequest request,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _requests.Add(request);
-        return await _inner.DecideAsync(request, cancellationToken);
+        if (_decisions.Count == 0)
+        {
+            throw new InvalidOperationException("The test Player has no scripted decision remaining.");
+        }
+
+        return ValueTask.FromResult(_decisions.Dequeue()(request));
     }
 }

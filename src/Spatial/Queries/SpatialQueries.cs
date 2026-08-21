@@ -1,123 +1,197 @@
+using DramaBoard.Kernel.Time;
+
 namespace DramaBoard.Spatial;
 
-/// <summary>Provides objective spatial queries derived only from committed definition and state.</summary>
+/// <summary>Reads objective relations from one committed Graph Spatial state.</summary>
 public sealed class SpatialQueries
 {
-    private readonly SpatialDefinition _definition;
+    private readonly GraphDefinition _definition;
 
-    /// <summary>Initializes queries pinned to one immutable spatial definition.</summary>
-    public SpatialQueries(SpatialDefinition definition)
+    public SpatialQueries(GraphDefinition definition)
     {
-        SpatialRules.EnsureSupported(definition);
+        ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
 
-    /// <summary>
-    /// Gets visible cells on the observer's map in stable CellRef order. ObservationEnabled does
-    /// not restrict this objective query.
-    /// </summary>
-    public IReadOnlyList<CellRef> GetVisibleCells(SpatialState state, EntityId observerId)
+    public SpatialLocationView GetLocation(
+        GraphSpatialState state,
+        EntityId entityId,
+        ModelTime at)
     {
-        EffectiveSpatialTopology topology = RequireCompleteTopology(state);
-        SpatialEntityState observer = RequireObserver(state, observerId);
-        return ReadOnly(GetVisibleCellsCore(topology, observer.Cell));
+        RequireState(state);
+        SpatialEntity entity = RequireEntityForQuery(state, entityId);
+        return entity.Location switch
+        {
+            AtPlaceLocation atPlace => new AtPlaceView(atPlace.PlaceId),
+            TraversingLocation traversal => CreateTraversingView(traversal, at),
+            _ => throw new InvalidOperationException(
+                $"Entity '{entityId}' has unsupported location '{entity.Location.GetType().Name}'."),
+        };
     }
 
-    /// <summary>
-    /// Gets visible placed entities in stable EntityId order, excluding the observer. Other
-    /// entities in the observer's own cell are visible.
-    /// </summary>
-    public IReadOnlyList<EntityId> GetVisibleEntities(SpatialState state, EntityId observerId)
+    public PassageEntryAccess GetPassageEntryAccess(
+        GraphSpatialState state,
+        PassageId passageId)
     {
-        EffectiveSpatialTopology topology = RequireCompleteTopology(state);
-        SpatialEntityState observer = RequireObserver(state, observerId);
-        var visibleCells = new HashSet<CellRef>(GetVisibleCellsCore(topology, observer.Cell));
-        EntityId[] result =
+        RequireState(state);
+        PassageDefinition passage = RequirePassageForQuery(passageId);
+        return EffectiveGraph.EntryAccess(_definition, state, passage);
+    }
+
+    public IReadOnlyList<PassageExit> GetExits(
+        GraphSpatialState state,
+        PlaceId placeId,
+        long speedSnapshot)
+    {
+        RequireState(state);
+        if (!_definition.Contains(placeId))
+        {
+            throw new KeyNotFoundException($"Place '{placeId}' does not exist.");
+        }
+
+        if (speedSnapshot <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(speedSnapshot), "Travel speed must be positive.");
+        }
+
+        PassageExit[] exits =
+        [
+            .. _definition.Passages
+                .Select(passage => CreateExit(state, passage, placeId, speedSnapshot))
+                .Where(value => value is not null)
+                .Select(value => value!),
+        ];
+        return Array.AsReadOnly(exits);
+    }
+
+    public IReadOnlyList<EntityId> GetCoLocatedEntities(
+        GraphSpatialState state,
+        EntityId entityId)
+    {
+        RequireState(state);
+        SpatialEntity entity = RequireEntityForQuery(state, entityId);
+        if (entity.Location is not AtPlaceLocation atPlace)
+        {
+            return Array.Empty<EntityId>();
+        }
+
+        EntityId[] colocated =
         [
             .. state.Entities
-                .Where(entity => entity.Id != observerId && visibleCells.Contains(entity.Cell))
-                .Select(entity => entity.Id)
-                .Order(),
+                .Where(other =>
+                    other.Id != entity.Id &&
+                    other.Location is AtPlaceLocation otherPlace &&
+                    otherPlace.PlaceId == atPlace.PlaceId)
+                .Select(other => other.Id),
         ];
-        return Array.AsReadOnly(result);
+        return Array.AsReadOnly(colocated);
     }
 
-    /// <summary>Returns whether one placed observer can objectively see a defined target cell.</summary>
-    public bool IsCellVisible(SpatialState state, EntityId observerId, CellRef target)
+    public IReadOnlyList<SamePassageRelation> GetSamePassageRelations(
+        GraphSpatialState state,
+        EntityId entityId,
+        ModelTime at)
     {
-        EffectiveSpatialTopology topology = RequireCompleteTopology(state);
-        SpatialEntityState observer = RequireObserver(state, observerId);
-        SpatialStateValidator.EnsureCellExists(_definition, target, "Visibility target");
-        return IsCellVisibleCore(topology, observer.Cell, target);
-    }
-
-    /// <summary>
-    /// Tests range-limited strict-supercover line of sight between two defined cells. Sight never
-    /// crosses maps or propagates through portals.
-    /// </summary>
-    public bool HasLineOfSight(SpatialState state, CellRef firstCell, CellRef secondCell)
-    {
-        EffectiveSpatialTopology topology = RequireCompleteTopology(state);
-        SpatialStateValidator.EnsureCellExists(_definition, firstCell, "Line-of-sight source");
-        SpatialStateValidator.EnsureCellExists(_definition, secondCell, "Line-of-sight target");
-        return IsCellVisibleCore(topology, firstCell, secondCell);
-    }
-
-    private IEnumerable<CellRef> GetVisibleCellsCore(
-        EffectiveSpatialTopology topology,
-        CellRef source)
-    {
-        GridMapDefinition map = _definition.GetMap(source.MapId);
-        int range = map.VisionRange;
-        int minimumX = (int)Math.Max(0L, (long)source.X - range);
-        int maximumX = (int)Math.Min((long)map.Width - 1, (long)source.X + range);
-        int minimumY = (int)Math.Max(0L, (long)source.Y - range);
-        int maximumY = (int)Math.Min((long)map.Height - 1, (long)source.Y + range);
-
-        for (int y = minimumY; y <= maximumY; y++)
+        RequireState(state);
+        SpatialEntity entity = RequireEntityForQuery(state, entityId);
+        if (entity.Location is not TraversingLocation traversal)
         {
-            for (int x = minimumX; x <= maximumX; x++)
+            return Array.Empty<SamePassageRelation>();
+        }
+
+        PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
+        long ownOffset = SpatialMath.OffsetAt(passage, traversal, at);
+        var relations = new List<SamePassageRelation>();
+        foreach (SpatialEntity other in state.Entities)
+        {
+            if (other.Id == entity.Id ||
+                other.Location is not TraversingLocation otherTraversal ||
+                otherTraversal.PassageId != traversal.PassageId ||
+                at < otherTraversal.StartedAt ||
+                at > otherTraversal.ArrivalDue)
             {
-                var target = new CellRef(map.Id, x, y);
-                if (ManhattanDistance(source, target) <= range &&
-                    StrictSupercover.HasLineOfSight(source, target, topology.BlocksSight))
-                {
-                    yield return target;
-                }
+                continue;
             }
+
+            long otherOffset = SpatialMath.OffsetAt(passage, otherTraversal, at);
+            bool coTraveling = ownOffset == otherOffset &&
+                traversal.ToPlaceId == otherTraversal.ToPlaceId &&
+                traversal.SpeedSnapshot == otherTraversal.SpeedSnapshot &&
+                traversal.ArrivalDue == otherTraversal.ArrivalDue;
+            relations.Add(new SamePassageRelation(other.Id, otherOffset, coTraveling));
         }
+
+        return Array.AsReadOnly(relations.ToArray());
     }
 
-    private bool IsCellVisibleCore(
-        EffectiveSpatialTopology topology,
-        CellRef source,
-        CellRef target)
+    public IReadOnlyList<EntityId> GetCoTravelingEntities(
+        GraphSpatialState state,
+        EntityId entityId,
+        ModelTime at)
     {
-        if (source.MapId != target.MapId)
+        EntityId[] values =
+        [
+            .. GetSamePassageRelations(state, entityId, at)
+                .Where(relation => relation.IsCoTraveling)
+                .Select(relation => relation.OtherEntityId),
+        ];
+        return Array.AsReadOnly(values);
+    }
+
+    private TraversingView CreateTraversingView(TraversingLocation traversal, ModelTime at)
+    {
+        PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
+        return new TraversingView(
+            traversal.PassageId,
+            traversal.FromPlaceId,
+            traversal.ToPlaceId,
+            SpatialMath.OffsetAt(passage, traversal, at),
+            traversal.SpeedSnapshot,
+            traversal.ArrivalDue);
+    }
+
+    private PassageExit? CreateExit(
+        GraphSpatialState state,
+        PassageDefinition passage,
+        PlaceId placeId,
+        long speedSnapshot)
+    {
+        if (!EffectiveGraph.TryResolveDirection(
+                _definition,
+                state,
+                passage,
+                placeId,
+                out PlaceId destination,
+                out bool entryAllowed))
         {
-            return false;
+            return null;
         }
 
-        GridMapDefinition map = _definition.GetMap(source.MapId);
-        return ManhattanDistance(source, target) <= map.VisionRange &&
-            StrictSupercover.HasLineOfSight(source, target, topology.BlocksSight);
+        return new PassageExit(
+            passage.Id,
+            destination,
+            entryAllowed,
+            SpatialMath.TravelDuration(passage.Length, speedSnapshot));
     }
 
-    private SpatialEntityState RequireObserver(SpatialState state, EntityId observerId)
+    private SpatialEntity RequireEntityForQuery(GraphSpatialState state, EntityId entityId) =>
+        state.TryGetEntity(entityId, out SpatialEntity? entity)
+            ? entity!
+            : throw new KeyNotFoundException($"Entity '{entityId}' does not exist.");
+
+    private PassageDefinition RequirePassageForQuery(PassageId passageId)
     {
-        SpatialStateValidator.EnsureEntityId(observerId, "Visibility observer");
-        return SpatialStateValidator.RequireEntity(state, observerId);
+        if (!_definition.Contains(passageId))
+        {
+            throw new KeyNotFoundException($"Passage '{passageId}' does not exist.");
+        }
+
+        return _definition.GetPassage(passageId);
     }
 
-    private EffectiveSpatialTopology RequireCompleteTopology(SpatialState state)
+    private void RequireState(GraphSpatialState state)
     {
-        SpatialStateValidator.ValidateComplete(_definition, state);
-        return new EffectiveSpatialTopology(_definition, state);
+        ArgumentNullException.ThrowIfNull(state);
+        GraphSpatialStateValidator.ValidateComplete(_definition, state);
     }
-
-    private static long ManhattanDistance(CellRef first, CellRef second) =>
-        Math.Abs((long)first.X - second.X) + Math.Abs((long)first.Y - second.Y);
-
-    private static IReadOnlyList<T> ReadOnly<T>(IEnumerable<T> values) =>
-        Array.AsReadOnly(values.ToArray());
 }

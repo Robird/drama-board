@@ -34,20 +34,19 @@ public sealed class PlayerDecisionValidatorTests
     }
 
     [Fact]
-    public void Validate_TargetOutsideAdvertisedAffordance_IsInvalid()
+    public void Validate_ExitOutsideAdvertisedAffordance_IsInvalid()
     {
-        DecisionRequest request = Request() with
-        {
-            AvailableActions =
+        DecisionRequest request = Request(
+            actions:
             [
-                new AvailableAction(ActionKinds.Travel, CandidateDestinationIds: ["market"]),
+                new AvailableAction(ActionKinds.Travel, CandidateExitIds: ["exit.market.bridge"]),
             ],
-        };
+            observation: ObservationWithBridge());
 
         PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
             new PlayerDecision(
                 request.DecisionId,
-                new Intent(ActionKinds.Travel, DestinationId: "cellar")),
+                new Intent(ActionKinds.Travel, ExitId: "exit.market.ferry")),
             request);
 
         Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
@@ -56,13 +55,12 @@ public sealed class PlayerDecisionValidatorTests
     [Fact]
     public void Validate_MissingRequiredTarget_IsInvalid()
     {
-        DecisionRequest request = Request() with
-        {
-            AvailableActions =
+        DecisionRequest request = Request(
+            actions:
             [
-                new AvailableAction(ActionKinds.Travel, CandidateDestinationIds: ["market"]),
+                new AvailableAction(ActionKinds.Travel, CandidateExitIds: ["exit.market.bridge"]),
             ],
-        };
+            observation: ObservationWithBridge());
 
         PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
             new PlayerDecision(request.DecisionId, new Intent(ActionKinds.Travel)),
@@ -71,13 +69,98 @@ public sealed class PlayerDecisionValidatorTests
         Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
     }
 
-    private static DecisionRequest Request() =>
+    [Fact]
+    public void Validate_ParallelExitsToSameDestination_SelectsExactAdvertisedExit()
+    {
+        var observation = new Observation(
+            "actor.alice",
+            "place.square",
+            10,
+            [
+                new ObservedExit("exit.market.bridge", "market", 60_000, true),
+                new ObservedExit("exit.market.ferry", "market", 90_000, true),
+            ],
+            [],
+            [],
+            []);
+        DecisionRequest request = Request(
+            actions:
+            [
+                new AvailableAction(
+                    ActionKinds.Travel,
+                    CandidateExitIds: ["exit.market.bridge", "exit.market.ferry"]),
+            ],
+            observation: observation);
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(ActionKinds.Travel, ExitId: "exit.market.ferry")),
+            request);
+
+        Assert.True(result.IsValid, result.Message);
+    }
+
+    [Fact]
+    public void Validate_TravelDestination_IsInvalidEvenWithValidExit()
+    {
+        DecisionRequest request = Request(
+            actions:
+            [
+                new AvailableAction(ActionKinds.Travel, CandidateExitIds: ["exit.market.bridge"]),
+            ],
+            observation: ObservationWithBridge());
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(
+                    ActionKinds.Travel,
+                    ExitId: "exit.market.bridge",
+                    DestinationId: "market")),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
+    }
+
+    [Fact]
+    public void Validate_NonTravelExit_IsInvalidEvenIfAdvertised()
+    {
+        DecisionRequest request = Request(
+            actions:
+            [
+                new AvailableAction(ActionKinds.Wait, CandidateExitIds: ["exit.market.bridge"]),
+            ],
+            observation: ObservationWithBridge());
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(ActionKinds.Wait, ExitId: "exit.market.bridge")),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
+    }
+
+    private static DecisionRequest Request(
+        IReadOnlyList<AvailableAction>? actions = null,
+        Observation? observation = null) =>
         new(
             new DecisionId("decision-1"),
             ActorId: "actor.alice",
             ModelTimeMs: 10,
-            new Observation("actor.alice", "place.square", 10, [], [], []),
-            [new AvailableAction(ActionKinds.Wait)]);
+            observation ?? new Observation("actor.alice", "place.square", 10, [], [], [], []),
+            actions ?? [new AvailableAction(ActionKinds.Wait)]);
+
+    private static Observation ObservationWithBridge() =>
+        new(
+            "actor.alice",
+            "place.square",
+            10,
+            [new ObservedExit("exit.market.bridge", "market", 60_000, true)],
+            [],
+            [],
+            []);
 
     private static PlayerDecision Decision(DecisionRequest request) =>
         new(

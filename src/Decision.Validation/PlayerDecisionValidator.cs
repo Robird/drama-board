@@ -54,14 +54,20 @@ public static class PlayerDecisionValidator
         if (intent.ActionKind != available.ActionKind ||
             !MatchesOptional(intent.TargetActorId, available.CandidateActorIds) ||
             !MatchesOptional(intent.TargetObjectId, available.CandidateObjectIds) ||
+            !MatchesOptional(intent.ExitId, available.CandidateExitIds) ||
             !MatchesOptional(intent.DestinationId, available.CandidateDestinationIds))
+        {
+            return false;
+        }
+
+        if (intent.ActionKind != ActionKinds.Travel && intent.ExitId is not null)
         {
             return false;
         }
 
         return intent.ActionKind.Id switch
         {
-            "action.travel" => intent.DestinationId is not null,
+            "action.travel" => intent.ExitId is not null && intent.DestinationId is null,
             "action.talk" => intent.TargetActorId is not null,
             "action.take" or "action.put" or "action.use" => intent.TargetObjectId is not null,
             "action.give" or "action.show" =>
@@ -69,6 +75,7 @@ public static class PlayerDecisionValidator
             "action.wait" =>
                 intent.TargetActorId is null &&
                 intent.TargetObjectId is null &&
+                intent.ExitId is null &&
                 intent.DestinationId is null,
             "action.observe" => intent.TargetActorId is null && intent.DestinationId is null,
             _ => false,

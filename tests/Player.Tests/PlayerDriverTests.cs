@@ -16,6 +16,7 @@ public sealed class PlayerDriverTests
         Assert.Equal(ActionKinds.Wait, decision.Intent.ActionKind);
         Assert.Null(decision.Intent.TargetActorId);
         Assert.Null(decision.Intent.TargetObjectId);
+        Assert.Null(decision.Intent.ExitId);
         Assert.Null(decision.Intent.DestinationId);
     }
 
@@ -25,14 +26,14 @@ public sealed class PlayerDriverTests
         DecisionRequest request = Request();
         var driver = new ScriptedPlayerDriver(
         [
-            current => Decision(current, new Intent(ActionKinds.Travel, DestinationId: "left")),
+            current => Decision(current, new Intent(ActionKinds.Travel, ExitId: "exit.left")),
             current => Decision(current, new Intent(ActionKinds.Wait)),
         ]);
 
         PlayerDecision first = await driver.DecideAsync(request, CancellationToken.None);
         PlayerDecision second = await driver.DecideAsync(request, CancellationToken.None);
 
-        Assert.Equal("left", first.Intent.DestinationId);
+        Assert.Equal("exit.left", first.Intent.ExitId);
         Assert.Equal(ActionKinds.Wait, second.Intent.ActionKind);
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await driver.DecideAsync(request, CancellationToken.None));
@@ -43,7 +44,7 @@ public sealed class PlayerDriverTests
     {
         DecisionRequest request = Request(
         [
-            new(ActionKinds.Travel, CandidateDestinationIds: ["left", "right", "forward"]),
+            new(ActionKinds.Travel, CandidateExitIds: ["exit.left", "exit.right", "exit.forward"]),
             new(ActionKinds.Talk, CandidateActorIds: ["actor.bob", "actor.cara"]),
             new(ActionKinds.Wait),
         ]);
@@ -66,18 +67,18 @@ public sealed class PlayerDriverTests
         [
             new(
                 ActionKinds.Travel,
-                CandidateDestinationIds: [.. Enumerable.Range(0, 16).Select(index => $"place.{index}")]),
+                CandidateExitIds: [.. Enumerable.Range(0, 16).Select(index => $"exit.{index}")]),
         ];
-        var destinations = new HashSet<string?>();
+        var exits = new HashSet<string?>();
 
         for (long sequence = 1; sequence <= 16; sequence++)
         {
-            destinations.Add((await driver.DecideAsync(
+            exits.Add((await driver.DecideAsync(
                 Request(actions, $"decision-{sequence}"),
-                CancellationToken.None)).Intent.DestinationId);
+                CancellationToken.None)).Intent.ExitId);
         }
 
-        Assert.True(destinations.Count > 1);
+        Assert.True(exits.Count > 1);
     }
 
     [Fact]
@@ -96,13 +97,22 @@ public sealed class PlayerDriverTests
         IReadOnlyList<AvailableAction>? actions = null,
         string decisionId = "decision-1")
     {
-        var observation = new Observation("actor.alice", "place.square", 10, [], [], []);
+        IReadOnlyList<AvailableAction> availableActions =
+            actions ?? [new AvailableAction(ActionKinds.Wait)];
+        ObservedExit[] exits =
+        [
+            .. availableActions
+                .SelectMany(action => action.CandidateExitIds ?? [])
+                .Distinct(StringComparer.Ordinal)
+                .Select(exitId => new ObservedExit(exitId, $"place.{exitId}", 1, true)),
+        ];
+        var observation = new Observation("actor.alice", "place.square", 10, exits, [], [], []);
         return new DecisionRequest(
             new DecisionId(decisionId),
             "actor.alice",
             10,
             observation,
-            actions ?? [new AvailableAction(ActionKinds.Wait)]);
+            availableActions);
     }
 
     private static PlayerDecision Decision(DecisionRequest request, Intent intent) =>

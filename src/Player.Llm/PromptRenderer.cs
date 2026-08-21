@@ -36,7 +36,7 @@ public static class PromptRenderer
             .AppendLine("把已知事实当作权威结果，不要反复计划动作列表中不存在的后续操作；若已无可推进之事，可长时间等待。")
             .AppendLine("回复必须使用以下四个分节标记；【行动】中只放一个 JSON 对象，字段与 Intent 对齐:")
             .AppendLine("【独白】一段内心想法")
-            .AppendLine("【行动】{\"action\":\"action.wait\",\"targetActor\":null,\"targetObject\":null,\"destination\":null,\"freeText\":null,\"durationMs\":null,\"untilModelTimeMs\":null}")
+            .AppendLine("【行动】{\"action\":\"action.wait\",\"targetActor\":null,\"targetObject\":null,\"exit\":null,\"destination\":null,\"freeText\":null,\"durationMs\":null,\"untilModelTimeMs\":null}")
             .AppendLine("【台词】可选，说出口的话")
             .AppendLine("【记忆】本轮希望各记忆分块吸收、修正或忘却的要点；这不是完整记忆，可以写（无）")
             .ToString();
@@ -53,6 +53,8 @@ public static class PromptRenderer
             .Append("位置: ").AppendLine(request.Observation.LocationId)
             .Append("在场角色: ").AppendLine(RenderIds(request.Observation.VisibleActorIds))
             .Append("可见物品: ").AppendLine(RenderIds(request.Observation.VisibleObjectIds))
+            .AppendLine("出口:")
+            .AppendLine(RenderExits(request.Observation.Exits))
             .AppendLine("已知事实:");
         AppendFacts(user, request.Observation.KnownFacts, "- ");
 
@@ -80,6 +82,7 @@ public static class PromptRenderer
             user.Append("- ").Append(action.ActionKind.Id)
                 .Append("; actorCandidates=").Append(RenderIds(action.CandidateActorIds))
                 .Append("; objectCandidates=").Append(RenderIds(action.CandidateObjectIds))
+                .Append("; exitCandidates=").Append(RenderIds(action.CandidateExitIds))
                 .Append("; destinationCandidates=").AppendLine(RenderIds(action.CandidateDestinationIds));
         }
 
@@ -141,9 +144,23 @@ public static class PromptRenderer
             ? $"[{string.Join(", ", ids)}]"
             : "[]";
 
+    internal static string RenderExits(IReadOnlyList<ObservedExit> exits)
+    {
+        ArgumentNullException.ThrowIfNull(exits);
+        return exits.Count == 0
+            ? "[]"
+            : string.Join(
+                Environment.NewLine,
+                exits.Select(exit =>
+                    $"- exit={exit.ExitId}, destination={exit.DestinationId}, " +
+                    $"expectedDurationMs={exit.ExpectedDurationMs.ToString(CultureInfo.InvariantCulture)}, " +
+                    $"available={exit.IsAvailable.ToString().ToLowerInvariant()}"));
+    }
+
     internal static string RenderIntent(Intent intent) =>
         $"action={intent.ActionKind.Id}, targetActor={intent.TargetActorId ?? "-"}, " +
-        $"targetObject={intent.TargetObjectId ?? "-"}, destination={intent.DestinationId ?? "-"}, " +
+        $"targetObject={intent.TargetObjectId ?? "-"}, exit={intent.ExitId ?? "-"}, " +
+        $"destination={intent.DestinationId ?? "-"}, " +
         $"freeText={intent.FreeText ?? "-"}, durationMs={intent.DurationMs?.ToString(CultureInfo.InvariantCulture) ?? "-"}, " +
         $"untilModelTimeMs={intent.UntilModelTimeMs?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
 }
