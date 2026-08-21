@@ -34,7 +34,7 @@ Kernel 的完整职责收敛为：
 7. Kernel 完全删除 resolution 类型和 resolution 阶段。可信领域 rule 的 `PlanSelectedAsync` 负责在 Kernel 外调用 Player、校验 proposal、执行领域规划，最终只向 Kernel 返回完整 `TransitionDraft`。
 8. Player、Human、AI、LLM、Protocol、重试和费用都不属于 Kernel 概念。Player 是跟随 Kernel 调度的策略函数，不是实时异步输入源。
 9. `WorldVersion` 只有 `(LineageId, TransitionCount)`。Journal adapter 私有持有 opaque expected-head/CAS token，不把存储地址或 hash 提升为世界身份。
-10. 继续使用已经实现的 `IJournalSink.AppendBatch` 原子发布边界：一个非空 batch 就是一个 transition，并由 Atelia 写成一个 EventJournal Event / RBF Frame。不再另造 `AppendTransition`、Begin/End 协议或第二套事务抽象。
+10. 继续使用已经实现的 `IJournalSink.AppendBatch` 单帧发布原语：一个非空 batch 就是一个 transition，并由 Atelia 写成一个 EventJournal Event / RBF Frame。不再另造 `AppendTransition`、Begin/End 协议或第二套事务抽象；但现有“每 fact 一个递增 timestamp”的逻辑契约仍须迁成“每 batch 一个 LogicalInstant”。
 11. 删除应用层 hash 链和重型 audited replay。普通 Replay 重建世界；同 build 的 scheduler conformance test 负责重算 winner。
 12. 原型阶段不存在需要保留的旧 Journal 数据；不实现旧格式版本门、只读打开、转换或迁移。格式变化后直接丢弃开发数据并重建。
 13. 当前不存在通用跨域 transaction coordinator 的需求。首个真实 Game + Spatial 组合由一个 composite `HostWorld`、一个 draft 和一次 `AppendBatch` 解决。
@@ -56,7 +56,7 @@ Kernel 的完整职责收敛为：
 | `CandidateKey` | rule 从世界状态推导的完整、稳定、可规范编码的候选身份，也是 hash 碰撞时的最终兜底键。 |
 | `OccurrenceCandidate` | 当前 Forecast 中的临时值：`CandidateKey + CandidateDue + rule-private immutable data`。不持久化。 |
 | `TransitionDraft` | winner 对完整 `HostWorld` 的非空 facts 列表。没有 commit 权。 |
-| transition | 一次成功的 `AppendBatch`；不再额外引入一个与 batch 重复的持久化抽象。 |
+| Journal batch | 一个 `LogicalInstant + CandidateKey + non-empty Facts[]` envelope；一次成功的 `AppendBatch` 就是一个 transition。 |
 
 删除以下重复概念：
 
@@ -92,11 +92,10 @@ Forecast 必须是纯函数：不得修改 World、消费 stateful RNG、读取�
 
 ```text
 WorldSeed
-SchedulerSemanticsVersion
 MaxTransitionsPerModelTime
 ```
 
-运行供应商、模型名、墙钟、timeout、git 状态等 operational manifest 不得进入 Forecast。没有真实消费者前，不增加 rules hash、plan hash 或内容寻址。
+运行供应商、模型名、墙钟、timeout、git 状态等 operational manifest 不得进入 Forecast。keyed-hash 算法、domain separator 和 canonical codec 由当前 build 与 golden tests 固定，不作为运行时 `SchedulerSemanticsVersion`；语义变化后直接重建开发数据。没有真实消费者前，不增加 rules hash、plan hash 或内容寻址。
 
 ### 2.3 Kernel 不拥有 Player 决策过程
 
@@ -109,7 +108,7 @@ MaxTransitionsPerModelTime
 → 生成完整 TransitionDraft
 ```
 
-这些步骤的程序集、协议和重试策略都在 Kernel 之外。Kernel 看到的只有“可信 rule 返回了完整 draft”或“本次 Step 失败/取消且零提交”。Player/LLM 永远不能直接构造 facts 或写 Journal。
+这些步骤的程序集、协议和重试策略都在 Kernel 之外。Kernel 看到的只有“可信 rule 返回了完整 draft”或“本次 Step 在发布前失败/取消且零提交”。Player/LLM 永远不能直接构造 facts 或写 Journal。
 
 Alice 与 Bob 同一 `ModelTime` 都可行动时，Kernel 先仲裁其中一个 DecisionPoint。winner 提交后才在新世界重新 Forecast 另一个 Actor；不存在同时收集回答、durable inbox 或按网络返回顺序决定世界的阶段。
 
@@ -130,7 +129,7 @@ else:
     LogicalInstant = (last.ModelTime, last.CausalOrdinal + 1)
 ```
 
-空 lineage 的首个 winner 使用 `(winner.Due, 0)`。只有 `AppendBatch` 成功后，该值才成为历史。提交失败、取消或进程在发布前崩溃都不占用 ordinal。
+空 lineage 的首个 winner 使用 `(winner.Due, 0)`。只有 `AppendBatch` 的 ref CAS 发布成功后，该值才成为历史。发布前失败、取消或进程崩溃都不占用 ordinal；发布后 Journal 已是 authority。
 
 `TransitionCount` 已经表达 lineage-wide commit 顺序，所以不再保存 `CommitOrdinal`。同一 transition 内 facts 的数组下标已经表达 reducer/序列化顺序，所以不再保存 `FactOrdinal`。
 
@@ -158,8 +157,9 @@ CandidateDue = CeilToModelTick(exactTime, 1ms)
 ### 3.3 规范 Step
 
 ```text
-Step():
+Step(notAfter):
     require no other Step is in flight
+    require notAfter >= current ModelTime
 
     frozenWorld   = committedWorld
     expectedWorld = WorldVersion
@@ -172,6 +172,10 @@ Step():
         return Exhausted
 
     winner = SelectUniqueMinimum(candidates)
+
+    if winner.Due > notAfter:
+        return BoundaryReached
+
     draft  = await owners[winner.CandidateKey]
         .PlanSelectedAsync(frozenWorld, winner, cancellationToken)
 
@@ -180,9 +184,12 @@ Step():
     ValidateHostWorld(scratchWorld)
 
     instant = ProposeLogicalInstant(winner.Due)
-    batch   = StampFacts(draft.Facts, instant, winner.CandidateKey, winner.Due)
+    batch   = CreateJournalBatch(instant, winner.CandidateKey, draft.Facts)
 
-    journal.AppendBatch(batch)  // adapter 以私有 expected-head 做 CAS；单帧发布
+    cancellationToken.ThrowIfCancellationRequested() // 最后的可取消边界
+    journal.AppendBatch(batch)  // 不可取消的短提交段；私有 expected-head CAS 发布
+
+    // CAS 成功后 transition 已 committed；之后到来的取消不能撤销它。
     committedWorld = scratchWorld
     WorldVersion = (LineageId, expectedWorld.TransitionCount + 1)
     AdvanceCursor(instant)
@@ -191,11 +198,15 @@ Step():
 
 expected head 始终是 adapter 私有并发控制信息，不进入 Kernel DTO 或公共 `WorldVersion`。当前 `IJournalSink.AppendBatch` 的具体签名可以在实现切片中适配，但不能因此把存储地址变成领域版本。
 
-每次 Step 只有三类结果：
+`notAfter` 只是不越界提交的调用边界：winner.Due 等于它时可以提交，晚于它时不调用 Plan、不写 Journal，也不伪造 ModelTime 前进。Host 若要连续运行，由 Host 重复调用一次只提交一个 winner 的 Step。
+
+每次 Step 只有三类正常结果：
 
 - `Committed`：一个非空 transition 已完整发布并安装；
 - `Exhausted`：当前世界没有候选；
-- 失败/取消：World、Journal、WorldVersion、LogicalInstant 全部不变。
+- `BoundaryReached`：唯一 winner 晚于 `notAfter`，世界零变化。
+
+发布前失败/取消时，World、active Journal、WorldVersion 与 LogicalInstant 全部不变。ref CAS 成功后即使进程尚未安装内存 World 或调用方未收到成功，也不得按零提交重试；运行时必须停止并从 Journal Replay 恢复。
 
 ### 3.4 非法 proposal 与戏剧性失败
 
@@ -250,14 +261,23 @@ DramaBoard 是追求灵活性与多样性的快速原型，角色行动主要以
 
 ### 5.1 原子 Journal
 
-当前 `AppendBatch` 单帧切片直接作为目标基础：
+当前 `AppendBatch` 已完成的物理基础是：
 
 - 非空 batch 编码为一个 EventJournal Event / 一个 RBF Frame；
 - RBF 长度与 CRC 负责单帧完整性；
 - active branch ref/CAS 是发布点，CAS 失败的 orphan 不可见；
 - 超过单帧上限则整批失败，不拆成 Begin/Part/End；
-- World 只在 batch 发布成功后安装 scratch result；
-- 一个 `AppendBatch` 成功对应一次 `TransitionCount` 和一次 `CausalOrdinal` 推进。
+- World 只在 batch 发布成功后安装 scratch result。
+
+尚未完成、必须纳入调度重构的逻辑适配是：
+
+- 一个 batch 只有一个 `LogicalInstant` 与 cause header，全部 facts 共享它；
+- facts 只按数组位置 fold，不再各自携带递增 Microstep/timestamp；
+- 只在 batch 之间验证 LogicalInstant 严格递增；
+- `TransitionCount`、Replay、checkpoint 和 Fork prefix 都按 batch 数，而不是 flat event/fact 数；
+- `Events` 的 flat prefix 不得成为业务可观察或可 Fork 边界。
+
+一个发布成功的 `AppendBatch` 因而只推进一次 `TransitionCount` 和一次 `CausalOrdinal`。ref CAS 是不可逆线性化点：CAS 前失败零提交；CAS 后 Journal 权威，publish 后 crash 通过 Replay 恢复。
 
 不再规划 `CommittedTransition` 第二套接口、应用层 `HeadHash / TransitionHash / WorldSnapshotHash`，也不做 content-addressed plan/resolution 保存。若未来出现敌意篡改、跨存储内容寻址或法证消费者，再以真实失败场景另立设计。
 
@@ -271,7 +291,7 @@ DramaBoard 是追求灵活性与多样性的快速原型，角色行动主要以
 从 Genesis 重建 transition 前缀 world
 → 全量 Forecast
 → 重算 comparator winner
-→ 与 batch 记录的 CandidateKey / CandidateDue 对照
+→ 与 batch 记录的 CandidateKey / LogicalInstant.ModelTime 对照
 → fold batch 后继续
 ```
 
@@ -279,7 +299,7 @@ DramaBoard 是追求灵活性与多样性的快速原型，角色行动主要以
 
 ### 5.3 Fork
 
-Fork 只允许发生在完整 batch boundary，并继承 World、`WorldVersion`、最后 `LogicalInstant` 与 WorldSeed。Forecast cache 和当前未完成 Step 一律丢弃；没有 sub-ms frontier 需要保存或恢复。
+Fork 只允许发生在完整 batch boundary。它继承 prefix World、`TransitionCount`、最后 `LogicalInstant` 与 WorldSeed，但必须创建新的 `LineageId`；child 版本为 `(NewLineageId, PrefixTransitionCount)`，不能继承父支完整 WorldVersion。Forecast cache 和当前未完成 Step 一律丢弃；没有 sub-ms frontier 需要保存或恢复。
 
 Fork 只服务当前格式和当前运行中的 committed history。Journal 格式或 scheduler semantics 改变时，已有开发数据直接废弃并重新生成；Kernel 与 Journal adapter 均不提供旧格式识别、只读兼容或迁移入口。
 
@@ -322,7 +342,7 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 
 ## 8. 剩余实施步骤
 
-每一步都必须形成可运行的垂直切片。已完成的 `AppendBatch` 单帧原子发布不再列为待实施工作。
+每一步都必须形成可运行的垂直切片。`AppendBatch` 的单帧持久化与 ref CAS 已完成，不再重做；batch-level LogicalInstant、读取边界和 transition counting 仍属于待实施工作。
 
 ### 切片 1：实现离散时间与最小值对象
 
@@ -338,9 +358,10 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 ### 切片 2：一个 rule、一个 winner、一个 batch
 
 - 引入单一 `IOccurrenceRule`；
-- 实现 single-flight `Step`、full Forecast、唯一 winner 和 commit 后 full re-Forecast；
+- 实现 single-flight `Step(notAfter)`、full Forecast、唯一 winner、`BoundaryReached` 和 commit 后 full re-Forecast；
 - 实现 pure scratch-fold、最终 HostWorld invariant validation、空 draft 防线和同时间预算；
-- 让成功的 `AppendBatch` 一次推进 `TransitionCount`/`CausalOrdinal`；失败时所有状态零变化；
+- 把 Journal 读写单位迁为 batch：一个 header/LogicalInstant、facts 数组顺序、batch 间严格递增、flat fact prefix 不可观察；
+- 让成功的 `AppendBatch` 一次推进 `TransitionCount`/`CausalOrdinal`；发布前失败零变化，发布后故障从 Journal 恢复；
 - 先迁移一个无 Player、无 Spatial 的 timer/deadline 垂直案例。
 
 退出条件：新路径能独立运行，且没有第二个 commit authority。
@@ -389,17 +410,20 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 | ID | 硬断言 |
 |---|---|
 | ORD-1 | 同 `ModelTime` 的 committed transitions 使用连续 `CausalOrdinal`；一个 batch 只增加一次。 |
+| ORD-1A | 同一 batch 的 facts 共享一个 LogicalInstant，只按数组位置 fold；Replay/Fork/WorldVersion 不得使用 flat fact prefix。 |
 | ORD-2 | system 注册、candidate 枚举和并行 Forecast 完成顺序任意置换，winner 与 Journal 结果不变。 |
 | TIM-1 | 精确整数 tick 保持不变；任意 `T + δ`（`0 < δ < 1ms`）统一量化为 `T + 1ms`；Kernel API、cursor 与存档均无 sub-ms 排序字段。 |
 | ARB-1 | 相同 WorldSeed/state/build 得到相同 winner；keyed-hash 碰撞由完整 `CandidateKey` 稳定兜底。 |
 | ARB-2 | 同 tick 顺序只由 WorldSeed、`CandidateDue` 与 `CandidateKey` 决定；测试允许 sub-ms 数学顺序反转。 |
 | ATM-1 | 多 facts 和 Game + Spatial facts 全成或全败；任何 append 前失败都不改变 World/Journal/version/instant。 |
+| ATM-2 | ref CAS 成功后 batch 已 committed；publish 后 fault/cancellation 不得报告零提交或重试，只能 Replay 恢复。 |
+| BND-1 | winner.Due 晚于 `notAfter` 时返回 BoundaryReached，零 Plan/append/version/instant 变化；等于边界时可提交。 |
 | UNI-1 | 正式路径不存在 external input、internal-first、fixed same-time phase 或领域二次 winner selection。 |
 | PLN-1 | Kernel 只从 owning rule 接受完整非空 `TransitionDraft`，不存在任何 resolution DTO 或第二 Plan authority。 |
 | DEC-1 | 两个 Actor 同 tick 时只调用 winner 的策略；另一 Actor 在 commit 后看到新世界。 |
 | FAIL-1 | malformed/unauthorized/stale proposal 零提交；合法的世界内失败提交非空 failure facts。 |
 | RPL-1 | 普通 Replay 不 Forecast、不调用 Player，按 batch boundary 重建相同 World、WorldVersion 和 LogicalInstant。 |
-| FORK-1 | Fork 只发生于 committed batch boundary；未完成 Step 和 Forecast cache 不可复制。 |
+| FORK-1 | Fork 只发生于 committed batch boundary；child 创建新 LineageId，并继承 prefix count/World/instant/seed；未完成 Step 和 Forecast cache 不可复制。 |
 | LIV-1 | 空 draft、重复无进展 candidate 和超预算同时间链确定性失败。 |
 | SPL-1 | 已提交 contact 有 Forecast 可见的进展；单 contact 不消费整个 tick。 |
 
@@ -413,9 +437,10 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 2. Kernel 项目不引用 Player、Protocol、Human、AI、LLM、resolution 或 validator 类型；
 3. `LogicalInstant` 是提交后的因果地址，不是候选排序工具；
 4. `WorldVersion`、candidate identity、fact order、Journal 发布边界各有且只有一个表示；
-5. 普通 Replay、committed-boundary Fork、同时间活锁预算和 Spatial contact 进展约束通过验收；
-6. 旧调度路径已删除，003、008 与实现采用同一套时间法则；
-7. 本文已完成的切片从计划中删除，而不是转写成永久的实施历史。
+5. Journal 已以完整 batch 为读写、计数和 Fork 单位，facts 不再各占 LogicalInstant；
+6. 普通 Replay、new-lineage committed-boundary Fork、bounded Step、同时间活锁预算和 Spatial contact 进展约束通过验收；
+7. 旧调度路径已删除，003、008 与实现采用同一套时间法则；
+8. 本文已完成的切片从计划中删除，而不是转写成永久的实施历史。
 
 最终 Kernel 只回答并落实一个问题：
 
