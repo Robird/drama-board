@@ -1,9 +1,9 @@
 # Design Note 008：Graph Spatial World
 ## ——建立在统一原子 Occurrence Kernel 上、面向 AI Player 的故事世界空间框架
 
-**状态：修订草案；Kernel 对齐已冻结，空间竖切仍待实施**
+**状态：修订草案；Kernel、空间语义与施工切换路线已冻结，Graph 竖切仍待实施**
 
-**本次修订：2026-08-21**
+**本次修订：2026-08-22**
 
 **Kernel 权威基线：** [研发计划 006](./研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)、[Design Note 003](./开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md) 与当前 `src/Kernel`。
 
@@ -40,6 +40,8 @@ committed HostWorld
 10. 原型优先简单、灵活和可玩的竖切，不为不存在的审计、网络并发或极限容量消费者预建平台。
 11. Passage 不再保存整条通路的 `Enabled`；EndpointA / EndpointB 各自保存“可否由本端进入 Passage”的方向许可；
 12. 离开 Passage 抵达目标 Place 始终成功，已提交的 movement segment 不受后续入口关闭追溯影响；需要“走到门前才发现不能进城”时，把门前建成 Place。
+13. 实施采用“保留 `src/Spatial/Spatial.csproj` 项目槽位、原位整体换芯”：程序集身份与只依赖 Kernel 的边界保留，Grid 领域类型、API 与测试整体删除，不新建长期并存的 Graph 程序集或兼容层；
+14. Graph 产品切换必须同时移除 `FirstBoard` 自己保存的 objective adjacency、location、travel clock 与 arrival authority；只迁移 `FirstBoardSpatialBoarding` 不能算完成 Slice 1。
 
 旧草案中的下列机制被明确删除：
 
@@ -56,6 +58,8 @@ committed HostWorld
 | passage-wide `InitiallyEnabled / EffectiveEnabled` | 简化为 EndpointA / EndpointB 两个 entry bit；arrival 永远允许离开 Passage |
 | canonical JSON writer/hash/version matrix | 延期到真实内容管线需要时 |
 | 102,273-event Moment、microstep reserve、固定容量矩阵 | 删除；使用小 transition、checked arithmetic 与现有 Kernel/Journal 边界 |
+| 新建 `Spatial.Graph` 并保留旧 `Spatial` | 删除；保留现有项目/程序集身份并原位替换实现 |
+| Grid→Graph adapter、obsolete façade、双模式开关 | 删除；真实 Host consumer 与 Graph 同批切换 |
 
 ---
 
@@ -137,6 +141,18 @@ AI-facing view 只包含 Perception 合法披露的局部材料。完整 Graph�
 它不是 Graph schema 的兼容义务。实施 Graph Spatial 时可以替换现有 Grid 类型；运行时不得让 Grid 与 Graph 同时成为 objective location authority。
 
 Grid Portal 当前会在 leg Due 重查 passability，并在失败时把 Entity 留在 source Cell；这是“旅程期间 Entity 仍投影在源 Cell”的旧 Grid 语义。Graph 已把 Entity 客观放在 Passage 中，且本设计选择“离开 Passage 必然成功”，因此不继承该到达时重查行为。
+
+施工中的“原位替换”只保留以下项目接线：
+
+- `src/Spatial/Spatial.csproj`、`DramaBoard.Spatial` 程序集身份与现有 solution/project references；
+- Spatial 只直接依赖 Kernel 的 dependency rule；
+- 全量 Forecast、selected candidate 重验、单 draft、`LogicalInstant` fold 与完整 batch replay 这些已验证的集成形状。
+
+它不表示逐个改造旧 Grid 类型。`CellRef / GridMapDefinition / PortalDefinition / JourneyState / MoveGoal / SpatialCommandHandler / StrictSupercover` 等旧 public surface、Grid-only tests、definition stamp/hash、derived audit 与 command compatibility 必须在切换中删除。名称碰巧相同的 `EntityId` 也按本设计的 Ordinal string 语义重写，不保留源码、二进制或 Journal 兼容。
+
+Git 已是旧实现的归档：现有 `spatial-grid-v1-baseline` tag 与 cutover 前 commit 足以恢复、比较或临时建立 worktree。不得把旧源码复制到 `archive/`、`src/Spatial/Legacy` 或另一个仍参与 solution 的项目；SDK 默认 glob、代码搜索与 reviewer 都会因此继续面对两套 Spatial。
+
+直接引用 `DramaBoard.Spatial` 的生产接缝目前主要集中在 `FirstBoardSpatialBoarding`，但这不代表迁移面只有一个文件。当前 `FirstBoard` 主模型还用 `BoardPlace.AdjacentPlaceIds`、`BoardActor.PlaceId`、Travel `Activity/Due` 与 `ActorDeparted/ActorArrived` 独立拥有拓扑、位置、旅行时间和到达，并由 action planner、observation、互动、persistence 与 Demo 读取。Graph 切换必须一起处理这些隐式消费者；否则一个 Actor 可以在 Graph 中正在 Passage 上，同时仍被 Game 当成原 Place 的 idle Actor。
 
 ---
 
@@ -920,6 +936,7 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 |---|---|
 | DEF-1 | Definition 重排不改变 graph、exit order或route；parallel Passage保持可区分；坏 endpoint/非正 Length拒绝；两端 entry 初值保留。 |
 | AI-1 | AI 只读取合法的 semantic location、known exits与ETA；选择一个 affordance后，Game把它映射为 objective traversal；hidden Graph/candidate/rank不泄露。 |
+| AUTH-1 | FirstBoard Actor 开始 Graph traversal 后，Game 不再用自己的 PlaceId/Travel Due/arrival rule 提供 observation、互动或第二次移动；start→arrival 只由 Graph location 与 candidate 推进。 |
 | ATM-1 | `TicketConsumed + TraversalStarted` 同batch成功；Spatial planner拒绝时 Game/Spatial/Journal/WorldVersion全不变。 |
 | MOV-1 | length10/speed3：T0 start、Due T4、T1..T3 lazy offset、无progress facts；arrival fact前仍Traversing，提交后才AtPlace。 |
 | QRY-1 | Kernel已位于T，而另一arrival `Due==T` 尚未赢时，query仍合法并返回endpoint-boundary Traversing，不要求整tick settled。 |
@@ -939,9 +956,106 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 
 ---
 
-# 8. 最小竖切顺序
+# 8. 施工路线与最小竖切顺序
 
-## Slice 1：AI 能理解并使用的 Place—Passage—Arrival
+## 8.1 施工裁决：保留项目槽位，原位整体换芯
+
+候选路线的最终裁决：
+
+| 路线 | 裁决 | 原因 |
+|---|---|---|
+| 在旧 Grid API 上渐进改名、加 Graph adapter | 删除 | `Cell/Portal/Journey` 与 `Place/Passage/Traversal` 是不同本体；adapter 必须虚构路线、速度与到达语义 |
+| 归档 `src/Spatial`，新建 `Spatial.Graph` 程序集 | 删除 | 没有独立部署、版本或兼容消费者；只会增加 solution、reference、dependency guard 与最终清理工作 |
+| 保留 Grid 与 Graph 两套 public model，通过开关选择 | 删除 | 直接违反唯一 objective authority，并让旧测试继续把已删除语义当成契约 |
+| 保留 `Spatial.csproj`/程序集/依赖边界，整体替换内部模型 | **采用** | 保留正确的模块边界与接线，同时获得真正的白纸实现 |
+
+因此，“白纸好作画”发生在源码和类型系统层，而不是项目文件层。C# SDK 项目本身没有需要保留的手写 compile item 清单；删除旧 `.cs`、加入最终 Graph `.cs` 就已经是白纸。新建程序集不能减少领域重写量，只会移动目录并制造第二个名字。
+
+## 8.2 一个 build-green 的原子产品切换
+
+领域切换最终应落成一个可构建、可回放的 cutover commit；该 commit 前的共享历史是 Grid，之后是 Graph，不提交带临时 namespace、临时 ID、compatibility façade 或双 authority 的中间版本。开发者可以在未提交 worktree 或短期 WIP branch 中按依赖顺序施工，必要时在合并前 squash；原子性要求的是共享的可用提交边界，不是每次编辑都必须可编译。
+
+cutover commit 必须同时包含：
+
+1. 用最终命名实现 Graph Slice 1 的 definition、state、facts、reducer、validator、pure planners、queries、Navigator 与 occurrence integration；
+2. 把 `FirstBoard` 生产 Host 改成 composite Game + `GraphSpatialState`，并注册 arrival 与 passage-change candidates；
+3. 把 travel action、AI observation/affordance、共处互动、可见对象、Cellar 封锁、persistence 与 Demo projection 改读 Graph authority；
+4. 用新 acceptance matrix 替换 Grid tests，并保留 dependency guard、Kernel/replay 与 Game+Spatial atomicity 的测试意图；
+5. 删除旧 Grid 源码、Grid-only tests 与孤立的 `FirstBoardSpatialBoarding` 半组合层，或把后者吸收到真实 Host composition；
+6. 直接启用新的当前格式 Genesis/Journal；不读、不转换旧开发数据。
+
+只移植 ticketed start 会产生两条具体错误轨迹：
+
+```text
+Graph: Actor = Traversing(Tavern → Market)
+Game:  Actor.PlaceId = Tavern, Activity = null
+→ DecisionPoint 仍把 Actor 当作 Tavern 的 idle Actor
+→ Actor 可以继续交谈、拿物或再次发起 travel
+
+Graph: TraversalStarted 已提交
+Host:  没有包装/注册 Graph arrival rule
+→ Due 时没有 arrival candidate
+→ Actor 永久停留在 Traversing
+```
+
+因此 `FirstBoardSpatialBoarding` 当前只能证明“ticket 与 Grid movement start 可以同 batch”，不能作为 Graph Slice 1 的产品验收。
+
+## 8.3 cutover 内部施工顺序
+
+以下顺序是同一 cutover 的 dependency order，不是要长期保留的兼容 waves：
+
+| 顺序 | 施工内容 | 进入下一步前的局部门槛 |
+|---|---|---|
+| A. Graph spine | `PlaceId / PassageId / EntityId`、`GraphDefinition`、entry access、`AtPlace | Traversing`、`GraphSpatialState` | definition canonicalization、引用/长度/方向不变量通过 |
+| B. State transition | 最小 facts、pure reducer/validator、place/remove/start、ceil duration、arrival Forecast/Plan | lazy offset、arrival boundary、reducer scratch-fold 与 replay 通过 |
+| C. Dynamic/query | sparse entry override、scheduled patch、`GetLocation/GetExits`、Dijkstra | direction predicate 被 planner/query/Navigator 共用；same-tick peers 不被吞 |
+| D. Host product seam | composite candidate/fact union、Game+Spatial 单 draft、FirstBoard action/observation/interaction | ticket+start 全成全败；start→arrival 可在真实 Host 跑完 |
+| E. Authority deletion | 删除 Board-owned spatial fields/rules、Grid source/tests、旧 persistence/demo cases | solution 中只剩 Graph objective authority，旧符号零命中 |
+
+这些步骤可以在 worktree 中反复测试，但共享 cutover commit 必须包含 A–E 的完整结果。不要为了获得较小 commit 而引入 `GraphEntityId` 临时名、`DramaBoard.Spatial.Graph` 过渡 namespace、Grid→Graph translation 或 feature flag。
+
+## 8.4 FirstBoard authority 迁移清单
+
+| 当前 authority | Graph cutover 后 |
+|---|---|
+| `BoardPlace.AdjacentPlaceIds` | 删除；连接只来自 `GraphDefinition.Passages` |
+| `BoardActor.PlaceId` | 删除；Actor location 只来自 `GraphSpatialState` |
+| Travel `BoardActivity.Due/DestinationId` | 删除；当前 segment 与 arrival due 只来自 Spatial；Game 可另存不含位置真理的长期 `TravelGoal` |
+| `ActorDepartedEvent / ActorArrivedEvent` 修改位置 | 删除；start/arrival 使用 Spatial facts；只有真实叙事消费者存在时才保留不修改位置的 Game outcome |
+| loose `BoardObject.PlaceId` | 删除；需要空间查询的 loose object 使用 Graph entity/location；被携带时由 Game-owned custody + carrier location 推导 |
+| `CellarSealed` | 可保留为 Game 故事/知识状态，但同一个 Host draft 必须同时改变对应 Passage entry access，移动合法性只读 Graph |
+| `IsPresent`、同地 talk/give/show/take/put、observation visibility | 改用 committed Graph location/query；不再比较 Game-owned PlaceId |
+| FirstBoard persistence / Demo writer | 改读 composite Host batches 与 Graph facts；旧 payload/world 格式直接废弃 |
+
+`Wait` 仍是 Game activity，因为它不拥有空间位置或移动法则。物品 ownership、knowledge、quest 与 action outcome 也继续属于 Game；迁移只删除重复的 objective spatial authority。
+
+## 8.5 测试替换与完成门槛
+
+旧 `Spatial.Tests` 的数量和文件结构不是兼容目标。测试按 §7.2 的不变量重写，而不是把 Grid fixture 逐项翻译成 Graph fixture。至少保留这些证明：
+
+- Spatial project 仍只直接依赖 Kernel；
+- definition、typed ID、canonical order 与 parallel Passage；
+- endpoint entry、ceil duration、lazy offset、arrival boundary 与 current-format replay；
+- Forecast 全量枚举、winner 局部消费、scheduled no-op 自消费与 same-tick Kernel 仲裁；
+- query/Navigator 使用同一个 direction predicate 和稳定 tie-break；
+- FirstBoard observation/interaction 在 traversal 中不再把 Actor 投影回 origin Place；
+- `TicketConsumed + TraversalStarted` 单 batch，全成全败；
+- passage close 只影响新 segment，已进入者仍可 arrival。
+
+cutover 完成时必须同时满足：
+
+```text
+rg "CellRef|GridMapDefinition|PortalDefinition|JourneyState|MoveGoal|StrictSupercover" src tests
+    → 对有效源码与测试零命中
+
+dotnet test DramaBoard.slnx
+dotnet test DramaBoard.Local.slnx
+    → 全部通过
+```
+
+若本地 optional persistence adapter 暂不可用，必须至少运行 `Spatial.Tests`、`FirstBoard.Tests` 与可用的 persistence tests，并明确记录未运行项；不得用旧 Grid tests 通过来替代 Graph 验收。
+
+## 8.6 Slice 1：AI 能理解并使用的 Place—Passage—Arrival
 
 使用 3–5 个有记忆点的 Place、可区分的平行 Passage、一条单向 Passage、一个城门外 Place 与一个动态关闭的方向：
 
@@ -958,7 +1072,7 @@ AI DecisionPoint
 
 Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁，并证明 Navigator、GetExits 与 traversal planner 复用同一个 direction predicate。它不得创建 exit gate、`BlockedAtEndpoint`、contact ledger、rational DTO、receipt、Moment或未来index占位。
 
-## Slice 2：一个真实的途中 Encounter
+## 8.7 Slice 2：一个真实的途中 Encounter
 
 只在 Slice 1 完成后加入，并且必须同时交付一个真实 Game/AI consumer：
 
@@ -975,7 +1089,7 @@ Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁
 
 没有 `EncounterOpened`/Observation/Decision 的真实使用，就不先实现 contact planner 或 state。这样 contact 是一条垂直产品能力，不是一层 speculative infrastructure。
 
-## Slice 3：只由真实故事触发
+## 8.8 Slice 3：只由真实故事触发
 
 可能的后续能力必须逐项由 playable trace 触发，不能横向预建：
 
@@ -1031,6 +1145,7 @@ Graph Spatial World 的最小甜点位置是：
 7. 让 Game / Perception 把 committed objective state 投影为紧凑的 Player observation 与 affordance；
 8. 用 composite HostWorld 的一个 draft 原子连接物品、规则、移动与 encounter；
 9. 只实现有 playable consumer 的竖切，不建设第二 Kernel、审计平台或未来兼容层。
+10. 保留现有 Spatial 项目边界但整体替换 Grid 本体，并在一个 build-green cutover 中同步删除 FirstBoard 的第二份客观空间 authority。
 
 一句话总结：
 
