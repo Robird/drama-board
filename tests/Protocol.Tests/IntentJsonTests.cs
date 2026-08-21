@@ -56,13 +56,6 @@ public sealed class IntentJsonTests
     }
 
     [Fact]
-    public void Constructor_InvalidExpectedOutcomeValues_Throw()
-    {
-        Assert.Throws<ArgumentException>(() => new ExpectedOutcome(new string('x', 4_097)));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ExpectedOutcome("later", -1));
-    }
-
-    [Fact]
     public void Deserialize_NegativeDuration_Throws()
     {
         const string json = "{\"ActionKind\":\"action.wait\",\"DurationMs\":-1}";

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.FirstBoard;
 
@@ -67,7 +68,6 @@ public sealed record ScenarioDefinition(
     {
         Validate();
         long nextId = 1;
-        long worldRuleSourceId = nextId++;
         BoardPlace[] places =
         [
             .. Places.Select(place => new BoardPlace(
@@ -89,14 +89,13 @@ public sealed record ScenarioDefinition(
                 nextId++,
                 item.Id,
                 item.InitialPlaceId,
-                item.InitialOwnerActorId is null ? null : actorIds[item.InitialOwnerActorId],
-                ContentionRound: 0)),
+                item.InitialOwnerActorId is null ? null : actorIds[item.InitialOwnerActorId])),
         ];
 
         return new FirstBoardWorld(
             worldSeed,
-            worldRuleSourceId,
             nextId,
+            ModelTime.Zero,
             Array.AsReadOnly(places),
             Array.AsReadOnly(actors),
             Array.AsReadOnly(objects),
@@ -512,12 +511,8 @@ public sealed record ScenarioDefinition(
             placeId,
             Generation: 0,
             DecisionSequence: 0,
-            AwaitingDecision: false,
-            OpenDecisionId: null,
-            PendingAction: null,
             Activity: null,
-            KnownFacts: [],
-            LastRejectedIntent: null);
+            KnownFacts: []);
 }
 
 /// <summary>Binds an immutable scenario definition to the random seed of one instance.</summary>

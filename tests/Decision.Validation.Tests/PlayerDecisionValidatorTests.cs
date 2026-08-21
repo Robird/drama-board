@@ -18,46 +18,69 @@ public sealed class PlayerDecisionValidatorTests
         Assert.Null(result.Message);
     }
 
-    [Theory]
-    [InlineData("other", 7, 42, PlayerDecisionValidationError.DecisionIdMismatch)]
-    [InlineData("decision-1", 8, 42, PlayerDecisionValidationError.WorldVersionMismatch)]
-    [InlineData("decision-1", 7, 43, PlayerDecisionValidationError.LineageMismatch)]
-    public void Validate_MismatchedCorrelation_ReturnsSpecificError(
-        string decisionId,
-        long worldVersion,
-        long lineageId,
-        PlayerDecisionValidationError expected)
+    [Fact]
+    public void Validate_MismatchedDecisionId_ReturnsSpecificError()
     {
         DecisionRequest request = Request();
         var decision = new PlayerDecision(
-            new DecisionId(decisionId),
-            worldVersion,
-            lineageId,
+            new DecisionId("other"),
             new Intent(ActionKinds.Wait));
 
         PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(decision, request);
 
         Assert.False(result.IsValid);
-        Assert.Equal(expected, result.Error);
+        Assert.Equal(PlayerDecisionValidationError.DecisionIdMismatch, result.Error);
         Assert.NotNull(result.Message);
+    }
+
+    [Fact]
+    public void Validate_TargetOutsideAdvertisedAffordance_IsInvalid()
+    {
+        DecisionRequest request = Request() with
+        {
+            AvailableActions =
+            [
+                new AvailableAction(ActionKinds.Travel, CandidateDestinationIds: ["market"]),
+            ],
+        };
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(ActionKinds.Travel, DestinationId: "cellar")),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
+    }
+
+    [Fact]
+    public void Validate_MissingRequiredTarget_IsInvalid()
+    {
+        DecisionRequest request = Request() with
+        {
+            AvailableActions =
+            [
+                new AvailableAction(ActionKinds.Travel, CandidateDestinationIds: ["market"]),
+            ],
+        };
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(request.DecisionId, new Intent(ActionKinds.Travel)),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
     }
 
     private static DecisionRequest Request() =>
         new(
             new DecisionId("decision-1"),
-            BasedOnWorldVersion: 7,
-            LineageId: 42,
-            ModelTimeMs: 10,
-            Microstep: 2,
             ActorId: "actor.alice",
-            new Observation("actor.alice", "place.square", 10, 2, [], [], []),
-            DecisionReasons.Scheduled,
+            ModelTimeMs: 10,
+            new Observation("actor.alice", "place.square", 10, [], [], []),
             [new AvailableAction(ActionKinds.Wait)]);
 
     private static PlayerDecision Decision(DecisionRequest request) =>
         new(
             request.DecisionId,
-            request.BasedOnWorldVersion,
-            request.LineageId,
             new Intent(ActionKinds.Wait));
 }

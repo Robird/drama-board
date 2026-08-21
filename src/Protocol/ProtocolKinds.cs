@@ -30,16 +30,3 @@ public static class ActionKinds
     /// <summary>Identifies using an object or contextual capability on a target object.</summary>
     public static ActionKind Use { get; } = new("action.use");
 }
-
-/// <summary>Provides the first-version decision-point reason identifiers.</summary>
-public static class DecisionReasons
-{
-    /// <summary>Identifies a decision point opened by normal scheduling.</summary>
-    public static DecisionReason Scheduled { get; } = new("decision.scheduled");
-
-    /// <summary>Identifies a decision point opened after the actor's previous intent was rejected.</summary>
-    public static DecisionReason ActionRejected { get; } = new("decision.action-rejected");
-
-    /// <summary>Identifies a decision point opened because an activity was interrupted.</summary>
-    public static DecisionReason Interrupted { get; } = new("decision.interrupted");
-}

@@ -388,34 +388,6 @@ public sealed record MutationConsumedEvent : SpatialEvent
     public ScheduledSpatialMutationState Mutation { get; }
 }
 
-/// <summary>Consumes one successful SpatialMoment identity.</summary>
-public sealed record MomentResolvedEvent : SpatialEvent
-{
-    internal MomentResolvedEvent(long momentOrdinal, int resolvedWorkCount)
-    {
-        if (momentOrdinal <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(momentOrdinal));
-        }
-
-        if (resolvedWorkCount <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(resolvedWorkCount),
-                "A resolved SpatialMoment must consume positive work.");
-        }
-
-        MomentOrdinal = momentOrdinal;
-        ResolvedWorkCount = resolvedWorkCount;
-    }
-
-    /// <summary>Gets the exact persistent moment identity.</summary>
-    public long MomentOrdinal { get; }
-
-    /// <summary>Gets the positive number of due work items resolved by the moment.</summary>
-    public int ResolvedWorkCount { get; }
-}
-
 /// <summary>Reports that an entity entered a semantic zone.</summary>
 public sealed record ZoneEnteredEvent : SpatialEvent
 {

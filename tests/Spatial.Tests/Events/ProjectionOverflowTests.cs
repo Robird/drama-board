@@ -38,7 +38,7 @@ public sealed class ProjectionOverflowTests
     }
 
     [Fact]
-    public void MutationAndMomentAllocatorOverflow_ThrowWithoutPartialAdvance()
+    public void MutationAllocatorOverflow_ThrowsWithoutPartialAdvance()
     {
         SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
         SpatialState mutationState = SpatialState.Create(definition).Rebuild(nextMutationOrdinal: long.MaxValue);
@@ -52,12 +52,6 @@ public sealed class ProjectionOverflowTests
             new MutationScheduledEvent(mutation)));
         Assert.Empty(mutationState.ScheduledMutations);
 
-        SpatialState momentState = SpatialState.Create(definition).Rebuild(nextMomentOrdinal: long.MaxValue);
-        Assert.Throws<OverflowException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            momentState,
-            new MomentResolvedEvent(long.MaxValue, resolvedWorkCount: 1)));
-        Assert.Equal(long.MaxValue, momentState.NextMomentOrdinal);
     }
 
     [Fact]

@@ -6,32 +6,28 @@ using DramaBoard.Journal.Atelia;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
-using DramaBoard.Protocol;
 
 namespace DramaBoard.FirstBoard.Persistence.Tests;
 
 public sealed class FirstBoardPersistenceTests
 {
-    private const long LineageId = 10_001;
-    private const string PayloadCodec = "firstboard-json/1";
+    private const long LineageId = FirstBoardScenario.LineageId;
+    private const string PayloadCodec = "firstboard-fact-json/2";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     [Fact]
-    public async Task ScriptedGame_PersistsReopensAndFoldsToRuntimeWorld()
+    public async Task Run_PersistsReopensAndFoldsCompleteBatches()
     {
         using var directory = new TemporaryJournalDirectory();
-        FirstBoardWorld initial = FirstBoardWorld.CreateInitial(worldSeed: 42);
-        PlayerDecisionSessionResult<FirstBoardWorld> runtime;
-        DomainEvent<BoardEventPayload>[] written;
+        ScenarioInstance instance = DeadlineScenario(worldSeed: 42);
+        FirstBoardWorld initial = instance.CreateInitialWorld();
+        HostRunResult<FirstBoardWorld> runtime;
+        JournalBatch<BoardEventPayload>[] written;
 
         using (var sink = CreateSink(directory.Path))
         {
-            runtime = await RunAsync(
-                sink,
-                initial,
-                SimulationCursor.CreateInitial(LineageId, ModelTime.Zero),
-                new ModelTime(BoardTiming.RandomRunBoundaryTicks));
-            written = [.. sink.Events];
+            runtime = await RunAsync(sink, instance, initial, new ModelTime(200));
+            written = [.. sink.Batches];
         }
 
         var replay = AteliaJournalSink<BoardEventPayload>.OpenAndReplay(
@@ -43,171 +39,147 @@ public sealed class FirstBoardPersistenceTests
             DeserializePayload);
         using (replay.Sink)
         {
-            FirstBoardWorld folded = replay.Events.Aggregate(initial, new FirstBoardReducer().Apply);
+            FirstBoardWorld folded = Fold(initial, replay.Batches);
 
-            Assert.Equal(StopReason.BoundaryReached, runtime.StopReason);
+            Assert.Equal(StepStatus.BoundaryReached, runtime.Status);
             Assert.Equal(SerializeWorld(runtime.World), SerializeWorld(folded));
-            AssertDomainEventsEqual(written, replay.Events);
+            AssertBatchesEqual(written, replay.Batches);
             Assert.Equal(LineageId, replay.Sink.LineageId);
-            Assert.Contains(replay.Events, domainEvent =>
-                domainEvent.Payload is ChestOpenedEvent);
-            Assert.Contains(replay.Events, domainEvent =>
-                domainEvent.Payload is ObjectPlacedEvent);
-            Assert.Contains(replay.Events, domainEvent =>
-                domainEvent.Payload is CellarSealedEvent);
+            Assert.Contains(replay.Batches.SelectMany(batch => batch.Facts),
+                fact => fact is CellarSealedEvent);
         }
     }
 
     [Fact]
-    public async Task PersistedCursor_ReopenAndContinue_EqualsOneShotJournalEventForEvent()
+    public async Task ReopenAndContinue_EqualsOneShotBatchForBatch()
     {
         using var directory = new TemporaryJournalDirectory();
         string oneShotPath = Path.Combine(directory.Path, "one-shot");
         string splitPath = Path.Combine(directory.Path, "split");
-        string snapshotPath = Path.Combine(directory.Path, "cursor.snapshot.json");
-        FirstBoardWorld initial = FirstBoardWorld.CreateInitial(worldSeed: 42);
-        PlayerDecisionSessionResult<FirstBoardWorld> expected;
-        DomainEvent<BoardEventPayload>[] expectedEvents;
+        ScenarioInstance instance = DeadlineScenario(worldSeed: 43);
+        FirstBoardWorld initial = instance.CreateInitialWorld();
+        HostRunResult<FirstBoardWorld> expected;
+        JournalBatch<BoardEventPayload>[] expectedBatches;
 
-        using (var oneShotSink = CreateSink(oneShotPath))
+        using (var sink = CreateSink(oneShotPath))
         {
-            expected = await RunAsync(
-                oneShotSink,
-                initial,
-                SimulationCursor.CreateInitial(LineageId, ModelTime.Zero),
-                new ModelTime(BoardTiming.RandomRunBoundaryTicks));
-            expectedEvents = [.. oneShotSink.Events];
+            expected = await RunAsync(sink, instance, initial, new ModelTime(200));
+            expectedBatches = [.. sink.Batches];
         }
 
         using (var firstSink = CreateSink(splitPath))
         {
-            PlayerDecisionSessionResult<FirstBoardWorld> first = await RunAsync(
+            HostRunResult<FirstBoardWorld> first = await RunAsync(
                 firstSink,
+                instance,
                 initial,
-                SimulationCursor.CreateInitial(LineageId, ModelTime.Zero),
-                new ModelTime(450_000));
-
-            Assert.Equal(StopReason.BoundaryReached, first.StopReason);
-            Assert.Equal(0, first.PendingDecisionCount);
-            File.WriteAllBytes(
-                snapshotPath,
-                CursorSnapshotEnvelopeCodec.Serialize(first.Cursor.ToSnapshot()));
+                new ModelTime(100));
+            Assert.Equal(StepStatus.BoundaryReached, first.Status);
         }
 
-        PlayerDecisionSessionResult<FirstBoardWorld> actual;
-        DomainEvent<BoardEventPayload>[] actualEvents;
+        HostRunResult<FirstBoardWorld> actual;
+        JournalBatch<BoardEventPayload>[] actualBatches;
         using (var reopened = CreateSink(splitPath))
         {
-            FirstBoardWorld replayedWorld = reopened.Events.Aggregate(
-                initial,
-                new FirstBoardReducer().Apply);
-            CursorSnapshot persistedSnapshot = CursorSnapshotEnvelopeCodec.Deserialize(
-                File.ReadAllBytes(snapshotPath));
-            SimulationCursor restoredCursor = SimulationCursor.FromSnapshot(persistedSnapshot);
-
-            Assert.Equal(reopened.LineageId, restoredCursor.LineageId);
-            actual = await RunAsync(
-                reopened,
-                replayedWorld,
-                restoredCursor,
-                new ModelTime(BoardTiming.RandomRunBoundaryTicks));
-            actualEvents = [.. reopened.Events];
+            FirstBoardWorld replayedWorld = Fold(initial, reopened.Batches);
+            LogicalInstant? last = reopened.Batches.Count == 0
+                ? null
+                : reopened.Batches[^1].Instant;
+            SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+                FirstBoardScenario.CreateKernel(
+                    Drivers(),
+                    instance,
+                    reopened,
+                    replayedWorld,
+                    new WorldVersion(LineageId, reopened.Batches.Count),
+                    last);
+            actual = await SimulationHost.RunUntilAsync(kernel, new ModelTime(200));
+            actualBatches = [.. reopened.Batches];
         }
 
         Assert.Equal(SerializeWorld(expected.World), SerializeWorld(actual.World));
-        Assert.Equal(expected.Cursor.ToSnapshot(), actual.Cursor.ToSnapshot());
         Assert.Equal(expected.Version, actual.Version);
-        AssertDomainEventsEqual(expectedEvents, actualEvents);
+        AssertBatchesEqual(expectedBatches, actualBatches);
     }
+
+    private static ScenarioInstance DeadlineScenario(ulong worldSeed) =>
+        new(
+            ScenarioDefinition.Default with { CellarDeadlineMs = 123 },
+            worldSeed);
 
     private static AteliaJournalSink<BoardEventPayload> CreateSink(string path) =>
         new(path, LineageId, PayloadCodec, SerializePayload, DeserializePayload);
 
-    private static async Task<PlayerDecisionSessionResult<FirstBoardWorld>> RunAsync(
+    private static async Task<HostRunResult<FirstBoardWorld>> RunAsync(
         IJournalSink<BoardEventPayload> journal,
+        ScenarioInstance instance,
         FirstBoardWorld initialWorld,
-        SimulationCursor initialCursor,
         ModelTime until)
     {
-        var session = new PlayerDecisionSession<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
-            FirstBoardScenario.CreateLoop(new FirstBoardReducer()),
-            journal,
-            initialWorld,
-            initialCursor,
-            FirstBoardScenario.SelectActor,
-            CreateDrivers(),
-            FirstBoardScenario.BuildRequest,
-            FirstBoardScenario.TranslateDecision,
-            rejectionSelector: FirstBoardScenario.SelectRejectedActor);
-        return await session.RunUntilAsync(until, CancellationToken.None);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(Drivers(), instance, journal, initialWorld);
+        return await SimulationHost.RunUntilAsync(kernel, until, CancellationToken.None);
     }
 
-    private static IReadOnlyDictionary<string, IPlayerDriver> CreateDrivers() =>
+    private static IReadOnlyDictionary<string, IPlayerDriver> Drivers() =>
         new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
         {
-            [BoardIds.Alice] = new DecisionIdScriptDriver(),
-            [BoardIds.Bob] = new DecisionIdScriptDriver(),
+            [BoardIds.Alice] = new NullPlayerDriver(),
+            [BoardIds.Bob] = new NullPlayerDriver(),
         };
+
+    private static FirstBoardWorld Fold(
+        FirstBoardWorld initial,
+        IReadOnlyList<JournalBatch<BoardEventPayload>> batches)
+    {
+        var reducer = new FirstBoardReducer();
+        FirstBoardWorld world = initial;
+        foreach (JournalBatch<BoardEventPayload> batch in batches)
+        {
+            foreach (BoardEventPayload fact in batch.Facts)
+            {
+                world = reducer.Apply(world, batch.Instant, fact);
+            }
+        }
+
+        return world;
+    }
 
     private static byte[] SerializePayload(BoardEventPayload payload) =>
-        payload switch
-        {
-            DecisionRequestedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActionRequestedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorDepartedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorArrivedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorWaitStartedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorWaitedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorSpokeEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActorObservedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ObjectTakenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ObjectPlacedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ObjectGivenEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ObjectShownEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ChestOpenedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ObjectContentionResolvedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            ActionRejectedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            CellarSealedEvent value => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions),
-            _ => throw new InvalidOperationException(
-                $"Unknown FirstBoard payload type '{payload.GetType().FullName}'."),
-        };
+        JsonSerializer.SerializeToUtf8Bytes(
+            new FactEnvelope(FirstBoardScenario.FactName(payload), payload),
+            JsonOptions);
 
-    private static BoardEventPayload DeserializePayload(EventKind kind, byte[] payload) =>
-        kind.Id switch
+    private static BoardEventPayload DeserializePayload(byte[] payload)
+    {
+        using JsonDocument document = JsonDocument.Parse(payload);
+        JsonElement root = document.RootElement;
+        string kind = root.GetProperty("Kind").GetString()
+            ?? throw new JsonException("FirstBoard fact kind cannot be null.");
+        JsonElement fact = root.GetProperty("Payload");
+        return kind switch
         {
-            "decision.requested" => Deserialize<DecisionRequestedEvent>(payload),
-            "action.travel-requested" or
-            "action.wait-requested" or
-            "action.talk-requested" or
-            "action.observe-requested" or
-            "action.take-requested" or
-            "action.put-requested" or
-            "action.give-requested" or
-            "action.show-requested" or
-            "action.use-requested" or
-            "action.unknown-requested" => Deserialize<ActionRequestedEvent>(payload),
-            "actor.departed" => Deserialize<ActorDepartedEvent>(payload),
-            "actor.arrived" => Deserialize<ActorArrivedEvent>(payload),
-            "actor.wait-started" => Deserialize<ActorWaitStartedEvent>(payload),
-            "actor.waited" => Deserialize<ActorWaitedEvent>(payload),
-            "actor.spoke" => Deserialize<ActorSpokeEvent>(payload),
-            "actor.observed" => Deserialize<ActorObservedEvent>(payload),
-            "object.taken" => Deserialize<ObjectTakenEvent>(payload),
-            "object.placed" => Deserialize<ObjectPlacedEvent>(payload),
-            "object.given" => Deserialize<ObjectGivenEvent>(payload),
-            "object.shown" => Deserialize<ObjectShownEvent>(payload),
-            "chest.opened" => Deserialize<ChestOpenedEvent>(payload),
-            "object.contention-resolved" => Deserialize<ObjectContentionResolvedEvent>(payload),
-            "action.rejected" => Deserialize<ActionRejectedEvent>(payload),
-            "cellar.sealed" => Deserialize<CellarSealedEvent>(payload),
-            _ => throw new NotSupportedException(
-                $"FirstBoard payload kind '{kind.Id}' version {kind.Version} is not supported."),
+            "actor.departed" => Deserialize<ActorDepartedEvent>(fact),
+            "actor.arrived" => Deserialize<ActorArrivedEvent>(fact),
+            "actor.wait-started" => Deserialize<ActorWaitStartedEvent>(fact),
+            "actor.waited" => Deserialize<ActorWaitedEvent>(fact),
+            "actor.spoke" => Deserialize<ActorSpokeEvent>(fact),
+            "actor.observed" => Deserialize<ActorObservedEvent>(fact),
+            "object.taken" => Deserialize<ObjectTakenEvent>(fact),
+            "object.placed" => Deserialize<ObjectPlacedEvent>(fact),
+            "object.given" => Deserialize<ObjectGivenEvent>(fact),
+            "object.shown" => Deserialize<ObjectShownEvent>(fact),
+            "chest.opened" => Deserialize<ChestOpenedEvent>(fact),
+            "action.rejected" => Deserialize<ActionRejectedEvent>(fact),
+            "cellar.sealed" => Deserialize<CellarSealedEvent>(fact),
+            _ => throw new NotSupportedException($"FirstBoard fact kind '{kind}' is not supported."),
         };
+    }
 
-    private static TPayload Deserialize<TPayload>(byte[] payload)
+    private static TPayload Deserialize<TPayload>(JsonElement payload)
         where TPayload : BoardEventPayload =>
-        JsonSerializer.Deserialize<TPayload>(payload, JsonOptions)
-        ?? throw new JsonException($"FirstBoard payload '{typeof(TPayload).Name}' cannot be null.");
+        payload.Deserialize<TPayload>(JsonOptions)
+        ?? throw new JsonException($"FirstBoard fact '{typeof(TPayload).Name}' cannot be null.");
 
     private static byte[] SerializeWorld(FirstBoardWorld world) =>
         JsonSerializer.SerializeToUtf8Bytes(world, JsonOptions);
@@ -219,57 +191,26 @@ public sealed class FirstBoardPersistenceTests
         return options;
     }
 
-    private static void AssertDomainEventsEqual(
-        IReadOnlyList<DomainEvent<BoardEventPayload>> expected,
-        IReadOnlyList<DomainEvent<BoardEventPayload>> actual)
+    private static void AssertBatchesEqual(
+        IReadOnlyList<JournalBatch<BoardEventPayload>> expected,
+        IReadOnlyList<JournalBatch<BoardEventPayload>> actual)
     {
         Assert.Equal(expected.Count, actual.Count);
-        for (int index = 0; index < expected.Count; index++)
+        for (int batchIndex = 0; batchIndex < expected.Count; batchIndex++)
         {
-            Assert.Equal(expected[index].Timestamp, actual[index].Timestamp);
-            Assert.Equal(expected[index].Cause, actual[index].Cause);
-            Assert.Equal(expected[index].Kind.Id, actual[index].Kind.Id);
-            Assert.Equal(expected[index].Kind.Version, actual[index].Kind.Version);
-            Assert.Equal(expected[index].Payload.GetType(), actual[index].Payload.GetType());
-            Assert.Equal(SerializePayload(expected[index].Payload), SerializePayload(actual[index].Payload));
+            Assert.Equal(expected[batchIndex].Instant, actual[batchIndex].Instant);
+            Assert.Equal(expected[batchIndex].CauseKey, actual[batchIndex].CauseKey);
+            Assert.Equal(expected[batchIndex].Facts.Count, actual[batchIndex].Facts.Count);
+            for (int factIndex = 0; factIndex < expected[batchIndex].Facts.Count; factIndex++)
+            {
+                Assert.Equal(
+                    SerializePayload(expected[batchIndex].Facts[factIndex]),
+                    SerializePayload(actual[batchIndex].Facts[factIndex]));
+            }
         }
     }
 
-    private sealed class DecisionIdScriptDriver : IPlayerDriver
-    {
-        public ValueTask<PlayerDecision> DecideAsync(
-            DecisionRequest request,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Intent intent = request.DecisionId.Value switch
-            {
-                "decision.alice.1" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market),
-                "decision.alice.2" => new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey),
-                "decision.alice.3" => new Intent(
-                    ActionKinds.Talk,
-                    TargetActorId: BoardIds.Bob,
-                    FreeText: $"fact:{BoardIds.KeyLocationKnown}"),
-                "decision.alice.4" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar),
-                "decision.alice.5" => new Intent(ActionKinds.Use, TargetObjectId: BoardIds.LockedChest),
-                "decision.alice.6" => new Intent(
-                    ActionKinds.Put,
-                    TargetObjectId: BoardIds.DuchessLetter),
-                "decision.alice.7" => new Intent(ActionKinds.Wait, DurationMs: 5_000_000),
-                "decision.bob.1" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),
-                "decision.bob.2" => new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks),
-                "decision.bob.3" => new Intent(ActionKinds.Travel, DestinationId: BoardIds.Tavern),
-                "decision.bob.4" => new Intent(ActionKinds.Wait, DurationMs: 5_000_000),
-                _ => throw new InvalidOperationException(
-                    $"The scripted game has no decision for '{request.DecisionId.Value}'."),
-            };
-            return ValueTask.FromResult(new PlayerDecision(
-                request.DecisionId,
-                request.BasedOnWorldVersion,
-                request.LineageId,
-                intent));
-        }
-    }
+    private sealed record FactEnvelope(string Kind, object Payload);
 
     private sealed class ModelTimeJsonConverter : JsonConverter<ModelTime>
     {

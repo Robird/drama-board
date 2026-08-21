@@ -11,7 +11,7 @@ public abstract record SpatialCommand
         CommandId = commandId;
     }
 
-    /// <summary>Gets the stable identifier used to normalize a simultaneous command batch.</summary>
+    /// <summary>Gets the stable identifier used to correlate one external command.</summary>
     public SpatialCommandId CommandId { get; }
 }
 

@@ -28,8 +28,6 @@ public sealed class LlmPlayerDriverTests
         PlayerDecision decision = await driver.DecideAsync(request, CancellationToken.None);
 
         Assert.Equal(request.DecisionId, decision.DecisionId);
-        Assert.Equal(request.BasedOnWorldVersion, decision.BasedOnWorldVersion);
-        Assert.Equal(request.LineageId, decision.LineageId);
         Assert.Equal(ActionKinds.Observe, decision.Intent.ActionKind);
         Assert.Equal("第一次观察后，我记住了钥匙。", driver.CurrentMemoryBank["working"].Content);
         Assert.DoesNotContain("## 当前处境", driver.CurrentMemoryBank["working"].Content);
@@ -294,20 +292,15 @@ public sealed class LlmPlayerDriverTests
     private static DecisionRequest CreateRequest() =>
         new(
             new DecisionId("decision.alice.1"),
-            BasedOnWorldVersion: 12,
-            LineageId: 10_001,
-            ModelTimeMs: 300_000,
-            Microstep: 2,
             ActorId: "alice",
+            ModelTimeMs: 300_000,
             new Observation(
                 "alice",
                 "tavern",
                 ModelTimeMs: 300_000,
-                Microstep: 2,
                 VisibleActorIds: [],
                 VisibleObjectIds: [],
                 KnownFacts: []),
-            DecisionReasons.Scheduled,
             [new AvailableAction(ActionKinds.Wait), new AvailableAction(ActionKinds.Observe)]);
 
     private static string Response(string action, string memoryProposal, string? extraJson = null) =>

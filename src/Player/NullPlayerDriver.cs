@@ -15,8 +15,6 @@ public sealed class NullPlayerDriver : IPlayerDriver
 
         return ValueTask.FromResult(new PlayerDecision(
             request.DecisionId,
-            request.BasedOnWorldVersion,
-            request.LineageId,
             new Intent(ActionKinds.Wait)));
     }
 }

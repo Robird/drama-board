@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\Decision.Validation\Decision.Validation.csproj" />
     <ProjectReference Include="..\Host\Host.csproj" />
     <ProjectReference Include="..\Kernel\Kernel.csproj" />
     <ProjectReference Include="..\Player\Player.csproj" />
     <ProjectReference Include="..\Protocol\Protocol.csproj" />
+    <ProjectReference Include="..\Spatial\Spatial.csproj" />
   </ItemGroup>
 
 </Project>

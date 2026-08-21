@@ -6,6 +6,8 @@ on:
 
 jobs:
   build-and-test:
+    env:
+      AteliaRepositoryRoot: ${{ github.workspace }}/external/atelia
     strategy:
       fail-fast: false
       matrix:
@@ -13,10 +15,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check out pinned Atelia dependency
+        uses: actions/checkout@v4
+        with:
+          repository: Atelia-org/atelia
+          ref: 7e56aa37690a2a354956a79f06f4ff3f3e83640c
+          path: external/atelia
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
       - name: Build
-        run: dotnet build DramaBoard.slnx -warnaserror
+        run: dotnet build DramaBoard.Local.slnx -warnaserror
       - name: Test
-        run: dotnet test DramaBoard.slnx
+        run: dotnet test DramaBoard.Local.slnx

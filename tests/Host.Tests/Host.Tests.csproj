@@ -11,15 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="DramaBoard.Player" />
     <Using Include="Xunit" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Host\Host.csproj" />
     <ProjectReference Include="..\..\src\Kernel\Kernel.csproj" />
-    <ProjectReference Include="..\..\src\Player\Player.csproj" />
-    <ProjectReference Include="..\..\src\Protocol\Protocol.csproj" />
   </ItemGroup>
 
 </Project>

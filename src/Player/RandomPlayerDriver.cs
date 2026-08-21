@@ -22,15 +22,14 @@ public sealed class RandomPlayerDriver : IPlayerDriver
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Intent intent = request.AvailableActions.Count == 0
+        IReadOnlyList<AvailableAction> availableActions = request.AvailableActions;
+        Intent intent = availableActions.Count == 0
             ? new Intent(ActionKinds.Wait)
             : CreateIntent(
                 request,
-                request.AvailableActions[SampleIndex(request, request.AvailableActions.Count, choiceIndex: 0)]);
+                availableActions[SampleIndex(request, availableActions.Count, choiceIndex: 0)]);
         return ValueTask.FromResult(new PlayerDecision(
             request.DecisionId,
-            request.BasedOnWorldVersion,
-            request.LineageId,
             intent));
     }
 
@@ -53,7 +52,7 @@ public sealed class RandomPlayerDriver : IPlayerDriver
         DeterministicRandom.SampleInt32(
             unchecked((ulong)_seed),
             DeterministicRandom.DeriveStreamId(request.ActorId),
-            unchecked((ulong)request.BasedOnWorldVersion),
+            DeterministicRandom.DeriveStreamId(request.DecisionId.Value),
             minInclusive: 0,
             exclusiveUpperBound,
             choiceIndex);

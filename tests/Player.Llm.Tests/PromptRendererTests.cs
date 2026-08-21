@@ -53,23 +53,6 @@ public sealed class PromptRendererTests
     }
 
     [Fact]
-    public void Render_IncludesRejectedIntent()
-    {
-        DecisionRequest request = CreateRequest() with
-        {
-            Reason = DecisionReasons.ActionRejected,
-            RejectedIntent = new Intent(ActionKinds.Travel, DestinationId: "cellar"),
-        };
-
-        LlmChatRequest rendered = PromptRenderer.Render(Character, Memory("记忆"), request, []);
-
-        string changes = Section(rendered.User, "[新近变化]", "[决策请求]");
-        Assert.Contains("上次尝试被拒绝", changes);
-        Assert.Contains("action=action.travel", changes);
-        Assert.Contains("destination=cellar", changes);
-    }
-
-    [Fact]
     public void Render_ReferenceMaterialPreservesSourceWithoutAssertingBelief()
     {
         ReferenceMaterial[] materials =
@@ -95,20 +78,15 @@ public sealed class PromptRendererTests
     private static DecisionRequest CreateRequest(IReadOnlyList<KnownFact>? knownFacts = null) =>
         new(
             new DecisionId("decision.alice.1"),
-            BasedOnWorldVersion: 12,
-            LineageId: 10_001,
-            ModelTimeMs: 300_000,
-            Microstep: 2,
             ActorId: "alice",
+            ModelTimeMs: 300_000,
             new Observation(
                 "alice",
                 "tavern",
                 ModelTimeMs: 300_000,
-                Microstep: 2,
                 VisibleActorIds: ["bob"],
                 VisibleObjectIds: ["brass-key"],
                 KnownFacts: knownFacts ?? []),
-            DecisionReasons.Scheduled,
             [
                 new AvailableAction(
                     ActionKinds.Travel,

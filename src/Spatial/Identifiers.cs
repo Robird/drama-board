@@ -144,7 +144,7 @@ public readonly record struct TerrainId : IComparable<TerrainId>
     public override string ToString() => Value;
 }
 
-/// <summary>Correlates one spatial command with its deterministic batch result.</summary>
+/// <summary>Correlates one spatial command with its deterministic result.</summary>
 public readonly record struct SpatialCommandId : IComparable<SpatialCommandId>
 {
     /// <summary>Initializes a command identifier from its stable value.</summary>

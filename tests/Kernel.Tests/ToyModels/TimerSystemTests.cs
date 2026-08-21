@@ -7,83 +7,55 @@ namespace DramaBoard.Kernel.Tests.ToyModels;
 public sealed class TimerSystemTests
 {
     [Fact]
-    public void Run_ThreeIndependentTimers_CommitsInTimeOrderWithThreeJumps()
+    public async Task StepAsync_ThreeTimersCommitOneBatchPerStepInTimeOrder()
     {
-        TimerSystem[] systems = [new()];
-        var loop = new SimulationLoop<TimerWorld, string, string>(systems, new TimerReducer());
-        var journal = new InMemoryJournal<string>();
+        TimerWorld world = TimerWorld.Start(
+            new TimerEntity(1, "A", AtSecond(10)),
+            new TimerEntity(2, "B", AtSecond(20)),
+            new TimerEntity(3, "C", AtSecond(15)));
+        var rule = new TimerRule();
+        var journal = new InMemoryJournal<TimerFact>(lineageId: 1);
+        SimulationKernel<TimerWorld, string, TimerFact> kernel =
+            TimerModel.CreateKernel(world, rule, journal);
 
-        SimulationRunResult<TimerWorld, string> result = loop.Run(
-            CreateWorld(),
-            cursor: Cursor(),
-            until: AtSecond(20),
-            journal);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(AtSecond(20)));
+        Assert.Single(journal.Batches);
+        Assert.Equal(["A"], kernel.World.FiredTimers);
 
-        Assert.Equal(["A", "C", "B"], journal.Events.Select(domainEvent => domainEvent.Payload));
-        Assert.Equal([10_000L, 15_000L, 20_000L], journal.Events.Select(domainEvent => domainEvent.Timestamp.ModelTime.Ticks));
-        Assert.Equal(3, result.TimeAdvanceCount);
-        Assert.Equal(3, result.ResolvedCandidateCount);
-        Assert.Equal(["A", "C", "B"], result.World.FiredTimers);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(AtSecond(20)));
+        Assert.Equal(2, journal.Batches.Count);
+        Assert.Equal(["A", "C"], kernel.World.FiredTimers);
+
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(AtSecond(20)));
+        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(AtSecond(20)));
+
+        Assert.Equal(["A", "C", "B"], kernel.World.FiredTimers);
+        Assert.Equal([10_000L, 15_000L, 20_000L],
+            journal.Batches.Select(batch => batch.Instant.ModelTime.Ticks));
+        Assert.Equal(3, kernel.Version.TransitionCount);
+        Assert.Equal(4, rule.ForecastCallCount);
+        Assert.Equal(3, rule.PlanCallCount);
     }
 
     [Fact]
-    public void Run_CommittedJournal_ReplaysToFinalWorld()
+    public async Task StepAsync_SameTickTimersUseSchedulerAndReforecastAfterEachCommit()
     {
-        TimerWorld initialWorld = CreateWorld();
-        var reducer = new TimerReducer();
-        var journal = new InMemoryJournal<string>();
-        var loop = new SimulationLoop<TimerWorld, string, string>(CreateSystems(), reducer);
+        TimerWorld world = TimerWorld.Start(
+            new TimerEntity(1, "A", AtSecond(10)),
+            new TimerEntity(2, "B", AtSecond(10)));
+        var rule = new TimerRule(reverseForecast: true);
+        var journal = new InMemoryJournal<TimerFact>(lineageId: 1);
+        SimulationKernel<TimerWorld, string, TimerFact> kernel =
+            TimerModel.CreateKernel(world, rule, journal);
 
-        SimulationRunResult<TimerWorld, string> result = loop.Run(
-            initialWorld,
-            Cursor(),
-            AtSecond(20),
-            journal);
-        TimerWorld replayed = journal.Events.Aggregate(initialWorld, reducer.Apply);
+        await kernel.StepAsync(AtSecond(10));
+        await kernel.StepAsync(AtSecond(10));
 
-        Assert.Equal(result.World.FiredTimers, replayed.FiredTimers);
+        Assert.Equal(2, rule.ForecastCallCount);
+        Assert.Equal([0L, 1L], journal.Batches.Select(batch => batch.Instant.CausalOrdinal));
+        Assert.Equal(kernel.World.FiredTimers, journal.Batches.Select(batch => batch.Facts[0].TimerName));
     }
 
-    [Fact]
-    public void Run_ReducerObservesOnlyEventsAlreadyCommittedToJournal()
-    {
-        var journal = new InMemoryJournal<string>();
-        var reducer = new JournalObservingTimerReducer(journal);
-        var loop = new SimulationLoop<TimerWorld, string, string>(CreateSystems(), reducer);
-
-        _ = loop.Run(CreateWorld(), Cursor(), AtSecond(20), journal);
-
-        Assert.True(reducer.ObservedOnlyCommittedEvents);
-    }
-
-    private static TimerSystem[] CreateSystems() => [new()];
-
-    private static TimerWorld CreateWorld() => TimerWorld.Start(
-        new TimerEntity(1, "A", AtSecond(10)),
-        new TimerEntity(2, "B", AtSecond(20)),
-        new TimerEntity(3, "C", AtSecond(15)));
-
-    private static SimulationCursor Cursor() => SimulationCursor.CreateInitial(lineageId: 1, ModelTime.Zero);
-
-    private static ModelTime AtSecond(long seconds) => ModelTime.Zero + ModelDuration.FromSeconds(seconds);
-
-    private sealed class JournalObservingTimerReducer : IEventReducer<TimerWorld, string>
-    {
-        private readonly InMemoryJournal<string> _journal;
-        private readonly TimerReducer _inner = new();
-
-        public JournalObservingTimerReducer(InMemoryJournal<string> journal)
-        {
-            _journal = journal;
-        }
-
-        public bool ObservedOnlyCommittedEvents { get; private set; } = true;
-
-        public TimerWorld Apply(TimerWorld world, DomainEvent<string> domainEvent)
-        {
-            ObservedOnlyCommittedEvents &= _journal.Events.Count > 0 &&
-                ReferenceEquals(_journal.Events[^1], domainEvent);
-            return _inner.Apply(world, domainEvent);
-        }
-    }
+    private static ModelTime AtSecond(long seconds) =>
+        ModelTime.Zero + ModelDuration.FromSeconds(seconds);
 }

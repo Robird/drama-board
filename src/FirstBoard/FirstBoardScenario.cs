@@ -12,30 +12,43 @@ namespace DramaBoard.FirstBoard;
 public static class FirstBoardScenario
 {
     public const long LineageId = 10_001;
+    private const int MaxTransitionsPerModelTime = 10_000;
 
-    /// <summary>Creates the FirstBoard loop with the current default scenario definition.</summary>
-    public static SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateLoop(
-        FirstBoardReducer reducer) => CreateLoop(reducer, ScenarioDefinition.Default);
-
-    /// <summary>Creates the FirstBoard loop with causal parameters from one definition.</summary>
-    public static SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateLoop(
-        FirstBoardReducer reducer,
-        ScenarioDefinition definition)
+    public static SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> CreateKernel(
+        IReadOnlyDictionary<string, IPlayerDriver> drivers,
+        ScenarioInstance instance,
+        IJournalSink<BoardEventPayload> journal,
+        FirstBoardWorld world,
+        WorldVersion? version = null,
+        LogicalInstant? lastCommittedInstant = null)
     {
-        ArgumentNullException.ThrowIfNull(reducer);
-        ArgumentNullException.ThrowIfNull(definition);
-        definition.Validate();
-        return
-        new(
+        ArgumentNullException.ThrowIfNull(drivers);
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(world);
+        instance.Definition.Validate();
+        if (world.WorldSeed != instance.WorldSeed)
+        {
+            throw new ArgumentException(
+                "The supplied committed world and scenario instance use different seeds.",
+                nameof(world));
+        }
+
+        var reducer = new FirstBoardReducer();
+        return new SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
+            world,
+            version ?? new WorldVersion(journal.LineageId, journal.Batches.Count),
+            world.Now,
+            lastCommittedInstant,
+            new SimulationRules(instance.WorldSeed, MaxTransitionsPerModelTime),
             [
-                new CellarDeadlineSystem(definition.CellarDeadlineMs),
-                new ActionResolutionSystem(),
-                new ActivityCompletionSystem(),
-                new DecisionSchedulingSystem(),
+                new CellarDeadlineRule(instance.Definition.CellarDeadlineMs),
+                new ActivityCompletionRule(),
+                new DecisionPointRule(drivers),
             ],
-            reducer,
-            decisionRequestPredicate: domainEvent =>
-                domainEvent.Kind == BoardEventKinds.DecisionRequested);
+            journal,
+            reducer.Apply,
+            ValidateWorld);
     }
 
     /// <summary>Runs the default definition with a backward-compatible explicit seed.</summary>
@@ -69,90 +82,40 @@ public static class FirstBoardScenario
                 nameof(initialWorld));
         }
 
-        var reducer = new FirstBoardReducer();
-        var journal = new InMemoryJournal<BoardEventPayload>();
-        var session = new PlayerDecisionSession<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
-            CreateLoop(reducer, instance.Definition),
-            journal,
-            world,
-            SimulationCursor.CreateInitial(LineageId, ModelTime.Zero),
-            SelectActor,
-            drivers,
-            BuildRequest,
-            TranslateDecision,
-            rejectionSelector: SelectRejectedActor);
-
-        PlayerDecisionSessionResult<FirstBoardWorld> result = await session.RunUntilAsync(
+        var journal = new InMemoryJournal<BoardEventPayload>(LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            CreateKernel(drivers, instance, journal, world);
+        HostRunResult<FirstBoardWorld> result = await SimulationHost.RunUntilAsync(
+            kernel,
             until,
             cancellationToken);
         return new BoardRunCapture(world, result, journal);
     }
 
-    public static string SelectActor(DomainEvent<BoardEventPayload> decisionEvent) =>
-        decisionEvent.Payload is DecisionRequestedEvent requested
-            ? requested.ActorId
-            : throw new InvalidOperationException("The routed event is not a decision request.");
-
-    public static string? SelectRejectedActor(DomainEvent<BoardEventPayload> domainEvent) =>
-        domainEvent.Payload is ActionRejectedEvent rejected
-            ? rejected.ActorId
-            : null;
-
-    public static DecisionRequest? BuildRequest(
+    public static DecisionRequest BuildRequest(
         FirstBoardWorld world,
-        DomainEvent<BoardEventPayload> decisionEvent,
-        WorldVersion version)
+        BoardActor actor,
+        ModelTime modelTime)
     {
-        if (decisionEvent.Payload is not DecisionRequestedEvent requested)
+        if (!world.IsIdle(actor))
         {
-            throw new InvalidOperationException("The request event has the wrong payload.");
-        }
-
-        BoardActor actor = world.Actor(requested.ActorId);
-        if (!actor.AwaitingDecision || actor.OpenDecisionId != requested.DecisionId)
-        {
-            return null;
+            throw new InvalidOperationException("Only an idle actor can receive a decision request.");
         }
 
         var observation = new Observation(
             actor.Key,
             actor.PlaceId,
-            ModelTimeMs: -1,
-            Microstep: -1,
+            ModelTimeMs: modelTime.Ticks,
             VisibleActorIds: VisibleActors(world, actor),
             VisibleObjectIds: VisibleObjectIds(world, actor),
             KnownFacts: ObservationFacts(world, actor));
         return new DecisionRequest(
-            new DecisionId(requested.DecisionId),
-            BasedOnWorldVersion: -1,
-            LineageId: -1,
-            ModelTimeMs: -1,
-            Microstep: -1,
+            new DecisionId($"decision.{actor.Key}.{actor.DecisionSequence + 1}"),
             actor.Key,
+            ModelTimeMs: modelTime.Ticks,
             observation,
-            actor.LastRejectedIntent is null
-                ? DecisionReasons.Scheduled
-                : DecisionReasons.ActionRejected,
-            AvailableActions(world, actor),
-            actor.LastRejectedIntent);
+            AvailableActions(world, actor));
     }
-
-    public static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> TranslateDecision(
-        PlayerDecision decision,
-        FirstBoardWorld world)
-    {
-        BoardActor actor = world.Actors.Single(current =>
-            current.OpenDecisionId == decision.DecisionId.Value);
-        return [ActionInput(actor.Key, decision.DecisionId.Value, decision.Intent)];
-    }
-
-    public static UncommittedDomainEvent<BoardEventPayload> ActionInput(
-        string actorId,
-        string decisionId,
-        Intent intent) =>
-        new(
-            BoardEventKinds.ForAction(intent.ActionKind),
-            new ActionRequestedEvent(actorId, decisionId, intent));
 
     public static string WorldSnapshot(FirstBoardWorld world)
     {
@@ -165,12 +128,8 @@ public static class FirstBoardScenario
                 actor.PlaceId,
                 actor.Generation.ToString(CultureInfo.InvariantCulture),
                 actor.DecisionSequence.ToString(CultureInfo.InvariantCulture),
-                actor.AwaitingDecision,
-                actor.OpenDecisionId,
-                ActionSummary(actor.PendingAction),
                 ActivitySummary(actor.Activity),
-                string.Join(",", actor.KnownFacts.Select(fact => $"{fact.Kind}@{fact.RelatedId}")),
-                IntentSummary(actor.LastRejectedIntent))));
+                string.Join(",", actor.KnownFacts.Select(fact => $"{fact.Kind}@{fact.RelatedId}")))));
         string objects = string.Join(
             ";",
             world.Objects.OrderBy(item => item.Id).Select(item => string.Join(
@@ -178,16 +137,16 @@ public static class FirstBoardScenario
                 item.Id.ToString(CultureInfo.InvariantCulture),
                 item.Key,
                 item.PlaceId,
-                item.OwnerActorId?.ToString(CultureInfo.InvariantCulture),
-                item.ContentionRound.ToString(CultureInfo.InvariantCulture))));
+                item.OwnerActorId?.ToString(CultureInfo.InvariantCulture))));
         return FormattableString.Invariant(
-            $"seed={world.WorldSeed};sealed={world.CellarSealed};chestOpened={world.ChestOpened};actors={actors};objects={objects}");
+            $"seed={world.WorldSeed};now={world.Now.Ticks};sealed={world.CellarSealed};chestOpened={world.ChestOpened};actors={actors};objects={objects}");
     }
 
     public static string[] EventSnapshots(InMemoryJournal<BoardEventPayload> journal) =>
         [
-            .. journal.Events.Select(domainEvent => FormattableString.Invariant(
-                $"{domainEvent.Timestamp.ModelTime.Ticks}:{domainEvent.Timestamp.Microstep.Value} {domainEvent.Kind.Id} {PayloadSummary(domainEvent.Payload)}")),
+            .. journal.Batches.SelectMany(batch => batch.Facts.Select((fact, index) =>
+                FormattableString.Invariant(
+                    $"{batch.Instant.ModelTime.Ticks}:{batch.Instant.CausalOrdinal} #{index} {FactName(fact)} {PayloadSummary(fact)}"))),
         ];
 
     public static string FormatJournal(InMemoryJournal<BoardEventPayload> journal)
@@ -364,18 +323,6 @@ public static class FirstBoardScenario
         return ownerId == observer.Id;
     }
 
-    private static string ActionSummary(SubmittedAction? action) =>
-        action is null
-            ? "-"
-                        : IntentSummary(action.Intent);
-
-        private static string IntentSummary(Intent? intent) =>
-                intent is null
-                        ? "-"
-                        : $"{intent.ActionKind.Id}:{intent.TargetActorId}:" +
-                            $"{intent.TargetObjectId}:{intent.DestinationId}:" +
-                            $"{intent.FreeText}:{intent.DurationMs}:{intent.UntilModelTimeMs}";
-
     private static string ActivitySummary(BoardActivity? activity) =>
         activity is null
             ? "-"
@@ -384,13 +331,6 @@ public static class FirstBoardScenario
     private static string PayloadSummary(BoardEventPayload payload) =>
         payload switch
         {
-            DecisionRequestedEvent requested =>
-                $"actor={requested.ActorId} decision={requested.DecisionId}",
-            ActionRequestedEvent requested =>
-                $"actor={requested.ActorId} action={requested.Intent.ActionKind.Id} " +
-                $"targetActor={requested.Intent.TargetActorId} " +
-                $"targetObject={requested.Intent.TargetObjectId} " +
-                $"destination={requested.Intent.DestinationId}",
             ActorDepartedEvent departed =>
                 $"actor={departed.ActorId} origin={departed.OriginId} " +
                 $"destination={departed.DestinationId} arriveAt={departed.ArriveAt.Ticks}",
@@ -413,20 +353,48 @@ public static class FirstBoardScenario
                 $"actor={shown.ActorId} target={shown.TargetActorId} object={shown.ObjectId}",
             ChestOpenedEvent opened =>
                 $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
-            ObjectContentionResolvedEvent contention =>
-                $"object={contention.ObjectId} competitors=" +
-                $"{string.Join(",", contention.CompetitorActorIds)} winner={contention.WinnerActorId} " +
-                $"sample={contention.Sample.StreamId}/{contention.Sample.Generation}/" +
-                $"{contention.Sample.SampleIndex}",
             ActionRejectedEvent rejected =>
                 $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKind.Id} " +
                 $"reason={rejected.Reason}",
             CellarSealedEvent => "place=cellar",
             _ => throw new InvalidOperationException("Unknown FirstBoard event payload."),
         };
+
+    public static string FactName(BoardEventPayload fact) => fact switch
+    {
+        ActorDepartedEvent => "actor.departed",
+        ActorArrivedEvent => "actor.arrived",
+        ActorWaitStartedEvent => "actor.wait-started",
+        ActorWaitedEvent => "actor.waited",
+        ActorSpokeEvent => "actor.spoke",
+        ActorObservedEvent => "actor.observed",
+        ObjectTakenEvent => "object.taken",
+        ObjectPlacedEvent => "object.placed",
+        ObjectGivenEvent => "object.given",
+        ObjectShownEvent => "object.shown",
+        ChestOpenedEvent => "chest.opened",
+        ActionRejectedEvent => "action.rejected",
+        CellarSealedEvent => "cellar.sealed",
+        _ => throw new InvalidOperationException("Unknown FirstBoard fact."),
+    };
+
+    private static void ValidateWorld(FirstBoardWorld world)
+    {
+        if (world.Actors.Select(actor => actor.Id).Distinct().Count() != world.Actors.Count ||
+            world.Actors.Select(actor => actor.Key).Distinct(StringComparer.Ordinal).Count() != world.Actors.Count)
+        {
+            throw new InvalidOperationException("FirstBoard actor identities must be unique.");
+        }
+
+        if (world.Objects.Select(item => item.Id).Distinct().Count() != world.Objects.Count ||
+            world.Objects.Select(item => item.Key).Distinct(StringComparer.Ordinal).Count() != world.Objects.Count)
+        {
+            throw new InvalidOperationException("FirstBoard object identities must be unique.");
+        }
+    }
 }
 
 public sealed record BoardRunCapture(
     FirstBoardWorld InitialWorld,
-    PlayerDecisionSessionResult<FirstBoardWorld> Result,
+    HostRunResult<FirstBoardWorld> Result,
     InMemoryJournal<BoardEventPayload> Journal);

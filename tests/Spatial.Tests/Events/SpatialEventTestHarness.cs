@@ -1,4 +1,3 @@
-using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial.Tests;
@@ -10,15 +9,12 @@ internal static class SpatialEventTestHarness
         SpatialState state,
         SpatialEvent payload,
         ModelTime? time = null,
-        EventKind? kind = null,
-        long batchOrdinal = 0)
+        long causalOrdinal = 0)
     {
-        var domainEvent = new DomainEvent<SpatialEvent>(
-            new LogicalTimestamp(time ?? ModelTime.Zero, new Microstep(0)),
-            EventCause.FromExternalInput(batchOrdinal),
-            kind ?? SpatialEventKinds.For(payload),
+        return new SpatialReducer(definition).Apply(
+            state,
+            new LogicalInstant(time ?? ModelTime.Zero, causalOrdinal),
             payload);
-        return new SpatialReducer(definition).Apply(state, domainEvent);
     }
 
     public static SpatialState Place(

@@ -35,10 +35,10 @@ internal static class DramaRecordWriter
             .Append("- Definition SHA-256：").AppendLine(scenarioInstance.DefinitionSha256)
             .Append("- Instance SHA-256：").AppendLine(scenarioInstance.InstanceSha256)
             .Append("- 世界种子：").AppendLine(options.WorldSeed.ToString(CultureInfo.InvariantCulture))
-            .Append("- 结束：").Append(capture.Result.StopReason)
-            .Append(" @ ").Append(capture.Result.Cursor.Now.Ticks.ToString(CultureInfo.InvariantCulture))
+            .Append("- 结束：").Append(capture.Result.Status)
+            .Append(" @ ").Append(capture.Result.CurrentModelTime.Ticks.ToString(CultureInfo.InvariantCulture))
             .AppendLine("ms")
-            .Append("- 世界事件：").AppendLine(capture.Journal.Events.Count.ToString(CultureInfo.InvariantCulture))
+            .Append("- 世界 transition：").AppendLine(capture.Journal.Batches.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- 成功解析的 LLM turn：").AppendLine(traces.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- turn 预算触发的收场等待：").AppendLine(budgetForcedCount.ToString(CultureInfo.InvariantCulture))
             .AppendLine()
@@ -59,12 +59,15 @@ internal static class DramaRecordWriter
             .AppendLine("## 世界事件叙事 dump")
             .AppendLine();
 
-        foreach (DomainEvent<BoardEventPayload> domainEvent in capture.Journal.Events)
+        foreach (JournalBatch<BoardEventPayload> batch in capture.Journal.Batches)
         {
-            text.Append("- **").Append(FormatTime(domainEvent.Timestamp.ModelTime.Ticks))
-                .Append(" / μ").Append(domainEvent.Timestamp.Microstep.Value.ToString(CultureInfo.InvariantCulture))
-                .Append("** ").Append(RenderEvent(domainEvent.Payload))
-                .Append("  `").Append(domainEvent.Kind.Id).AppendLine("`");
+            foreach (BoardEventPayload fact in batch.Facts)
+            {
+                text.Append("- **").Append(FormatTime(batch.Instant.ModelTime.Ticks))
+                    .Append(" / #").Append(batch.Instant.CausalOrdinal.ToString(CultureInfo.InvariantCulture))
+                    .Append("** ").Append(RenderEvent(fact))
+                    .Append("  `").Append(FirstBoardScenario.FactName(fact)).AppendLine("`");
+            }
         }
 
         text.AppendLine()
@@ -113,8 +116,6 @@ internal static class DramaRecordWriter
     private static string RenderEvent(BoardEventPayload payload) =>
         payload switch
         {
-            DecisionRequestedEvent value => $"轮到{DisplayActor(value.ActorId)}决定下一步。",
-            ActionRequestedEvent value => $"{DisplayActor(value.ActorId)}选择：{FormatIntent(value.Intent)}。",
             ActorDepartedEvent value =>
                 $"{DisplayActor(value.ActorId)}离开{DisplayPlace(value.OriginId)}，前往{DisplayPlace(value.DestinationId)}。",
             ActorArrivedEvent value =>
@@ -142,8 +143,6 @@ internal static class DramaRecordWriter
             ChestOpenedEvent value =>
                 $"{DisplayActor(value.ActorId)}用{DisplayObject(value.KeyObjectId)}打开了" +
                 $"{DisplayObject(value.ObjectId)}，找到了公爵夫人的密信。",
-            ObjectContentionResolvedEvent value =>
-                $"众人争抢{DisplayObject(value.ObjectId)}，最终由演员 #{value.WinnerActorId} 得手。",
             ActionRejectedEvent value =>
                 $"{DisplayActor(value.ActorId)}的行动被世界拒绝：{value.Reason}。",
             CellarSealedEvent => "钟声响起，地窖永久封闭。",

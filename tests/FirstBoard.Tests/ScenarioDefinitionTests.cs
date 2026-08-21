@@ -80,10 +80,10 @@ public sealed class ScenarioDefinitionTests
             instance,
             new ModelTime(200));
 
-        var sealedEvent = Assert.Single(
-            capture.Journal.Events,
-            domainEvent => domainEvent.Payload is CellarSealedEvent);
-        Assert.Equal(123, sealedEvent.Timestamp.ModelTime.Ticks);
+        var sealedBatch = Assert.Single(
+            capture.Journal.Batches,
+            batch => batch.Facts.Any(fact => fact is CellarSealedEvent));
+        Assert.Equal(123, sealedBatch.Instant.ModelTime.Ticks);
         Assert.True(capture.Result.World.CellarSealed);
     }
 

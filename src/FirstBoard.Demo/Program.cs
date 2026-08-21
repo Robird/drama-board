@@ -129,7 +129,7 @@ try
             alice.ForcedSceneEndCount + bob.ForcedSceneEndCount);
 
         Console.WriteLine(
-            $"Completed: {capture.Result.StopReason}; events={capture.Journal.Events.Count}; " +
+            $"Completed: {capture.Result.Status}; transitions={capture.Journal.Batches.Count}; " +
             $"llmTurns={traceSink.Traces.Count}");
         Console.WriteLine($"Drama record: {recordPath}");
     }

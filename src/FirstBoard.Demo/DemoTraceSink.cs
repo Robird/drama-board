@@ -99,8 +99,6 @@ internal sealed class DecisionBudgetPlayerDriver : IPlayerDriver
             ForcedSceneEndCount = checked(ForcedSceneEndCount + 1);
             return ValueTask.FromResult(new PlayerDecision(
                 request.DecisionId,
-                request.BasedOnWorldVersion,
-                request.LineageId,
                 new Intent(ActionKinds.Wait, DurationMs: SceneEndingWaitMs)));
         }
 

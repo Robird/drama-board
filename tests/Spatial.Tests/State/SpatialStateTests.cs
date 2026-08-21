@@ -16,7 +16,6 @@ public sealed class SpatialStateTests
         Assert.Equal(first.ContentHash, firstState.Definition.ContentHash);
         Assert.Equal(first.RulesVersion, firstState.Definition.RulesVersion);
         Assert.Equal(0, firstState.Revision);
-        Assert.Equal(1, firstState.NextMomentOrdinal);
         Assert.Equal(1, firstState.NextJourneyOrdinal);
         Assert.Equal(1, firstState.NextMutationOrdinal);
         Assert.Empty(firstState.Entities);

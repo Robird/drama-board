@@ -7,8 +7,7 @@ public enum PlayerDecisionValidationError
 {
     None = 0,
     DecisionIdMismatch,
-    WorldVersionMismatch,
-    LineageMismatch,
+    ActionNotAvailable,
 }
 
 /// <summary>Contains the pure correlation-validation result for one Player answer.</summary>
@@ -39,20 +38,45 @@ public static class PlayerDecisionValidator
                 "The Player decision does not match the requested DecisionId.");
         }
 
-        if (decision.BasedOnWorldVersion != request.BasedOnWorldVersion)
+        if (!request.AvailableActions.Any(action =>
+            Matches(decision.Intent, action)))
         {
             return new(
-                PlayerDecisionValidationError.WorldVersionMismatch,
-                "The Player decision is based on a stale world version.");
-        }
-
-        if (decision.LineageId != request.LineageId)
-        {
-            return new(
-                PlayerDecisionValidationError.LineageMismatch,
-                "The Player decision belongs to a different world lineage.");
+                PlayerDecisionValidationError.ActionNotAvailable,
+                "The Player intent is not one of the request's advertised affordances.");
         }
 
         return PlayerDecisionValidationResult.Valid;
     }
+
+    private static bool Matches(Intent intent, AvailableAction available)
+    {
+        if (intent.ActionKind != available.ActionKind ||
+            !MatchesOptional(intent.TargetActorId, available.CandidateActorIds) ||
+            !MatchesOptional(intent.TargetObjectId, available.CandidateObjectIds) ||
+            !MatchesOptional(intent.DestinationId, available.CandidateDestinationIds))
+        {
+            return false;
+        }
+
+        return intent.ActionKind.Id switch
+        {
+            "action.travel" => intent.DestinationId is not null,
+            "action.talk" => intent.TargetActorId is not null,
+            "action.take" or "action.put" or "action.use" => intent.TargetObjectId is not null,
+            "action.give" or "action.show" =>
+                intent.TargetActorId is not null && intent.TargetObjectId is not null,
+            "action.wait" =>
+                intent.TargetActorId is null &&
+                intent.TargetObjectId is null &&
+                intent.DestinationId is null,
+            "action.observe" => intent.TargetActorId is null && intent.DestinationId is null,
+            _ => false,
+        };
+    }
+
+    private static bool MatchesOptional(string? selected, IReadOnlyList<string>? advertised) =>
+        selected is null
+            ? true
+            : advertised?.Contains(selected, StringComparer.Ordinal) == true;
 }

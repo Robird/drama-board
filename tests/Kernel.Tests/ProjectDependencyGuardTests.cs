@@ -11,7 +11,7 @@ public sealed class ProjectDependencyGuardTests
             { "Protocol", [] },
             { "Decision.Validation", ["Protocol"] },
             { "Player", ["Kernel", "Protocol"] },
-            { "Host", ["Decision.Validation", "Kernel", "Player", "Protocol"] },
+            { "Host", ["Kernel"] },
             { "Player.Llm", ["Player", "Protocol"] },
         };
 

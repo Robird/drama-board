@@ -1,92 +1,36 @@
-using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>Contains one atomically planned Spatial event sequence and its scratch projection.</summary>
+/// <summary>Contains one atomically planned Spatial fact sequence and its scratch projection.</summary>
 internal sealed class SpatialTransitionResult
 {
     internal SpatialTransitionResult(
         SpatialState resultingState,
-        IEnumerable<UncommittedDomainEvent<SpatialEvent>> events)
+        IEnumerable<SpatialEvent> events)
     {
         ArgumentNullException.ThrowIfNull(resultingState);
         ArgumentNullException.ThrowIfNull(events);
         ResultingState = resultingState;
-        Events = Array.AsReadOnly(events.ToArray());
+        Facts = Array.AsReadOnly(events.ToArray());
     }
 
-    /// <summary>Gets the complete scratch state after every returned event.</summary>
+    /// <summary>Gets the complete scratch state after every returned fact.</summary>
     internal SpatialState ResultingState { get; }
 
-    /// <summary>Gets primary events, canonical derived outcomes, and an optional final moment event.</summary>
-    internal IReadOnlyList<UncommittedDomainEvent<SpatialEvent>> Events { get; }
+    /// <summary>Gets primary facts followed by the canonical derived relation delta.</summary>
+    internal IReadOnlyList<SpatialEvent> Facts { get; }
 }
 
 /// <summary>Plans one complete, non-interleaved Spatial transition against an immutable pre-state.</summary>
 internal static class SpatialTransition
 {
-    /// <summary>Completes an immediate transition, appending one canonical relationship diff.</summary>
+    /// <summary>Completes primary facts and appends one canonical relationship diff.</summary>
     internal static SpatialTransitionResult Complete(
         SpatialDefinition definition,
         SpatialState preState,
         ModelTime modelTime,
-        IEnumerable<SpatialEvent> primaryBodyEvents) =>
-        CompleteCore(
-            definition,
-            preState,
-            modelTime,
-            primaryBodyEvents,
-            resolvedWorkCount: null);
-
-    /// <summary>
-    /// Completes a SpatialMoment transition and appends exactly one MomentResolved event last.
-    /// </summary>
-    internal static SpatialTransitionResult CompleteMoment(
-        SpatialDefinition definition,
-        SpatialState preState,
-        ModelTime modelTime,
-        IEnumerable<SpatialEvent> primaryBodyEvents,
-        int resolvedWorkCount)
-    {
-        if (resolvedWorkCount <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(resolvedWorkCount),
-                "A completed SpatialMoment must resolve positive work.");
-        }
-
-        ArgumentNullException.ThrowIfNull(preState);
-        SpatialStateValidator.ValidateComplete(definition, preState);
-        long dueWorkCount = (long)preState.Journeys.Count(
-            journey => journey.CurrentLeg.Due == modelTime) +
-            preState.ScheduledMutations.Count(mutation => mutation.Due == modelTime);
-        if (dueWorkCount == 0)
-        {
-            throw new InvalidOperationException(
-                "A completed SpatialMoment requires work due exactly at its model time.");
-        }
-
-        if (dueWorkCount != resolvedWorkCount)
-        {
-            throw new InvalidOperationException(
-                $"Resolved work count {resolvedWorkCount} does not match {dueWorkCount} due work items.");
-        }
-
-        return CompleteCore(
-            definition,
-            preState,
-            modelTime,
-            primaryBodyEvents,
-            resolvedWorkCount);
-    }
-
-    private static SpatialTransitionResult CompleteCore(
-        SpatialDefinition definition,
-        SpatialState preState,
-        ModelTime modelTime,
-        IEnumerable<SpatialEvent> primaryBodyEvents,
-        int? resolvedWorkCount)
+        IEnumerable<SpatialEvent> primaryBodyEvents)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(preState);
@@ -94,38 +38,23 @@ internal static class SpatialTransition
         SpatialEvent[] body = [.. primaryBodyEvents];
         if (body.Any(payload => payload is null))
         {
-            throw new ArgumentException("Spatial transition body cannot contain null events.", nameof(primaryBodyEvents));
+            throw new ArgumentException("Spatial transition body cannot contain null facts.", nameof(primaryBodyEvents));
         }
 
         if (body.Any(payload => !IsPrimaryBodyEvent(payload)))
         {
             throw new ArgumentException(
-                "Spatial transition body accepts only state-changing primary Spatial events.",
-                nameof(primaryBodyEvents));
-        }
-
-        if (resolvedWorkCount.HasValue && body.Length == 0)
-        {
-            throw new ArgumentException(
-                "A completed SpatialMoment must contain at least one primary body event.",
+                "Spatial transition body accepts only state-changing primary Spatial facts.",
                 nameof(primaryBodyEvents));
         }
 
         SpatialStateValidator.ValidateComplete(definition, preState);
         SpatialState workingState = preState;
-        var events = new List<UncommittedDomainEvent<SpatialEvent>>(body.Length + 1);
+        var events = new List<SpatialEvent>(body.Length + 1);
         foreach (SpatialEvent payload in body)
         {
-            var uncommitted = new UncommittedDomainEvent<SpatialEvent>(
-                SpatialEventKinds.For(payload),
-                payload);
-            workingState = SpatialProjector.Apply(
-                definition,
-                workingState,
-                uncommitted.Kind,
-                uncommitted.Payload,
-                modelTime);
-            events.Add(uncommitted);
+            workingState = SpatialProjector.Apply(definition, workingState, payload, modelTime);
+            events.Add(payload);
         }
 
         SpatialStateValidator.ValidateComplete(definition, workingState);
@@ -135,32 +64,8 @@ internal static class SpatialTransition
             workingState);
         foreach (SpatialEvent payload in derived)
         {
-            var uncommitted = new UncommittedDomainEvent<SpatialEvent>(
-                SpatialEventKinds.For(payload),
-                payload);
-            workingState = SpatialProjector.Apply(
-                definition,
-                workingState,
-                uncommitted.Kind,
-                uncommitted.Payload,
-                modelTime);
-            events.Add(uncommitted);
-        }
-
-        if (resolvedWorkCount is int workCount)
-        {
-            var resolved = new MomentResolvedEvent(workingState.NextMomentOrdinal, workCount);
-            var terminal = new UncommittedDomainEvent<SpatialEvent>(
-                SpatialEventKinds.MomentResolved,
-                resolved);
-            workingState = SpatialProjector.Apply(
-                definition,
-                workingState,
-                terminal.Kind,
-                terminal.Payload,
-                modelTime);
-            events.Add(terminal);
-            SpatialStateValidator.ValidateComplete(definition, workingState);
+            workingState = SpatialProjector.Apply(definition, workingState, payload, modelTime);
+            events.Add(payload);
         }
 
         return new SpatialTransitionResult(workingState, events);

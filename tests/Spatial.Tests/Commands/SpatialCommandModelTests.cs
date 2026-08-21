@@ -181,25 +181,18 @@ public sealed class SpatialCommandModelTests
             SpatialCommandDisposition.Accepted,
             journeyId: new JourneyId(3));
         var noChange = Result("b", SpatialCommandDisposition.AcceptedNoChange);
-        var sameBatchAlias = Result(
+        var existingSchedule = Result(
             "c",
-            SpatialCommandDisposition.AcceptedAlias,
-            aliasOfCommandId: Id("a"),
+            SpatialCommandDisposition.AcceptedNoChange,
             scheduledMutationId: new ScheduledMutationId(5));
-        var existingScheduleAlias = Result(
-            "d",
-            SpatialCommandDisposition.AcceptedAlias,
-            scheduledMutationId: new ScheduledMutationId(7));
         var rejected = Result(
-            "e",
+            "d",
             SpatialCommandDisposition.Rejected,
             SpatialCommandRejectionCode.JourneyUnreachable);
 
         Assert.Equal(new JourneyId(3), accepted.JourneyId);
         Assert.Equal(SpatialCommandRejectionCode.None, noChange.RejectionCode);
-        Assert.Equal(Id("a"), sameBatchAlias.AliasOfCommandId);
-        Assert.Equal(new ScheduledMutationId(5), sameBatchAlias.ScheduledMutationId);
-        Assert.Null(existingScheduleAlias.AliasOfCommandId);
+        Assert.Equal(new ScheduledMutationId(5), existingSchedule.ScheduledMutationId);
         Assert.Equal(SpatialCommandRejectionCode.JourneyUnreachable, rejected.RejectionCode);
     }
 
@@ -219,26 +212,7 @@ public sealed class SpatialCommandModelTests
             SpatialCommandRejectionCode.EntityNotFound));
         Assert.Throws<ArgumentException>(() => Result(
             "a",
-            SpatialCommandDisposition.Accepted,
-            aliasOfCommandId: Id("b")));
-        Assert.Throws<ArgumentException>(() => Result(
-            "a",
             SpatialCommandDisposition.AcceptedNoChange,
-            journeyId: new JourneyId(1)));
-        Assert.Throws<ArgumentException>(() =>
-            Result("a", SpatialCommandDisposition.AcceptedAlias));
-        Assert.Throws<ArgumentException>(() => Result(
-            "a",
-            SpatialCommandDisposition.AcceptedAlias,
-            aliasOfCommandId: Id("a")));
-        Assert.Throws<ArgumentException>(() => Result(
-            "a",
-            SpatialCommandDisposition.AcceptedAlias,
-            aliasOfCommandId: Id("b")));
-        Assert.Throws<ArgumentException>(() => Result(
-            "b",
-            SpatialCommandDisposition.AcceptedAlias,
-            aliasOfCommandId: Id("a"),
             journeyId: new JourneyId(1)));
         Assert.Throws<ArgumentException>(() => Result(
             "a",
@@ -255,58 +229,29 @@ public sealed class SpatialCommandModelTests
     }
 
     [Fact]
-    public void BatchResult_DefensivelySnapshotsEventsAndResults()
+    public void CommandPlan_DefensivelySnapshotsFacts()
     {
-        var firstEvent = new UncommittedDomainEvent<SpatialEvent>(
-            SpatialEventKinds.ZoneEntered,
-            new ZoneEnteredEvent(new EntityId(1), new ZoneId("first")));
-        var replacementEvent = new UncommittedDomainEvent<SpatialEvent>(
-            SpatialEventKinds.ZoneLeft,
-            new ZoneLeftEvent(new EntityId(1), new ZoneId("replacement")));
+        SpatialEvent firstEvent = new ZoneEnteredEvent(new EntityId(1), new ZoneId("first"));
+        SpatialEvent replacementEvent = new ZoneLeftEvent(new EntityId(1), new ZoneId("replacement"));
         SpatialCommandResult firstResult = Result("a", SpatialCommandDisposition.Accepted);
-        SpatialCommandResult secondResult = Result("b", SpatialCommandDisposition.AcceptedNoChange);
-        var events = new[] { firstEvent };
-        var results = new[] { firstResult, secondResult };
+        var facts = new[] { firstEvent };
 
-        var batch = new SpatialCommandBatchResult(events, results);
-        events[0] = replacementEvent;
-        results[0] = Result("z", SpatialCommandDisposition.Accepted);
+        var plan = new SpatialCommandPlan(facts, firstResult);
+        facts[0] = replacementEvent;
 
-        Assert.Same(firstEvent, Assert.Single(batch.Events));
-        Assert.Equal([firstResult, secondResult], batch.Results);
+        Assert.Same(firstEvent, Assert.Single(plan.Facts));
+        Assert.Same(firstResult, plan.Result);
         Assert.Throws<NotSupportedException>(() =>
-            ((IList<UncommittedDomainEvent<SpatialEvent>>)batch.Events)[0] = replacementEvent);
-        Assert.Throws<NotSupportedException>(() =>
-            ((IList<SpatialCommandResult>)batch.Results)[0] = secondResult);
+            ((IList<SpatialEvent>)plan.Facts)[0] = replacementEvent);
     }
 
     [Fact]
-    public void BatchResult_RequiresUniqueStrictOrdinalResultOrder()
+    public void CommandPlan_RejectsNullFactsAndResult()
     {
-        SpatialCommandResult upper = Result("A", SpatialCommandDisposition.AcceptedNoChange);
-        SpatialCommandResult lower = Result("a", SpatialCommandDisposition.AcceptedNoChange);
-
-        var valid = new SpatialCommandBatchResult([], [upper, lower]);
-
-        Assert.Equal(["A", "a"], valid.Results.Select(result => result.CommandId.Value));
-        Assert.Throws<ArgumentException>(() => new SpatialCommandBatchResult([], [lower, upper]));
-        Assert.Throws<ArgumentException>(() => new SpatialCommandBatchResult([], [upper, upper]));
-        Assert.Throws<ArgumentException>(() => new SpatialCommandBatchResult(
-            [],
-            [Result("b", SpatialCommandDisposition.AcceptedAlias, aliasOfCommandId: Id("a"))]));
-    }
-
-    [Fact]
-    public void BatchResult_RejectsNullCollectionsAndElements()
-    {
-        Assert.Throws<ArgumentNullException>(() => new SpatialCommandBatchResult(null!, []));
-        Assert.Throws<ArgumentNullException>(() => new SpatialCommandBatchResult([], null!));
-        Assert.Throws<ArgumentException>(() => new SpatialCommandBatchResult(
-            [null!],
-            []));
-        Assert.Throws<ArgumentException>(() => new SpatialCommandBatchResult(
-            [],
-            [null!]));
+        SpatialCommandResult result = Result("a", SpatialCommandDisposition.AcceptedNoChange);
+        Assert.Throws<ArgumentNullException>(() => new SpatialCommandPlan(null!, result));
+        Assert.Throws<ArgumentNullException>(() => new SpatialCommandPlan([], null!));
+        Assert.Throws<ArgumentException>(() => new SpatialCommandPlan([null!], result));
     }
 
     private static SpatialCommandId Id(string value) => new(value);
@@ -317,14 +262,12 @@ public sealed class SpatialCommandModelTests
         string commandId,
         SpatialCommandDisposition disposition,
         SpatialCommandRejectionCode rejectionCode = SpatialCommandRejectionCode.None,
-        SpatialCommandId? aliasOfCommandId = null,
         JourneyId? journeyId = null,
         ScheduledMutationId? scheduledMutationId = null) =>
         new(
             Id(commandId),
             disposition,
             rejectionCode,
-            aliasOfCommandId,
             journeyId,
             scheduledMutationId);
 

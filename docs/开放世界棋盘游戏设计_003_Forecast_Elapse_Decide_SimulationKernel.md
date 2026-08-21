@@ -6,7 +6,7 @@
 
 **本次修订：2026-08-21**
 
-**定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。剩余实施切片以 `研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md` 为唯一计划权威。**
+**定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 `研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md` 为权威。**
 
 ---
 

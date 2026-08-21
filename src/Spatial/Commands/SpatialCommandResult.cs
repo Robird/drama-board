@@ -1,5 +1,3 @@
-using DramaBoard.Kernel.Simulation;
-
 namespace DramaBoard.Spatial;
 
 /// <summary>Identifies how one spatial command was handled.</summary>
@@ -8,11 +6,8 @@ public enum SpatialCommandDisposition
     /// <summary>The command produced one or more authoritative effects.</summary>
     Accepted,
 
-    /// <summary>The requested value already held and no authoritative event was needed.</summary>
+    /// <summary>The requested value already held and no authoritative fact was needed.</summary>
     AcceptedNoChange,
-
-    /// <summary>The command was equivalent to another accepted or already-scheduled intent.</summary>
-    AcceptedAlias,
 
     /// <summary>The command was not applied.</summary>
     Rejected,
@@ -23,9 +18,6 @@ public enum SpatialCommandRejectionCode
 {
     /// <summary>The command was not rejected.</summary>
     None,
-
-    /// <summary>The command conflicts with another command in the simultaneous batch.</summary>
-    ConflictingCommands,
 
     /// <summary>The requested entity identifier is already placed.</summary>
     EntityAlreadyExists,
@@ -60,7 +52,7 @@ public enum SpatialCommandRejectionCode
     /// <summary>The referenced zone does not exist in the bound definition.</summary>
     UnknownZone,
 
-    /// <summary>A scheduled mutation is not strictly later than the batch model time.</summary>
+    /// <summary>A scheduled mutation is not strictly later than the command model time.</summary>
     ScheduledMutationDueNotFuture,
 
     /// <summary>A different value is already scheduled for the same target and due time.</summary>
@@ -92,24 +84,12 @@ public sealed record SpatialCommandResult
         SpatialCommandId commandId,
         SpatialCommandDisposition disposition,
         SpatialCommandRejectionCode rejectionCode = SpatialCommandRejectionCode.None,
-        SpatialCommandId? aliasOfCommandId = null,
         JourneyId? journeyId = null,
         ScheduledMutationId? scheduledMutationId = null)
     {
         SpatialCommandArguments.Validate(commandId);
         ValidateEnum(disposition, nameof(disposition));
         ValidateEnum(rejectionCode, nameof(rejectionCode));
-        if (aliasOfCommandId is { } alias)
-        {
-            SpatialCommandArguments.Validate(alias);
-            if (alias.CompareTo(commandId) >= 0)
-            {
-                throw new ArgumentException(
-                    "A command result can only alias an earlier CommandId.",
-                    nameof(aliasOfCommandId));
-            }
-        }
-
         if (journeyId is { Value: <= 0 })
         {
             throw new ArgumentException("Journey identifier must be initialized.", nameof(journeyId));
@@ -132,28 +112,18 @@ public sealed record SpatialCommandResult
             case SpatialCommandDisposition.Rejected when rejectionCode == SpatialCommandRejectionCode.None:
                 throw new ArgumentException("A rejected command must provide a rejection code.", nameof(rejectionCode));
             case SpatialCommandDisposition.Rejected
-                when aliasOfCommandId is not null || journeyId is not null || scheduledMutationId is not null:
+                when journeyId is not null || scheduledMutationId is not null:
                 throw new ArgumentException("A rejected command cannot report accepted-result metadata.");
             case not SpatialCommandDisposition.Rejected
                 when rejectionCode != SpatialCommandRejectionCode.None:
                 throw new ArgumentException("An accepted command cannot provide a rejection code.", nameof(rejectionCode));
-            case SpatialCommandDisposition.Accepted when aliasOfCommandId is not null:
-                throw new ArgumentException("A directly accepted command cannot alias another command.", nameof(aliasOfCommandId));
-            case SpatialCommandDisposition.AcceptedNoChange
-                when aliasOfCommandId is not null || journeyId is not null || scheduledMutationId is not null:
-                throw new ArgumentException("A no-change result cannot report accepted-result metadata.");
-            case SpatialCommandDisposition.AcceptedAlias
-                when aliasOfCommandId is null && scheduledMutationId is null:
-                throw new ArgumentException(
-                    "An alias must identify its canonical command or an existing scheduled mutation.");
-            case SpatialCommandDisposition.AcceptedAlias when journeyId is not null:
-                throw new ArgumentException("Movement commands cannot alias JourneyIds.", nameof(journeyId));
+            case SpatialCommandDisposition.AcceptedNoChange when journeyId is not null:
+                throw new ArgumentException("A no-change result cannot allocate a JourneyId.", nameof(journeyId));
         }
 
         CommandId = commandId;
         Disposition = disposition;
         RejectionCode = rejectionCode;
-        AliasOfCommandId = aliasOfCommandId;
         JourneyId = journeyId;
         ScheduledMutationId = scheduledMutationId;
     }
@@ -167,13 +137,10 @@ public sealed record SpatialCommandResult
     /// <summary>Gets the stable rejection reason, or None for every accepted disposition.</summary>
     public SpatialCommandRejectionCode RejectionCode { get; }
 
-    /// <summary>Gets the earlier canonical command when this result aliases one.</summary>
-    public SpatialCommandId? AliasOfCommandId { get; }
-
     /// <summary>Gets the allocated or retained journey identity when relevant.</summary>
     public JourneyId? JourneyId { get; }
 
-    /// <summary>Gets the allocated or aliased scheduled-mutation identity when relevant.</summary>
+    /// <summary>Gets the allocated or already-scheduled mutation identity when relevant.</summary>
     public ScheduledMutationId? ScheduledMutationId { get; }
 
     private static void ValidateEnum<T>(T value, string parameterName)
@@ -186,53 +153,28 @@ public sealed record SpatialCommandResult
     }
 }
 
-/// <summary>Contains the immutable authoritative events and per-command results of one batch.</summary>
-public sealed class SpatialCommandBatchResult
+/// <summary>Contains the raw facts and outcome planned for one external command.</summary>
+public sealed class SpatialCommandPlan
 {
-    internal SpatialCommandBatchResult(
-        IEnumerable<UncommittedDomainEvent<SpatialEvent>> events,
-        IEnumerable<SpatialCommandResult> results)
+    internal SpatialCommandPlan(
+        IEnumerable<SpatialEvent> facts,
+        SpatialCommandResult result)
     {
-        ArgumentNullException.ThrowIfNull(events);
-        ArgumentNullException.ThrowIfNull(results);
-        UncommittedDomainEvent<SpatialEvent>[] eventArray = [.. events];
-        SpatialCommandResult[] resultArray = [.. results];
-        if (eventArray.Any(value => value is null))
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(result);
+        SpatialEvent[] factArray = [.. facts];
+        if (factArray.Any(value => value is null))
         {
-            throw new ArgumentException("A spatial command batch cannot contain null events.", nameof(events));
+            throw new ArgumentException("A spatial command plan cannot contain null facts.", nameof(facts));
         }
 
-        if (resultArray.Any(value => value is null))
-        {
-            throw new ArgumentException("A spatial command batch cannot contain null results.", nameof(results));
-        }
-
-        for (int index = 1; index < resultArray.Length; index++)
-        {
-            if (resultArray[index - 1].CommandId.CompareTo(resultArray[index].CommandId) >= 0)
-            {
-                throw new ArgumentException(
-                    "Spatial command results must have unique CommandIds in strict Ordinal order.",
-                    nameof(results));
-            }
-        }
-
-        HashSet<SpatialCommandId> commandIds = [.. resultArray.Select(result => result.CommandId)];
-        if (resultArray.Any(result =>
-                result.AliasOfCommandId is { } alias && !commandIds.Contains(alias)))
-        {
-            throw new ArgumentException(
-                "Every aliased CommandId must identify an earlier result in the same batch.",
-                nameof(results));
-        }
-
-        Events = Array.AsReadOnly(eventArray);
-        Results = Array.AsReadOnly(resultArray);
+        Facts = Array.AsReadOnly(factArray);
+        Result = result;
     }
 
-    /// <summary>Gets authoritative events in scratch-fold and commit order.</summary>
-    public IReadOnlyList<UncommittedDomainEvent<SpatialEvent>> Events { get; }
+    /// <summary>Gets authoritative raw facts in scratch-fold and commit order.</summary>
+    public IReadOnlyList<SpatialEvent> Facts { get; }
 
-    /// <summary>Gets exactly one result per input command in stable CommandId order.</summary>
-    public IReadOnlyList<SpatialCommandResult> Results { get; }
+    /// <summary>Gets the single command outcome.</summary>
+    public SpatialCommandResult Result { get; }
 }

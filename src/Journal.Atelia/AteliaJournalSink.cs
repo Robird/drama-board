@@ -1,23 +1,19 @@
 using Atelia.EventJournal;
 using DramaBoard.Kernel.Journal;
-using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Journal.Atelia;
 
-/// <summary>Persists domain events to an Atelia EventJournal branch and mirrors them for synchronous reads.</summary>
+/// <summary>Persists complete journal batches to one Atelia EventJournal branch.</summary>
 public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDisposable
 {
     private readonly global::Atelia.EventJournal.EventJournal _journal;
     private readonly Func<TPayload, byte[]> _serializePayload;
-    private readonly Func<EventKind, byte[], TPayload> _deserializePayload;
+    private readonly Func<byte[], TPayload> _deserializePayload;
     private readonly string _payloadCodec;
     private readonly RefId _refId;
-    private readonly List<EventAddress> _addresses = [];
-    private readonly List<byte[]> _storedPayloads = [];
-    private readonly List<int> _batchIndices = [];
-    private readonly List<int> _batchCounts = [];
-    private readonly List<DomainEvent<TPayload>> _events = [];
-    private readonly IReadOnlyList<DomainEvent<TPayload>> _eventsView;
+    private readonly List<EventAddress> _batchAddresses = [];
+    private readonly List<JournalBatch<TPayload>> _batches = [];
+    private readonly IReadOnlyList<JournalBatch<TPayload>> _batchesView;
     private LineageMetadata _lineageMetadata;
     private EventAddress? _head;
     private bool _disposed;
@@ -28,7 +24,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         long lineageId,
         string payloadCodec,
         Func<TPayload, byte[]> serializePayload,
-        Func<EventKind, byte[], TPayload> deserializePayload,
+        Func<byte[], TPayload> deserializePayload,
         string branchName = "main",
         EventJournalOptions? journalOptions = null)
     {
@@ -42,7 +38,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
         _serializePayload = serializePayload;
         _deserializePayload = deserializePayload;
         BranchName = branchName;
-        _eventsView = _events.AsReadOnly();
+        _batchesView = _batches.AsReadOnly();
         _journal = global::Atelia.EventJournal.EventJournal.OpenOrCreate(journalPath, journalOptions);
 
         try
@@ -57,8 +53,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                 _lineageMetadata = new LineageMetadata(
                     lineageId,
                     ParentLineageId: null,
-                    ForkPrefixEventCount: null,
-                    DomainEventEnvelopeCodec.FormatVersion);
+                    ForkPrefixTransitionCount: null);
                 _head = AppendFrame(
                     parent: null,
                     LineageMetadataCodec.Serialize(_lineageMetadata),
@@ -86,23 +81,23 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
     /// <summary>Gets the persisted parent lineage identity, if this branch was forked.</summary>
     public long? ParentLineageId => _lineageMetadata.ParentLineageId;
 
-    /// <summary>Gets the persisted fork prefix event count, if this branch was forked.</summary>
-    public int? ForkPrefixEventCount => _lineageMetadata.ForkPrefixEventCount;
+    /// <summary>Gets the persisted fork prefix transition count, if this branch was forked.</summary>
+    public int? ForkPrefixTransitionCount => _lineageMetadata.ForkPrefixTransitionCount;
 
     /// <summary>Gets the journal directory path.</summary>
     public string JournalPath => _journal.JournalPath;
 
     /// <inheritdoc />
-    public IReadOnlyList<DomainEvent<TPayload>> Events => _eventsView;
+    public IReadOnlyList<JournalBatch<TPayload>> Batches => _batchesView;
 
-    /// <summary>Opens a persisted branch, replays it, and returns both the writable sink and event view.</summary>
-    public static (AteliaJournalSink<TPayload> Sink, IReadOnlyList<DomainEvent<TPayload>> Events) OpenAndReplay(
+    /// <summary>Opens a persisted branch, replays it, and returns the writable sink and batch view.</summary>
+    public static (AteliaJournalSink<TPayload> Sink, IReadOnlyList<JournalBatch<TPayload>> Batches) OpenAndReplay(
         string journalPath,
         string branchName,
         long lineageId,
         string payloadCodec,
         Func<TPayload, byte[]> serializePayload,
-        Func<EventKind, byte[], TPayload> deserializePayload)
+        Func<byte[], TPayload> deserializePayload)
     {
         var sink = new AteliaJournalSink<TPayload>(
             journalPath,
@@ -111,84 +106,51 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
             serializePayload,
             deserializePayload,
             branchName);
-        return (sink, sink.Events);
+        return (sink, sink.Batches);
     }
 
     /// <inheritdoc />
-    public void Append(DomainEvent<TPayload> domainEvent) => AppendBatch([domainEvent]);
-
-    /// <inheritdoc />
-    public void AppendBatch(IReadOnlyList<DomainEvent<TPayload>> batch)
+    public void AppendBatch(JournalBatch<TPayload> batch)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(batch);
-        if (batch.Count == 0)
+        if (_batches.Count > 0 && batch.Instant <= _batches[^1].Instant)
         {
-            return;
+            throw new InvalidOperationException("Journal batch instants must be strictly increasing.");
         }
 
-        LogicalTimestamp? previousTimestamp = _events.Count == 0 ? null : _events[^1].Timestamp;
-        EventCause expectedCause = batch[0]?.Cause
-            ?? throw new ArgumentException("A journal batch cannot contain null events.", nameof(batch));
-        var envelopes = new List<byte[]>(batch.Count);
-        var validatedBatch = new DomainEvent<TPayload>[batch.Count];
-        for (int index = 0; index < batch.Count; index++)
-        {
-            DomainEvent<TPayload> domainEvent = batch[index]
-                ?? throw new ArgumentException("A journal batch cannot contain null events.", nameof(batch));
-            if (domainEvent.Cause != expectedCause)
-            {
-                throw new InvalidOperationException("All events in a journal batch must have the same cause.");
-            }
+        byte[] framePayload = JournalBatchEnvelopeCodec.Serialize(
+            batch,
+            _payloadCodec,
+            _serializePayload);
 
-            if (previousTimestamp is LogicalTimestamp previous && domainEvent.Timestamp <= previous)
-            {
-                throw new InvalidOperationException("Journal event timestamps must be strictly increasing.");
-            }
+        // Reserve local mirror capacity before entering the non-cancellable publish section.
+        int resultingTransitionCount = checked(_batches.Count + 1);
+        _batchAddresses.EnsureCapacity(resultingTransitionCount);
+        _batches.EnsureCapacity(resultingTransitionCount);
 
-            envelopes.Add(DomainEventEnvelopeCodec.Serialize(
-                domainEvent,
-                _payloadCodec,
-                index,
-                batch.Count,
-                _serializePayload));
-            validatedBatch[index] = domainEvent;
-            previousTimestamp = domainEvent.Timestamp;
-        }
-
-        byte[] framePayload = DomainEventBatchFrameCodec.Serialize(envelopes);
-        int resultingEventCount = checked(_events.Count + batch.Count);
-        _addresses.EnsureCapacity(resultingEventCount);
-        _storedPayloads.EnsureCapacity(resultingEventCount);
-        _batchIndices.EnsureCapacity(resultingEventCount);
-        _batchCounts.EnsureCapacity(resultingEventCount);
-        _events.EnsureCapacity(resultingEventCount);
+        // Advancing the ref is the commit point. Before it, active history is unchanged; after it,
+        // the frame is authoritative and reopening the branch replays it.
         EventAddress address = AppendFrameAndAdvance(
             _refId,
             _head,
             framePayload,
-            AteliaJournalFrameKinds.DomainEventBatch,
+            AteliaJournalFrameKinds.JournalBatch,
             BranchName);
 
         _head = address;
-        for (int index = 0; index < batch.Count; index++)
-        {
-            _addresses.Add(address);
-            _storedPayloads.Add(envelopes[index]);
-            _batchIndices.Add(index);
-            _batchCounts.Add(batch.Count);
-            _events.Add(validatedBatch[index]);
-        }
+        _batchAddresses.Add(address);
+        _batches.Add(batch);
     }
 
-    /// <summary>Creates a branch at an event-count boundary, requiring complete commit batches.</summary>
-    public void ForkBranch(string branchName, int prefixEventCount, long lineageId)
+    /// <summary>Creates a child branch at a complete committed transition boundary.</summary>
+    public void ForkBranch(string branchName, int prefixTransitionCount, long lineageId)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(branchName);
-        if (prefixEventCount < 0 || prefixEventCount > _events.Count)
+        if (prefixTransitionCount < 0 || prefixTransitionCount > _batches.Count)
         {
-            throw new ArgumentOutOfRangeException(nameof(prefixEventCount));
+            throw new ArgumentOutOfRangeException(nameof(prefixTransitionCount));
         }
 
         if (lineageId == LineageId)
@@ -201,35 +163,20 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
             throw new InvalidOperationException($"Journal branch '{branchName}' already exists.");
         }
 
-        if ((prefixEventCount > 0 &&
-             _batchIndices[prefixEventCount - 1] != _batchCounts[prefixEventCount - 1] - 1) ||
-            (prefixEventCount < _events.Count && _batchIndices[prefixEventCount] != 0))
-        {
-            throw new InvalidOperationException("A branch can only fork between complete event batches.");
-        }
-
-        EventAddress? startPoint = prefixEventCount == _events.Count
+        EventAddress? startPoint = prefixTransitionCount == _batches.Count
             ? _head
-            : prefixEventCount == 0
+            : prefixTransitionCount == 0
                 ? null
-                : _addresses[prefixEventCount - 1];
+                : _batchAddresses[prefixTransitionCount - 1];
         var metadata = new LineageMetadata(
             lineageId,
             ParentLineageId: LineageId,
-            ForkPrefixEventCount: prefixEventCount,
-            DomainEventEnvelopeCodec.FormatVersion);
+            ForkPrefixTransitionCount: prefixTransitionCount);
         EventAddress metadataAddress = AppendFrame(
             startPoint,
             LineageMetadataCodec.Serialize(metadata),
             AteliaJournalFrameKinds.LineageCreated);
         _ = CreateBranch(branchName, metadataAddress);
-    }
-
-    /// <summary>Reads copies of the logical envelope bytes stored on the selected branch.</summary>
-    public IReadOnlyList<byte[]> ReadStoredPayloads()
-    {
-        ThrowIfDisposed();
-        return [.. _storedPayloads.Select(payload => payload.ToArray())];
     }
 
     /// <inheritdoc />
@@ -286,7 +233,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
             if (readResult.IsFailure)
             {
                 throw new InvalidDataException(
-                    $"Atelia failed to read an event frame: {readResult.Error!.Message}");
+                    $"Atelia failed to read a journal frame: {readResult.Error!.Message}");
             }
 
             using EventFrame frame = readResult.Unwrap();
@@ -297,7 +244,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                     ValidateLineageMetadata(metadata);
                     latestMetadata = metadata;
                     break;
-                case AteliaJournalFrameKinds.DomainEventBatch:
+                case AteliaJournalFrameKinds.JournalBatch:
                     ReplayBatchFrame(frame.Payload, address);
                     break;
                 default:
@@ -305,7 +252,6 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                         $"Persisted journal frame has unknown opaque kind " +
                         $"{frame.Header.OpaqueEventKind}.");
             }
-
         }
 
         _head = persistedHead;
@@ -322,75 +268,37 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
 
     private void ReplayBatchFrame(ReadOnlySpan<byte> framePayload, EventAddress address)
     {
-        IReadOnlyList<byte[]> envelopes = DomainEventBatchFrameCodec.Deserialize(framePayload);
-        var batchEvents = new List<DomainEvent<TPayload>>(envelopes.Count);
-        LogicalTimestamp? previousTimestamp = _events.Count == 0 ? null : _events[^1].Timestamp;
-        EventCause? expectedCause = null;
-        for (int index = 0; index < envelopes.Count; index++)
+        JournalBatch<TPayload> batch = JournalBatchEnvelopeCodec.Deserialize(
+            framePayload,
+            _payloadCodec,
+            _deserializePayload);
+        if (_batches.Count > 0 && batch.Instant <= _batches[^1].Instant)
         {
-            DomainEvent<TPayload> domainEvent = DomainEventEnvelopeCodec.Deserialize(
-                envelopes[index],
-                _payloadCodec,
-                _deserializePayload,
-                out int batchIndex,
-                out int batchCount);
-            if (batchIndex != index || batchCount != envelopes.Count)
-            {
-                throw new IncompleteEventBatchException(
-                    $"Persisted batch is incomplete: event {index} declares " +
-                    $"bi={batchIndex}, bc={batchCount}, frame count={envelopes.Count}.");
-            }
-
-            if (expectedCause is EventCause cause && domainEvent.Cause != cause)
-            {
-                throw new InvalidDataException("Persisted events in one batch do not share the same cause.");
-            }
-
-            if (previousTimestamp is LogicalTimestamp previous && domainEvent.Timestamp <= previous)
-            {
-                throw new InvalidDataException("Persisted journal event timestamps are not strictly increasing.");
-            }
-
-            expectedCause = domainEvent.Cause;
-            previousTimestamp = domainEvent.Timestamp;
-            batchEvents.Add(domainEvent);
+            throw new InvalidDataException("Persisted journal batch instants are not strictly increasing.");
         }
 
-        for (int index = 0; index < batchEvents.Count; index++)
-        {
-            _addresses.Add(address);
-            _storedPayloads.Add(envelopes[index]);
-            _batchIndices.Add(index);
-            _batchCounts.Add(batchEvents.Count);
-            _events.Add(batchEvents[index]);
-        }
+        _batchAddresses.Add(address);
+        _batches.Add(batch);
     }
 
     private void ValidateLineageMetadata(LineageMetadata metadata)
     {
-        if (metadata.EnvelopeFormatVersion != DomainEventEnvelopeCodec.FormatVersion)
-        {
-            throw new NotSupportedException(
-                $"Lineage {metadata.LineageId} was created for domain event envelope version " +
-                $"{metadata.EnvelopeFormatVersion}, but this adapter requires " +
-                $"{DomainEventEnvelopeCodec.FormatVersion}.");
-        }
-
         if (metadata.ParentLineageId is null)
         {
-            if (metadata.ForkPrefixEventCount is not null || _events.Count != 0)
+            if (metadata.ForkPrefixTransitionCount is not null || _batches.Count != 0)
             {
-                throw new InvalidDataException("Root lineage metadata must precede all domain events.");
+                throw new InvalidDataException("Root lineage metadata must precede all journal batches.");
             }
 
             return;
         }
 
-        if (metadata.ForkPrefixEventCount != _events.Count)
+        if (metadata.ForkPrefixTransitionCount != _batches.Count)
         {
             throw new InvalidDataException(
                 $"Fork lineage {metadata.LineageId} declares prefix " +
-                $"{metadata.ForkPrefixEventCount}, but the physical prefix contains {_events.Count} events.");
+                $"{metadata.ForkPrefixTransitionCount}, but the physical prefix contains " +
+                $"{_batches.Count} transitions.");
         }
     }
 
@@ -429,7 +337,7 @@ public sealed class AteliaJournalSink<TPayload> : IJournalSink<TPayload>, IDispo
                 $"Atelia failed to append a journal frame: {appendResult.Error!.Message}");
         }
 
-            return appendResult.Unwrap();
+        return appendResult.Unwrap();
     }
 
     private void ThrowIfDisposed()

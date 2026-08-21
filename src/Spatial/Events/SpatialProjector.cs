@@ -1,4 +1,3 @@
-using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
@@ -9,7 +8,6 @@ internal static class SpatialProjector
     public static SpatialState Apply(
         SpatialDefinition definition,
         SpatialState state,
-        EventKind kind,
         SpatialEvent payload,
         ModelTime modelTime)
     {
@@ -17,15 +15,6 @@ internal static class SpatialProjector
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(payload);
         var topology = new EffectiveSpatialTopology(definition, state);
-        EventKind expectedKind = SpatialEventKinds.For(payload);
-        if (!string.Equals(kind.Id, expectedKind.Id, StringComparison.Ordinal) ||
-            kind.Version != expectedKind.Version)
-        {
-            throw new InvalidOperationException(
-                $"Spatial payload '{payload.GetType().Name}' requires kind " +
-                $"'{expectedKind.Id}' v{expectedKind.Version}, not '{kind.Id}' v{kind.Version}.");
-        }
-
         return payload switch
         {
             EntityPlacedEvent placed => ApplyEntityPlaced(definition, state, placed),
@@ -68,7 +57,6 @@ internal static class SpatialProjector
                 topology,
                 consumed,
                 modelTime),
-            MomentResolvedEvent resolved => ApplyMomentResolved(definition, state, resolved, modelTime),
             ZoneEnteredEvent entered => ValidateZoneOutcome(
                 definition,
                 state,
@@ -688,29 +676,6 @@ internal static class SpatialProjector
             scheduledMutations: state.ScheduledMutations.Where(value => value.Id != consumed.Mutation.Id));
     }
 
-    private static SpatialState ApplyMomentResolved(
-        SpatialDefinition definition,
-        SpatialState state,
-        MomentResolvedEvent resolved,
-        ModelTime modelTime)
-    {
-        if (resolved.MomentOrdinal != state.NextMomentOrdinal)
-        {
-            throw new InvalidOperationException(
-                $"Moment {resolved.MomentOrdinal} does not consume next ordinal {state.NextMomentOrdinal}.");
-        }
-
-        if (state.ScheduledMutations.Any(mutation => mutation.Due <= modelTime) ||
-            state.Journeys.Any(journey => journey.CurrentLeg.Due <= modelTime))
-        {
-            throw new InvalidOperationException("SpatialMoment cannot resolve while due work remains.");
-        }
-
-        SpatialStateValidator.ValidateComplete(definition, state);
-
-        return Changed(state, nextMomentOrdinal: checked(state.NextMomentOrdinal + 1));
-    }
-
     private static CurrentLeg RequireCompleteLeg(JourneyState journey) => journey.CurrentLeg;
 
     private static void ValidateNewLeg(
@@ -877,7 +842,6 @@ internal static class SpatialProjector
 
     private static SpatialState Changed(
         SpatialState state,
-        long? nextMomentOrdinal = null,
         long? nextJourneyOrdinal = null,
         long? nextMutationOrdinal = null,
         IEnumerable<SpatialEntityState>? entities = null,
@@ -887,7 +851,6 @@ internal static class SpatialProjector
         IEnumerable<ScheduledSpatialMutationState>? scheduledMutations = null) =>
         state.Rebuild(
             revision: checked(state.Revision + 1),
-            nextMomentOrdinal,
             nextJourneyOrdinal,
             nextMutationOrdinal,
             entities,

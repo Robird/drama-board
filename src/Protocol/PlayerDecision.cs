@@ -1,14 +1,8 @@
 namespace DramaBoard.Protocol;
 
-/// <summary>Returns a Player's intent for the exact request and world version observed.</summary>
+/// <summary>Returns a Player's intent for the exact in-flight request observed.</summary>
 /// <param name="DecisionId">The identifier of the request being answered.</param>
-/// <param name="BasedOnWorldVersion">The committed journal event count observed when choosing the intent.</param>
-/// <param name="LineageId">The world lineage observed when choosing the intent.</param>
 /// <param name="Intent">The action the Player wants the actor to attempt.</param>
-/// <param name="ExpectedOutcome">The optional subjective outcome expected by the Player.</param>
 public sealed record PlayerDecision(
     DecisionId DecisionId,
-    long BasedOnWorldVersion,
-    long LineageId,
-    Intent Intent,
-    ExpectedOutcome? ExpectedOutcome = null);
+    Intent Intent);

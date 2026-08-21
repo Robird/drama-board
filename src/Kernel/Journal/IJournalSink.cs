@@ -1,23 +1,18 @@
 namespace DramaBoard.Kernel.Journal;
 
-/// <summary>Accepts immutable domain events and exposes them in commit order.</summary>
+/// <summary>Publishes and exposes only complete occurrence batches.</summary>
 /// <remarks>
-/// Implementations are not required to be thread-safe. A single driver must serialize appends and
-/// must not read <see cref="Events"/> concurrently with an append unless the implementation states
-/// a stronger synchronization contract.
+/// Implementations are driven serially. Returning normally from <see cref="AppendBatch"/> means the
+/// whole batch is committed; throwing before publication must leave <see cref="Batches"/> unchanged.
 /// </remarks>
-public interface IJournalSink<TPayload>
+public interface IJournalSink<TFact>
 {
-    /// <summary>Gets the committed events in append order.</summary>
-    IReadOnlyList<DomainEvent<TPayload>> Events { get; }
+    /// <summary>Gets the lineage whose committed transition history this sink publishes.</summary>
+    long LineageId { get; }
 
-    /// <summary>Appends one committed event.</summary>
-    void Append(DomainEvent<TPayload> domainEvent);
+    /// <summary>Gets committed batches in transition order without exposing fact prefixes.</summary>
+    IReadOnlyList<JournalBatch<TFact>> Batches { get; }
 
-    /// <summary>
-    /// Atomically publishes one complete committed event batch. Validation and pre-publication
-    /// persistence failures leave <see cref="Events"/> unchanged; normal return makes the whole
-    /// batch visible and durable according to the implementation's storage contract.
-    /// </summary>
-    void AppendBatch(IReadOnlyList<DomainEvent<TPayload>> batch);
+    /// <summary>Atomically publishes one complete non-empty batch in a non-cancellable commit section.</summary>
+    void AppendBatch(JournalBatch<TFact> batch);
 }

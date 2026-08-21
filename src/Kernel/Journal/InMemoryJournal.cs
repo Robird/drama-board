@@ -1,56 +1,58 @@
-using DramaBoard.Kernel.Time;
-
 namespace DramaBoard.Kernel.Journal;
 
-/// <summary>Stores committed domain events in memory while enforcing strictly increasing timestamps.</summary>
-public sealed class InMemoryJournal<TPayload> : IJournalSink<TPayload>
+/// <summary>Stores complete committed batches in memory.</summary>
+public sealed class InMemoryJournal<TFact> : IJournalSink<TFact>
 {
-    private readonly List<DomainEvent<TPayload>> _events = [];
-    private readonly IReadOnlyList<DomainEvent<TPayload>> _eventsView;
+    private readonly List<JournalBatch<TFact>> _batches = [];
+    private readonly IReadOnlyList<JournalBatch<TFact>> _batchesView;
 
-    /// <summary>Initializes an empty in-memory journal.</summary>
-    public InMemoryJournal()
+    /// <summary>Initializes an empty in-memory journal bound to one lineage.</summary>
+    public InMemoryJournal(long lineageId)
     {
-        _eventsView = _events.AsReadOnly();
+        LineageId = lineageId;
+        _batchesView = _batches.AsReadOnly();
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<DomainEvent<TPayload>> Events => _eventsView;
+    public long LineageId { get; }
 
     /// <inheritdoc />
-    public void Append(DomainEvent<TPayload> domainEvent) => AppendBatch([domainEvent]);
+    public IReadOnlyList<JournalBatch<TFact>> Batches => _batchesView;
 
     /// <inheritdoc />
-    public void AppendBatch(IReadOnlyList<DomainEvent<TPayload>> batch)
+    public void AppendBatch(JournalBatch<TFact> batch)
     {
         ArgumentNullException.ThrowIfNull(batch);
-        if (batch.Count == 0)
+        if (_batches.Count > 0 && batch.Instant <= _batches[^1].Instant)
         {
-            return;
+            throw new InvalidOperationException(
+                "Journal batch logical instants must be strictly increasing between batches.");
         }
 
-        LogicalTimestamp? previousTimestamp = _events.Count == 0 ? null : _events[^1].Timestamp;
-        EventCause expectedCause = batch[0]?.Cause
-            ?? throw new ArgumentException("A journal batch cannot contain null events.", nameof(batch));
-        var validatedBatch = new DomainEvent<TPayload>[batch.Count];
-        for (int index = 0; index < batch.Count; index++)
+        _batches.Add(batch);
+    }
+
+    /// <summary>Copies a complete transition prefix into an independent in-memory journal.</summary>
+    public InMemoryJournal<TFact> ForkPrefix(long transitionCount, long newLineageId)
+    {
+        if (transitionCount < 0 || transitionCount > _batches.Count)
         {
-            DomainEvent<TPayload> domainEvent = batch[index]
-                ?? throw new ArgumentException("A journal batch cannot contain null events.", nameof(batch));
-            if (domainEvent.Cause != expectedCause)
-            {
-                throw new InvalidOperationException("All events in a journal batch must have the same cause.");
-            }
-
-            if (previousTimestamp is LogicalTimestamp previous && domainEvent.Timestamp <= previous)
-            {
-                throw new InvalidOperationException("Journal event timestamps must be strictly increasing.");
-            }
-
-            validatedBatch[index] = domainEvent;
-            previousTimestamp = domainEvent.Timestamp;
+            throw new ArgumentOutOfRangeException(nameof(transitionCount));
         }
 
-        _events.AddRange(validatedBatch);
+        if (newLineageId == LineageId)
+        {
+            throw new ArgumentException(
+                "A fork journal must use a LineageId distinct from its source.",
+                nameof(newLineageId));
+        }
+
+        var prefix = new InMemoryJournal<TFact>(newLineageId);
+        for (int index = 0; index < transitionCount; index++)
+        {
+            prefix.AppendBatch(_batches[index]);
+        }
+
+        return prefix;
     }
 }

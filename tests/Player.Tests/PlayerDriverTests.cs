@@ -13,8 +13,6 @@ public sealed class PlayerDriverTests
         PlayerDecision decision = await driver.DecideAsync(request, CancellationToken.None);
 
         Assert.Equal(request.DecisionId, decision.DecisionId);
-        Assert.Equal(request.BasedOnWorldVersion, decision.BasedOnWorldVersion);
-        Assert.Equal(request.LineageId, decision.LineageId);
         Assert.Equal(ActionKinds.Wait, decision.Intent.ActionKind);
         Assert.Null(decision.Intent.TargetActorId);
         Assert.Null(decision.Intent.TargetObjectId);
@@ -61,7 +59,7 @@ public sealed class PlayerDriverTests
     }
 
     [Fact]
-    public async Task RandomPlayerDriver_BasedOnWorldVersionAddressesDifferentSamples()
+    public async Task RandomPlayerDriver_DecisionIdAddressesDifferentSamples()
     {
         var driver = new RandomPlayerDriver(0xC0FFEE);
         AvailableAction[] actions =
@@ -72,10 +70,10 @@ public sealed class PlayerDriverTests
         ];
         var destinations = new HashSet<string?>();
 
-        for (long version = 1; version <= 16; version++)
+        for (long sequence = 1; sequence <= 16; sequence++)
         {
             destinations.Add((await driver.DecideAsync(
-                Request(actions, version),
+                Request(actions, $"decision-{sequence}"),
                 CancellationToken.None)).Intent.DestinationId);
         }
 
@@ -96,21 +94,17 @@ public sealed class PlayerDriverTests
 
     private static DecisionRequest Request(
         IReadOnlyList<AvailableAction>? actions = null,
-        long basedOnWorldVersion = 7)
+        string decisionId = "decision-1")
     {
-        var observation = new Observation("actor.alice", "place.square", 10, 2, [], [], []);
+        var observation = new Observation("actor.alice", "place.square", 10, [], [], []);
         return new DecisionRequest(
-            new DecisionId("decision-1"),
-            basedOnWorldVersion,
-            42,
-            10,
-            2,
+            new DecisionId(decisionId),
             "actor.alice",
+            10,
             observation,
-            DecisionReasons.Scheduled,
             actions ?? [new AvailableAction(ActionKinds.Wait)]);
     }
 
     private static PlayerDecision Decision(DecisionRequest request, Intent intent) =>
-        new(request.DecisionId, request.BasedOnWorldVersion, request.LineageId, intent);
+        new(request.DecisionId, intent);
 }

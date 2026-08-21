@@ -297,8 +297,6 @@ public sealed class LlmPlayerDriver : IPlayerDriver, IAsyncDisposable
     private static PlayerDecision CreateDecision(DecisionRequest request, Intent intent) =>
         new(
             request.DecisionId,
-            request.BasedOnWorldVersion,
-            request.LineageId,
             intent);
 
     private sealed record MaintenanceOutcome(

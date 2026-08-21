@@ -1,120 +1,107 @@
-using DramaBoard.Kernel.Random;
+using DramaBoard.Decision.Validation;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Player;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.FirstBoard;
 
 public abstract record BoardCandidate;
 
-public sealed record DecisionCandidate : BoardCandidate;
-
-public sealed record ActionCandidate(long ActorId, long Generation) : BoardCandidate;
+public sealed record DecisionPointCandidate(long ActorId, long Generation) : BoardCandidate;
 
 public sealed record ActivityCandidate(long ActorId, long Generation) : BoardCandidate;
 
 public sealed record DeadlineCandidate : BoardCandidate;
 
-public sealed class DecisionSchedulingSystem :
-    ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+public sealed class DecisionPointRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
-    public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
-        FirstBoardWorld world,
-        ModelTime now)
+    private readonly IReadOnlyDictionary<string, IPlayerDriver> _drivers;
+
+    public DecisionPointRule(IReadOnlyDictionary<string, IPlayerDriver> drivers)
     {
-        bool hasUnresolvedWorkAtNow = world.Actors.Any(actor =>
-            actor.PendingAction is not null || actor.Activity?.Due <= now);
-        return hasUnresolvedWorkAtNow || !world.Actors.Any(world.IsIdle)
-            ? []
-            :
-            [
-                new EventCandidate<BoardCandidate>(
-                    new EventCandidateId(1),
-                    now,
-                    world.WorldRuleSourceId,
-                    new DecisionCandidate()),
-            ];
+        ArgumentNullException.ThrowIfNull(drivers);
+        _drivers = new Dictionary<string, IPlayerDriver>(drivers, StringComparer.Ordinal);
     }
 
-    public IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Resolve(
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
         FirstBoardWorld world,
-        EventCandidate<BoardCandidate> candidate)
-    {
-        if (candidate.Payload is not DecisionCandidate)
-        {
-            throw new InvalidOperationException("The decision system received another system's candidate.");
-        }
-
-        BoardActor[] idleActors = [.. world.Actors.Where(world.IsIdle).OrderBy(actor => actor.Id)];
-        if (idleActors.Length == 0 || world.Actors.Any(actor =>
-            actor.PendingAction is not null || actor.Activity?.Due <= candidate.Due))
-        {
-            throw new InvalidOperationException("The world decision candidate is stale.");
-        }
-
-        return
+        SimulationRules rules) =>
         [
-            .. idleActors.Select(actor =>
-            {
-                long decisionNumber = checked(actor.DecisionSequence + 1);
-                string decisionId = $"decision.{actor.Key}.{decisionNumber}";
-                return new UncommittedDomainEvent<BoardEventPayload>(
-                    BoardEventKinds.DecisionRequested,
-                    new DecisionRequestedEvent(actor.Key, decisionNumber, decisionId));
-            }),
+            .. world.Actors
+                .Where(world.IsIdle)
+                .OrderBy(actor => actor.Id)
+                .Select(actor => new OccurrenceCandidate<BoardCandidate>(
+                    CandidateKey.FromUtf8(
+                        $"firstboard/decision/{actor.Key}/{actor.DecisionSequence + 1}"),
+                    new CandidateDue(world.Now),
+                    new DecisionPointCandidate(actor.Id, actor.Generation))),
         ];
+
+    public async ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
+    {
+        if (winner.Data is not DecisionPointCandidate decisionPoint)
+        {
+            throw new InvalidOperationException("The decision rule received another rule's candidate.");
+        }
+
+        BoardActor actor = world.Actor(decisionPoint.ActorId);
+        if (!world.IsIdle(actor) || actor.Generation != decisionPoint.Generation)
+        {
+            throw new InvalidOperationException("The selected decision point is stale.");
+        }
+
+        if (!_drivers.TryGetValue(actor.Key, out IPlayerDriver? driver))
+        {
+            throw new InvalidOperationException($"No Player driver is registered for actor '{actor.Key}'.");
+        }
+
+        DecisionRequest request = FirstBoardScenario.BuildRequest(
+            world,
+            actor,
+            winner.Due.ModelTime);
+        PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
+            ?? throw new InvalidOperationException("A Player driver returned null.");
+        PlayerDecisionValidationResult validation = PlayerDecisionValidator.Validate(decision, request);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(validation.Message);
+        }
+
+        return new TransitionDraft<BoardEventPayload>(
+            FirstBoardActionPlanner.Plan(world, actor, decision.Intent, winner.Due.ModelTime));
     }
 }
 
-public sealed class ActionResolutionSystem :
-    ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+public static class FirstBoardActionPlanner
 {
-    public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
+    public static IReadOnlyList<BoardEventPayload> Plan(
         FirstBoardWorld world,
-        ModelTime now) =>
-        [
-            .. world.Actors
-                .Where(actor => actor.PendingAction is not null)
-                .OrderBy(actor => actor.Id)
-                .Select(actor => new EventCandidate<BoardCandidate>(
-                    new EventCandidateId(actor.Generation),
-                    now,
-                    actor.Id,
-                    new ActionCandidate(actor.Id, actor.Generation))),
-        ];
-
-    public IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Resolve(
-        FirstBoardWorld world,
-        EventCandidate<BoardCandidate> candidate)
+        BoardActor actor,
+        Intent intent,
+        ModelTime now)
     {
-        if (candidate.Payload is not ActionCandidate action)
+        return intent.ActionKind.Id switch
         {
-            throw new InvalidOperationException("The action system received another system's candidate.");
-        }
-
-        BoardActor actor = world.Actor(action.ActorId);
-        if (actor.PendingAction is not SubmittedAction submitted || actor.Generation != action.Generation)
-        {
-            throw new InvalidOperationException("The action candidate is stale for its actor.");
-        }
-
-        return submitted.Intent.ActionKind.Id switch
-        {
-            "action.travel" => ResolveTravel(world, actor, submitted.Intent, candidate.Due),
-            "action.wait" => ResolveWait(actor, submitted.Intent, candidate.Due),
-            "action.talk" => ResolveTalk(world, actor, submitted.Intent),
-            "action.observe" => ResolveObserve(world, actor, submitted.Intent),
-            "action.take" => ResolveTake(world, actor, submitted.Intent),
-            "action.put" => ResolvePut(world, actor, submitted.Intent),
-            "action.give" => ResolveGive(world, actor, submitted.Intent),
-            "action.show" => ResolveShow(world, actor, submitted.Intent),
-            "action.use" => ResolveUse(world, actor, submitted.Intent),
-            _ => Reject(actor, submitted.Intent, "unknown action kind"),
+            "action.travel" => ResolveTravel(world, actor, intent, now),
+            "action.wait" => ResolveWait(actor, intent, now),
+            "action.talk" => ResolveTalk(world, actor, intent),
+            "action.observe" => ResolveObserve(world, actor, intent),
+            "action.take" => ResolveTake(world, actor, intent),
+            "action.put" => ResolvePut(world, actor, intent),
+            "action.give" => ResolveGive(world, actor, intent),
+            "action.show" => ResolveShow(world, actor, intent),
+            "action.use" => ResolveUse(world, actor, intent),
+            _ => Reject(actor, intent, "unknown action kind"),
         };
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveTravel(
+    private static IReadOnlyList<BoardEventPayload> ResolveTravel(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
@@ -142,7 +129,6 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ActorDeparted,
             new ActorDepartedEvent(
                 actor.Key,
                 actor.PlaceId,
@@ -150,7 +136,7 @@ public sealed class ActionResolutionSystem :
                 now + new ModelDuration(BoardTiming.TravelTicks)));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveWait(
+    private static IReadOnlyList<BoardEventPayload> ResolveWait(
         BoardActor actor,
         Intent intent,
         ModelTime now)
@@ -182,11 +168,10 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ActorWaitStarted,
             new ActorWaitStartedEvent(actor.Key, completeAt));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveTalk(
+    private static IReadOnlyList<BoardEventPayload> ResolveTalk(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -211,11 +196,10 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ActorSpoke,
             new ActorSpokeEvent(actor.Key, target.Key, text, sharedFactKind));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveObserve(
+    private static IReadOnlyList<BoardEventPayload> ResolveObserve(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -279,11 +263,10 @@ public sealed class ActionResolutionSystem :
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
         return Result(
-            BoardEventKinds.ActorObserved,
             new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned)));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveInspectObject(
+    private static IReadOnlyList<BoardEventPayload> ResolveInspectObject(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
@@ -333,11 +316,10 @@ public sealed class ActionResolutionSystem :
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
         return Result(
-            BoardEventKinds.ActorObserved,
             new ActorObservedEvent(actor.Key, Array.AsReadOnly(learned), item.Key));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveTake(
+    private static IReadOnlyList<BoardEventPayload> ResolveTake(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -353,48 +335,11 @@ public sealed class ActionResolutionSystem :
             return Reject(actor, intent, "target object is not available here");
         }
 
-        long[] competitors =
-        [
-            .. world.Actors
-                .Where(current =>
-                    world.IsPresent(current) &&
-                    current.PlaceId == actor.PlaceId &&
-                    current.PendingAction?.Intent.ActionKind == ActionKinds.Take &&
-                    current.PendingAction.Intent.TargetObjectId == item.Key)
-                .Select(current => current.Id)
-                .OrderBy(actorId => actorId),
-        ];
-        if (!competitors.Contains(actor.Id))
-        {
-            throw new InvalidOperationException("The resolving actor is not a take competitor.");
-        }
-
-        if (competitors.Length == 1)
-        {
-            return Result(
-                BoardEventKinds.ObjectTaken,
-                new ObjectTakenEvent(actor.Key, item.Key));
-        }
-
-        ulong generation = checked((ulong)item.ContentionRound);
-        ulong streamId = DeterministicRandom.DeriveStreamId(item.Id);
-        int winnerIndex = DeterministicRandom.SampleInt32(
-            world.WorldSeed,
-            streamId,
-            generation,
-            minInclusive: 0,
-            maxExclusive: competitors.Length,
-            sampleIndex: 0);
         return Result(
-            BoardEventKinds.ObjectContentionResolved,
-            new ObjectContentionResolvedEvent(
-                item.Key,
-                Array.AsReadOnly(competitors),
-                competitors[winnerIndex],
-                new BoardRandomSample(streamId, generation, 0)));
+            new ObjectTakenEvent(actor.Key, item.Key));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolvePut(
+    private static IReadOnlyList<BoardEventPayload> ResolvePut(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -411,11 +356,10 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ObjectPlaced,
             new ObjectPlacedEvent(actor.Key, item.Key, actor.PlaceId));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveGive(
+    private static IReadOnlyList<BoardEventPayload> ResolveGive(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -438,11 +382,10 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ObjectGiven,
             new ObjectGivenEvent(actor.Key, target.Key, item.Key));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveShow(
+    private static IReadOnlyList<BoardEventPayload> ResolveShow(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -465,11 +408,10 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ObjectShown,
             new ObjectShownEvent(actor.Key, target.Key, item.Key));
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> ResolveUse(
+    private static IReadOnlyList<BoardEventPayload> ResolveUse(
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent)
@@ -500,7 +442,6 @@ public sealed class ActionResolutionSystem :
         }
 
         return Result(
-            BoardEventKinds.ChestOpened,
             new ChestOpenedEvent(actor.Key, BoardIds.LockedChest, BoardIds.BrassKey));
     }
 
@@ -524,77 +465,73 @@ public sealed class ActionResolutionSystem :
         return factKind.Length == 0 ? null : factKind;
     }
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Reject(
+    private static IReadOnlyList<BoardEventPayload> Reject(
         BoardActor actor,
         Intent intent,
         string reason) =>
         Result(
-            BoardEventKinds.ActionRejected,
             new ActionRejectedEvent(actor.Key, intent, reason));
 
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Result(
-        DramaBoard.Kernel.Journal.EventKind kind,
+    private static IReadOnlyList<BoardEventPayload> Result(
         BoardEventPayload payload) =>
-        [new UncommittedDomainEvent<BoardEventPayload>(kind, payload)];
+        [payload];
 }
 
-public sealed class ActivityCompletionSystem :
-    ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+public sealed class ActivityCompletionRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
-    public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
         FirstBoardWorld world,
-        ModelTime now) =>
+        SimulationRules rules) =>
         [
             .. world.Actors
                 .Where(actor => actor.Activity is not null)
                 .OrderBy(actor => actor.Id)
-                .Select(actor => new EventCandidate<BoardCandidate>(
-                    new EventCandidateId(actor.Generation),
-                    actor.Activity!.Due,
-                    actor.Id,
+                .Select(actor => new OccurrenceCandidate<BoardCandidate>(
+                    CandidateKey.FromUtf8(
+                        $"firstboard/activity/{actor.Key}/{actor.Generation}"),
+                    new CandidateDue(actor.Activity!.Due),
                     new ActivityCandidate(actor.Id, actor.Generation))),
         ];
 
-    public IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Resolve(
+    public ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
         FirstBoardWorld world,
-        EventCandidate<BoardCandidate> candidate)
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
     {
-        if (candidate.Payload is not ActivityCandidate activity)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (winner.Data is not ActivityCandidate activity)
         {
-            throw new InvalidOperationException("The activity system received another system's candidate.");
+            throw new InvalidOperationException("The activity rule received another rule's candidate.");
         }
 
         BoardActor actor = world.Actor(activity.ActorId);
         if (actor.Activity is not BoardActivity current ||
             actor.Generation != activity.Generation ||
-            current.Due != candidate.Due)
+            current.Due != winner.Due.ModelTime)
         {
             throw new InvalidOperationException("The activity candidate is stale for its actor.");
         }
 
-        return current.Kind switch
+        BoardEventPayload fact = current.Kind switch
         {
             BoardActivityKind.Travel when current.DestinationId is not null =>
-                Result(BoardEventKinds.ActorArrived, new ActorArrivedEvent(actor.Key, current.DestinationId)),
+                new ActorArrivedEvent(actor.Key, current.DestinationId),
             BoardActivityKind.Wait =>
-                Result(BoardEventKinds.ActorWaited, new ActorWaitedEvent(actor.Key)),
+                new ActorWaitedEvent(actor.Key),
             _ => throw new InvalidOperationException("The actor activity is invalid."),
         };
+        return ValueTask.FromResult(new TransitionDraft<BoardEventPayload>([fact]));
     }
-
-    private static IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Result(
-        DramaBoard.Kernel.Journal.EventKind kind,
-        BoardEventPayload payload) =>
-        [new UncommittedDomainEvent<BoardEventPayload>(kind, payload)];
 }
 
-public sealed class CellarDeadlineSystem :
-    ISimSystem<FirstBoardWorld, BoardCandidate, BoardEventPayload>
+public sealed class CellarDeadlineRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, BoardEventPayload>
 {
     private readonly long _deadlineMs;
 
     /// <summary>Creates the deadline rule with a scenario-provided model time.</summary>
-    public CellarDeadlineSystem(long deadlineMs = BoardTiming.DeadlineTicks)
+    public CellarDeadlineRule(long deadlineMs = BoardTiming.DeadlineTicks)
     {
         if (deadlineMs < 0)
         {
@@ -606,34 +543,31 @@ public sealed class CellarDeadlineSystem :
         _deadlineMs = deadlineMs;
     }
 
-    public IReadOnlyList<EventCandidate<BoardCandidate>> ForecastNext(
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
         FirstBoardWorld world,
-        ModelTime now) =>
+        SimulationRules rules) =>
         world.CellarSealed
             ? []
             :
             [
-                new EventCandidate<BoardCandidate>(
-                    new EventCandidateId(0),
-                    new ModelTime(_deadlineMs),
-                    world.WorldRuleSourceId,
+                new OccurrenceCandidate<BoardCandidate>(
+                    CandidateKey.FromUtf8("firstboard/deadline/cellar-seal"),
+                    new CandidateDue(new ModelTime(_deadlineMs)),
                     new DeadlineCandidate()),
             ];
 
-    public IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> Resolve(
+    public ValueTask<TransitionDraft<BoardEventPayload>> PlanSelectedAsync(
         FirstBoardWorld world,
-        EventCandidate<BoardCandidate> candidate)
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
     {
-        if (candidate.Payload is not DeadlineCandidate || world.CellarSealed)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (winner.Data is not DeadlineCandidate || world.CellarSealed)
         {
             throw new InvalidOperationException("The cellar deadline candidate is stale.");
         }
 
-        return
-        [
-            new UncommittedDomainEvent<BoardEventPayload>(
-                BoardEventKinds.CellarSealed,
-                new CellarSealedEvent()),
-        ];
+        return ValueTask.FromResult(
+            new TransitionDraft<BoardEventPayload>([new CellarSealedEvent()]));
     }
 }

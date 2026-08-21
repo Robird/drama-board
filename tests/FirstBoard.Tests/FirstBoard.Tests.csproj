@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\FirstBoard\FirstBoard.csproj" />
     <ProjectReference Include="..\..\src\Player\Player.csproj" />
     <ProjectReference Include="..\..\src\Player.Llm\Player.Llm.csproj" />
+    <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
   </ItemGroup>
 
   <ItemGroup>

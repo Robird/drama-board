@@ -223,8 +223,8 @@ public sealed class DerivedOutcomeAuditTests
                 new EntityId(1),
                 expectedMovementGeneration: 0,
                 expectedActiveJourneyId: null)]);
-        Assert.Contains(removed.Events, value =>
-            value.Payload is GeometricVisibilityChangedEvent visibility &&
+        Assert.Contains(removed.Facts, value =>
+            value is GeometricVisibilityChangedEvent visibility &&
             visibility.ObserverId == new EntityId(1) &&
             visibility.RemovedEntityIds.SequenceEqual([new EntityId(2)]));
 
@@ -233,8 +233,8 @@ public sealed class DerivedOutcomeAuditTests
             state,
             ModelTime.Zero,
             [new ObservationStateChangedEvent(new EntityId(1), true, false)]);
-        Assert.Contains(disabled.Events, value =>
-            value.Payload is GeometricVisibilityChangedEvent visibility &&
+        Assert.Contains(disabled.Facts, value =>
+            value is GeometricVisibilityChangedEvent visibility &&
             visibility.ObserverId == new EntityId(1) &&
             visibility.RemovedEntityIds.SequenceEqual([new EntityId(2)]));
     }

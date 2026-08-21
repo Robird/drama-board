@@ -49,7 +49,7 @@ public static class PromptRenderer
             .AppendLine()
             .AppendLine("[当前观察]")
             .Append("时间: ").Append(request.ModelTimeMs.ToString(CultureInfo.InvariantCulture))
-            .Append("ms，微步: ").AppendLine(request.Microstep.ToString(CultureInfo.InvariantCulture))
+            .AppendLine("ms")
             .Append("位置: ").AppendLine(request.Observation.LocationId)
             .Append("在场角色: ").AppendLine(RenderIds(request.Observation.VisibleActorIds))
             .Append("可见物品: ").AppendLine(RenderIds(request.Observation.VisibleObjectIds))
@@ -72,14 +72,8 @@ public static class PromptRenderer
             AppendFacts(user, addedFacts, "- 新增事实: ");
         }
 
-        if (request.RejectedIntent is not null)
-        {
-            user.Append("- 上次尝试被拒绝: ").AppendLine(RenderIntent(request.RejectedIntent));
-        }
-
         user.AppendLine()
             .AppendLine("[决策请求]")
-            .Append("请求原因: ").AppendLine(request.Reason.Id)
             .AppendLine("可用动作:");
         foreach (AvailableAction action in request.AvailableActions)
         {

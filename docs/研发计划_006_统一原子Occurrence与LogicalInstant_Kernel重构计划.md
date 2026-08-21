@@ -1,6 +1,6 @@
 # 研发计划 006：统一原子 Occurrence 与 LogicalInstant Kernel 重构
 
-**状态：经复杂度审查收敛后的目标方案与剩余实施计划**
+**状态：已实施；作为当前 Kernel 调度与提交语义基准**
 
 **日期：2026-08-21**
 
@@ -253,7 +253,7 @@ DramaBoard 是追求灵活性与多样性的快速原型，角色行动主要以
 - Spatial 向 Kernel 暴露 sub-ms 排序值的接口；
 - 精确 contact 混排、防 sub-ms 倒插及 A/B 双比较器兼容测试。
 
-003、008 及后续实现只能采用这一种法则，不保留 feature flag 或兼容分支。
+003 及后续实现只能采用这一种法则，不保留 feature flag 或兼容分支。
 
 ---
 
@@ -269,7 +269,7 @@ DramaBoard 是追求灵活性与多样性的快速原型，角色行动主要以
 - 超过单帧上限则整批失败，不拆成 Begin/Part/End；
 - World 只在 batch 发布成功后安装 scratch result。
 
-尚未完成、必须纳入调度重构的逻辑适配是：
+当前逻辑适配为：
 
 - 一个 batch 只有一个 `LogicalInstant` 与 cause header，全部 facts 共享它；
 - facts 只按数组位置 fold，不再各自携带递增 Microstep/timestamp；
@@ -311,11 +311,11 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 
 规则可能连续产生不推进 `ModelTime` 的合法 transition。Kernel 按 `SimulationRules.MaxTransitionsPerModelTime` 设置确定性上限；超限时以诊断失败停止，不伪造时间前进，也不静默丢 candidate。
 
-### 6.2 Spatial contact 的权威进展状态
+### 6.2 Spatial occurrence 的权威进展状态
 
-一个 contact 提交后，Spatial world 必须发生足以阻止同一 contact 永久复发的权威变化，例如更新 traversal segment generation、关系状态或最小的 consumed-contact state。Journal receipt 不能替代 Forecast 可见的 World 状态。
+一个 Spatial occurrence 提交后，Spatial world 必须发生足以阻止同一候选永久复发的权威变化。当前 Grid Spatial 的原子单位是 scheduled mutation 与 current-leg arrival：mutation 消费自己的 schedule，arrival 完成、推进、改道或终止自己的 journey leg。Journal receipt 不能替代 Forecast 可见的 World 状态。
 
-具体表示由首个 Spatial 垂直切片决定，不预建通用 watermark/index 框架。一个 contact 也不得消费整个时间桶，导致同 tick 的其它 contact 消失；它只消费自己的领域条件，随后全量 re-Forecast。
+当前实现不预建通用 watermark/index，也不虚构尚不存在的独立 contact 产品模型。一个 occurrence 不得消费整个时间桶，导致同 tick 的其它候选消失；它只消费自己的领域条件，随后全量 re-Forecast。
 
 ---
 
@@ -340,72 +340,7 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 
 ---
 
-## 8. 剩余实施步骤
-
-每一步都必须形成可运行的垂直切片。`AppendBatch` 的单帧持久化与 ref CAS 已完成，不再重做；batch-level LogicalInstant、读取边界和 transition counting 仍属于待实施工作。
-
-### 切片 1：实现离散时间与最小值对象
-
-- 同步 003、008 的目标法则：`CandidateDue` 是 1ms 整数 tick，sub-ms 连续解统一向上量化；
-- 实现 `LogicalInstant`、二元 `WorldVersion`、`CandidateKey` 和整数 `CandidateDue`；
-- 用标准 keyed hash 实现 comparator；
-- 加入 golden vectors、重复 key、hash collision fallback 和 candidate 枚举置换测试；
-- 加入精确整数时刻不移动、任意 sub-ms 余数向上进入下一 tick 的量化边界测试；
-- 删除 `CausalOrdinal` 参与 candidate 排序的任何可能。
-
-退出条件：给定 WorldSeed、时间和 candidates，winner 与创建/注册/线程顺序无关。
-
-### 切片 2：一个 rule、一个 winner、一个 batch
-
-- 引入单一 `IOccurrenceRule`；
-- 实现 single-flight `Step(notAfter)`、full Forecast、唯一 winner、`BoundaryReached` 和 commit 后 full re-Forecast；
-- 实现 pure scratch-fold、最终 HostWorld invariant validation、空 draft 防线和同时间预算；
-- 把 Journal 读写单位迁为 batch：一个 header/LogicalInstant、facts 数组顺序、batch 间严格递增、flat fact prefix 不可观察；
-- 让成功的 `AppendBatch` 一次推进 `TransitionCount`/`CausalOrdinal`；发布前失败零变化，发布后故障从 Journal 恢复；
-- 先迁移一个无 Player、无 Spatial 的 timer/deadline 垂直案例。
-
-退出条件：新路径能独立运行，且没有第二个 commit authority。
-
-### 切片 3：Player/FirstBoard 垂直迁移
-
-- 用普通 `DecisionPointCandidate` 替换 `DecisionRequested` event、session、external input 与 `PendingAction` 两阶段；
-- owning FirstBoard rule 在 `PlanSelectedAsync` 中经 Host 调用 Player/validator，并只返回完整 draft；
-- 删除 Kernel 对 Host、Protocol、Player、Human/AI/LLM 类型的引用；
-- 验证 Alice/Bob 同 tick 只调用 winner 的策略，提交后 loser 基于新世界重新 Forecast；
-- 分别测试 malformed proposal 零提交与合法行动失败正式提交。
-
-退出条件：live `Run(externalInputs)` 和 internal-first decision barrier 不再被正式调用方使用。
-
-### 切片 4：首个 Game + Spatial 原子案例
-
-- 只实现 `TicketConsumed + TraversalStarted` 这一项真实组合；
-- 用 composite `HostWorld` scratch-fold 验证任一领域失败均零提交；
-- 不创建 coordinator、通用 command envelope 或五类假想跨域案例。
-
-退出条件：一张票的消耗与上船在一个 batch 中全成或全败。
-
-### 切片 5：Spatial 单 contact 迁移
-
-- 拆掉 whole-T `SpatialMoment`、fixed phases 和 command batch 仲裁；
-- mutation、arrival、contact 分别成为 candidates，每轮仍只提交一个；
-- 将 contact 的连续解按 §4 向上量化到 1ms tick，不向 Kernel 暴露 sub-ms 排序值；
-- 以最小权威状态防止 contact 永久复发；
-- 同步修订 007、008、009 中冲突的时间语义。
-
-退出条件：一个 contact 不吞掉同 tick 的其它候选，且 re-Forecast 不会无进展复发。
-
-### 切片 6：删除旧路径并补 Replay/Fork
-
-- 删除 external/internal cause 分支、Microstep phase、Decision session、pending/resume 和 subsystem gateway；
-- 普通 Replay 按 batch 原子 fold；Fork 只接受 committed boundary；
-- 增加同 build scheduler conformance test；
-- 用代码搜索和依赖测试确认 Kernel 不认识 Player/Protocol。
-
-退出条件：代码、003 和本计划只剩一套调度与提交语义。
-
----
-
-## 9. 最小验收矩阵
+## 8. 最小验收矩阵
 
 | ID | 硬断言 |
 |---|---|
@@ -425,22 +360,22 @@ Fork 只服务当前格式和当前运行中的 committed history。Journal 格�
 | RPL-1 | 普通 Replay 不 Forecast、不调用 Player，按 batch boundary 重建相同 World、WorldVersion 和 LogicalInstant。 |
 | FORK-1 | Fork 只发生于 committed batch boundary；child 创建新 LineageId，并继承 prefix count/World/instant/seed；未完成 Step 和 Forecast cache 不可复制。 |
 | LIV-1 | 空 draft、重复无进展 candidate 和超预算同时间链确定性失败。 |
-| SPL-1 | 已提交 contact 有 Forecast 可见的进展；单 contact 不消费整个 tick。 |
+| SPL-1 | 已提交 Spatial occurrence 有 Forecast 可见的局部进展；单个 occurrence 不消费整个 tick。 |
 
 ---
 
-## 10. 完成定义
+## 9. 完成状态
 
-本计划完成时：
+当前实现已满足：
 
 1. Kernel 只有 `Forecast all → select one → owning rule plans → scratch validate → AppendBatch` 一条路径；
 2. Kernel 项目不引用 Player、Protocol、Human、AI、LLM、resolution 或 validator 类型；
 3. `LogicalInstant` 是提交后的因果地址，不是候选排序工具；
 4. `WorldVersion`、candidate identity、fact order、Journal 发布边界各有且只有一个表示；
 5. Journal 已以完整 batch 为读写、计数和 Fork 单位，facts 不再各占 LogicalInstant；
-6. 普通 Replay、new-lineage committed-boundary Fork、bounded Step、同时间活锁预算和 Spatial contact 进展约束通过验收；
-7. 旧调度路径已删除，003、008 与实现采用同一套时间法则；
-8. 本文已完成的切片从计划中删除，而不是转写成永久的实施历史。
+6. 普通 Replay、new-lineage committed-boundary Fork、bounded Step、同时间活锁预算和 Spatial occurrence 进展约束通过验收；
+7. 旧调度路径已删除，003 与实现采用同一套时间法则；
+8. 已完成的实施切片已从本文删除，没有保留为永久实施历史。
 
 最终 Kernel 只回答并落实一个问题：
 

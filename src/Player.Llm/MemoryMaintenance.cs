@@ -99,7 +99,6 @@ public sealed class LlmMemoryShardMaintainer : IMemoryShardMaintainer
             .AppendLine("[本轮观察]")
             .Append("时间: ").Append(context.Request.ModelTimeMs.ToString(CultureInfo.InvariantCulture))
             .Append("ms; 位置: ").AppendLine(context.Request.Observation.LocationId)
-            .Append("请求原因: ").AppendLine(context.Request.Reason.Id)
             .Append("在场角色: ").AppendLine(RenderIds(context.Request.Observation.VisibleActorIds))
             .Append("可见物品: ").AppendLine(RenderIds(context.Request.Observation.VisibleObjectIds))
             .AppendLine("已知事实:");
@@ -115,12 +114,6 @@ public sealed class LlmMemoryShardMaintainer : IMemoryShardMaintainer
                     .Append(", related=").Append(fact.RelatedId ?? "-")
                     .Append(", text=").AppendLine(fact.Text);
             }
-        }
-
-        if (context.Request.RejectedIntent is not null)
-        {
-            user.Append("- 上次尝试被拒绝: ")
-                .AppendLine(PromptRenderer.RenderIntent(context.Request.RejectedIntent));
         }
 
         user.AppendLine()

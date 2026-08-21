@@ -1,23 +1,23 @@
 namespace DramaBoard.Kernel.Simulation;
 
-/// <summary>Identifies one committed event prefix within a simulation lineage.</summary>
+/// <summary>Identifies one committed transition prefix within a simulation lineage.</summary>
 public readonly record struct WorldVersion
 {
-    /// <summary>Initializes a version from a lineage and its committed journal event count.</summary>
-    public WorldVersion(long lineageId, int eventCount)
+    /// <summary>Initializes a version from a lineage and its committed transition count.</summary>
+    public WorldVersion(long lineageId, long transitionCount)
     {
-        if (eventCount < 0)
+        if (transitionCount < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(eventCount));
+            throw new ArgumentOutOfRangeException(nameof(transitionCount));
         }
 
         LineageId = lineageId;
-        EventCount = eventCount;
+        TransitionCount = transitionCount;
     }
 
     /// <summary>Gets the lineage identity; versions from different lineages are never equal.</summary>
     public long LineageId { get; }
 
-    /// <summary>Gets the journal prefix length, which is the natural prefix-comparison key within a lineage.</summary>
-    public int EventCount { get; }
+    /// <summary>Gets the complete committed batch count within this lineage.</summary>
+    public long TransitionCount { get; }
 }

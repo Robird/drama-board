@@ -1,8 +1,7 @@
-using Atelia.EventJournal;
 using System.Text.Json;
+using Atelia.EventJournal;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
-using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Journal.Atelia.Tests;
@@ -13,106 +12,129 @@ public sealed class AteliaJournalSinkTests
     private const long DefaultLineageId = 101;
 
     [Fact]
-    public void CursorSnapshotEnvelope_RoundTripsEveryControlField()
+    public void BatchEnvelope_RoundTripsOneHeaderAndOrderedFacts()
     {
-        var expected = new CursorSnapshot(
-            LineageId: 41,
-            NowTicks: 1234,
-            ResolveCountAtCurrentTime: 7,
-            NextBatchOrdinal: 19,
-            LastResolvedSourceId: 23,
-            LastResolvedCandidateId: 29,
-            LastResolvedDueTicks: 1200,
-            LastResolveProducedNoEvents: true);
+        JournalBatch<CounterFact> expected = Batch(
+            modelTime: 123,
+            causalOrdinal: 4,
+            cause: "counter/round-trip",
+            new CounterFact(1, -7, "first"),
+            new CounterFact(2, 11, "second"));
 
-        byte[] envelope = CursorSnapshotEnvelopeCodec.Serialize(expected);
-        CursorSnapshot actual = CursorSnapshotEnvelopeCodec.Deserialize(envelope);
-        SimulationCursor restored = SimulationCursor.FromSnapshot(actual);
-
-        Assert.Equal(expected, actual);
-        Assert.Equal(expected, restored.ToSnapshot());
-    }
-
-    [Fact]
-    public void Envelope_RoundTripsEveryDomainEventField()
-    {
-        var expected = new DomainEvent<CounterEvent>(
-            new LogicalTimestamp(new ModelTime(123), new Microstep(4)),
-            EventCause.FromResolve(
-                sourceId: 17,
-                new EventCandidateId(23),
-                new ModelTime(120),
-                batchOrdinal: 8),
-            new EventKind("counter.custom", 2),
-            new CounterEvent(3, -7, "round-trip"));
-
-        EventKind? deserializedKind = null;
-        byte[] envelope = DomainEventEnvelopeCodec.Serialize(
+        byte[] envelope = JournalBatchEnvelopeCodec.Serialize(
             expected,
             PayloadCodec,
-            batchIndex: 1,
-            batchCount: 3,
             SerializePayload);
-        DomainEvent<CounterEvent> actual = DomainEventEnvelopeCodec.Deserialize(
+        JournalBatch<CounterFact> actual = JournalBatchEnvelopeCodec.Deserialize(
             envelope,
             PayloadCodec,
-            (kind, payload) =>
-            {
-                deserializedKind = kind;
-                return DeserializePayload(kind, payload);
-            },
-            out int batchIndex,
-            out int batchCount);
+            DeserializePayload);
 
-        AssertDomainEventEqual(expected, actual);
-        Assert.Equal(expected.Kind.Id, deserializedKind?.Id);
-        Assert.Equal(expected.Kind.Version, deserializedKind?.Version);
-        Assert.Equal(1, batchIndex);
-        Assert.Equal(3, batchCount);
+        AssertBatchEqual(expected, actual);
         using JsonDocument document = JsonDocument.Parse(envelope);
-        Assert.Equal(2, document.RootElement.GetProperty("v").GetInt32());
-        Assert.Equal(PayloadCodec, document.RootElement.GetProperty("pc").GetString());
-        Assert.Equal(1, document.RootElement.GetProperty("bi").GetInt32());
-        Assert.Equal(3, document.RootElement.GetProperty("bc").GetInt32());
-        Assert.Equal(
-            SerializePayload(expected.Payload),
-            document.RootElement.GetProperty("p").GetBytesFromBase64());
+        JsonElement root = document.RootElement;
+        Assert.False(root.TryGetProperty("v", out _));
+        Assert.Equal(123, root.GetProperty("instant").GetProperty("ms").GetInt64());
+        Assert.Equal(4, root.GetProperty("instant").GetProperty("ordinal").GetInt64());
+        Assert.Equal(expected.CauseKey.ToByteArray(), root.GetProperty("cause").GetBytesFromBase64());
+        Assert.Equal(PayloadCodec, root.GetProperty("pc").GetString());
+        Assert.Equal(2, root.GetProperty("facts").GetArrayLength());
+        Assert.False(root.TryGetProperty("bi", out _));
+        Assert.False(root.TryGetProperty("bc", out _));
     }
 
     [Fact]
-    public void Envelope_VersionOne_IsExplicitlyUnsupported()
+    public void BatchEnvelope_EmptyFacts_IsRejectedBeforePayloadDeserialization()
     {
-        NotSupportedException exception = Assert.Throws<NotSupportedException>(() =>
-            DomainEventEnvelopeCodec.Deserialize(
-                """{"v":1}"""u8,
-                PayloadCodec,
-                DeserializePayload,
-                out _,
-                out _));
+        bool deserializerCalled = false;
+        byte[] envelope =
+            """{"instant":{"ms":10,"ordinal":0},"cause":"AQ==","pc":"counter-json/1","facts":[]}"""u8.ToArray();
 
-        Assert.Contains("version 1", exception.Message, StringComparison.Ordinal);
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            JournalBatchEnvelopeCodec.Deserialize<CounterFact>(
+                envelope,
+                PayloadCodec,
+                payload =>
+                {
+                    deserializerCalled = true;
+                    return DeserializePayload(payload);
+                }));
+
+        Assert.False(deserializerCalled);
+        Assert.Contains("at least one fact", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SimulationLoop_PersistsReplaysAndFoldsToRuntimeWorld()
+    public void AppendBatch_MultiFactTransitionAddsOneBatchAndOnePhysicalFrame()
     {
         using var directory = new TemporaryJournalDirectory();
-        CounterWorld initial = InitialWorld();
-        var reducer = new CounterReducer();
-        SimulationRunResult<CounterWorld, CounterEvent> runtime;
-        DomainEvent<CounterEvent>[] written;
+        JournalBatch<CounterFact> batch = Batch(
+            10,
+            0,
+            "counter/multi",
+            new CounterFact(1, 1, "multi"),
+            new CounterFact(2, 2, "multi"),
+            new CounterFact(3, 3, "multi"));
+
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.AppendBatch(batch);
+
+            JournalBatch<CounterFact> committed = Assert.Single(sink.Batches);
+            AssertBatchEqual(batch, committed);
+            Assert.Equal(3, committed.Facts.Count);
+        }
+
+        using global::Atelia.EventJournal.EventJournal journal =
+            global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path);
+        RefId refId = journal.OpenBranch("main").Unwrap();
+        EventAddress head = journal.GetHead(refId)
+            ?? throw new InvalidDataException("The test branch has no head.");
+        IReadOnlyList<EventAddress> chain = journal.ReadChronologicalChain(head, checkedRead: true).Unwrap();
+
+        Assert.Equal(2, chain.Count); // lineage metadata + one complete transition frame
+    }
+
+    [Fact]
+    public void AppendBatch_RequiresStrictlyIncreasingBatchInstants()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using var sink = CreateSink(directory.Path);
+        sink.AppendBatch(Batch(10, 0, "counter/first", new CounterFact(1, 1, "first")));
+
+        Assert.Throws<InvalidOperationException>(() => sink.AppendBatch(
+            Batch(10, 0, "counter/equal", new CounterFact(2, 2, "equal"))));
+        Assert.Throws<InvalidOperationException>(() => sink.AppendBatch(
+            Batch(9, 0, "counter/earlier", new CounterFact(3, 3, "earlier"))));
+
+        Assert.Single(sink.Batches);
+    }
+
+    [Fact]
+    public void OpenAndReplay_ReturnsCompleteBatchesInCommitOrder()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        JournalBatch<CounterFact>[] written =
+        [
+            Batch(10, 0, "counter/one", new CounterFact(1, 1, "one")),
+            Batch(
+                10,
+                1,
+                "counter/two",
+                new CounterFact(2, 2, "two-a"),
+                new CounterFact(3, 3, "two-b")),
+            Batch(20, 0, "counter/three", new CounterFact(4, 4, "three")),
+        ];
 
         using (var sink = CreateSink(directory.Path, lineageId: 11))
         {
-            runtime = CreateLoop(reducer).Run(
-                initial,
-                SimulationCursor.CreateInitial(lineageId: 11, ModelTime.Zero),
-                new ModelTime(40),
-                sink);
-            written = [.. sink.Events];
+            foreach (JournalBatch<CounterFact> batch in written)
+            {
+                sink.AppendBatch(batch);
+            }
         }
 
-        var replay = AteliaJournalSink<CounterEvent>.OpenAndReplay(
+        var replay = AteliaJournalSink<CounterFact>.OpenAndReplay(
             directory.Path,
             "main",
             11,
@@ -121,123 +143,259 @@ public sealed class AteliaJournalSinkTests
             DeserializePayload);
         using (replay.Sink)
         {
-            CounterWorld folded = replay.Events.Aggregate(initial, reducer.Apply);
-
-            Assert.Equal(runtime.World, folded);
-            Assert.Equal(10, folded.Total);
-            AssertDomainEventsEqual(written, replay.Events);
+            AssertBatchesEqual(written, replay.Batches);
+            Assert.Equal([1, 2, 1], replay.Batches.Select(batch => batch.Facts.Count));
         }
     }
 
     [Fact]
-    public void ReopenAndContinue_IsEquivalentToOneShotRun()
+    public void ForkBranch_UsesTransitionPrefixAndAllowsDivergentSuffixes()
     {
         using var directory = new TemporaryJournalDirectory();
-        CounterWorld initial = InitialWorld();
-        var reducer = new CounterReducer();
-        SimulationLoop<CounterWorld, CounterCandidate, CounterEvent> loop = CreateLoop(reducer);
-        SimulationRunResult<CounterWorld, CounterEvent> first;
-        string snapshotPath = Path.Combine(directory.Path, "cursor.snapshot.json");
-
-        using (var sink = CreateSink(directory.Path, lineageId: 12))
-        {
-            first = loop.Run(
-                initial,
-                SimulationCursor.CreateInitial(lineageId: 12, ModelTime.Zero),
-                new ModelTime(20),
-                sink);
-            Assert.Equal(2, sink.Events.Count);
-            File.WriteAllBytes(
-                snapshotPath,
-                CursorSnapshotEnvelopeCodec.Serialize(first.Cursor.ToSnapshot()));
-        }
-
-        SimulationRunResult<CounterWorld, CounterEvent> continued;
-        DomainEvent<CounterEvent>[] persisted;
-        using (var reopened = CreateSink(directory.Path, lineageId: 12))
-        {
-            CounterWorld replayedWorld = reopened.Events.Aggregate(initial, reducer.Apply);
-            CursorSnapshot persistedSnapshot = CursorSnapshotEnvelopeCodec.Deserialize(
-                File.ReadAllBytes(snapshotPath));
-            continued = loop.Run(
-                replayedWorld,
-                SimulationCursor.FromSnapshot(persistedSnapshot),
-                new ModelTime(40),
-                reopened);
-            persisted = [.. reopened.Events];
-        }
-
-        var memory = new InMemoryJournal<CounterEvent>();
-        SimulationRunResult<CounterWorld, CounterEvent> oneShot = loop.Run(
-            initial,
-            SimulationCursor.CreateInitial(lineageId: 12, ModelTime.Zero),
-            new ModelTime(40),
-            memory);
-
-        Assert.Equal(oneShot.World, continued.World);
-        Assert.Equal(oneShot.Cursor, continued.Cursor);
-        AssertDomainEventsEqual(memory.Events, persisted);
-        Assert.Equal(oneShot.World, persisted.Aggregate(initial, reducer.Apply));
-    }
-
-    [Fact]
-    public void ForkBranch_SharesPrefixAndAllowsDivergentSuffixes()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        var reducer = new CounterReducer();
+        JournalBatch<CounterFact> shared = Batch(
+            10,
+            0,
+            "counter/shared",
+            new CounterFact(1, 1, "shared-a"),
+            new CounterFact(2, 2, "shared-b"));
 
         using (var main = CreateSink(directory.Path, lineageId: 13))
         {
-            _ = CreateLoop(reducer).Run(
-                InitialWorld(),
-                SimulationCursor.CreateInitial(lineageId: 13, ModelTime.Zero),
-                new ModelTime(20),
-                main);
-            main.ForkBranch("fork-1", main.Events.Count, lineageId: 14);
+            main.AppendBatch(shared);
+            main.AppendBatch(Batch(20, 0, "counter/skipped", new CounterFact(3, 3, "skipped")));
+            main.ForkBranch("fork-1", prefixTransitionCount: 1, lineageId: 14);
         }
 
         using (var main = CreateSink(directory.Path, lineageId: 13))
         {
-            main.Append(DivergentEvent(delta: 3, route: "main"));
+            main.AppendBatch(Batch(30, 0, "counter/main", new CounterFact(4, 4, "main")));
         }
 
         using (var fork = CreateSink(directory.Path, "fork-1", lineageId: 14))
         {
-            fork.Append(DivergentEvent(delta: 30, route: "fork-1"));
+            fork.AppendBatch(Batch(30, 0, "counter/fork", new CounterFact(4, 40, "fork-1")));
         }
 
-        DomainEvent<CounterEvent>[] mainEvents;
-        long mainLineageId;
-        using (var main = CreateSink(directory.Path, lineageId: 13))
+        JournalBatch<CounterFact>[] mainBatches;
+        using (var reopenedMain = CreateSink(directory.Path, lineageId: 13))
         {
-            mainLineageId = main.LineageId;
-            mainEvents = [.. main.Events];
+            mainBatches = [.. reopenedMain.Batches];
         }
 
-        DomainEvent<CounterEvent>[] forkEvents;
-        long forkLineageId;
-        using (var fork = CreateSink(directory.Path, "fork-1", lineageId: 14))
+        JournalBatch<CounterFact>[] forkBatches;
+        using (var reopenedFork = CreateSink(directory.Path, "fork-1", lineageId: 14))
         {
-            forkLineageId = fork.LineageId;
-            Assert.Equal(13, fork.ParentLineageId);
-            Assert.Equal(2, fork.ForkPrefixEventCount);
-            forkEvents = [.. fork.Events];
+            Assert.Equal(13, reopenedFork.ParentLineageId);
+            Assert.Equal(1, reopenedFork.ForkPrefixTransitionCount);
+            forkBatches = [.. reopenedFork.Batches];
         }
 
-        Assert.Equal(3, mainEvents.Length);
-        Assert.Equal(3, forkEvents.Length);
-        AssertDomainEventsEqual(mainEvents[..2], forkEvents[..2]);
-        Assert.NotEqual(mainEvents[^1].Payload, forkEvents[^1].Payload);
-        Assert.Equal("main", mainEvents[^1].Payload.Route);
-        Assert.Equal("fork-1", forkEvents[^1].Payload.Route);
-        Assert.Equal(mainEvents.Length, forkEvents.Length);
-        Assert.NotEqual(
-            new WorldVersion(mainLineageId, mainEvents.Length),
-            new WorldVersion(forkLineageId, forkEvents.Length));
+        Assert.Equal(3, mainBatches.Length);
+        Assert.Equal(2, forkBatches.Length);
+        AssertBatchEqual(mainBatches[0], forkBatches[0]);
+        Assert.Equal("main", mainBatches[^1].Facts[0].Route);
+        Assert.Equal("fork-1", forkBatches[^1].Facts[0].Route);
     }
 
     [Fact]
-    public void Reopen_WithDifferentLineageId_ThrowsWithBothValues()
+    public void ForkBranch_ZeroPrefixCreatesEmptyChildWithNewLineage()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var main = CreateSink(directory.Path, lineageId: 21))
+        {
+            main.AppendBatch(Batch(10, 0, "counter/main", new CounterFact(1, 1, "main")));
+            main.ForkBranch("empty-child", prefixTransitionCount: 0, lineageId: 22);
+        }
+
+        using var child = CreateSink(directory.Path, "empty-child", lineageId: 22);
+        Assert.Empty(child.Batches);
+        Assert.Equal(21, child.ParentLineageId);
+        Assert.Equal(0, child.ForkPrefixTransitionCount);
+    }
+
+    [Fact]
+    public void AppendBatch_SerializationFailureInMiddleLeavesVisibleHistoryUnchanged()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = new AteliaJournalSink<CounterFact>(
+                   directory.Path,
+                   DefaultLineageId,
+                   PayloadCodec,
+                   payload => payload.Route == "reject"
+                       ? throw new InvalidOperationException("Injected serialization failure.")
+                       : SerializePayload(payload),
+                   DeserializePayload))
+        {
+            sink.AppendBatch(Batch(10, 0, "counter/visible", new CounterFact(1, 1, "visible")));
+            JournalBatch<CounterFact> rejected = Batch(
+                20,
+                0,
+                "counter/rejected",
+                new CounterFact(2, 2, "would-be-prefix"),
+                new CounterFact(3, 3, "reject"),
+                new CounterFact(4, 4, "would-be-suffix"));
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+                () => sink.AppendBatch(rejected));
+
+            Assert.Contains("Injected serialization failure", exception.Message, StringComparison.Ordinal);
+            Assert.Single(sink.Batches);
+            Assert.Equal("visible", sink.Batches[0].Facts[0].Route);
+        }
+
+        using var reopened = CreateSink(directory.Path);
+        Assert.Single(reopened.Batches);
+        Assert.Equal("visible", reopened.Batches[0].Facts[0].Route);
+    }
+
+    [Fact]
+    public void AppendBatch_ExceedsSingleFrameLimitLeavesVisibleHistoryUnchanged()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = new AteliaJournalSink<CounterFact>(
+                   directory.Path,
+                   DefaultLineageId,
+                   PayloadCodec,
+                   SerializePayload,
+                   DeserializePayload,
+                   journalOptions: new EventJournalOptions { MaxLogicalPayloadLength = 512 }))
+        {
+            JournalBatch<CounterFact> oversized = Batch(
+                10,
+                0,
+                "counter/oversized",
+                new CounterFact(1, 1, new string('x', 2_000)));
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+                () => sink.AppendBatch(oversized));
+
+            Assert.Contains("maximum", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(sink.Batches);
+        }
+
+        using global::Atelia.EventJournal.EventJournal journal =
+            global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path);
+        RefId refId = journal.OpenBranch("main").Unwrap();
+        EventAddress head = journal.GetHead(refId)
+            ?? throw new InvalidDataException("The test branch has no head.");
+        Assert.Single(journal.ReadChronologicalChain(head, checkedRead: true).Unwrap());
+    }
+
+    [Fact]
+    public void RefCasFailureLeavesActiveHistoryUnchangedAndOrphanInvisible()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (CreateSink(directory.Path))
+        {
+        }
+
+        using (global::Atelia.EventJournal.EventJournal journal =
+               global::Atelia.EventJournal.EventJournal.OpenOrCreate(directory.Path))
+        {
+            RefId refId = journal.OpenBranch("main").Unwrap();
+            EventAddress expectedHead = journal.GetHead(refId)
+                ?? throw new InvalidDataException("The test branch has no head.");
+            EventAddress winnerAddress = journal.AppendEventFrame(
+                expectedHead,
+                JournalBatchEnvelopeCodec.Serialize(
+                    Batch(10, 0, "counter/winner", new CounterFact(1, 1, "winner")),
+                    PayloadCodec,
+                    SerializePayload),
+                AteliaJournalFrameKinds.JournalBatch,
+                utcUnixTimeMilliseconds: 0).Unwrap();
+            _ = journal.AdvanceRef(refId, expectedHead, winnerAddress).Unwrap();
+            EventAddress orphanAddress = journal.AppendEventFrame(
+                expectedHead,
+                JournalBatchEnvelopeCodec.Serialize(
+                    Batch(20, 0, "counter/stale", new CounterFact(2, 2, "stale")),
+                    PayloadCodec,
+                    SerializePayload),
+                AteliaJournalFrameKinds.JournalBatch,
+                utcUnixTimeMilliseconds: 0).Unwrap();
+
+            var casFailure = journal.AdvanceRef(refId, expectedHead, orphanAddress);
+
+            Assert.True(casFailure.IsFailure);
+            Assert.Equal(winnerAddress, journal.GetHead(refId));
+        }
+
+        using var reopened = CreateSink(directory.Path);
+        JournalBatch<CounterFact> committed = Assert.Single(reopened.Batches);
+        Assert.Equal("winner", committed.Facts[0].Route);
+    }
+
+    [Fact]
+    public void OrphanBatchFrameWithoutRefAdvanceIsInvisibleOnReopen()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.AppendBatch(Batch(10, 0, "counter/visible", new CounterFact(1, 1, "visible")));
+        }
+
+        AppendDirectBatchFrame(
+            directory.Path,
+            Batch(20, 0, "counter/orphan", new CounterFact(2, 2, "orphan")),
+            advanceRef: false);
+
+        using var reopened = CreateSink(directory.Path);
+        JournalBatch<CounterFact> visible = Assert.Single(reopened.Batches);
+        Assert.Equal("visible", visible.Facts[0].Route);
+    }
+
+    [Fact]
+    public void VisibleMalformedBatchFailsOpenWithoutRewindingBranch()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.AppendBatch(Batch(10, 0, "counter/visible", new CounterFact(1, 1, "visible")));
+        }
+
+        byte[] malformed =
+            """{"v":1,"instant":{"ms":20,"ordinal":0},"cause":"AQ==","pc":"counter-json/1","facts":[]}"""u8.ToArray();
+        AppendDirectFrame(directory.Path, malformed, advanceRef: true);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => CreateSink(directory.Path));
+        Assert.Contains("at least one fact", exception.Message, StringComparison.Ordinal);
+
+        using global::Atelia.EventJournal.EventJournal journal =
+            global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path);
+        RefId refId = journal.OpenBranch("main").Unwrap();
+        EventAddress head = journal.GetHead(refId)
+            ?? throw new InvalidDataException("The test branch has no head.");
+        Assert.Equal(3, journal.ReadChronologicalChain(head, checkedRead: true).Unwrap().Count);
+    }
+
+    [Fact]
+    public void Reopen_WithDifferentPayloadCodecThrowsBeforeDeserializingFacts()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.AppendBatch(Batch(10, 0, "counter/visible", new CounterFact(1, 1, "visible")));
+        }
+
+        bool deserializerCalled = false;
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            new AteliaJournalSink<CounterFact>(
+                directory.Path,
+                DefaultLineageId,
+                "counter-json/2",
+                SerializePayload,
+                payload =>
+                {
+                    deserializerCalled = true;
+                    return DeserializePayload(payload);
+                }));
+
+        Assert.False(deserializerCalled);
+        Assert.Contains(PayloadCodec, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("counter-json/2", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reopen_WithDifferentLineageIdThrowsWithBothValues()
     {
         using var directory = new TemporaryJournalDirectory();
         using (CreateSink(directory.Path, lineageId: 71))
@@ -251,320 +409,41 @@ public sealed class AteliaJournalSinkTests
         Assert.Contains("72", exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void AppendBatch_PersistsOneEventFrameAndRejectsMiddleForks()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        EventCause cause = EventCause.FromResolve(
-            sourceId: 101,
-            new EventCandidateId(5),
-            new ModelTime(10),
-            batchOrdinal: 0);
-        DomainEvent<CounterEvent>[] batch =
-        [
-            new(
-                new LogicalTimestamp(new ModelTime(10), new Microstep(0)),
-                cause,
-                CounterEventKinds.Advanced,
-                new CounterEvent(1, 1, "batch")),
-            new(
-                new LogicalTimestamp(new ModelTime(10), new Microstep(1)),
-                cause,
-                CounterEventKinds.Advanced,
-                new CounterEvent(2, 2, "batch")),
-            new(
-                new LogicalTimestamp(new ModelTime(10), new Microstep(2)),
-                cause,
-                CounterEventKinds.Advanced,
-                new CounterEvent(3, 3, "batch")),
-        ];
-
-        using (var sink = CreateSink(directory.Path))
-        {
-            sink.AppendBatch(batch);
-
-            IReadOnlyList<byte[]> envelopes = sink.ReadStoredPayloads();
-            Assert.Equal(3, envelopes.Count);
-            for (int index = 0; index < envelopes.Count; index++)
-            {
-                using JsonDocument document = JsonDocument.Parse(envelopes[index]);
-                Assert.Equal(index, document.RootElement.GetProperty("bi").GetInt32());
-                Assert.Equal(3, document.RootElement.GetProperty("bc").GetInt32());
-            }
-
-            Assert.Throws<InvalidOperationException>(() => sink.ForkBranch("middle-1", 1, 202));
-            Assert.Throws<InvalidOperationException>(() => sink.ForkBranch("middle-2", 2, 203));
-        }
-
-        using (global::Atelia.EventJournal.EventJournal journal =
-               global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path))
-        {
-            RefId refId = journal.OpenBranch("main").Unwrap();
-            EventAddress head = journal.GetHead(refId)
-                ?? throw new InvalidDataException("The test branch has no head.");
-            IReadOnlyList<EventAddress> chain = journal.ReadChronologicalChain(head, checkedRead: true).Unwrap();
-
-            Assert.Equal(2, chain.Count); // lineage metadata + one three-fact batch frame
-        }
-
-        using var reopened = CreateSink(directory.Path);
-        AssertDomainEventsEqual(batch, reopened.Events);
-    }
-
-    [Fact]
-    public void AppendBatch_SerializationFailureInMiddle_LeavesBranchAndMemoryUnchanged()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        using (var sink = new AteliaJournalSink<CounterEvent>(
-                   directory.Path,
-                   DefaultLineageId,
-                   PayloadCodec,
-                   payload => payload.Route == "reject"
-                       ? throw new InvalidOperationException("Injected serialization failure.")
-                       : SerializePayload(payload),
-                   DeserializePayload))
-        {
-            sink.Append(DivergentEvent(delta: 1, route: "visible"));
-            EventCause cause = EventCause.FromResolve(
-                sourceId: 101,
-                new EventCandidateId(6),
-                new ModelTime(31),
-                batchOrdinal: 3);
-            DomainEvent<CounterEvent>[] batch =
-            [
-                new(
-                    new LogicalTimestamp(new ModelTime(31), new Microstep(0)),
-                    cause,
-                    CounterEventKinds.Advanced,
-                    new CounterEvent(4, 1, "would-be-prefix")),
-                new(
-                    new LogicalTimestamp(new ModelTime(31), new Microstep(1)),
-                    cause,
-                    CounterEventKinds.Advanced,
-                    new CounterEvent(5, 1, "reject")),
-                new(
-                    new LogicalTimestamp(new ModelTime(31), new Microstep(2)),
-                    cause,
-                    CounterEventKinds.Advanced,
-                    new CounterEvent(6, 1, "would-be-suffix")),
-            ];
-
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-                () => sink.AppendBatch(batch));
-
-            Assert.Contains("Injected serialization failure", exception.Message, StringComparison.Ordinal);
-            Assert.Single(sink.Events);
-            Assert.Equal("visible", sink.Events[0].Payload.Route);
-        }
-
-        using var reopened = CreateSink(directory.Path);
-        Assert.Single(reopened.Events);
-        Assert.Equal("visible", reopened.Events[0].Payload.Route);
-    }
-
-    [Fact]
-    public void AppendBatch_ExceedsSingleFrameLimit_LeavesBranchAndMemoryUnchanged()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        using (var sink = new AteliaJournalSink<CounterEvent>(
-                   directory.Path,
-                   DefaultLineageId,
-                   PayloadCodec,
-                   SerializePayload,
-                   DeserializePayload,
-                   journalOptions: new EventJournalOptions { MaxLogicalPayloadLength = 512 }))
-        {
-            EventCause cause = EventCause.FromResolve(
-                sourceId: 101,
-                new EventCandidateId(7),
-                new ModelTime(31),
-                batchOrdinal: 3);
-            var oversized = new DomainEvent<CounterEvent>(
-                new LogicalTimestamp(new ModelTime(31), new Microstep(0)),
-                cause,
-                CounterEventKinds.Advanced,
-                new CounterEvent(4, 1, new string('x', 2_000)));
-
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-                () => sink.AppendBatch([oversized]));
-
-            Assert.Contains("maximum", exception.Message, StringComparison.OrdinalIgnoreCase);
-            Assert.Empty(sink.Events);
-        }
-
-        using (global::Atelia.EventJournal.EventJournal journal =
-               global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path))
-        {
-            RefId refId = journal.OpenBranch("main").Unwrap();
-            EventAddress head = journal.GetHead(refId)
-                ?? throw new InvalidDataException("The test branch has no head.");
-            IReadOnlyList<EventAddress> chain = journal.ReadChronologicalChain(head, checkedRead: true).Unwrap();
-
-            Assert.Single(chain); // lineage metadata only
-        }
-
-        using var reopened = CreateSink(directory.Path);
-        Assert.Empty(reopened.Events);
-    }
-
-    [Fact]
-    public void OrphanBatchFrame_WithoutRefAdvance_IsInvisibleOnReopen()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        using (var sink = CreateSink(directory.Path))
-        {
-            sink.Append(DivergentEvent(delta: 1, route: "visible"));
-        }
-
-        AppendDirectBatchFrame(directory.Path, batchCount: 1, advanceRef: false);
-
-        using var reopened = CreateSink(directory.Path);
-        Assert.Single(reopened.Events);
-        Assert.Equal("visible", reopened.Events[0].Payload.Route);
-    }
-
-    [Fact]
-    public void VisibleMalformedBatchEnvelope_FailsOpenWithoutRewindingBranch()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        using (var sink = CreateSink(directory.Path))
-        {
-            sink.Append(DivergentEvent(delta: 1, route: "visible"));
-        }
-
-        AppendDirectBatchFrame(directory.Path, batchCount: 2, advanceRef: true);
-
-        IncompleteEventBatchException exception = Assert.Throws<IncompleteEventBatchException>(
-            () => CreateSink(directory.Path));
-        Assert.Contains("incomplete", exception.Message, StringComparison.OrdinalIgnoreCase);
-
-        using (global::Atelia.EventJournal.EventJournal journal =
-               global::Atelia.EventJournal.EventJournal.OpenReadOnlyExisting(directory.Path))
-        {
-            RefId refId = journal.OpenBranch("main").Unwrap();
-            EventAddress head = journal.GetHead(refId)
-                ?? throw new InvalidDataException("The test branch has no head.");
-            IReadOnlyList<EventAddress> chain = journal.ReadChronologicalChain(head, checkedRead: true).Unwrap();
-
-            Assert.Equal(3, chain.Count); // lineage metadata + valid event + malformed evidence
-        }
-
-        _ = Assert.Throws<IncompleteEventBatchException>(() => CreateSink(directory.Path));
-    }
-
-    [Fact]
-    public void Reopen_WithDifferentPayloadCodec_ThrowsBeforeDeserializingPayload()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        using (var sink = CreateSink(directory.Path))
-        {
-            sink.Append(DivergentEvent(delta: 1, route: "visible"));
-        }
-
-        bool deserializerCalled = false;
-        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
-            new AteliaJournalSink<CounterEvent>(
-                directory.Path,
-                DefaultLineageId,
-                "counter-json/2",
-                SerializePayload,
-                (kind, payload) =>
-                {
-                    deserializerCalled = true;
-                    return DeserializePayload(kind, payload);
-                }));
-
-        Assert.False(deserializerCalled);
-        Assert.Contains(PayloadCodec, exception.Message, StringComparison.Ordinal);
-        Assert.Contains("counter-json/2", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void IdenticalEvents_ProduceIdenticalStoredLogicalPayloadBytes()
-    {
-        using var directory = new TemporaryJournalDirectory();
-        string firstPath = Path.Combine(directory.Path, "first");
-        string secondPath = Path.Combine(directory.Path, "second");
-        DomainEvent<CounterEvent>[] events =
-        [
-            new DomainEvent<CounterEvent>(
-                new LogicalTimestamp(new ModelTime(10), new Microstep(0)),
-                EventCause.FromResolve(101, new EventCandidateId(1), new ModelTime(10), 0),
-                CounterEventKinds.Advanced,
-                new CounterEvent(1, 1, "deterministic")),
-            new DomainEvent<CounterEvent>(
-                new LogicalTimestamp(new ModelTime(20), new Microstep(0)),
-                EventCause.FromExternalInput(1),
-                new EventKind("counter.external", 3),
-                new CounterEvent(2, 9, "deterministic")),
-        ];
-
-        IReadOnlyList<byte[]> firstPayloads = WriteAndReadPayloads(firstPath, events);
-        IReadOnlyList<byte[]> secondPayloads = WriteAndReadPayloads(secondPath, events);
-
-        Assert.Equal(firstPayloads.Count, secondPayloads.Count);
-        for (int index = 0; index < firstPayloads.Count; index++)
-        {
-            Assert.Equal(firstPayloads[index], secondPayloads[index]);
-        }
-
-        AssertStorageDirectoriesEqual(
-            Path.Combine(firstPath, "events"),
-            Path.Combine(secondPath, "events"));
-    }
-
-    private static CounterWorld InitialWorld() => new(Total: 0, NextStep: 1, FinalStep: 4);
-
-    private static SimulationLoop<CounterWorld, CounterCandidate, CounterEvent> CreateLoop(
-        CounterReducer reducer) =>
-        new([new CounterSystem()], reducer);
-
-    private static AteliaJournalSink<CounterEvent> CreateSink(
+    private static AteliaJournalSink<CounterFact> CreateSink(
         string path,
         string branchName = "main",
         long lineageId = DefaultLineageId) =>
         new(path, lineageId, PayloadCodec, SerializePayload, DeserializePayload, branchName);
 
-    private static DomainEvent<CounterEvent> DivergentEvent(int delta, string route) =>
+    private static JournalBatch<CounterFact> Batch(
+        long modelTime,
+        long causalOrdinal,
+        string cause,
+        params CounterFact[] facts) =>
         new(
-            new LogicalTimestamp(new ModelTime(30), new Microstep(0)),
-            EventCause.FromResolve(101, new EventCandidateId(3), new ModelTime(30), 2),
-            CounterEventKinds.Advanced,
-            new CounterEvent(3, delta, route));
-
-    private static IReadOnlyList<byte[]> WriteAndReadPayloads(
-        string path,
-        IReadOnlyList<DomainEvent<CounterEvent>> events)
-    {
-        using var sink = CreateSink(path);
-        foreach (DomainEvent<CounterEvent> domainEvent in events)
-        {
-            sink.Append(domainEvent);
-        }
-
-        return sink.ReadStoredPayloads();
-    }
+            new LogicalInstant(new ModelTime(modelTime), causalOrdinal),
+            new CandidateKey(cause),
+            facts);
 
     private static void AppendDirectBatchFrame(
         string path,
-        int batchCount,
-        bool advanceRef)
+        JournalBatch<CounterFact> batch,
+        bool advanceRef) =>
+        AppendDirectFrame(
+            path,
+            JournalBatchEnvelopeCodec.Serialize(batch, PayloadCodec, SerializePayload),
+            advanceRef);
+
+    private static void AppendDirectFrame(string path, byte[] framePayload, bool advanceRef)
     {
         using global::Atelia.EventJournal.EventJournal journal =
             global::Atelia.EventJournal.EventJournal.OpenOrCreate(path);
         RefId refId = journal.OpenBranch("main").Unwrap();
         EventAddress? head = journal.GetHead(refId);
-        byte[] envelope = DomainEventEnvelopeCodec.Serialize(
-            DivergentEvent(delta: 99, route: "orphan"),
-            PayloadCodec,
-            batchIndex: 0,
-            batchCount,
-            SerializePayload);
-        byte[] framePayload = DomainEventBatchFrameCodec.Serialize([envelope]);
         EventAddress address = journal.AppendEventFrame(
             head,
             framePayload,
-            AteliaJournalFrameKinds.DomainEventBatch,
+            AteliaJournalFrameKinds.JournalBatch,
             utcUnixTimeMilliseconds: 0).Unwrap();
         if (advanceRef)
         {
@@ -572,55 +451,30 @@ public sealed class AteliaJournalSinkTests
         }
     }
 
-    private static void AssertStorageDirectoriesEqual(string expectedRoot, string actualRoot)
-    {
-        string[] expectedFiles =
-        [
-            .. Directory.GetFiles(expectedRoot, "*", SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(expectedRoot, path))
-                .Order(StringComparer.Ordinal),
-        ];
-        string[] actualFiles =
-        [
-            .. Directory.GetFiles(actualRoot, "*", SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(actualRoot, path))
-                .Order(StringComparer.Ordinal),
-        ];
-
-        Assert.Equal(expectedFiles, actualFiles);
-        foreach (string relativePath in expectedFiles)
-        {
-            Assert.Equal(
-                File.ReadAllBytes(Path.Combine(expectedRoot, relativePath)),
-                File.ReadAllBytes(Path.Combine(actualRoot, relativePath)));
-        }
-    }
-
-    private static byte[] SerializePayload(CounterEvent payload) =>
+    private static byte[] SerializePayload(CounterFact payload) =>
         JsonSerializer.SerializeToUtf8Bytes(payload);
 
-    private static CounterEvent DeserializePayload(EventKind kind, byte[] payload) =>
-        JsonSerializer.Deserialize<CounterEvent>(payload)
-        ?? throw new JsonException("Counter event payload cannot be null.");
+    private static CounterFact DeserializePayload(byte[] payload) =>
+        JsonSerializer.Deserialize<CounterFact>(payload)
+        ?? throw new JsonException("Counter fact payload cannot be null.");
 
-    private static void AssertDomainEventsEqual(
-        IReadOnlyList<DomainEvent<CounterEvent>> expected,
-        IReadOnlyList<DomainEvent<CounterEvent>> actual)
+    private static void AssertBatchesEqual(
+        IReadOnlyList<JournalBatch<CounterFact>> expected,
+        IReadOnlyList<JournalBatch<CounterFact>> actual)
     {
         Assert.Equal(expected.Count, actual.Count);
         for (int index = 0; index < expected.Count; index++)
         {
-            AssertDomainEventEqual(expected[index], actual[index]);
+            AssertBatchEqual(expected[index], actual[index]);
         }
     }
 
-    private static void AssertDomainEventEqual(
-        DomainEvent<CounterEvent> expected,
-        DomainEvent<CounterEvent> actual)
+    private static void AssertBatchEqual(
+        JournalBatch<CounterFact> expected,
+        JournalBatch<CounterFact> actual)
     {
-        Assert.Equal(expected.Timestamp, actual.Timestamp);
-        Assert.Equal(expected.Cause, actual.Cause);
-        Assert.Equal(expected.Kind, actual.Kind);
-        Assert.Equal(expected.Payload, actual.Payload);
+        Assert.Equal(expected.Instant, actual.Instant);
+        Assert.Equal(expected.CauseKey, actual.CauseKey);
+        Assert.Equal(expected.Facts, actual.Facts);
     }
 }

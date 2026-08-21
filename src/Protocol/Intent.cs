@@ -28,21 +28,6 @@ public sealed record Intent(
         ProtocolValue.ValidateModelTime(UntilModelTimeMs, nameof(UntilModelTimeMs));
 }
 
-/// <summary>Captures the outcome a Player expects without asserting that it will occur.</summary>
-/// <param name="FreeText">The Player's free-text description of the expected outcome.</param>
-/// <param name="ExpectedCompletionModelTimeMs">The optional expected completion time in model-time milliseconds.</param>
-public sealed record ExpectedOutcome(
-    string FreeText,
-    long? ExpectedCompletionModelTimeMs = null)
-{
-    /// <summary>Gets the Player's bounded free-text description.</summary>
-    public string FreeText { get; init; } = ProtocolValue.ValidateRequiredFreeText(FreeText, nameof(FreeText));
-
-    /// <summary>Gets the optional non-negative expected completion time.</summary>
-    public long? ExpectedCompletionModelTimeMs { get; init; } =
-        ProtocolValue.ValidateModelTime(ExpectedCompletionModelTimeMs, nameof(ExpectedCompletionModelTimeMs));
-}
-
 internal static class ProtocolValue
 {
     private const int MaximumFreeTextLength = 4_096;
@@ -58,12 +43,6 @@ internal static class ProtocolValue
         }
 
         return value;
-    }
-
-    public static string ValidateRequiredFreeText(string value, string parameterName)
-    {
-        ArgumentNullException.ThrowIfNull(value, parameterName);
-        return ValidateOptionalFreeText(value, parameterName)!;
     }
 
     public static long? ValidateDuration(long? value, string parameterName)

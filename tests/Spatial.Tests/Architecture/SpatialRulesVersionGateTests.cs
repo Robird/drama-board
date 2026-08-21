@@ -18,7 +18,7 @@ public sealed class SpatialRulesVersionGateTests
             Assert.Throws<NotSupportedException>(() => new SpatialReducer(future)),
             Assert.Throws<NotSupportedException>(() => new SpatialQueries(future)),
             Assert.Throws<NotSupportedException>(() => new SpatialCommandHandler(future)),
-            Assert.Throws<NotSupportedException>(() => new SpatialSubsystem(future, sourceId: 1)),
+            Assert.Throws<NotSupportedException>(() => new SpatialOccurrenceRule(future)),
         ];
         Assert.All(failures, failure => Assert.Equal(
             "Spatial rules version 7 is not supported by this runtime; supported version is 1.",
@@ -34,7 +34,7 @@ public sealed class SpatialRulesVersionGateTests
         Assert.NotNull(new SpatialReducer(current));
         Assert.NotNull(new SpatialQueries(current));
         Assert.NotNull(new SpatialCommandHandler(current));
-        Assert.NotNull(new SpatialSubsystem(current, sourceId: 1));
+        Assert.NotNull(new SpatialOccurrenceRule(current));
     }
 
     private static SpatialDefinition Definition(ushort rulesVersion)

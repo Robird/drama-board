@@ -22,7 +22,6 @@ public sealed class StableIdentifierTests
         Assert.Equal(new ActionKind("action.travel"), ActionKinds.Travel);
         Assert.Equal(new ActionKind("action.put"), ActionKinds.Put);
         Assert.Equal(new ActionKind("action.show"), ActionKinds.Show);
-        Assert.Equal(new DecisionReason("decision.scheduled"), DecisionReasons.Scheduled);
         Assert.Equal(new FactKind("fact.secret.known"), new FactKind("fact.secret.known"));
     }
 
@@ -31,7 +30,6 @@ public sealed class StableIdentifierTests
     {
         AssertStringRoundTrip(new DecisionId("decision-42"), "decision-42");
         AssertStringRoundTrip(new ActionKind("action.travel"), "action.travel");
-        AssertStringRoundTrip(new DecisionReason("decision.scheduled"), "decision.scheduled");
         AssertStringRoundTrip(new FactKind("fact.secret.known"), "fact.secret.known");
     }
 

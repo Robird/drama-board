@@ -1,10 +1,9 @@
-using DramaBoard.Kernel.Journal;
-using DramaBoard.Kernel.Simulation;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>Projects committed Spatial events against one pinned immutable definition.</summary>
-public sealed class SpatialReducer : IEventReducer<SpatialState, SpatialEvent>
+/// <summary>Folds one committed Spatial fact against immutable state.</summary>
+public sealed class SpatialReducer
 {
     private readonly SpatialDefinition _definition;
 
@@ -15,17 +14,12 @@ public sealed class SpatialReducer : IEventReducer<SpatialState, SpatialEvent>
         _definition = definition;
     }
 
-    /// <inheritdoc />
-    public SpatialState Apply(SpatialState state, DomainEvent<SpatialEvent> domainEvent)
+    /// <summary>Applies one raw fact at its batch-shared logical instant.</summary>
+    public SpatialState Apply(SpatialState state, LogicalInstant instant, SpatialEvent fact)
     {
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(domainEvent);
+        ArgumentNullException.ThrowIfNull(fact);
         SpatialStateValidator.ValidateStamp(_definition, state);
-        return SpatialProjector.Apply(
-            _definition,
-            state,
-            domainEvent.Kind,
-            domainEvent.Payload,
-            domainEvent.Timestamp.ModelTime);
+        return SpatialProjector.Apply(_definition, state, fact, instant.ModelTime);
     }
 }

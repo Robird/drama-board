@@ -47,9 +47,9 @@ internal sealed class DemoRunManifestWriter
         Write(
             "completed",
             new RunResultManifest(
-                capture.Result.StopReason.ToString(),
-                capture.Result.Cursor.Now.Ticks,
-                capture.Journal.Events.Count,
+                capture.Result.Status.ToString(),
+                capture.Result.CurrentModelTime.Ticks,
+                capture.Journal.Batches.Count,
                 llmTurnCount,
                 forcedSceneEndCount),
             errorType: null);
@@ -265,9 +265,9 @@ internal sealed class DemoRunManifestWriter
     }
 
     private sealed record RunResultManifest(
-        string StopReason,
+        string Status,
         long FinalModelTimeMs,
-        int WorldEventCount,
+        int WorldTransitionCount,
         int LlmTurnCount,
         int ForcedSceneEndCount);
 }

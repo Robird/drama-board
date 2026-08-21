@@ -1,4 +1,3 @@
-using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial.Tests;
@@ -17,34 +16,6 @@ public sealed class SpatialReducerContractTests
             second,
             state,
             new ZoneEnteredEvent(new EntityId(1), new ZoneId("zone"))));
-    }
-
-    [Fact]
-    public void Apply_KindIdPayloadAndVersionMustMatchExactly()
-    {
-        SpatialDefinition definition = TestSpatialDefinitionBuilder.CreateDefault();
-        SpatialState state = SpatialState.Create(definition);
-        var payload = new EntityPlacedEvent(new SpatialEntityState(
-            new EntityId(1),
-            TestSpatialDefinitionBuilder.Cell("world", 0, 0),
-            true,
-            0));
-
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            payload,
-            kind: SpatialEventKinds.EntityRemoved));
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            payload,
-            kind: new EventKind(SpatialEventKinds.EntityPlaced.Id, 2)));
-        Assert.Throws<InvalidOperationException>(() => SpatialEventTestHarness.Apply(
-            definition,
-            state,
-            payload,
-            kind: new EventKind("spatial.unknown", 1)));
     }
 
     [Fact]
@@ -80,7 +51,6 @@ public sealed class SpatialReducerContractTests
         SpatialState scratch = SpatialProjector.Apply(
             definition,
             initial,
-            SpatialEventKinds.EntityPlaced,
             payload,
             ModelTime.Zero);
         SpatialState formal = SpatialEventTestHarness.Apply(definition, initial, payload);

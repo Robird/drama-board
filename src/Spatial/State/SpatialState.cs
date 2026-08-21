@@ -6,7 +6,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
     private SpatialState(
         SpatialDefinitionStamp definition,
         long revision,
-        long nextMomentOrdinal,
         long nextJourneyOrdinal,
         long nextMutationOrdinal,
         IEnumerable<SpatialEntityState> entities,
@@ -20,10 +19,10 @@ public sealed class SpatialState : IEquatable<SpatialState>
             throw new ArgumentOutOfRangeException(nameof(revision));
         }
 
-        if (nextMomentOrdinal <= 0 || nextJourneyOrdinal <= 0 || nextMutationOrdinal <= 0)
+        if (nextJourneyOrdinal <= 0 || nextMutationOrdinal <= 0)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(nextMomentOrdinal),
+                nameof(nextJourneyOrdinal),
                 "All persistent spatial ordinals must be positive.");
         }
 
@@ -42,7 +41,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
 
         Definition = definition;
         Revision = revision;
-        NextMomentOrdinal = nextMomentOrdinal;
         NextJourneyOrdinal = nextJourneyOrdinal;
         NextMutationOrdinal = nextMutationOrdinal;
         Entities = ReadOnly(entityArray.OrderBy(entity => entity.Id));
@@ -61,9 +59,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
 
     /// <summary>Gets the number of state-changing spatial events applied to this projection.</summary>
     public long Revision { get; }
-
-    /// <summary>Gets the next persistent SpatialMoment identity.</summary>
-    public long NextMomentOrdinal { get; }
 
     /// <summary>Gets the next persistent Journey identity.</summary>
     public long NextJourneyOrdinal { get; }
@@ -93,7 +88,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
         return new SpatialState(
             SpatialDefinitionStamp.From(definition),
             revision: 0,
-            nextMomentOrdinal: 1,
             nextJourneyOrdinal: 1,
             nextMutationOrdinal: 1,
             entities: [],
@@ -122,7 +116,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
         other is not null &&
         Definition == other.Definition &&
         Revision == other.Revision &&
-        NextMomentOrdinal == other.NextMomentOrdinal &&
         NextJourneyOrdinal == other.NextJourneyOrdinal &&
         NextMutationOrdinal == other.NextMutationOrdinal &&
         Entities.SequenceEqual(other.Entities) &&
@@ -140,7 +133,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
         var hash = new HashCode();
         hash.Add(Definition);
         hash.Add(Revision);
-        hash.Add(NextMomentOrdinal);
         hash.Add(NextJourneyOrdinal);
         hash.Add(NextMutationOrdinal);
         AddSequence(ref hash, Entities);
@@ -153,7 +145,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
 
     internal SpatialState Rebuild(
         long? revision = null,
-        long? nextMomentOrdinal = null,
         long? nextJourneyOrdinal = null,
         long? nextMutationOrdinal = null,
         IEnumerable<SpatialEntityState>? entities = null,
@@ -164,7 +155,6 @@ public sealed class SpatialState : IEquatable<SpatialState>
         new(
             Definition,
             revision ?? Revision,
-            nextMomentOrdinal ?? NextMomentOrdinal,
             nextJourneyOrdinal ?? NextJourneyOrdinal,
             nextMutationOrdinal ?? NextMutationOrdinal,
             entities ?? Entities,

@@ -1,8 +1,7 @@
-using DramaBoard.Host;
 using DramaBoard.Kernel.Journal;
-using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Player;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.FirstBoard.Tests;
@@ -10,883 +9,220 @@ namespace DramaBoard.FirstBoard.Tests;
 public sealed class FirstBoardTests
 {
     [Fact]
-    public void Reducer_SameEventIdWithNewSchemaVersion_StillRoutes()
+    public void CreateKernel_MismatchedWorldSeedIsRejected()
     {
-        FirstBoardWorld world = FirstBoardWorld.CreateInitial(worldSeed: 1);
-        var domainEvent = new DomainEvent<BoardEventPayload>(
-            new LogicalTimestamp(ModelTime.Zero, new Microstep(0)),
-            EventCause.FromExternalInput(batchOrdinal: 0),
-            new EventKind(BoardEventKinds.CellarSealed.Id, version: 2),
-            new CellarSealedEvent());
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 41);
+        FirstBoardWorld mismatchedWorld = ScenarioInstance.CreateDefault(worldSeed: 42)
+            .CreateInitialWorld();
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
 
-        FirstBoardWorld updated = new FirstBoardReducer().Apply(world, domainEvent);
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            FirstBoardScenario.CreateKernel(
+                Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
+                instance,
+                journal,
+                mismatchedWorld));
 
-        Assert.True(updated.CellarSealed);
+        Assert.Equal("world", exception.ParamName);
+        Assert.Empty(journal.Batches);
     }
 
     [Fact]
-    public void WaitWhoseCompletionWouldOverflow_IsRejectedAndLoopContinues()
+    public void CreateKernel_EmptyJournalUsesCommittedWorldNowAsGenesis()
     {
-        var reducer = new FirstBoardReducer();
-        var loop = new SimulationLoop<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
-            [new ActionResolutionSystem()],
-            reducer);
-        var journal = new InMemoryJournal<BoardEventPayload>();
-        ModelTime now = new(long.MaxValue - 100);
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 43);
+        FirstBoardWorld world = instance.CreateInitialWorld() with
+        {
+            Now = new ModelTime(500),
+        };
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
 
-        SimulationRunResult<FirstBoardWorld, BoardEventPayload> result = loop.Run(
-            FirstBoardWorld.CreateInitial(worldSeed: 1),
-            SimulationCursor.CreateInitial(FirstBoardScenario.LineageId, now),
-            now,
-            journal,
-            [FirstBoardScenario.ActionInput(
-                BoardIds.Alice,
-                "overflowing-wait",
-                new Intent(ActionKinds.Wait, DurationMs: 101))]);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(
+                Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
+                instance,
+                journal,
+                world);
 
-        Assert.Equal(StopReason.Exhausted, result.StopReason);
-        Assert.Null(result.World.Actor(BoardIds.Alice).PendingAction);
-        DomainEvent<BoardEventPayload> rejectedEvent = Assert.Single(
-            journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected);
-        Assert.Equal(
-            "wait completion time exceeds the model-time range",
-            Assert.IsType<ActionRejectedEvent>(rejectedEvent.Payload).Reason);
+        Assert.Equal(world.Now, kernel.CurrentModelTime);
+        Assert.Equal(world.Now, kernel.World.Now);
     }
 
     [Fact]
-    public async Task ScriptedGame_FindsSecret_ReplaysAndPreservesAsymmetricKnowledge()
+    public void CreateKernel_DefaultVersionUsesJournalLineage()
     {
-        ScriptedCapture capture = await RunDiscoveryScriptAsync();
-        FirstBoardWorld world = capture.Run.Result.World;
-        BoardActor alice = world.Actor(BoardIds.Alice);
-        BoardActor bob = world.Actor(BoardIds.Bob);
-        BoardObject brassKey = world.Object(BoardIds.BrassKey);
-        BoardObject letter = world.Object(BoardIds.DuchessLetter);
+        const long lineageId = 77_001;
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 44);
+        var journal = new InMemoryJournal<BoardEventPayload>(lineageId);
 
-        Assert.Equal(StopReason.BoundaryReached, capture.Run.Result.StopReason);
-        Assert.Equal(0, capture.Run.Result.ForcedDecisionCount);
-        Assert.Equal(BoardIds.Cellar, alice.PlaceId);
-        Assert.Equal(BoardIds.Tavern, bob.PlaceId);
-        Assert.Equal(alice.Id, brassKey.OwnerActorId);
-        Assert.Equal(alice.Id, letter.OwnerActorId);
-        Assert.True(world.ChestOpened);
-        Assert.Contains(alice.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
-        Assert.DoesNotContain(bob.KnownFacts, fact => fact.Kind == BoardIds.ChestContainsLetter);
-        Assert.Contains(bob.KnownFacts, fact => fact.Kind == BoardIds.KeyLocationKnown);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(
+                Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
+                instance,
+                journal,
+                instance.CreateInitialWorld());
 
-        Assert.Equal(
-            [
-                "action.travel-requested",
-                "actor.departed",
-                "actor.arrived",
-                "action.take-requested",
-                "object.taken",
-                "action.talk-requested",
-                "actor.spoke",
-                "action.travel-requested",
-                "actor.departed",
-                "actor.arrived",
-                "action.use-requested",
-                "chest.opened",
-            ],
-            AliceKeyHistory(capture.Run.Journal));
-
-        var reducer = new FirstBoardReducer();
-        FirstBoardWorld replayed = capture.Run.Journal.Events.Aggregate(
-            capture.Run.InitialWorld,
-            reducer.Apply);
-        Assert.Equal(
-            FirstBoardScenario.WorldSnapshot(world),
-            FirstBoardScenario.WorldSnapshot(replayed));
-
-        DecisionRequest aliceInitial = capture.Alice.Requests[0];
-        DecisionRequest aliceLast = capture.Alice.Requests[^1];
-        DecisionRequest bobLast = capture.Bob.Requests[^1];
-        Assert.Equal(BoardIds.Tavern, aliceInitial.Observation.LocationId);
-        Assert.Empty(aliceInitial.Observation.VisibleActorIds);
-        Assert.Equal(
-            [BoardIds.SilverCoinOne, BoardIds.SilverCoinTwo],
-            aliceInitial.Observation.VisibleObjectIds);
-        Assert.Contains(BoardIds.LockedChest, aliceLast.Observation.VisibleObjectIds);
-        Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ChestContainsLetter);
-        Assert.Contains(aliceLast.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.LastActionOutcome &&
-            fact.Text.Contains("took the duchess's letter", StringComparison.Ordinal));
-        Assert.DoesNotContain(bobLast.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ChestContainsLetter);
+        Assert.Equal(new WorldVersion(lineageId, 0), kernel.Version);
     }
 
     [Fact]
-    public async Task DawdlingGame_DeadlineRejectsCellarTravelAndMakesSecretUnobtainable()
+    public async Task SameTickActors_OnlyWinnerIsCalled_ThenLoserSeesCommittedWorld()
     {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 3_300_000)),
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 42);
+        FirstBoardWorld initial = PutBothActorsInTavern(instance.CreateInitialWorld());
+        var alice = TravelDriver();
+        var bob = TravelDriver();
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(Drivers(alice, bob), instance, journal, initial);
 
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 17,
-            new ModelTime(BoardTiming.RandomRunBoundaryTicks));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        Assert.Equal(1, alice.Requests.Count + bob.Requests.Count);
+        Assert.Single(journal.Batches);
 
-        Assert.True(capture.Result.World.CellarSealed);
-        Assert.Equal(BoardIds.Market, capture.Result.World.Actor(BoardIds.Alice).PlaceId);
-        Assert.DoesNotContain(
-            capture.Result.World.Actors.SelectMany(actor => actor.KnownFacts),
-            fact => fact.Kind == BoardIds.ChestContainsLetter);
+        CapturingDriver first = alice.Requests.Count == 1 ? alice : bob;
+        CapturingDriver loser = ReferenceEquals(first, alice) ? bob : alice;
+        string winnerActorId = first.Requests[0].ActorId;
 
-        DomainEvent<BoardEventPayload> rejectedEvent = Assert.Single(
-            capture.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected);
-        var rejected = Assert.IsType<ActionRejectedEvent>(rejectedEvent.Payload);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        DecisionRequest loserRequest = Assert.Single(loser.Requests);
+        Assert.DoesNotContain(winnerActorId, loserRequest.Observation.VisibleActorIds);
+        Assert.Equal(2, journal.Batches.Count);
+    }
+
+    [Fact]
+    public async Task WrongDecisionCorrelation_FailsBeforeCommit()
+    {
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 7);
+        var malformed = new CapturingDriver(request =>
+            new PlayerDecision(new DecisionId("wrong-decision"), new Intent(ActionKinds.Wait)));
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(
+                Drivers(malformed, malformed), instance, journal, instance.CreateInitialWorld());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await kernel.StepAsync(ModelTime.Zero));
+
+        Assert.Empty(journal.Batches);
+        Assert.Equal(0, kernel.Version.TransitionCount);
+        Assert.All(kernel.World.Actors, actor => Assert.Equal(0, actor.DecisionSequence));
+    }
+
+    [Fact]
+    public async Task IntentOutsideAdvertisedAffordance_FailsBeforeCommit()
+    {
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 8);
+        var malformed = new CapturingDriver(request =>
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(ActionKinds.Travel, DestinationId: "missing-place")));
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(
+                Drivers(malformed, malformed), instance, journal, instance.CreateInitialWorld());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await kernel.StepAsync(ModelTime.Zero));
+
+        Assert.Empty(journal.Batches);
+    }
+
+    [Fact]
+    public async Task LegalActionDefeatedByHiddenWorldFact_CommitsFailure()
+    {
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 9);
+        FirstBoardWorld initial = instance.CreateInitialWorld();
+        initial = initial with
+        {
+            CellarSealed = true,
+            Actors = Array.AsReadOnly(initial.Actors.Select(actor => actor.Key switch
+            {
+                BoardIds.Alice => actor with { PlaceId = BoardIds.Market },
+                BoardIds.Bob => actor with
+                {
+                    Activity = new BoardActivity(
+                        BoardActivityKind.Wait,
+                        new ModelTime(BoardTiming.DefaultWaitTicks)),
+                },
+                _ => actor,
+            }).ToArray()),
+        };
+        var alice = new CapturingDriver(request =>
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)));
+        var journal = new InMemoryJournal<BoardEventPayload>(FirstBoardScenario.LineageId);
+        SimulationKernel<FirstBoardWorld, BoardCandidate, BoardEventPayload> kernel =
+            FirstBoardScenario.CreateKernel(
+                Drivers(alice, new NullPlayerDriver()), instance, journal, initial);
+
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+
+        JournalBatch<BoardEventPayload> batch = Assert.Single(journal.Batches);
+        ActionRejectedEvent rejected = Assert.IsType<ActionRejectedEvent>(Assert.Single(batch.Facts));
         Assert.Equal("cellar is sealed", rejected.Reason);
-        Assert.Equal(
-            new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar),
-            rejected.RejectedIntent);
-        Assert.Equal(BoardTiming.DeadlineTicks, rejectedEvent.Timestamp.ModelTime.Ticks);
-
-        DecisionRequest unwittingRequest = alice.Requests[2];
-        AvailableAction unwittingTravel = Assert.Single(
-            unwittingRequest.AvailableActions,
-            action => action.ActionKind == ActionKinds.Travel);
-        Assert.Contains(BoardIds.Cellar, unwittingTravel.CandidateDestinationIds!);
-        Assert.Equal(DecisionReasons.Scheduled, unwittingRequest.Reason);
-        Assert.Null(unwittingRequest.RejectedIntent);
-
-        DecisionRequest rejectionRequest = alice.Requests[3];
-        Assert.Equal(DecisionReasons.ActionRejected, rejectionRequest.Reason);
-        Assert.Equal(rejected.RejectedIntent, rejectionRequest.RejectedIntent);
-        Assert.Contains(rejectionRequest.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ActionRejected &&
-            fact.RelatedId == ActionKinds.Travel.Id &&
-            fact.Text.Contains("cellar is sealed", StringComparison.Ordinal) &&
-            fact.Text.Contains("destination=cellar", StringComparison.Ordinal));
-        Assert.Contains(rejectionRequest.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.CellarSealedKnown);
-        AvailableAction informedTravel = Assert.Single(
-            rejectionRequest.AvailableActions,
-            action => action.ActionKind == ActionKinds.Travel);
-        Assert.DoesNotContain(BoardIds.Cellar, informedTravel.CandidateDestinationIds!);
-        int sealedIndex = capture.Journal.Events.ToList().FindIndex(domainEvent =>
-            domainEvent.Kind == BoardEventKinds.CellarSealed);
-        int rejectedIndex = capture.Journal.Events.ToList().FindIndex(domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ActionRejected);
-        Assert.True(sealedIndex >= 0 && sealedIndex < rejectedIndex);
+        Assert.Equal(1, kernel.World.Actor(BoardIds.Alice).DecisionSequence);
     }
 
     [Fact]
-    public void CellarSealed_ActorsPresentInCellarImmediatelyLearnWhileRemoteActorsDoNot()
+    public async Task Replay_FoldsCompleteBatchesWithoutCallingPlayers()
     {
-        FirstBoardWorld initial = FirstBoardWorld.CreateInitial(worldSeed: 19);
-        initial = initial with
-        {
-            Actors = Array.AsReadOnly(initial.Actors
-                .Select(actor => actor.Key == BoardIds.Alice
-                    ? actor with { PlaceId = BoardIds.Cellar }
-                    : actor)
-                .ToArray()),
-        };
-        var sealedEvent = new DomainEvent<BoardEventPayload>(
-            new LogicalTimestamp(new ModelTime(BoardTiming.DeadlineTicks), new Microstep(0)),
-            EventCause.FromExternalInput(batchOrdinal: 0),
-            BoardEventKinds.CellarSealed,
-            new CellarSealedEvent());
-
-        FirstBoardWorld updated = new FirstBoardReducer().Apply(initial, sealedEvent);
-
-        Assert.Contains(updated.Actor(BoardIds.Alice).KnownFacts, fact =>
-            fact.Kind == BoardIds.CellarSealedKnown);
-        Assert.DoesNotContain(updated.Actor(BoardIds.Bob).KnownFacts, fact =>
-            fact.Kind == BoardIds.CellarSealedKnown);
-    }
-
-    [Fact]
-    public void BuildRequest_UnwitnessedCellarFlag_DoesNotChangeObservationOrAffordances()
-    {
-        FirstBoardWorld openWorld = FirstBoardWorld.CreateInitial(worldSeed: 23);
-        FirstBoardWorld sealedWorld = openWorld with { CellarSealed = true };
-
-        DecisionRequest openRequest = RequestFor(openWorld, BoardIds.Bob);
-        DecisionRequest sealedRequest = RequestFor(sealedWorld, BoardIds.Bob);
-
-        Assert.Equal(openRequest.Observation.LocationId, sealedRequest.Observation.LocationId);
-        Assert.Equal(openRequest.Observation.VisibleActorIds, sealedRequest.Observation.VisibleActorIds);
-        Assert.Equal(openRequest.Observation.VisibleObjectIds, sealedRequest.Observation.VisibleObjectIds);
-        Assert.Equal(openRequest.Observation.KnownFacts, sealedRequest.Observation.KnownFacts);
-        Assert.Equal(
-            Assert.Single(openRequest.AvailableActions, action => action.ActionKind == ActionKinds.Travel)
-                .CandidateDestinationIds,
-            Assert.Single(sealedRequest.AvailableActions, action => action.ActionKind == ActionKinds.Travel)
-                .CandidateDestinationIds);
-    }
-
-    [Fact]
-    public void Observation_CarriedObjectsAreVisibleOnlyToOwnerAndPlacedObjectsRemainVisible()
-    {
-        FirstBoardWorld world = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 31));
-        BoardActor bob = world.Actor(BoardIds.Bob);
-        FirstBoardWorld carriedWorld = world with
-        {
-            Objects = Array.AsReadOnly(world.Objects
-                .Select(item => item.Key == BoardIds.BrassKey
-                    ? item with { PlaceId = null, OwnerActorId = bob.Id }
-                    : item)
-                .ToArray()),
-        };
-
-        DecisionRequest aliceWithCarriedKey = RequestFor(carriedWorld, BoardIds.Alice);
-        DecisionRequest bobWithOwnKey = RequestFor(carriedWorld, BoardIds.Bob);
-        DecisionRequest aliceWithPlacedKey = RequestFor(world, BoardIds.Alice);
-
-        Assert.DoesNotContain(BoardIds.BrassKey, aliceWithCarriedKey.Observation.VisibleObjectIds);
-        Assert.Contains(BoardIds.BrassKey, bobWithOwnKey.Observation.VisibleObjectIds);
-        Assert.Contains(BoardIds.BrassKey, aliceWithPlacedKey.Observation.VisibleObjectIds);
-        Assert.DoesNotContain(aliceWithCarriedKey.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ObjectHeld &&
-            fact.RelatedId == BoardIds.BrassKey);
-        Assert.Contains(bobWithOwnKey.Observation.KnownFacts, fact =>
-            fact.FactKind.Id == BoardIds.ObjectHeld &&
-            fact.RelatedId == BoardIds.BrassKey &&
-            fact.Text.Contains("You are carrying", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task TargetedObserve_InspectsPublicAndHeldObjectsButRejectsOtherActorHoldings()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request =>
-            {
-                AvailableAction observe = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Observe);
-                Assert.Contains(BoardIds.DuchessLetter, observe.CandidateObjectIds!);
-                Assert.Contains(BoardIds.SilverCoinOne, observe.CandidateObjectIds!);
-                Assert.Contains(BoardIds.BrassKey, observe.CandidateObjectIds!);
-                Assert.DoesNotContain(BoardIds.SilverCoinTwo, observe.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Observe,
-                    TargetObjectId: BoardIds.BrassKey));
-            },
-            request =>
-            {
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.ObjectInspected &&
-                    fact.RelatedId == BoardIds.BrassKey &&
-                    fact.Text.Contains("public", StringComparison.Ordinal));
-                return Decide(request, new Intent(
-                    ActionKinds.Observe,
-                    TargetObjectId: BoardIds.SilverCoinTwo));
-            },
-            request =>
-            {
-                Assert.Equal(DecisionReasons.ActionRejected, request.Reason);
-                return Decide(request, new Intent(
-                    ActionKinds.Observe,
-                    TargetObjectId: BoardIds.DuchessLetter));
-            },
-            request =>
-            {
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.LetterAuthenticityKnown &&
-                    fact.RelatedId == BoardIds.DuchessLetter);
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.LetterContentsKnown &&
-                    fact.Text.Contains("city archivist", StringComparison.Ordinal));
-                return Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000));
-            },
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 32));
-        BoardActor initialAlice = initial.Actor(BoardIds.Alice);
-        BoardActor initialBob = initial.Actor(BoardIds.Bob);
-        initial = initial with
-        {
-            ChestOpened = true,
-            Objects = Array.AsReadOnly(initial.Objects
-                .Select(item => item.Key switch
-                {
-                    BoardIds.DuchessLetter => item with { PlaceId = null, OwnerActorId = initialAlice.Id },
-                    BoardIds.SilverCoinTwo => item with { PlaceId = null, OwnerActorId = initialBob.Id },
-                    _ => item,
-                })
-                .ToArray()),
-        };
-
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 10);
         BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 32,
-            new ModelTime(1),
-            initial);
-        FirstBoardWorld world = capture.Result.World;
+            Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
+            instance,
+            new ModelTime(120_000));
 
-        ActionRejectedEvent rejected = Assert.IsType<ActionRejectedEvent>(Assert.Single(
-            capture.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ActionRejected).Payload);
-        Assert.Equal("actor may only inspect a held or public object here", rejected.Reason);
-        ActorObservedEvent[] inspected =
-        [
-            .. capture.Journal.Events
-                .Where(domainEvent => domainEvent.Kind == BoardEventKinds.ActorObserved)
-                .Select(domainEvent => Assert.IsType<ActorObservedEvent>(domainEvent.Payload)),
-        ];
-        Assert.Equal(2, inspected.Length);
-        Assert.Equal(BoardIds.BrassKey, inspected[0].TargetObjectId);
-        Assert.Equal(BoardIds.DuchessLetter, inspected[1].TargetObjectId);
-        Assert.Equal(3, inspected[1].LearnedFacts.Count);
-        Assert.Equal(initialAlice.Id, world.Object(BoardIds.DuchessLetter).OwnerActorId);
-        Assert.Equal(initialBob.Id, world.Object(BoardIds.SilverCoinTwo).OwnerActorId);
-        Assert.Null(world.Object(BoardIds.BrassKey).OwnerActorId);
-        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
-            fact.Kind == BoardIds.LetterAuthenticityKnown);
-    }
-
-    [Fact]
-    public async Task PutAction_MakesObjectPublicInspectableAndTakeableAndInterruptsWait()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-            request =>
-            {
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.ObjectPlaced &&
-                    fact.RelatedId == BoardIds.DuchessLetter);
-                Assert.Contains(BoardIds.DuchessLetter, request.Observation.VisibleObjectIds);
-                Assert.Contains(
-                    BoardIds.DuchessLetter,
-                    Assert.Single(request.AvailableActions,
-                        action => action.ActionKind == ActionKinds.Observe).CandidateObjectIds!);
-                Assert.Contains(
-                    BoardIds.DuchessLetter,
-                    Assert.Single(request.AvailableActions,
-                        action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Observe,
-                    TargetObjectId: BoardIds.DuchessLetter));
-            },
-            request =>
-            {
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.LetterAuthenticityKnown &&
-                    fact.RelatedId == BoardIds.DuchessLetter);
-                return Decide(request, new Intent(
-                    ActionKinds.Take,
-                    TargetObjectId: BoardIds.DuchessLetter));
-            },
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request =>
-            {
-                AvailableAction put = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Put);
-                Assert.Contains(BoardIds.DuchessLetter, put.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Put,
-                    TargetObjectId: BoardIds.DuchessLetter));
-            },
-            request => Decide(request, new Intent(
-                ActionKinds.Put,
-                TargetObjectId: BoardIds.DuchessLetter)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 52));
-        BoardActor initialBob = initial.Actor(BoardIds.Bob);
-        initial = initial with
-        {
-            ChestOpened = true,
-            Objects = Array.AsReadOnly(initial.Objects
-                .Select(item => item.Key == BoardIds.DuchessLetter
-                    ? item with { PlaceId = null, OwnerActorId = initialBob.Id }
-                    : item)
-                .ToArray()),
-        };
-
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 52,
-            new ModelTime(1),
-            initial);
-        FirstBoardWorld world = capture.Result.World;
-
-        ObjectPlacedEvent placed = Assert.IsType<ObjectPlacedEvent>(Assert.Single(
-            capture.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ObjectPlaced).Payload);
-        Assert.Equal(BoardIds.Market, placed.PlaceId);
-        Assert.Single(capture.Journal.Events, domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ActorObserved);
-        Assert.Single(capture.Journal.Events, domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ObjectTaken);
-        ActionRejectedEvent rejectedPut = Assert.IsType<ActionRejectedEvent>(Assert.Single(
-            capture.Journal.Events,
-            domainEvent =>
-                domainEvent.Kind == BoardEventKinds.ActionRejected &&
-                domainEvent.Payload is ActionRejectedEvent rejected &&
-                rejected.ActorId == BoardIds.Bob).Payload);
-        Assert.Equal("actor does not hold the target object", rejectedPut.Reason);
-        Assert.Equal(world.Actor(BoardIds.Alice).Id, world.Object(BoardIds.DuchessLetter).OwnerActorId);
-        Assert.Null(world.Object(BoardIds.DuchessLetter).PlaceId);
-        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
-            fact.Kind == BoardIds.LetterContentsKnown);
-        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
-            fact.Kind == BoardIds.LetterContentsKnown);
-        Assert.Equal(4, alice.Requests.Count);
-        Assert.Equal(0, alice.Requests[1].ModelTimeMs);
-    }
-
-    [Fact]
-    public void TalkEvent_AwakensWaitingListenerAndMakesDialogueAuthoritativeInput()
-    {
-        FirstBoardWorld world = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 33));
-        world = world with
-        {
-            Actors = Array.AsReadOnly(world.Actors
-                .Select(actor => actor.Key switch
-                {
-                    BoardIds.Alice => actor with
-                    {
-                        PendingAction = new SubmittedAction(
-                            "decision.alice.1",
-                            new Intent(
-                                ActionKinds.Talk,
-                                TargetActorId: BoardIds.Bob,
-                                FreeText: "Meet me in the cellar.")),
-                    },
-                    BoardIds.Bob => actor with
-                    {
-                        Activity = new BoardActivity(
-                            BoardActivityKind.Wait,
-                            new ModelTime(600_000)),
-                    },
-                    _ => actor,
-                })
-                .ToArray()),
-        };
-        var spokeEvent = new DomainEvent<BoardEventPayload>(
-            new LogicalTimestamp(new ModelTime(10_000), new Microstep(0)),
-            EventCause.FromExternalInput(batchOrdinal: 0),
-            BoardEventKinds.ActorSpoke,
-            new ActorSpokeEvent(
-                BoardIds.Alice,
-                BoardIds.Bob,
-                "Meet me in the cellar.",
-                SharedFactKind: null));
-
-        FirstBoardWorld updated = new FirstBoardReducer().Apply(world, spokeEvent);
-        BoardActor bob = updated.Actor(BoardIds.Bob);
-
-        Assert.Null(bob.Activity);
-        Assert.Contains(bob.KnownFacts, fact =>
-            fact.Kind == BoardIds.DialogueHeard &&
-            fact.RelatedId == BoardIds.Alice &&
-            fact.Text.Contains("Meet me in the cellar", StringComparison.Ordinal));
-        Assert.Contains(bob.KnownFacts, fact =>
-            fact.Kind == BoardIds.LastActionOutcome &&
-            fact.Text.Contains("wait was interrupted", StringComparison.Ordinal));
-
-        var scheduler = new DecisionSchedulingSystem();
-        EventCandidate<BoardCandidate> candidate = Assert.Single(
-            scheduler.ForecastNext(updated, spokeEvent.Timestamp.ModelTime));
-        IReadOnlyList<UncommittedDomainEvent<BoardEventPayload>> decisions =
-            scheduler.Resolve(updated, candidate);
-        Assert.Contains(decisions, item =>
-            Assert.IsType<DecisionRequestedEvent>(item.Payload).ActorId == BoardIds.Bob);
-    }
-
-    [Fact]
-    public void BuildRequest_KeyHolderInCellar_CanUseLockedChest()
-    {
-        FirstBoardWorld world = FirstBoardWorld.CreateInitial(worldSeed: 35);
-        BoardActor alice = world.Actor(BoardIds.Alice);
-        world = world with
-        {
-            Actors = Array.AsReadOnly(world.Actors
-                .Select(actor => actor.Key == BoardIds.Alice
-                    ? actor with { PlaceId = BoardIds.Cellar }
-                    : actor)
-                .ToArray()),
-            Objects = Array.AsReadOnly(world.Objects
-                .Select(item => item.Key == BoardIds.BrassKey
-                    ? item with { PlaceId = null, OwnerActorId = alice.Id }
-                    : item)
-                .ToArray()),
-        };
-
-        DecisionRequest request = RequestFor(world, BoardIds.Alice);
-
-        AvailableAction use = Assert.Single(
-            request.AvailableActions,
-            action => action.ActionKind == ActionKinds.Use);
-        Assert.Equal([BoardIds.LockedChest], use.CandidateObjectIds);
-    }
-
-    [Fact]
-    public async Task RepeatedIllegalTravel_AfterEightRejectionsForcesWaitAndAdvancesWorld()
-    {
-        var alice = new AlwaysIllegalTravelPlayerDriver();
-        var bob = new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]);
-
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 37,
-            new ModelTime(BoardTiming.DefaultWaitTicks - 1));
-
-        Assert.Equal(8, alice.DecisionCount);
-        Assert.Equal(1, capture.Result.ForcedDecisionCount);
-        BoardActivity forcedWait = Assert.IsType<BoardActivity>(
-            capture.Result.World.Actor(BoardIds.Alice).Activity);
-        Assert.Equal(BoardActivityKind.Wait, forcedWait.Kind);
-        Assert.Equal(BoardTiming.DefaultWaitTicks, forcedWait.Due.Ticks);
-        Assert.Equal(8, capture.Journal.Events.Count(domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ActionRejected &&
-            Assert.IsType<ActionRejectedEvent>(domainEvent.Payload).ActorId == BoardIds.Alice));
-        Assert.Single(capture.Journal.Events, domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ActorWaitStarted &&
-            Assert.IsType<ActorWaitStartedEvent>(domainEvent.Payload).ActorId == BoardIds.Alice);
-    }
-
-    [Fact]
-    public async Task ForcedWait_WhenDomainRejectsIt_ThrowsDiagnosticException()
-    {
-        ModelTime now = new(long.MaxValue - 100);
-        var journal = new InMemoryJournal<BoardEventPayload>();
-        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-        {
-            [BoardIds.Alice] = new AlwaysIllegalTravelPlayerDriver(),
-            [BoardIds.Bob] = new NullPlayerDriver(),
-        };
-        var session = new PlayerDecisionSession<FirstBoardWorld, BoardCandidate, BoardEventPayload>(
-            FirstBoardScenario.CreateLoop(new FirstBoardReducer()),
-            journal,
-            FirstBoardWorld.CreateInitial(worldSeed: 41) with { CellarSealed = true },
-            SimulationCursor.CreateInitial(FirstBoardScenario.LineageId, now),
-            FirstBoardScenario.SelectActor,
-            drivers,
-            FirstBoardScenario.BuildRequest,
-            FirstBoardScenario.TranslateDecision,
-            maxConsecutiveRejectionsPerActor: 1,
-            rejectionSelector: FirstBoardScenario.SelectRejectedActor);
-
-        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await session.RunUntilAsync(now, CancellationToken.None));
-
-        Assert.Contains("Forced wait", exception.Message);
-        Assert.Contains(BoardIds.Alice, exception.Message);
-        Assert.Contains(now.Ticks.ToString(), exception.Message);
-    }
-
-    [Fact]
-    public async Task RandomGame_IsDeterministicPerSeed_DivergesAcrossSeedsAndReplays()
-    {
-        BoardRunCapture first = await RunRandomAsync(0xA11CEUL);
-        BoardRunCapture repeated = await RunRandomAsync(0xA11CEUL);
-        BoardRunCapture alternate = await RunRandomAsync(0xB0BUL);
-
-        Assert.Equal(
-            FirstBoardScenario.EventSnapshots(first.Journal),
-            FirstBoardScenario.EventSnapshots(repeated.Journal));
-        Assert.False(
-            FirstBoardScenario.EventSnapshots(first.Journal)
-                .SequenceEqual(FirstBoardScenario.EventSnapshots(alternate.Journal)));
-        Assert.Contains(
-            first.Result.StopReason,
-            new[] { StopReason.BoundaryReached, StopReason.Exhausted });
-
+        FirstBoardWorld replayed = capture.InitialWorld;
         var reducer = new FirstBoardReducer();
-        FirstBoardWorld replayed = first.Journal.Events.Aggregate(
-            first.InitialWorld,
-            reducer.Apply);
-        Assert.Equal(
-            FirstBoardScenario.WorldSnapshot(first.Result.World),
-            FirstBoardScenario.WorldSnapshot(replayed));
-    }
-
-    [Fact]
-    public async Task GiveAction_TransfersHeldObjectThroughAdvertisedAffordance()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
-            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            request =>
-            {
-                AvailableAction give = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Give);
-                Assert.Contains(BoardIds.Bob, give.CandidateActorIds!);
-                Assert.Contains(BoardIds.BrassKey, give.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Give,
-                    TargetActorId: BoardIds.Bob,
-                    TargetObjectId: BoardIds.BrassKey));
-            },
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 29,
-            new ModelTime(600_000));
-
-        Assert.Equal(
-            capture.Result.World.Actor(BoardIds.Bob).Id,
-            capture.Result.World.Object(BoardIds.BrassKey).OwnerActorId);
-        Assert.Single(capture.Journal.Events, domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ObjectGiven);
-    }
-
-    [Fact]
-    public async Task MaterializedLetterAndCoins_EnableNonAtomicExchangeThroughGive()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
-            request => Decide(request, new Intent(
-                ActionKinds.Wait,
-                DurationMs: BoardTiming.TravelTicks)),
-            request =>
-            {
-                AvailableAction give = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Give);
-                Assert.Contains(BoardIds.SilverCoinOne, give.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Give,
-                    TargetActorId: BoardIds.Bob,
-                    TargetObjectId: BoardIds.SilverCoinOne));
-            },
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)),
-            request => Decide(request, new Intent(
-                ActionKinds.Use,
-                TargetObjectId: BoardIds.LockedChest)),
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
-            request =>
-            {
-                AvailableAction give = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Give);
-                Assert.Contains(BoardIds.DuchessLetter, give.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Give,
-                    TargetActorId: BoardIds.Alice,
-                    TargetObjectId: BoardIds.DuchessLetter));
-            },
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 43,
-            new ModelTime(1_200_000));
-        FirstBoardWorld world = capture.Result.World;
-
-        Assert.Equal(
-            world.Actor(BoardIds.Alice).Id,
-            world.Object(BoardIds.DuchessLetter).OwnerActorId);
-        Assert.Equal(
-            world.Actor(BoardIds.Bob).Id,
-            world.Object(BoardIds.SilverCoinOne).OwnerActorId);
-        Assert.Equal(
-            world.Actor(BoardIds.Alice).Id,
-            world.Object(BoardIds.SilverCoinTwo).OwnerActorId);
-        Assert.Equal(2, capture.Journal.Events.Count(domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ObjectGiven));
-        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
-            fact.Kind == BoardIds.ObjectReceived &&
-            fact.RelatedId == BoardIds.DuchessLetter);
-        Assert.DoesNotContain(world.Actor(BoardIds.Alice).KnownFacts, fact =>
-            fact.Kind == BoardIds.KeyLocationKnown);
-        Assert.Contains(world.Actor(BoardIds.Bob).KnownFacts, fact =>
-            fact.Kind == BoardIds.ObjectReceived &&
-            fact.RelatedId == BoardIds.SilverCoinOne);
-    }
-
-    [Fact]
-    public async Task ShowAction_CreatesPrivateEvidenceWithoutTransferAndInterruptsWait()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-            request =>
-            {
-                Assert.Contains(request.Observation.KnownFacts, fact =>
-                    fact.FactKind.Id == BoardIds.ObjectShown &&
-                    fact.RelatedId == BoardIds.BrassKey &&
-                    fact.Text.Contains(BoardIds.Bob, StringComparison.Ordinal));
-                return Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000));
-            },
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request =>
-            {
-                AvailableAction show = Assert.Single(
-                    request.AvailableActions,
-                    action => action.ActionKind == ActionKinds.Show);
-                Assert.Contains(BoardIds.Alice, show.CandidateActorIds!);
-                Assert.Contains(BoardIds.BrassKey, show.CandidateObjectIds!);
-                return Decide(request, new Intent(
-                    ActionKinds.Show,
-                    TargetActorId: BoardIds.Alice,
-                    TargetObjectId: BoardIds.BrassKey));
-            },
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        FirstBoardWorld initial = BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 47));
-        BoardActor initialBob = initial.Actor(BoardIds.Bob);
-        initial = initial with
+        foreach (JournalBatch<BoardEventPayload> batch in capture.Journal.Batches)
         {
-            Objects = Array.AsReadOnly(initial.Objects
-                .Select(item => item.Key == BoardIds.BrassKey
-                    ? item with { PlaceId = null, OwnerActorId = initialBob.Id }
-                    : item)
-                .ToArray()),
+            foreach (BoardEventPayload fact in batch.Facts)
+            {
+                replayed = reducer.Apply(replayed, batch.Instant, fact);
+            }
+        }
+
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(capture.Result.World),
+            FirstBoardScenario.WorldSnapshot(replayed));
+        Assert.Equal(capture.Journal.Batches.Count, capture.Result.Version.TransitionCount);
+    }
+
+    [Fact]
+    public void BuildRequest_ContainsOnlyActorVisibleProjectionAndAffordances()
+    {
+        FirstBoardWorld world = ScenarioInstance.CreateDefault(11).CreateInitialWorld();
+        BoardActor alice = world.Actor(BoardIds.Alice);
+
+        DecisionRequest request = FirstBoardScenario.BuildRequest(world, alice, ModelTime.Zero);
+
+        Assert.Equal("decision.alice.1", request.DecisionId.Value);
+        Assert.Equal(alice.Key, request.ActorId);
+        Assert.Equal(ModelTime.Zero.Ticks, request.ModelTimeMs);
+        Assert.Contains(request.AvailableActions, action => action.ActionKind == ActionKinds.Wait);
+        Assert.DoesNotContain(BoardIds.BrassKey, request.Observation.VisibleObjectIds);
+    }
+
+    private static FirstBoardWorld PutBothActorsInTavern(FirstBoardWorld world) =>
+        world with
+        {
+            Actors = Array.AsReadOnly(world.Actors.Select(actor =>
+                actor with { PlaceId = BoardIds.Tavern }).ToArray()),
         };
 
-        BoardRunCapture capture = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 47,
-            new ModelTime(1),
-            initial);
-        FirstBoardWorld world = capture.Result.World;
-
-        Assert.Equal(initialBob.Id, world.Object(BoardIds.BrassKey).OwnerActorId);
-        Assert.Single(capture.Journal.Events, domainEvent =>
-            domainEvent.Kind == BoardEventKinds.ObjectShown);
-        Assert.Contains(world.Actor(BoardIds.Alice).KnownFacts, fact =>
-            fact.Kind == BoardIds.ObjectShown && fact.RelatedId == BoardIds.BrassKey);
-        Assert.DoesNotContain(world.Actor(BoardIds.Bob).KnownFacts, fact =>
-            fact.Kind == BoardIds.ObjectShown && fact.RelatedId == BoardIds.BrassKey);
-        Assert.Equal(2, alice.Requests.Count);
-        Assert.Equal(0, alice.Requests[1].ModelTimeMs);
-        Assert.Equal(DecisionReasons.Scheduled, alice.Requests[1].Reason);
-    }
-
-    [Fact]
-    public async Task KeyContention_HostBatchIsSymmetricAndWinnerIgnoresDriverRegistrationOrder()
-    {
-        HostContentionCapture first = await RunHostContentionAsync(reverseDriverRegistration: false);
-        HostContentionCapture second = await RunHostContentionAsync(reverseDriverRegistration: true);
-
-        Assert.Equal(first.Run.Result.World.Object(BoardIds.BrassKey).OwnerActorId,
-            second.Run.Result.World.Object(BoardIds.BrassKey).OwnerActorId);
-        Assert.Equal(
-            first.Run.Result.World.Actor(first.Contention.WinnerActorId).Key,
-            second.Run.Result.World.Actor(second.Contention.WinnerActorId).Key);
-        Assert.Equal(first.Contention.Sample, second.Contention.Sample);
-        Assert.Equal(
-            first.Run.InitialWorld.Actors.Select(actor => actor.Id).Order().ToArray(),
-            first.Contention.CompetitorActorIds);
-        Assert.Equal(first.Alice.Requests[0].BasedOnWorldVersion, first.Bob.Requests[0].BasedOnWorldVersion);
-        Assert.Equal(first.Alice.Requests[0].ModelTimeMs, first.Bob.Requests[0].ModelTimeMs);
-        Assert.Contains(BoardIds.BrassKey, first.Alice.Requests[0].Observation.VisibleObjectIds);
-        Assert.Contains(BoardIds.BrassKey, first.Bob.Requests[0].Observation.VisibleObjectIds);
-        Assert.Contains(
-            Assert.Single(first.Alice.Requests[0].AvailableActions,
-                action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!,
-            objectId => objectId == BoardIds.BrassKey);
-        Assert.Contains(
-            Assert.Single(first.Bob.Requests[0].AvailableActions,
-                action => action.ActionKind == ActionKinds.Take).CandidateObjectIds!,
-            objectId => objectId == BoardIds.BrassKey);
-
-        DomainEvent<BoardEventPayload>[] actionInputs =
-        [
-            .. first.Run.Journal.Events.Where(domainEvent =>
-                domainEvent.Kind == BoardEventKinds.TakeRequested),
-        ];
-        Assert.Equal(2, actionInputs.Length);
-        Assert.Equal(actionInputs[0].Cause, actionInputs[1].Cause);
-        Assert.Equal(CauseKind.ExternalInput, actionInputs[0].Cause.Kind);
-        Assert.True(actionInputs[^1].Timestamp < Assert.Single(
-            first.Run.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ObjectContentionResolved).Timestamp);
-    }
-
-    [Fact]
-    public async Task ScriptedGame_JournalFormatsAsTimestampKindAndPayloadLines()
-    {
-        ScriptedCapture capture = await RunDiscoveryScriptAsync();
-
-        string history = FirstBoardScenario.FormatJournal(capture.Run.Journal);
-
-        Assert.Contains("actor.departed actor=alice origin=tavern destination=market", history);
-        Assert.Contains("object.taken actor=alice object=brass-key", history);
-        Assert.Contains(
-            "actor.spoke actor=alice target=bob text=fact:key.location-known",
-            history);
-        Assert.Contains(
-            "chest.opened actor=alice object=locked-chest key=brass-key",
-            history);
-        Assert.Contains("3600000:0 cellar.sealed place=cellar", history);
-    }
-
-    private static async Task<ScriptedCapture> RunDiscoveryScriptAsync()
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Market)),
-            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            request => Decide(request, new Intent(
-                ActionKinds.Talk,
-                TargetActorId: BoardIds.Bob,
-                FreeText: $"fact:{BoardIds.KeyLocationKnown}")),
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Cellar)),
-            request => Decide(request, new Intent(
-                ActionKinds.Use,
-                TargetObjectId: BoardIds.LockedChest)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: BoardTiming.TravelTicks)),
-            request => Decide(request, new Intent(ActionKinds.Travel, DestinationId: BoardIds.Tavern)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        BoardRunCapture run = await FirstBoardScenario.RunAsync(
-            Drivers(alice, bob),
-            worldSeed: 42,
-            new ModelTime(BoardTiming.RandomRunBoundaryTicks));
-        return new ScriptedCapture(run, alice, bob);
-    }
-
-    private static async Task<BoardRunCapture> RunRandomAsync(ulong seed) =>
-        await FirstBoardScenario.RunAsync(
-            new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-            {
-                [BoardIds.Alice] = new RandomPlayerDriver(unchecked((long)seed)),
-                [BoardIds.Bob] = new RandomPlayerDriver(unchecked((long)(seed ^ 0x9E3779B97F4A7C15UL))),
-            },
-            worldSeed: seed,
-            new ModelTime(BoardTiming.RandomRunBoundaryTicks));
+    private static CapturingDriver TravelDriver() =>
+        new(request =>
+        {
+            AvailableAction travel = request.AvailableActions.Single(action =>
+                action.ActionKind == ActionKinds.Travel);
+            return new PlayerDecision(
+                request.DecisionId,
+                new Intent(
+                    ActionKinds.Travel,
+                    DestinationId: travel.CandidateDestinationIds![0]));
+        });
 
     private static IReadOnlyDictionary<string, IPlayerDriver> Drivers(
         IPlayerDriver alice,
@@ -897,126 +233,25 @@ public sealed class FirstBoardTests
             [BoardIds.Bob] = bob,
         };
 
-    private static PlayerDecision Decide(DecisionRequest request, Intent intent) =>
-        new(
-            request.DecisionId,
-            request.BasedOnWorldVersion,
-            request.LineageId,
-            intent);
-
-    private static string[] AliceKeyHistory(InMemoryJournal<BoardEventPayload> journal) =>
-        [
-            .. journal.Events
-                .Where(domainEvent => IsAliceKeyEvent(domainEvent.Payload))
-                .Select(domainEvent => domainEvent.Kind.Id),
-        ];
-
-    private static bool IsAliceKeyEvent(BoardEventPayload payload) =>
-        payload switch
-        {
-            ActionRequestedEvent requested =>
-                requested.ActorId == BoardIds.Alice &&
-                requested.Intent.ActionKind != ActionKinds.Wait,
-            ActorDepartedEvent departed => departed.ActorId == BoardIds.Alice,
-            ActorArrivedEvent arrived => arrived.ActorId == BoardIds.Alice,
-            ObjectTakenEvent taken => taken.ActorId == BoardIds.Alice,
-            ActorSpokeEvent spoke => spoke.ActorId == BoardIds.Alice,
-            ActorObservedEvent observed => observed.ActorId == BoardIds.Alice,
-            ChestOpenedEvent opened => opened.ActorId == BoardIds.Alice,
-            _ => false,
-        };
-
-    private static FirstBoardWorld BothActorsAtMarket(FirstBoardWorld world) =>
-        world with
-        {
-            Actors = Array.AsReadOnly(world.Actors
-                .Select(actor => actor with { PlaceId = BoardIds.Market })
-                .ToArray()),
-        };
-
-    private static DecisionRequest RequestFor(FirstBoardWorld world, string actorId)
+    private sealed class CapturingDriver : IPlayerDriver
     {
-        string decisionId = $"test.{actorId}";
-        FirstBoardWorld awaitingWorld = world with
-        {
-            Actors = Array.AsReadOnly(world.Actors
-                .Select(actor => actor.Key == actorId
-                    ? actor with { AwaitingDecision = true, OpenDecisionId = decisionId }
-                    : actor)
-                .ToArray()),
-        };
-        var decisionEvent = new DomainEvent<BoardEventPayload>(
-            new LogicalTimestamp(ModelTime.Zero, new Microstep(0)),
-            EventCause.FromExternalInput(batchOrdinal: 0),
-            BoardEventKinds.DecisionRequested,
-            new DecisionRequestedEvent(actorId, DecisionNumber: 1, decisionId));
-        return FirstBoardScenario.BuildRequest(
-            awaitingWorld,
-            decisionEvent,
-            new WorldVersion(FirstBoardScenario.LineageId, eventCount: 1))!;
-    }
+        private readonly Func<DecisionRequest, PlayerDecision> _decide;
+        private readonly List<DecisionRequest> _requests = [];
 
-    private static async Task<HostContentionCapture> RunHostContentionAsync(
-        bool reverseDriverRegistration)
-    {
-        var alice = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var bob = new RecordingPlayerDriver(new ScriptedPlayerDriver(
-        [
-            request => Decide(request, new Intent(ActionKinds.Take, TargetObjectId: BoardIds.BrassKey)),
-            request => Decide(request, new Intent(ActionKinds.Wait, DurationMs: 5_000_000)),
-        ]));
-        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal);
-        if (reverseDriverRegistration)
+        public CapturingDriver(Func<DecisionRequest, PlayerDecision> decide)
         {
-            drivers.Add(BoardIds.Bob, bob);
-            drivers.Add(BoardIds.Alice, alice);
-        }
-        else
-        {
-            drivers.Add(BoardIds.Alice, alice);
-            drivers.Add(BoardIds.Bob, bob);
+            _decide = decide;
         }
 
-        BoardRunCapture run = await FirstBoardScenario.RunAsync(
-            drivers,
-            worldSeed: 73,
-            ModelTime.Zero,
-            BothActorsAtMarket(FirstBoardWorld.CreateInitial(worldSeed: 73)));
-        DomainEvent<BoardEventPayload> contentionEvent = Assert.Single(
-            run.Journal.Events,
-            domainEvent => domainEvent.Kind == BoardEventKinds.ObjectContentionResolved);
-        var contention = Assert.IsType<ObjectContentionResolvedEvent>(contentionEvent.Payload);
-        return new HostContentionCapture(run, alice, bob, contention);
-    }
-
-    private sealed record ScriptedCapture(
-        BoardRunCapture Run,
-        RecordingPlayerDriver Alice,
-        RecordingPlayerDriver Bob);
-
-    private sealed record HostContentionCapture(
-        BoardRunCapture Run,
-        RecordingPlayerDriver Alice,
-        RecordingPlayerDriver Bob,
-        ObjectContentionResolvedEvent Contention);
-
-    private sealed class AlwaysIllegalTravelPlayerDriver : IPlayerDriver
-    {
-        public int DecisionCount { get; private set; }
+        public IReadOnlyList<DecisionRequest> Requests => _requests.AsReadOnly();
 
         public ValueTask<PlayerDecision> DecideAsync(
             DecisionRequest request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            DecisionCount = checked(DecisionCount + 1);
-            return ValueTask.FromResult(Decide(
-                request,
-                new Intent(ActionKinds.Travel, DestinationId: "missing-place")));
+            _requests.Add(request);
+            return ValueTask.FromResult(_decide(request));
         }
     }
 }

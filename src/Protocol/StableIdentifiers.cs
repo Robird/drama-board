@@ -37,23 +37,6 @@ public readonly record struct ActionKind
     public override string ToString() => Id;
 }
 
-/// <summary>Identifies why the Host opened a decision point.</summary>
-[JsonConverter(typeof(DecisionReasonJsonConverter))]
-public readonly record struct DecisionReason
-{
-    /// <summary>Initializes a decision reason from its stable identifier.</summary>
-    public DecisionReason(string id)
-    {
-        Id = StableIdentifier.Validate(id, nameof(id), "Decision reason identifier");
-    }
-
-    /// <summary>Gets the stable decision reason identifier.</summary>
-    public string Id { get; }
-
-    /// <summary>Returns the stable decision reason identifier.</summary>
-    public override string ToString() => Id;
-}
-
 /// <summary>Identifies a known-fact contract by a stable, hand-authored string.</summary>
 [JsonConverter(typeof(FactKindJsonConverter))]
 public readonly record struct FactKind
@@ -116,18 +99,6 @@ internal sealed class ActionKindJsonConverter : JsonConverter<ActionKind>
         new(ReadRequiredString(ref reader, "action kind"));
 
     public override void Write(Utf8JsonWriter writer, ActionKind value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value.Id);
-
-    private static string ReadRequiredString(ref Utf8JsonReader reader, string description) =>
-        reader.GetString() ?? throw new JsonException($"The {description} must be a string.");
-}
-
-internal sealed class DecisionReasonJsonConverter : JsonConverter<DecisionReason>
-{
-    public override DecisionReason Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        new(ReadRequiredString(ref reader, "decision reason"));
-
-    public override void Write(Utf8JsonWriter writer, DecisionReason value, JsonSerializerOptions options) =>
         writer.WriteStringValue(value.Id);
 
     private static string ReadRequiredString(ref Utf8JsonReader reader, string description) =>
