@@ -1,2012 +1,1037 @@
 # Design Note 008：Graph Spatial World
-## ——以 Place、Passage、途中关系、客观可见性与模型时间构成可实施的空间框架
+## ——建立在统一原子 Occurrence Kernel 上、面向 AI Player 的故事世界空间框架
 
-**状态：功能架构已冻结；已纳入 Passage 共行、相遇与超过；用于指导后续详细设计与实施**
+**状态：修订草案；Kernel 对齐已冻结，空间竖切仍待实施**
 
-**日期：2026-08-20**
+**本次修订：2026-08-21**
 
-**讨论基线：`spatial-grid-v1-baseline`（`main @ ed6b6d3`）**
+**Kernel 权威基线：** [研发计划 006](./研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)、[Design Note 003](./开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md) 与当前 `src/Kernel`。
 
-**认知层拆分：** Player HUD、战争迷雾、主观地图、Claims、LLM DecisionView 与 Human realization 已移至 [Design Note 009](./开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md)。它们不属于本子系统。
+**认知层边界：** Player HUD、战争迷雾、主观地图、Claims 与 LLM DecisionView 继续由 [Design Note 009](./开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md) 研究，不进入本子系统。
 
 ---
 
-# 1. 定位与阶段性决定
+# 0. 本次修订的决定
 
-Graph Spatial World 是 DramaBoard 中唯一的客观空间 authority。
+本文不再把 Spatial 设计成一个拥有自己 winner、同刻 phase、command gateway 与 audited replay 的“小 Kernel”。
 
-它只负责六件事：
-
-1. Graph Definition 在磁盘上的读取、验证、规范化与写回；
-2. Actor 的客观位置；
-3. Actor 在 Place 与 Passage 之间的移动；
-4. 客观空间可见机会与共处关系；
-5. Passage 内持续共行关系与可预测的相遇 / 超过；
-6. Objective Graph 上的确定性导航。
-
-它与 Kernel 集成，保存模型时间中的空间事实，但不管理 Player 的记忆、信念、地图笔记或行动策略。
-
-一句话边界是：
-
-> **Spatial World 决定世界在哪里、怎样相连、Actor 正在哪里、客观上与谁共行以及轨迹何时相交；调用方决定 Actor 为什么行动、实际注意到什么以及如何理解。**
-
-## 1.1 权威拥有
-
-Spatial World 权威拥有：
-
-- immutable `SpatialGraphDefinition`；
-- Area containment；
-- Place、Passage 与 ViewLink identity；
-- PassageLength 与 PassageOffset 的解释；
-- EntityLocation；
-- active Traversal；
-- Passage 是否允许新的进入；
-- scheduled Passage mutation；
-- CoPresence 客观关系；
-- CoTravel 客观关系；
-- Passage interaction 的精确预测、结算与 provenance；
-- Kernel Forecast、Resolve、Journal projection 与 Replay。
-
-## 1.2 明确不拥有
-
-Spatial World 不拥有：
-
-- PlayerId；
-- Known / Confirmed Graph；
-- Claims、Rumor、Evidence 或 Fog-of-War；
-- ExitStub、player-scoped opaque handle；
-- Observation history；
-- DecisionView、Prompt、HUD；
-- Travel goal、Quest、Inventory、Faction、ticket；
-- Actor 为什么拥有某种速度；
-- Human GridMap 或 renderer state。
-
-生产代码中不得出现对这些概念的依赖。
-
-## 1.3 依赖方向
-
-运行时 Graph Spatial project 单项依赖 Kernel：
+当前 Kernel 的唯一时间路径已经是：
 
 ```text
-Kernel
-  ↑
-Graph Spatial Runtime
-  ↑
-Game validation / MockPlayer / Host composition
+committed HostWorld
+→ 所有 IOccurrenceRule 全量 Forecast
+→ Kernel 选择一个全局 winner
+→ owning rule 生成一个完整 TransitionDraft
+→ 一个 AppendBatch 原子提交
+→ 全量 re-Forecast
 ```
 
-Graph 文件 codec 是 Spatial World framework 的内容适配器，但不是 Simulation authority：
+因此 Graph Spatial 必须服从以下决定：
+
+1. 每个 scheduled passage entry change、每个 arrival、每个 passage contact 都是独立 candidate；
+2. Spatial 不先选自己的 earliest work，也不批量“结算这一 tick”；
+3. 同一 `ModelTime` 的 Spatial、Game 与 Player candidates 一律由 Kernel 的 PRF 全局仲裁；
+4. 一个 Spatial winner 只消费自己的局部成立条件；
+5. facts 共享 batch 的一个 `LogicalInstant`，只按数组位置 fold；
+6. Player action 在 owning rule 的 `PlanSelectedAsync` 内完成观察、决策、校验与领域规划，不走 external input；
+7. 跨 Game + Spatial 的原子行动使用 composite `HostWorld`、一个 draft 与一次 `AppendBatch`；
+8. Replay 只重建当前格式的完整 batches，不承担跨 build 法证审计；
+9. 当前没有旧 Graph 数据，Definition、World 与 Journal 格式改变后直接重建；
+10. 原型优先简单、灵活和可玩的竖切，不为不存在的审计、网络并发或极限容量消费者预建平台。
+11. Passage 不再保存整条通路的 `Enabled`；EndpointA / EndpointB 各自保存“可否由本端进入 Passage”的方向许可；
+12. 离开 Passage 抵达目标 Place 始终成功，已提交的 movement segment 不受后续入口关闭追溯影响；需要“走到门前才发现不能进城”时，把门前建成 Place。
+
+旧草案中的下列机制被明确删除：
+
+| 旧机制 | 新裁决 |
+|---|---|
+| `SpatialMoment`、`MomentResolved`、mutation/contact/arrival fixed phases | 删除；每个局部原因独立参加 Kernel 仲裁 |
+| `PassageInteractionsSettledThrough` | 删除；contact 采用 pair + current-segment local progress |
+| `SourceId / CandidateId / MomentOrdinal / InteractionOrdinal` | 合并为 Kernel `CandidateKey` 与领域 segment identity |
+| public rational time/offset、exact contact 同 tick 排序 | 删除；精确数学只在 planner 内计算整数 `CandidateDue` |
+| `SpatialCommandGateway`、internal-first、trusted receipt | 删除；Player 位于 owning rule 内 |
+| command batch alias/conflict/capacity 平台 | 删除；保留单行动的纯 Spatial planner |
+| `StateRevision / ExpectedStateRevision` | 删除；单未完成 Step 使用 frozen `HostWorld`，提交版本由 `WorldVersion` 表达 |
+| derived CoPresence/CoTravel audit facts | 简化为当前关系查询；真实 Game 消费者自行拥有历史 |
+| passage-wide `InitiallyEnabled / EffectiveEnabled` | 简化为 EndpointA / EndpointB 两个 entry bit；arrival 永远允许离开 Passage |
+| canonical JSON writer/hash/version matrix | 延期到真实内容管线需要时 |
+| 102,273-event Moment、microstep reserve、固定容量矩阵 | 删除；使用小 transition、checked arithmetic 与现有 Kernel/Journal 边界 |
+
+---
+
+# 1. 产品目标与 authority 边界
+
+Graph Spatial World 是故事世界的客观空间 authority。它回答：
+
+- 哪些语义地点存在；
+- 地点之间有哪些可区分的通路；
+- Actor 现在位于地点，还是正在某条 Passage 上旅行；
+- 旅行何时抵达；
+- 哪些 Actor 客观同地、同路或轨迹相交；
+- 当前客观图上有哪些可走出口与路线。
+
+一句话边界：
+
+> **Spatial 决定“在哪里、怎样相连、怎样运动以及客观上发生了什么空间交会”；Game / Perception 决定 Actor 为何行动、实际察觉什么以及如何回应。**
+
+## 1.1 面向 AI Player 的优化目标
+
+AI Player 不应管理 tile、角度或逐步路径。它应能用紧凑、稳定的语义表达：
 
 ```text
-Graph JSON
-  → parse / validate / canonicalize
-  → immutable SpatialGraphDefinition
-  → Graph Spatial Runtime
+去旧港
+走山路绕过关卡
+继续赶路
+途中遇见 Alice 后回头
 ```
 
-Runtime 不直接读取文件；文件系统、JSON 和编辑工具不得进入 reducer 或 Forecast。
+底层空间框架必须替它完成：
+
+- 稳定 Place / Passage identity；
+- 出口与 ETA；
+- 确定性路线计算；
+- lazy travel progress；
+- arrival 与途中 contact Forecast；
+- 对动作的客观合法性校验；
+- 与 Game 条件的一次原子提交。
+
+AI-facing view 只包含 Perception 合法披露的局部材料。完整 Graph、隐藏 Actor、Kernel contender、PRF rank 与尚未发生的 future contact 都不是 Player 信息。
+
+## 1.2 Spatial 拥有
+
+- immutable `GraphDefinition`；
+- stable `PlaceId / PassageId`；
+- Passage 的 Length、endpoints 与两个方向当前是否可进入；
+- Entity 的客观 location 与 current movement generation；
+- active traversal 的 piecewise-constant motion law；
+- scheduled passage changes；
+- current-segment pair 的 contact consumption；
+- objective queries、relations 与 navigation；
+- Spatial facts、fold 与 invariant validation；
+- mutation、arrival、contact 的纯 Forecast / Plan 逻辑。
+
+## 1.3 Spatial 不拥有
+
+- PlayerId、Memory、Belief、Known/Confirmed Graph、Fog-of-War；
+- Prompt、HUD、DecisionRequest 或 LLM DTO；
+- Quest、Inventory、Faction、ticket、relationship interpretation；
+- Actor 为什么获得某个 `SpeedSnapshot`；
+- Player 的长期 `TravelGoal` 或“为什么去那里”；
+- renderer、Grid、NavMesh、动画或 Presentation Time；
+- Kernel winner selection、WorldVersion、Journal publication；
+- contact 后必须怎样回应的 Game policy。
+
+高层 `TravelTo(goal)` 由 Game-owned Activity / controller 保存。它可以调用 Spatial Navigator 选择下一 Passage，但不能把 Player goal 变成 Spatial authority。
+
+## 1.4 与当前 `src/Spatial` 的关系
+
+当前 Grid Spatial 是已实现的消费者证据，尤其证明了：
+
+- directed Portal 不生成隐式反向 edge；
+- independent mutation / arrival candidates；
+- lazy current-leg travel；
+- pure command planning；
+- Game + Spatial facts 同 batch；
+- reducer/replay 的基本形状。
+
+它不是 Graph schema 的兼容义务。实施 Graph Spatial 时可以替换现有 Grid 类型；运行时不得让 Grid 与 Graph 同时成为 objective location authority。
+
+Grid Portal 当前会在 leg Due 重查 passability，并在失败时把 Entity 留在 source Cell；这是“旅程期间 Entity 仍投影在源 Cell”的旧 Grid 语义。Graph 已把 Entity 客观放在 Passage 中，且本设计选择“离开 Passage 必然成功”，因此不继承该到达时重查行为。
 
 ---
 
-# 2. V1 功能与复杂度边界
+# 2. 最小客观空间模型
 
-## 2.1 V1 保留
+## 2.1 Stable identifiers
 
-- Area、Place、双端 Passage、directed ViewLink；
-- `AtPlace | TraversingPassage`；
-- 正 Length、已裁决 SpeedSnapshot 与 lazy Offset；
-- Passage 中 Continue、TurnBack、离散 AdjustTraversalPace 或基于 contact 的 MatchTraversalAtContact，但不能静止；
-- Passage 内同位、同向、同速的持续 CoTravel；
-- Passage 内非阻挡的迎面相遇与同向超过；
-- widened exact-rational contact math，但 Kernel 仍只在整数 ModelTime 结算；
-- degree-2 Place；
-- 平行 Passage；
-- 普通 Actor 不阻挡；
-- dynamic enabled 与 future scheduled mutation；
-- Objective Dijkstra；
-- same-Place 与 ViewLink visibility opportunities；
-- deterministic command batch；
-- event-sourced state、Replay、Fork、split run。
+V1 使用强类型、非空、Ordinal 比较的字符串 ID：
 
-## 2.2 V1 明确不做
+```text
+PlaceId
+PassageId
+EntityId        // 可由 Host 的稳定 Entity identity 适配
+```
 
-- Grid、连续 2D / 3D 坐标、NavMesh；
-- Passage 内 Stop、Wait、Resume、Site 或 Milestone；
-- 任意 PassageOffset 作为移动目标；
-- Passage capacity、reservation、Actor blocking、碰撞响应或车道；
-- 追逐意图、自动拦截、自动停车或 combat positioning；
-- 在分数 contact time 插入 Player decision；
-- actor-specific condition DSL；
-- Inventory / Faction / Quest 条件；
-- 动态 Length、连续变速、加速度；
-- Passage 内部 barrier 或局部坍塌；
-- runtime 创建或删除 Place / Passage；
-- 几何 LOS、阴影、隐身、识别与注意力；
-- AreaEntered / AreaLeft 事件；AreaPath 只做查询；
-- View opportunity 历史；
-- Player knowledge、战争迷雾、LLM 与 Human UI；
-- procedural generation 与 Graph→Grid compiler；
-- 通用 rule DSL 或 property graph engine。
+ID 与 display name、localized text 分离。Definition 内每种 ID 唯一；所有查询与 route tie-break 使用同一 Ordinal 语义。
 
-## 2.3 Passage 粒度规则
+不为 traversal、contact、schedule、command 或 transition 再分配全局 ordinal。它们的当前身份由稳定内容 ID、EntityId、movement generation 与局部值组成。
 
-Place 是能够停留、互动、等待、调查、成为目标或连接其它 Passage 的原子 locality。
+## 2.2 Graph Definition
 
-Passage 是只有两个 endpoint 的有限一维旅行空间。
+```text
+GraphDefinition
+    Places[]
+        PlaceId
 
-Passage 同时是一种 **非阻挡的途中互动舞台**：
+    Passages[]
+        PassageId
+        EndpointA: PlaceId
+        EndpointB: PlaceId
+        Length: Int64                 // > 0, abstract distance units
+        InitialEntryAccess
+            EnterableFromA: bool      // 允许创建 A → B segment
+            EnterableFromB: bool      // 允许创建 B → A segment
+```
 
-- 两条 active traversal 的世界线可以在 Passage 内产生客观相遇或超过；
-- 同位、同向、同速的 Actor 可以形成持续 CoTravel；
-- Spatial 只证明接触机会与共同行进，不推断注意、认出、对话、结伴意愿、追捕意图或阵营；
-- contact 不自动使 Actor 停下。需要多回合战斗、调查、等待或稳定 interaction site 的位置仍必须成为 Place。
+约束：
 
-如果一个途中位置需要：
+- Passage 两个 endpoint 必须存在且不同；
+- EndpointA / EndpointB 顺序定义权威 offset 轴；A 为 0，B 为 Length；
+- 相同 endpoints 可以有多条 Passage，例如 ferry 与 bridge；
+- Passage crossing 不代表相连，只有共享 Place 才相连；
+- `EnterableFromA` 与 `EnterableFromB` 独立，且是方向许可的唯一 authority；
+- V1 不运行时创建或删除 Place / Passage。
 
-- 稳定 identity；
-- 精确触发客观事件；
-- 调查、战斗或等待；
-- 会面；
-- 分岔；
-- 成为移动目标；
+精确方向法则：
 
-它必须成为 Place，即使它只有两个相连 Passage。
+```text
+CanCreateSegment(A → B) = EffectiveEntryAccess.EnterableFromA
+CanCreateSegment(B → A) = EffectiveEntryAccess.EnterableFromB
+```
 
-其它系统不能把 Site 换名藏成 `OffsetReached` callback。只要触发条件依赖稳定 PassageOffset，该位置就必须成为 Place。
+它适用于每一个新 movement segment，而不只适用于 Actor 从 Place 首次启程。A→B 途中选择 Reverse 会结束旧 segment 并创建 B→A segment，因此也必须检查 `EnterableFromB`。这使两个 bit 足以表达：
 
----
+| Initial entry access | 客观含义 |
+|---|---|
+| `A=true, B=true` | 双向 Passage |
+| `A=true, B=false` | 只允许 A→B；可表达悬崖、顺流或单向 portal |
+| `A=false, B=true` | 只允许 B→A |
+| `A=false, B=false` | 两个方向都不能创建新 segment |
 
-# 3. 数值模型
+`InitiallyEnabled`、额外的 `AllowedAtoB / AllowedBtoA` 与 whole-passage master switch 均不再存在。上述四种只是 authoring preset，不是附加状态。
 
-V1 使用全局统一的抽象空间微单位。单位比例及算术规则属于 `RulesVersion`。
+Area hierarchy 与 directed ViewLink 不进入第一竖切。重启条件见 §9：真实 AI view 需要稳定区域层级或远距 Place visibility 时，再以薄 content relation 加入，不提前建设 property graph。
+
+## 2.3 Place 与 Passage 的粒度
+
+Place 是可以稳定引用、停留并产生多回合互动的 locality。以下位置必须建成 Place：
+
+- 可以等待、调查、休息或战斗；
+- 可以会面、分岔或成为 travel goal；
+- 需要稳定名字或规则触发；
+- Player 可能在此重新考虑长期行动。
+
+Passage 是两个 Place 之间的有限一维旅行空间。它允许：
+
+- Actor 正在途中；
+- 同路与共行查询；
+- 非阻挡的迎面相遇与超过；
+- 在整数模型时间边界反向运动。
+
+Passage 不允许长期静止。若故事需要“在桥中央等候/调查/持续战斗”，该位置应升级为 Place，而不是添加任意 Offset site callback。
+
+Endpoint entry access 也遵守这一粒度法则。离开 Passage、跨入目标 Place 始终成功；若故事要求“旅行一段时间后在城门前被拦下、排队、交涉或寻找密道”，应建模为：
+
+```text
+野外 Place
+→ 接近道路 Passage
+→ 城门外 Place
+→ 城门 Passage
+→ 城内 Place
+```
+
+关闭“城门外→城内”方向后，Actor 仍能完成接近道路并停在有故事身份的城门外 Place，而不需要 `BlockedAtEndpoint`、Passage 内等待或自动退出 candidate。
+
+## 2.4 唯一距离与时间法则
 
 ```text
 PassageLength
-    Int64 Units              // > 0
+    Int64 Units                     // > 0
 
 PassageOffset
-    Int64 Units              // 0..PassageLength
+    Int64 Units                     // 0..Length at integer ModelTime
 
 SpeedSnapshot
-    Int64 DistanceUnitsPerModelTick // > 0
+    Int64 UnitsPerMillisecond       // > 0
 ```
 
-ModelTick 只是 `ModelTime / ModelDuration` 的最小算术单位，不表示 Simulation 按 tick 推进。
+`SpeedSnapshot` 是 Game 已裁决的客观结果。Spatial 不知道它来自步行、载具、地形、伤势还是魔法。
 
-## 3.1 旅行时间
-
-对正距离与正速度：
+所有 traversal、route ETA 与 contact 使用同一法则：
 
 ```text
-TravelTime(distance, speed)
-    quotient  = distance / speed
-    remainder = distance % speed
-    ticks     = quotient + (remainder == 0 ? 0 : 1)
-    return ModelDuration(ticks)
+TravelDuration(distance, speed)
+    q = distance / speed
+    r = distance % speed
+    return ModelDuration(q + (r == 0 ? 0 : 1))
 ```
 
-因此正剩余距离总是产生至少一个 ModelTick。
+中间算术使用 widened checked representation。正距离始终至少需要 1ms。
+
+不再保存第二套 `BaseDuration` 或从量化 Due 反推速度。这样 arrival、turn-back、route cost 与 relative motion 共享一个数值 authority。
+
+## 2.5 Entity 与 traversal
+
+一个 Entity 直接内嵌自己的 location，不建立独立 Traversal table。第一竖切只保存 endpoint-to-endpoint traversal：
 
 ```text
-TargetOffset =
-    TargetEndpoint == EndpointA ? 0 : PassageLength
-
-RemainingDistance =
-    TargetEndpoint == EndpointA
-        ? SegmentOriginOffset
-        : PassageLength - SegmentOriginOffset
-
-ArrivalDue = checked(
-    SegmentStartedAt
-    + TravelTime(RemainingDistance, SpeedSnapshot))
-```
-
-## 3.2 Lazy Offset
-
-对合法查询域：
-
-```text
-SegmentStartedAt <= now < ArrivalDue
-```
-
-位置按需计算：
-
-```text
-elapsedTicks = (now - SegmentStartedAt).Ticks
-advanced     = elapsedTicks * SpeedSnapshot
-
-EffectiveOffset =
-    TargetEndpoint == EndpointB
-        ? SegmentOriginOffset + advanced
-        : SegmentOriginOffset - advanced
-```
-
-中间乘法与加减使用 widened integer；验证结果后再回落 Int64。由 ceil TravelTime 可知，在 `now < ArrivalDue` 时 advanced 严格小于 remaining。
-
-Arrival resolver 在 `now == ArrivalDue` 直接使用 TargetOffset，不调用普通 EffectiveOffset。
-
-以下均为错误：
-
-- `now < SegmentStartedAt`；
-- active traversal 且 `now == ArrivalDue`，但 arrival 尚未 settle；
-- active traversal 且 `now > ArrivalDue`；
-- 使用 `double`、`decimal` 或未版本化舍入决定 Journal。
-
-## 3.3 原子溢出
-
-以下溢出必须在生成事件、消费 allocator 或改变 Revision 前拒绝：
-
-- distance / speed arithmetic；
-- relative velocity、exact-rational contact、fraction reduction 与 cross multiplication；
-- ArrivalDue；
-- total route cost；
-- Passage interaction / CoTravel / CoPresence event-count 与 Journal microstep capacity；
-- TraversalId / MutationId / MomentOrdinal；
-- Generation；
-- StateRevision。
-
-Spatial 不持久化逐 tick progress，也不产生 progress event。
-
-V1 同时冻结以下 `RulesVersion` 工程上限：
-
-```text
-MaxSpatialEntities                 = 256
-MaxGraphPassages                   = 4_096
-MaxCommandsPerSpatialBatch         = 256
-MaxScheduledPassageMutations       = 65_536
-MaxSpatialEventsPerTransition      = 131_072
-```
-
-这些是有界软件表示，不是“道路只能站多少人”的 fiction capacity：256 个 Actor 仍可全部位于同一 Passage 或 Place。Definition compiler、`PlaceEntity`、schedule admission 与 batch parser 必须在创建超限 state 前分别以 `DefinitionLimitExceeded / WorldEntityLimitReached / MutationStoreLimitReached / BatchLimitExceeded` 拒绝；前后两个是 compile / batch-level structural diagnostic，中间两个才是逐 command rejection。
-
-上限保证任一合法 state 的单次 SpatialMoment 都可表示：同一 Due 最多 `4_096` 个 mutation、`C(256,2)=32_640` 个 interaction、256 个 arrival、每 pair 最多一个 CoPresence delta 与一个 CoTravel delta，再加 terminal，共 `102_273 < 131_072` 个 Spatial event。Command transition 的 256 个 primary 加两类 pair delta 也不超过该 event 上限。实现可以流式规划，但不能降低这些 V1 语义上限。
-
-Host composition 还必须在同一 ModelTime 为所有已到期 internal systems 预留 microstep headroom；Spatial Gateway 不得接收会侵占已知 internal reserve 的 external batch。若损坏的 snapshot、绕过 gateway 的 system 或 Kernel 的其它事件已经使一个合法 SpatialMoment 没有 `MaxSpatialEventsPerTransition` headroom，Resolve 在写入任何事件前抛出确定性的 terminal `KernelCapacityInvariantViolated` 并终止 session；它绝不把容量问题伪装成可重试 rejection，也不返回原 candidate 形成永久 resolve 循环。
-
-## 3.4 Passage 拆分的取整
-
-把一个 Passage 在语义地点拆成两个 Passage 时：
-
-- 两段 Length 之和必须等于原 Length；
-- 每段 travel time 独立计算；
-- 新增一个真实 Place 最多引入一次 ModelTick 的 ceil 差异；
-- V1 不为消除该差异保存跨 Place 的分数余量；
-- authoring validation 应报告拆分前后的默认速度 travel-time 差异。
-
-## 3.5 Passage interaction 的精确运动学
-
-V1 不把 Kernel 时间改成分数，也不产生逐 tick progress event。但如果只比较整数 tick 上的 Offset，两个高速 Actor 可能在相邻 tick 之间交换顺序而被错误地视为“没有相遇”。因此 Passage interaction 使用一套受 `RulesVersion` 约束的 **exact-rational 辅助运动学**。
-
-对 frozen traversal 定义 signed velocity：
-
-```text
-SignedVelocity =
-    TargetEndpoint == EndpointB
-        ? +SpeedSnapshot
-        : -SpeedSnapshot
-```
-
-pair planner 不能简单地“从查询时的 Now 向未来求交”。Resolve 发生在 `SettlementDue = ceil(ContactTime)`，此时分数 contact 通常已经位于该整数 tick 之前。它必须从两条当前 segment 的共同有效区间重建 worldline：
-
-```text
-t0 = max(A.SegmentStartedAt, B.SegmentStartedAt)
-xA = ExactOffsetOnSegment(A, t0)
-xB = ExactOffsetOnSegment(B, t0)
-```
-
-其中 `ExactOffsetOnSegment` 直接使用 segment origin / start / signed velocity，并允许以 exact rational instant 做历史重算；它不是只能在 settled `SpatialReadContext.Now` 调用的整数 `EffectiveOffset` query。只有双方 segment 在 `t0` 都已开始且尚未到达各自 exact physical exit，才继续求交。
-
-在共同整数参考时刻 `t0`，两 Actor 的 Offset 为 `xA`、`xB`，signed velocity 为 `vA`、`vB`。若 `vA != vB`：
-
-```text
-tau           = (xB - xA) / (vA - vB)
-ContactTime   = t0 + tau
-ContactOffset = xA + vA * tau
-SettlementDue = ceil(ContactTime)
-```
-
-所有比较和约分都使用 widened integer / exact rational，禁止 `double`、`decimal` 或容差。事件 codec 使用 canonical reduced fraction：
-
-```text
-RationalModelInstant
-    WholeTicks: Int64
-    FractionNumerator: UInt64
-    FractionDenominator: UInt64   // > 0, gcd == 1, numerator < denominator
-
-RationalPassageOffset
-    WholeUnits: Int64
-    FractionNumerator: UInt64
-    FractionDenominator: UInt64
-```
-
-canonical signed rational 使用 Euclidean / floor form，不能沿用 C# 整数除法的 toward-zero remainder：
-
-- `WholeTicks = floor(value)`，`0 <= FractionNumerator < FractionDenominator`；
-- numerator 为 0 时 denominator 必须规范为 1；否则 numerator / denominator 必须互质；
-- `ceil(value) = WholeTicks`（numerator 为 0），否则是 checked `WholeTicks + 1`；
-- `RationalPassageOffset` 同样使用 floor form，且合法 contact 最终仍须严格落在 `(0, PassageLength)`；
-- `long.MinValue` 附近的分解、取负、加一与 cross multiplication 必须先在 widened signed representation 完成。
-
-因此 `-1/2` 的唯一编码是 `WholeTicks=-1, Numerator=1, Denominator=2`，其 ceil 为 0；`-1` 的唯一编码是 `WholeTicks=-1, Numerator=0, Denominator=1`。Graph Spatial 允许 Kernel 已支持的负 ModelTime，不另设非负假设。
-
-intermediate multiplication / cross multiplication 使用 checked `UInt128`、`Int128` 或 `BigInteger`；必须在生成任何事件、消费 ordinal 或改变 Revision 前验证最终 canonical fraction 可表示。
-
-一个合法 Passage interaction 必须：
-
-- 两个不同 Entity 的 active traversal 位于同一 Passage；
-- `tau > 0`，即不把共同 segment overlap 起点的 `f = 0` 伪报成超过；
-- ContactOffset 严格位于 `(0, PassageLength)`；endpoint contact 交给 Arrival / Place CoPresence；
-- ContactTime 严格早于双方按 `remaining / speed` 得到的 exact physical exit；
-- SettlementDue 尚未被 `PassageInteractionsSettledThrough` 消费。
-
-分类冻结为：
-
-```text
-HeadOnMeeting
-    TargetEndpoint 相反，二者正相向接近
-
-Overtake
-    TargetEndpoint 相同，后方较快者追上并交换轴上顺序
-```
-
-同方向、同速、不同 Offset 是 `ConstantGap`，永不相交。同 Passage、同方向、同 Offset、同 SpeedSnapshot 且具有相同 ArrivalDue 是持续 `CoTravel`，不产生重复 contact event。同一 endpoint 同刻出发但速度不同，只是共同出发后分离，也不伪报 Overtake。
-
-reference planner 接受明确的 evaluation window，而不是暗用调用时钟：Forecast / Resolve 枚举 `SettlementDue > PassageInteractionsSettledThrough` 的未消费 contact；public `PredictPassageInteraction` 只返回 `ContactTime > SpatialReadContext.Now` 的未来 contact；Projector / Replay 则在 event 指定 segment identities 上历史重算该唯一 contact。三者必须复用同一个 pair math，只改变过滤窗口。
-
-`PassageInteractionOccurred@T` 的权威含义是：精确轨迹交点位于该事件携带的 rational instant，Kernel 在其上界整数 tick `T = ceil(ContactTime)` 提交结果。Game / Player 不能在同一 tick 内两个 rational contact 之间插入命令；若需要在精确分数时刻停下、阻止超过或进入多回合战斗，必须升级 Kernel 时间或引入新的 Passage stop/site 语义，不属于本 V1。
-
----
-
-# 4. Graph Definition 与磁盘 I/O
-
-## 4.1 稳定标识符
-
-V1 内容 ID 使用强类型、Ordinal 比较的 kebab-case UTF-8 字符串：
-
-```text
-[a-z][a-z0-9]*(?:-[a-z0-9]+)*
-```
-
-长度限制与底层存储由实现冻结，但必须：
-
-- 拒绝空白、控制字符和 ill-formed UTF-16；
-- 每种 ID 类型内唯一；
-- equality、hash、serialization 与 total order 使用同一 Ordinal 语义；
-- display name 与 localization 不进入 ID。
-
-运行时 identity：
-
-```text
-EntityId / TraversalId / MutationId / SpatialCommandId
-    positive Int64 ordinal
-```
-
-## 4.2 Definition stamp
-
-```text
-SpatialDefinitionStamp
-    DefinitionId
-    DefinitionRevision
-    RulesVersion
-    ContentHash
-```
-
-`DefinitionRevision` 与 dynamic `StateRevision` 必须是不同类型。
-
-`ContentHash` 使用 canonical UTF-8 上的 SHA-256。Hash 输入排除：
-
-- hash 字段本身；
-- 派生 adjacency index；
-- parser cache；
-- debug metadata；
-- 文件中的集合原始顺序。
-
-这里的 canonical UTF-8 不是“任意语义等价 JSON”。它精确定义为 `WriteCanonicalSource` 的 compact 输出：UTF-8 without BOM、无末尾换行和无 insignificant whitespace；property 顺序固定为 §4.7 展示的 schema 顺序；四类数组分别按 typed ID Ordinal 排序；整数只用无前导零的十进制；`true` / `false` / `null` 使用 JSON 小写字面量。V1 ID 仅含 ASCII，因此不存在 Unicode normalization 或可选 escape。`WriteCanonicalDebugView` 不参与 hash。
-
-## 4.3 Area
-
-```text
-AreaDefinition
-    AreaId
-    ParentAreaId?
-```
-
-约束：
-
-- 恰好一个 root；
-- 无环；
-- 每个非 root Area 恰好一个 parent；
-- Area containment 不参与导航；
-- Area 不是 Entity location。
-
-## 4.4 Place
-
-```text
-PlaceDefinition
-    PlaceId
-    DirectAreaId
-```
-
-Place 是：
-
-- 可停留位置；
-- interaction locality；
-- traversal endpoint；
-- Objective navigation vertex。
-
-每个 Place 必须引用存在的 Area。
-
-## 4.5 Passage
-
-```text
-PassageDefinition
-    PassageId
-    EndpointAPlaceId
-    EndpointBPlaceId
-    Length: PassageLength
-    InitiallyEnabled
-```
-
-约束：
-
-- endpoints 存在且不同；
-- Length 正；
-- EndpointA / EndpointB 的顺序是权威 Offset 轴，canonicalization 不得交换；
-- enabled 时允许从任一 endpoint 进入；
-- 相同 endpoints 之间允许平行 Passage；
-- 一个 physical Passage 在导航中派生两个 arc，但仍只有一个 PassageId；
-- Passage 交叉不代表相连，只有共享 Place 才相连。
-
-## 4.6 ViewLink
-
-```text
-ViewLinkDefinition
-    ViewLinkId
-    FromPlaceId
-    TargetPlaceId
-```
-
-ViewLink 是 directed objective visibility opportunity，不是 movement edge。
-
-V1：
-
-- 两端 Place 必须存在；
-- 拒绝 self-link；
-- 拒绝重复 `(FromPlaceId, TargetPlaceId)`；
-- 不从 Passage adjacency 自动生成；
-- 不披露 target Place 内的 Entity；
-- 不表达 LOS blocker、识别或注意力。
-
-## 4.7 JSON authoring schema
-
-V1 source shape：
-
-```json
-{
-  "schema": "dramaboard.graph-spatial/1",
-  "id": "coast-graph",
-  "revision": 1,
-  "rulesVersion": 1,
-  "areas": [
-    { "id": "world", "parent": null },
-    { "id": "coast", "parent": "world" },
-    { "id": "grotto-area", "parent": "coast" }
-  ],
-  "places": [
-    { "id": "lagoon", "area": "coast" },
-    { "id": "fork", "area": "coast" },
-    { "id": "cliff", "area": "coast" },
-    { "id": "ford", "area": "coast" },
-    { "id": "grotto", "area": "grotto-area" },
-    { "id": "island", "area": "coast" }
-  ],
-  "passages": [
-    { "id": "lagoon-fork", "endpointA": "lagoon", "endpointB": "fork", "length": 10, "initiallyEnabled": true },
-    { "id": "fork-cliff", "endpointA": "fork", "endpointB": "cliff", "length": 4, "initiallyEnabled": true },
-    { "id": "cliff-grotto", "endpointA": "cliff", "endpointB": "grotto", "length": 6, "initiallyEnabled": true },
-    { "id": "fork-ford", "endpointA": "fork", "endpointB": "ford", "length": 3, "initiallyEnabled": true },
-    { "id": "ford-grotto", "endpointA": "ford", "endpointB": "grotto", "length": 7, "initiallyEnabled": true }
-  ],
-  "viewLinks": [
-    { "id": "lagoon-sees-island", "from": "lagoon", "target": "island" }
-  ]
-}
-```
-
-Parser 必须拒绝：
-
-- 未知 schema / RulesVersion；
-- unknown property；
-- duplicate JSON property；
-- 数字越界；
-- duplicate ID；
-- unknown reference；
-- Area 多 root、cycle 或断裂；
-- Place 无 Area；
-- Passage 同 endpoint 或非正 Length；
-- 非法 ViewLink；
-- Passage 数超过 `MaxGraphPassages`。
-
-## 4.8 编译与写回
-
-```text
-read UTF-8
-→ parse strict source DTO
-→ validate identifiers and ranges
-→ resolve references
-→ validate containment and graph
-→ canonical sort by typed ID
-→ build immutable definition and derived indexes
-→ hash canonical UTF-8
-```
-
-Framework 提供：
-
-```text
-CompileGraph(sourceBytes)
-WriteCanonicalSource(definition)
-WriteCanonicalDebugView(definition)
-```
-
-输入数组顺序不影响 compiled definition、hash、navigation 或 visibility result。
-
-Graph 文件只保存 immutable Definition。Dynamic State 由 setup events、Journal 与可选 Host snapshot 保存，不另造 Spatial JSON state authority。
-
----
-
-# 5. Dynamic State
-
-```text
-SpatialGraphState
-    DefinitionStamp
-    StateRevision
-    Entities[]
-    Traversals[]
-    PassageEnabledOverrides[]
-    ScheduledPassageMutations[]
-    LastTraversalRebasedAtByEntity[]
-    PassageInteractionsSettledThrough?
-    NextTraversalOrdinal
-    NextMutationOrdinal
-    NextMomentOrdinal
-```
-
-## 5.1 Entity
-
-```text
-EntityState
+SpatialEntity
     EntityId
+    MovementGeneration              // >= 0; motion law 每次替换时 +1
     Location
-
-EntityLocation
-    AtPlace(PlaceId)
-    TraversingPassage(TraversalId)
+        AtPlace(PlaceId)
+        Traversing(
+            PassageId,
+            FromPlaceId,
+            ToPlaceId,
+            StartedAt,
+            SpeedSnapshot,
+            ArrivalDue)
 ```
 
-一个 Entity 在 complete state 中恰好拥有一种 location。
+`MovementGeneration` 同时区分同一 Entity 的 successive segments，并参与 arrival/contact CandidateKey。它替代旧草案中的 `TraversalId + Generation + StateRevision`。
 
-普通 Entity 不阻挡 Place、Passage 或其它 Entity。多个 Entity 可以位于同一 Place，也可以同时遍历同一 Passage。
+active traversal 必须满足：
 
-## 5.2 Traversal
-
-```text
-TraversalState
-    TraversalId
-    EntityId
-    PassageId
-    SegmentOriginOffset
-    TargetEndpoint
-    SegmentStartedAt
-    SpeedSnapshot
-    ArrivalDue
-    Generation
-```
-
-约束：
-
-- 每个 `TraversingPassage` 精确引用一个属于该 Entity 的 Traversal；
-- 每个 Traversal 恰好被一个 Entity 引用；
-- origin offset 在 `[0, Length]`；
-- target 是 Passage endpoint；
-- remaining distance 正；
+- From / To 是该 Passage 两个不同的 endpoint；
+- StartedAt 早于 ArrivalDue；
 - speed 正；
-- due 精确符合统一 TravelTime；
-- Generation 初始为 1；
-- active traversal 始终运动且具有有限 Due。
+- ArrivalDue 精确等于 `StartedAt + TravelDuration(Passage.Length, speed)`。
 
-## 5.3 Passage override
+创建 `TraversalStarted` 时，planner 与 reducer 还必须验证 From 所定义方向的 effective entry access。该检查只证明 segment 在创建时合法，不成为 state 上持续成立的不变量：access 后续可能关闭，而 active traversal 仍继续。
+
+整数时刻位置：
 
 ```text
-PassageEnabledOverride
+OffsetAt(segment, at)
+    require StartedAt <= at <= ArrivalDue
+
+    if at == ArrivalDue:
+        return ToOffset
+
+    elapsed = at - StartedAt
+    advanced = elapsed.Ticks * SpeedSnapshot
+    return FromPlaceId == EndpointA
+        ? advanced
+        : PassageLength - advanced
+```
+
+在 `at < ArrivalDue` 时，ceil 法则保证结果不会越过 endpoint。Journal 不产生 progress fact。
+
+重要的因果边界：
+
+> `at == ArrivalDue` 但 arrival occurrence 尚未提交时，Entity 仍是 `Traversing`，query 只把 offset 显示在 endpoint boundary；只有 `TraversalArrived` fact 才使它成为 `AtPlace`。
+
+这使合法的同 `ModelTime` committed prefix 始终可查询，不需要“Spatial 已把这一 tick 全部 settle”的 barrier。
+
+Arrival 不重新检查 entry access。Actor 已经合法进入 Passage，目标端也没有独立的 exit gate；因此 selected arrival 始终把它变为 `AtPlace(ToPlaceId)`。运行时关闭只阻止此后创建同方向的新 segment，不能把在途 Actor 卡在端点、弹回起点或删除。
+
+第二条 contact 竖切只有在真实 AI encounter 需要 Reverse 时，才把 traversal 泛化为：
+
+```text
+AnchoredTraversal(
+    PassageId,
+    AnchorOffset,
+    AnchorTime,
+    TargetEndpoint,
+    SpeedSnapshot,
+    ArrivalDue)
+```
+
+届时 start 只是 endpoint anchor 的特例；Reverse 在整数 committed time 物化当前 offset 后替换 anchor、target 与 movement generation，并检查反方向当前 entry access。当前没有旧 Graph 数据，因此第一竖切不预留字段，也不承担 schema migration。
+
+## 2.6 Dynamic state
+
+第一竖切：
+
+```text
+GraphSpatialState
+    Entities[]
+    PassageEntryAccessOverrides[]   // sparse；每个 Passage 保存完整两位结果
+        PassageId, EnterableFromA, EnterableFromB
+    ScheduledPassageEntryChanges[]
+        PassageId, Due, Patch
+
+PassageEntryPatch                  // 至少一个字段非 null
+    EnterableFromA: bool?
+    EnterableFromB: bool?
+```
+
+effective access 是 `override ?? Definition.InitialEntryAccess`。若完整结果等于 Definition 初值，reducer 删除 override；runtime state 不保存每 bit 一份 authority。
+
+schedule 保存 patch 而不是 scheduling-time 的完整快照：到 Due 时只覆盖明确指定的方向，不回滚期间对另一方向的独立修改。同一 `(PassageId, Due)` 最多一项，调用方必须在规划时把同一原因的两个方向合成一个 patch；这使“在 T 把整条 Passage 双向关闭”成为一个 candidate 和一个原子 fact，而不是两个可被其它 winner 穿插的局部原因。
+
+第二条 contact 竖切加入：
+
+```text
+ConsumedContacts[]
     PassageId
-    Enabled
+    EntityA, MovementGenerationA
+    EntityB, MovementGenerationB
 ```
 
-Override 采用 sparse canonical form：若 desired 与 Definition 初值相同，则删除 override。
+`ConsumedContacts` 只保存 current active segment pairs，不是历史账本：
 
-## 5.4 Scheduled mutation
+- pair 以 canonical EntityId 顺序保存；
+- 任一相关 segment 被 arrival、Slice 2 reverse、remove 或新的 movement law 替换时，旧 key 被清理；
+- 同一对 constant-linear segments 最多只有一个严格内部交点；
+- CoTravel 的相同 worldline 不产生 contact。
 
-```text
-ScheduledPassageMutation
-    MutationId
-    PassageId
-    Due
-    Enabled
-```
-
-同一 `(PassageId, Due)` 最多一个结果：
-
-- 相同 desired 是 alias；
-- 不同 desired 是 conflict；
-- Due 必须严格晚于 command time；
-- future desired 即使等于当前 effective value 也必须持久化，因为 Due 前状态可能变化。
-
-## 5.5 LastTraversalRebased guard
-
-`LastTraversalRebasedAtByEntity` 是 sparse、可 Replay 的权威状态。
-
-同一 Entity / ModelTime 最多接受一次会重建 active segment 的命令：`TurnBack`、`AdjustTraversalPace` 或 `MatchTraversalAtContact`。无论结果是反向运动、调速、匹配共行还是零进度返回，成功后都写 guard；Entity removal 同时清理 guard。
-
-## 5.6 Passage interaction settlement watermark
-
-```text
-PassageInteractionsSettledThrough: ModelTime?
-```
-
-它是可 Replay 的全局消费水位：
-
-- `null` 表示尚未由 SpatialMoment 扫描任何 Passage interaction settlement tick；
-- `T` 表示所有 `SettlementDue <= T` 的 Passage interactions 都已经被完整扫描并提交；
-- 每个 `MomentResolved@T` 原子把水位单调推进到 `T`；
-- Forecast 只考虑尚未被该水位消费的 contact；
-- watermark 不是 Simulation cursor 的替代品，但 snapshot / Replay / Fork 必须保存它。
-
-`CreateEmpty(definition)` 初始化为 `null`。Command handler 可以接受 watermark 早于 command time 的 state，但必须先证明不存在尚未消费且 `SettlementDue <= command time` 的 contact；否则整批 `InternalWorkMustSettle`。一旦某次 SpatialMoment 在 T 运行，无论该 moment 实际 contact count 是否为零，terminal 都把水位推进到 T。
-
-这个字段不能省略。Passage interaction event 本身不改变 traversal；若没有可回放消费证据，Resolve 后在同一 cursor time 重新 Forecast 会再次发现同一交点并形成无限 resolve。
-
-不保存 pairwise contact ledger、Passage occupancy cache 或 relative-order cache。它们都能从 Traversal 与 watermark 推导，保存会形成第二份 authority。
-
-## 5.7 Revision
-
-- 每个 state-changing primary event 使 StateRevision checked `+1`；
-- derived event 不改 State；
-- no-op command 不改 Revision；
-- `MomentResolved` 消费 MomentOrdinal、推进 interaction watermark 并改变 StateRevision；
-- Revision overflow 在 transition 前整体拒绝。
+第一竖切不得提前加入 contact 字段或占位类型；它与真实 contact + AI encounter consumer 在第二竖切一起交付。
 
 ---
 
-# 6. Effective Topology 与查询
+# 3. 与统一 Occurrence Kernel 的唯一集成
 
-Structural complete state 只表示引用与局部不变量闭合；它不自动证明当前 cursor time 已经 settle。Public query 统一接受：
+## 3.1 Host adapter
 
-```text
-SpatialReadContext
-    Definition
-    State
-    Now
-```
-
-`SpatialReadContext.Create` 除 structural complete validation 外，还要求每个 active traversal 都满足 `SegmentStartedAt <= Now < ArrivalDue`，不存在 `Due <= Now` 的 scheduled mutation，并且不存在尚未被 `PassageInteractionsSettledThrough` 消费而 `SettlementDue <= Now` 的 Passage interaction。也就是说它只代表 **settled-at-Now** snapshot。
-
-所有 public query：
-
-- 只接受 `SpatialReadContext`，不能分别接受 Definition、State 与另一个 time；
-- 验证 DefinitionStamp；
-- 不接受 reducer prefix；
-- 返回 defensive immutable、canonical order；
-- missing entity 与合法 empty result 使用不同结果；
-- 不出现 PlayerId、Known、HUD 或 Prompt DTO。
-
-Forecast / Resolve 使用自己的 internal context，可以在 `Due == Now` 时 settle work；普通 query 不能读取这个 temporal prefix。Navigator 也只接受 settled read context，即使某次路线查询表面上只读取 topology。
-
-## 6.1 最小查询面
-
-```text
-GetEffectiveEntityLocation(entityId)
-GetEffectivePassageEnabled(passageId)
-GetIncidentPassages(placeId)
-GetPlaceAreaPath(placeId)
-    GetEntityAreaPath(entityId)
-    GetCoPresentEntities(entityId)
-    GetCoTravelingEntities(entityId)
-    GetSamePlaceEntityCandidates(observerEntityId)
-    GetSamePassageEntityCandidates(observerEntityId)
-    PredictPassageInteraction(entityAId, entityBId)
-    GetViewLinkedPlaceCandidates(observerEntityId)
-```
-
-其中所有时间计算都只能使用 `SpatialReadContext.Now`。查询结果统一使用 `Found(value) | EntityNotFound | PlaceNotFound | PassageNotFound` 这类显式 union；合法的空 immutable collection 仍是 `Found(empty)`，不能与 unknown reference 合并。Entity collection 按 EntityId；Passage collection 按 PassageId；AreaPath 按 root→direct Area 排序。
-
-| Query | 成功值与过滤 | canonical order / 非成功结果 |
-|---|---|---|
-| EffectiveEntityLocation | §6.4 的 `AtPlace | OnPassage`；OnPassage offset 只用 context.Now | unknown Entity → EntityNotFound |
-| EffectivePassageEnabled | 当前 bool，不返回 raw override | unknown Passage → PassageNotFound |
-| IncidentPassages | 所有与 Place 相接的 descriptor，并显式带 `EffectiveEnabled`；不隐式过滤 disabled | PassageId；unknown Place → PlaceNotFound |
-| PlaceAreaPath | root 到 direct Area 的非空序列 | root→direct；unknown Place → PlaceNotFound |
-| EntityAreaPath | AtPlace 时返回 PlaceAreaPath | unknown → EntityNotFound；Traversing → NoAreaWhileTraversing，不是 Found(empty) |
-| CoPresentEntities | 仅完整 snapshot 中同 Place 的其它 Entity | EntityId；unknown → EntityNotFound；合法无人 → Found(empty) |
-| CoTravelingEntities | §10.5 的持续客观共行 pair | EntityId；unknown → EntityNotFound；AtPlace 或合法无人 → Found(empty) |
-| SamePlaceEntityCandidates | §10.1 的 immutable records | TargetEntityId；observer unknown → EntityNotFound；observer Traversing → Found(empty) |
-| SamePassageEntityCandidates | §10.6 的 immutable relative-motion records；只含同一 physical Passage | TargetEntityId；observer unknown → EntityNotFound；observer AtPlace → Found(empty) |
-| PredictPassageInteraction | §3.5 的纯 exact-rational pair planner；返回 kind / ContactInstant / ContactOffset / SettlementDue | unknown Entity、not Traversing、different Passage 与合法 NoFutureInteraction 使用不同 union case |
-| ViewLinkedPlaceCandidates | §10.2 的 immutable records | `(ViewLinkId, TargetPlaceId)`；observer unknown → EntityNotFound；observer Traversing → Found(empty) |
-
-## 6.2 Effective enabled
-
-```text
-EffectiveEnabled(passage)
-    = override if present
-      else definition.InitiallyEnabled
-```
-
-这只决定能否开始新的 traversal。普通 disable 不追溯已经开始的 traversal；既有 Actor 仍可继续、TurnBack 或 Arrive。
-
-## 6.3 AreaPath
-
-Entity `AtPlace` 时可以从 Place 的 direct Area 推导 Objective AreaPath。
-
-Entity TraversingPassage 时 V1 没有 Area membership。Passage 不保存 InteriorArea。
-
-## 6.4 Effective location
-
-Gameplay query 只能使用当前 Simulation cursor time。
-
-```text
-EffectiveEntityLocation
-    AtPlace(PlaceId)
-    OnPassage(PassageId, PassageOffset, TargetEndpoint)
-```
-
-Offset 只在 §3 的合法查询域物化。
-
----
-
-# 7. Commands、Batch 与 Results
-
-## 7.1 Command schema
-
-```text
-PlaceEntity
-    CommandId, EntityId, PlaceId
-
-RemoveEntity
-    CommandId, EntityId
-
-BeginTraversal
-    CommandId, EntityId, PassageId
-    ExpectedFromPlaceId
-    SpeedSnapshot
-    ExpectedStateRevision
-
-TurnBack
-    CommandId, EntityId
-    ExpectedTraversalId
-    ExpectedGeneration
-    SpeedSnapshot
-    ExpectedStateRevision
-
-AdjustTraversalPace
-    CommandId, EntityId
-    ExpectedTraversalId
-    ExpectedGeneration
-    SpeedSnapshot
-    ExpectedStateRevision
-
-MatchTraversalAtContact
-    CommandId, EntityId
-    ContactMomentOrdinal
-    ContactInteractionOrdinal
-    ExpectedContactKind
-    ExpectedContactInstant
-    ExpectedContactOffset
-    MatchEntityId
-    ExpectedTraversalId, ExpectedGeneration
-    ExpectedMatchTraversalId, ExpectedMatchGeneration
-    ExpectedStateRevision
-
-SetPassageEnabled
-    CommandId, PassageId, Enabled
-
-SchedulePassageEnabled
-    CommandId, PassageId, Due, Enabled
-```
-
-V1 没有：
-
-```text
-Continue
-Stop
-Wait
-Resume
-Relocate
-CancelMutation
-```
-
-Continue 是 Spatial no-op；调用方不应提交命令。
-
-## 7.2 外部 validator seam
-
-Game / test adapter 在提交 Begin、TurnBack、AdjustTraversalPace 或 MatchTraversalAtContact 前，可以裁决：
-
-- Inventory、Faction、ticket；
-- movement mode；
-- Actor-specific speed；
-- semantic intent。
-
-Begin / TurnBack / Adjust 只把已经裁决的正 SpeedSnapshot 交给 Spatial；Match 则提交明确的 contact receipt 与 target motion identity，并由 Game 先裁决 Acting Entity 是否能够在该 tick 完成这种匹配。两类都不能把 semantic intent 塞进 Spatial。
-
-Spatial 仍重新验证：
-
-- ExpectedStateRevision；
-- Entity 当前 location；
-- endpoint；
-- BeginTraversal 时 Passage effective enabled；TurnBack 不检查 enabled；
-- traversal identity / generation；
-- Match 引用的 contact 是否属于刚刚在 current ModelTime committed 的 SpatialMoment，以及双方 motion 是否仍与该 contact 一致；
-- time boundary；
-- speed、Due 与 overflow。
-
-Projector 与 Replay 不回调外部 validator。
-
-## 7.3 Batch 结构
-
-- CommandId 必须正且整批唯一；duplicate 是整批结构错误；
-- Handler 只接受 settled-at-command-time pre-state；若存在 scheduled mutation、unconsumed Passage interaction 或 arrival `Due <= now`，整批以 `InternalWorkMustSettle` 拒绝且零事件，从而让 gateway bypass 也不能改变 World；
-- 规划前按 CommandId Ordinal 规范排序；
-- results 按 CommandId 返回；
-- 输入排列不改变 events、results 或 allocator；
-- 同 Entity 多个 lifecycle / segment-rebase command 整组 conflict；
-- 同 Passage 多个 immediate desired：相同 alias，不同 conflict；
-- scheduled mutation 依 §5.4 alias / conflict；
-- topology commands 先形成 working topology，movement command 随后验证；
-- 一个 batch 内所有 `ExpectedStateRevision` 都与唯一 input / pre-state revision 比较，不能与逐事件增长的 scratch revision 比较；
-- rejected command 不产 event、不改 Revision、不消费 allocator；
-- 所有 allocator、Revision、Generation 与 arithmetic capacity 在提交前整体预检。
-
-Command transition 的 Journal 顺序固定为 command family phase，再按 producing CommandId 排序；alias 与 rejection 不产生 event。不能用调用方输入排列决定 event order。
-
-为使 Handler 成为唯一结果的 total planning function，V1 再冻结以下细则：
-
-1. family phase 固定为 `immediate topology → scheduled topology → entity existence → movement`；family 内再按 producing CommandId。Entity existence 是 `PlaceEntity / RemoveEntity`，movement 是 `BeginTraversal / TurnBack / AdjustTraversalPace / MatchTraversalAtContact`。同一 Entity 在这些 lifecycle / rebase commands 中出现两个或更多命令时，该组全部 `CommandConflict`，V1 不提供 Place+Begin 组合捷径。
-2. 同一 Passage 的 immediate commands 先按 target 分组。desired 不同则整组 conflict；desired 相同时最小 CommandId 是 canonical leader。若 desired 已是 current effective value，leader 为 `AcceptedNoChange`；否则 leader 为 `Accepted`。其余命令只有在 leader 成功或 no-change 时才是 `AcceptedAlias(AliasOfCommandId=leader)`。
-3. scheduled command 的 canonical key 是 `(PassageId, Due)`。同 key desired 不同则整组 `MutationConflict`。若 pre-state 已有同 key、同 desired schedule，最小 CommandId 以 `AcceptedAlias(MutationId=existing, AliasOfCommandId=null)` 指向它，其余同批命令 alias 到最小 CommandId；若没有 existing schedule，最小 CommandId 是唯一 allocator consumer，其余 alias 到它。future desired 即使等于 current effective value也不是 no-op。
-4. canonical leader 最终被玩法校验拒绝时，同组 aliases 继承同一 rejection code，而不是留下 `AcceptedAlias`。
-5. 每个 allocator domain 先找出其它校验均会成功的 canonical consumers，再整体检查容量。容量不足时该 domain 的全部 consumers 及 aliases 都以 `AllocatorExhausted` 拒绝；不按低 CommandId 部分接收。其它不消费该 allocator 的独立 command 仍可成功。StateRevision 总容量不足是 terminal invariant failure，整次调用在返回任何 events/results 前抛出，绝不部分提交。
-6. `MaxCommandsPerSpatialBatch` 超限是分组前的 batch structural error。Entity / scheduled-mutation RulesVersion 上限按完整 planned final state 预检；若某类新 consumers 会使上限超出，该类全部 otherwise-valid consumers 以 `WorldEntityLimitReached / MutationStoreLimitReached` 拒绝，不能让较小 CommandId 抢剩余名额；独立 Remove 和其它不消费该容量的 command 仍可成功。
-7. 普通 rejection precedence 固定为：group conflict → unknown/static reference → expected pre-state revision → location/traversal/time boundary → enabled/speed/arithmetic → rules/allocator capacity。一个 command 只返回最先命中的 code。Batch 结构错误与 unsettled pre-state 分别在分组和玩法校验之前整批处理。
-8. `MatchTraversalAtContact` 的 authority 是刚刚 committed 的 contact，而不是任意“传送到另一个 Actor”。Host gateway 先从已提交 Journal 把 `(MomentOrdinal, InteractionOrdinal)` 解析成 `CommittedPassageInteractionReceipt`，再通过独立的 trusted `SpatialCommandAdmissionContext`、按 CommandId 交给 Handler；命令 payload 中的 `Expected*` 只能做 optimistic match，不能自己充当收据。Spatial Handler 不读取 Journal，但要求 context receipt 存在，并从 current traversal state、`PassageInteractionsSettledThrough == command time`、receipt 的 exact rational contact 与双方 identities 重新证明该 pair 确实在 current tick 发生同一个 contact。contact 不是 current ModelTime、context 缺失或不匹配、任一 generation 已改变、任一方已 Arrival / Remove 时稳定拒绝。测试 adapter 也只能从 fixture Journal 构造该 context，production 不公开“任意 receipt”构造捷径。
-9. 多个 follower 可以在同一 batch 匹配一个本批不改变 motion 的 leader。leader 自己也有 movement / rebase command、match dependency 成环、或同一 follower 指向多个 target 时，所有相关 Match 整组 `CommandConflict`；不能让 CommandId order 决定谁先成为 leader。
-
-这些规则刻意选择“全组拒绝”而不是“让最小 ID 抢到最后一个 ordinal”，避免 allocator 临界状态把业务结果变成一种隐蔽的竞争机制。
-
-## 7.4 Result
-
-```text
-SpatialCommandResult
-    CommandId
-    Disposition
-        Accepted
-        AcceptedNoChange
-        AcceptedAlias
-        Rejected
-    RejectionCode?
-    TraversalId?
-    MutationId?
-    AliasOfCommandId?
-```
-
-最小稳定 rejection family：
-
-```text
-UnknownEntity
-UnknownPlace
-UnknownPassage
-EntityAlreadyExists
-LocationMismatch
-PassageDisabled
-NotTraversing
-StaleTraversal
-StaleStateRevision
-NoElapsedMovement
-AlreadyRebasedAtThisTime
-NoRecentPassageContact
-PassageContactMismatch
-DueBoundaryMustSettle
-InternalWorkMustSettle
-DueNotFuture
-CommandConflict
-MutationConflict
-InvalidSpeed
-ArithmeticOverflow
-AllocatorExhausted
-WorldEntityLimitReached
-MutationStoreLimitReached
-```
-
-`DefinitionLimitExceeded / BatchLimitExceeded` 是 compiler / batch structural diagnostic，不伪装成某一 CommandId 的普通 result。
-
-异常只用于结构/API 违约或 terminal invariant failure；普通玩法失败进入 result。
-
----
-
-# 8. Movement 生命周期
-
-## 8.1 状态机
-
-```text
-AtPlace
-    └─ BeginTraversal ─→ TraversingPassage
-                              ├─ TurnBack ─→ TraversingPassage(new generation)
-                              ├─ Return ───→ AtPlace(origin)
-                              └─ Arrive ───→ AtPlace(target)
-```
-
-## 8.2 BeginTraversal
-
-前置：
-
-- Entity AtPlace；
-- current Place 等于 ExpectedFromPlace；
-- Place 是 Passage endpoint；
-- Passage effective enabled；
-- speed 正；
-- remaining distance 与 Due 可表示；
-- allocator 有容量。
-
-结果：
-
-- 分配 TraversalId；
-- target 是另一 endpoint；
-- origin offset 是 0 或 Length；
-- SegmentStartedAt 是 command ModelTime；
-- Generation = 1；
-- Entity 原子变为 TraversingPassage。
-
-## 8.3 TurnBack
-
-前置：
-
-- Entity 正在 Traversing；
-- traversal id / generation / state revision 匹配；
-- `now < ArrivalDue`；
-- `LastTraversalRebasedAtByEntity[EntityId] != now`；
-- 新 speed 正；
-- generation 与 Due 有容量。
-
-在 now 物化 Offset：
-
-- 若仍精确位于初始 endpoint，产生 ReturnedToOrigin；
-- 若当前 segment 从内部 Offset 开始且 now 等于 SegmentStartedAt，拒绝 `NoElapsedMovement`；
-- 否则保留 PassageId / TraversalId，把 target 改为另一 endpoint，Generation checked `+1`。
-
-两种成功 outcome 都写入 `LastTraversalRebasedAtByEntity[EntityId]`。未来 contact candidate 因 Generation / StateRevision 改变而 stale。
-
-## 8.4 AdjustTraversalPace
-
-`AdjustTraversalPace` 是离散的 piecewise-constant rebase，不是连续加速度：
-
-- Entity 必须正 Traversing，traversal id / generation / state revision 匹配；
-- `now < ArrivalDue` 且本 Entity 本时刻尚未 rebase；
-- 在 now 物化当前 Offset；
-- PassageId 与 TargetEndpoint 不变；
-- SegmentOriginOffset 改为当前 Offset，SegmentStartedAt 改为 now；
-- 写入新正 SpeedSnapshot，Generation checked `+1`，重新计算 ArrivalDue；
-- 新 speed 与当前 speed 相同是 `AcceptedNoChange`，不增加 Generation、不写 guard；
-- 成功改变 motion 时写 `LastTraversalRebasedAtByEntity[EntityId]`。
-
-这使 Actor 能主动加速、减速、结束既有 CoTravel，或在当前精确同位时形成新的 CoTravel。Game 仍负责裁决体力、载具、地形与其它速度来源。
-
-## 8.5 MatchTraversalAtContact
-
-`MatchTraversalAtContact` 是 contact settlement 后、同一整数 ModelTime 内唯一允许的接触响应捷径。它表示 Acting Entity 在该 board-game tick 内完成转向 / 调速并从当前边界开始匹配目标 motion；它不表示目标同意结伴。
-
-前置：
-
-- `PassageInteractionsSettledThrough == now`；
-- `ContactMomentOrdinal == NextMomentOrdinal - 1`，且该 Moment 的 event ModelTime 等于 now；
-- trusted admission context 含 Host 从 committed Journal 解析出的 `(ContactMomentOrdinal, ContactInteractionOrdinal)` receipt；命令 expected fields、双方 current traversal / generation 与历史 segment worldline 都可以重算并精确匹配 receipt 的 kind / rational instant / rational offset；
-- 双方仍 Traversing，且 Acting Entity 本时刻尚未 rebase；
-- target 在同批中没有 movement / rebase command；
-- Acting Entity 与 target 不同；
-- target 的 effective Offset、TargetEndpoint、SpeedSnapshot 与 ArrivalDue 在 now 合法可读。
-
-结果：
-
-- Acting Entity 保留 PassageId / TraversalId；
-- SegmentOriginOffset 对齐到 target 在 now 的 EffectiveOffset；
-- TargetEndpoint、SpeedSnapshot 与 ArrivalDue 匹配 target；
-- SegmentStartedAt = now，Generation checked `+1`；
-- 写 `LastTraversalRebasedAtByEntity[EntityId]`；
-- complete pre / final relation diff 决定是否产生 CoTravelStarted。
-
-这个显式对齐是可审计的 contact response，不是普通 teleport API。它不能引用旧 contact、不能对齐远处 Actor，也不能撤销同 tick 已经 committed 的其它 contact。若 contact 与 Arrival 同 T，Arrival phase 已使参与者不再 Traversing，因此 Match 稳定拒绝。
-
-## 8.6 Arrival
-
-Arrival 只由 SpatialMoment 在 `now == ArrivalDue` 产生：
-
-- 删除 TraversalState；
-- Entity 变为 AtPlace(target)；
-- 普通 Passage disable 不阻止 arrival；
-- arrival 后的下一 traversal 必须是独立 external command；
-- reducer 不自动寻路或续程。
-
-## 8.7 RemoveEntity
-
-Remove 必须原子清理：
-
-- Entity；
-- active Traversal；
-- `LastTraversalRebasedAtByEntity[EntityId]` guard。
-
-它不删除 Definition、Passage mutation 或其它 Entity。
-
-## 8.8 Passage 中不静止
-
-Spatial 不表达 Passage 中长期停留。Passage contact 与 CoTravel 提供途中互动的客观信息基础，但不会自动停车、开始对话或进入战斗状态。
-
-需要等待、调查、战斗、恢复或精确披露的位置必须是 Place。强制 interruption 若未来加入，必须原子地：
-
-- 保留一种 active motion；或
-- 把 Entity 放到既有 Place；或
-- 移除 Entity。
-
-不能只删除 Traversal 后把 Entity 留在无状态 Passage。
-
----
-
-# 9. Objective Navigation
-
-```text
-FindRoute(
-    readContext,
-    startPlaceId,
-    goalPlaceId,
-    speedSnapshot)
-```
-
-Result：
-
-```text
-RouteFound
-    TotalDuration
-    Legs[]
-        PassageId
-        FromPlaceId
-        ToPlaceId
-
-AlreadyAtGoal
-NoRoute
-CostOverflow
-UnknownStartPlace
-UnknownGoalPlace
-InvalidSpeed
-```
-
-规则：
-
-- 只使用 effective-enabled Passage；
-- 每个 physical Passage 派生 A→B 与 B→A arc；
-- route leg 必须携带 From / To，不能只返回 PassageId；
-- V1 使用一个已裁决的正 SpeedSnapshot；
-- edge cost 使用 §3 的 TravelTime；
-- widened total cost；
-- NoRoute 与 CostOverflow 不混淆；
-- `start == goal` 返回 AlreadyAtGoal；
-- equal-cost route 使用完整 route key 的 Ordinal 字典序；
-- 结果不依赖 collection insertion order；
-- Navigator 是纯查询，不写 State、不保存 path cache；
-- Reducer、Replay 与 SpatialMoment 不调用 Navigator。
-
-完整 route key 是 legs 序列中 `(PassageId, FromPlaceId, ToPlaceId)` 三元组的 Ordinal 字典序；不是只比较 first edge，也不使用 collection insertion order。`FindRoute` 只能读取 `readContext.State`、`readContext.Definition` 与 `readContext.Now`，没有绕过 settled-time audit 的 overload。Unknown start / goal 和非正 speed 分别返回上述显式 result，不抛成“无路线”。
-
-V1 Navigator 接受 Place 起点。Actor 在 Passage 中只能继续当前 target 或 TurnBack；不把它伪装成任一 endpoint。
-
----
-
-# 10. 客观可见机会与 Spatial Relations
-
-Spatial 只回答客观空间关系，不回答 Actor 是否注意、识别、记住或相信。
-
-## 10.1 Same-place candidate
-
-```text
-SamePlaceEntityCandidate
-    ObserverEntityId
-    TargetEntityId
-    PlaceId
-```
-
-规则：
-
-- observer 必须已放置且 AtPlace；
-- target 必须 AtPlace 且 Place 相同；
-- 排除自身；
-- Traversing Entity 不属于 endpoint；
-- canonical EntityId order；
-- 普通 Entity 不阻挡可见机会。
-
-## 10.2 ViewLink candidate
-
-```text
-ViewLinkedPlaceCandidate
-    ObserverEntityId
-    ViewLinkId
-    TargetPlaceId
-```
-
-规则：
-
-- observer AtPlace(source)；
-- directed；
-- target 只是 Place opportunity；
-- 不自动枚举 target Place 中的 Entity；
-- Passage enabled 与 ViewLink 无关；
-- ViewLink 不产生 navigation arc。
-
-## 10.3 Query，不是历史
-
-Visibility opportunities：
-
-- 是当前 Definition + State 的纯查询；
-- 不持久化；
-- 不产 Observation；
-- 不保存 seen-before 残影；
-- 不产生 Player-scoped delta；
-- 不进入 Spatial Replay 语义。
-
-Game / Perception 可在 committed cause 后查询并产生自己的事件，但这属于 Spatial 之外。
-
-## 10.4 CoPresence
-
-CoPresence 是 Game interaction 常用的客观关系，因此 V1 提交：
-
-```text
-CoPresenceStarted(EntityA, EntityB, PlaceId)
-CoPresenceEnded(EntityA, EntityB, PlaceId)
-```
-
-规则：
-
-- pair 使用 `(min EntityId, max EntityId)`；
-- 只比较 complete pre / final state；
-- 同刻多人 arrival / swap 不暴露逐 Actor prefix；
-- 同 Passage不构成 Place CoPresence；途中关系由 CoTravel 与 Passage interaction 明确表达；
-- CoPresence event 是 derived no-op，不在 State 保存第二份 cache。
-
-Area membership 只做查询，V1 不提交 AreaEntered / AreaLeft。
-
-## 10.5 CoTravel：持续的客观共行关系
-
-`CoTravel` 与 CoPresence 平级，是一等客观 Spatial relation，但不是社会上的“结伴”。在 settled read context 的 Now，A 与 B 同时满足以下条件时成立：
-
-```text
-CoTravel(A, B)
-    both TraversingPassage
-    same PassageId
-    same EffectiveOffset(Now)
-    same TargetEndpoint
-    same SpeedSnapshot
-    same ArrivalDue > Now
-```
-
-这些条件表示二者拥有相同的未来 worldline；只要没有新 command，它们会持续同位前进并同时到达。Spatial 因而可以为对话、相互观察和共同遭遇提供持续 interaction locality，但绝不推断：
-
-- 谁邀请谁、是否同意；
-- friend、ally、escort、prisoner、pursuer 或 party；
-- 是否注意、识别、交谈、分享秘密或共同战斗。
-
-这些属于 Game / Perception：
-
-```text
-Spatial: CoTravel(A, B)
-Game:    TravelParty / Escort / Following / Alliance / Captivity
-```
-
-查询：
-
-```text
-CoTravelingEntityCandidate
-    ObserverEntityId
-    TargetEntityId
-    PassageId
-    TargetEndpoint
-    NaturalEndDue
-```
-
-`NaturalEndDue` 只表示无新 command 时共同到达的时间，不是未来行为保证。
-
-关系规则：
-
-- 同 Place 同刻、同速 Begin 相同 Passage，可以形成 CoTravel；
-- 同方向同速但有间隔只是 ConstantGap，不是 CoTravel；
-- 一方 TurnBack、AdjustTraversalPace、MatchTraversalAtContact 到别处、Remove 或 Arrival 时关系结束；
-- 两人同 batch 同步 rebase 且 complete final motion 仍一致时，关系连续，不制造虚假 End / Start；
-- 普通 Passage disable 不追溯 active traversal，因此不拆散 CoTravel；
-- 一同到达时，canonical relation 顺序是 `CoTravelEnded → CoPresenceStarted`；
-- Game-owned TravelParty 可以跨 Place 持续，但下一 Passage 的客观 CoTravel 必须由新的 motion 重新成立。
-
-CoTravel 不保存 pair cache。`CoTravelStarted / Ended` 与当前查询都由 Traversal 在 complete pre / final state 上推导，和 CoPresence 一样避免第二真理。
-
-relation evaluator 必须区分普通 settled query 与 Moment 的 incoming relation，不能在 arrival due boundary 偷调普通 `EffectiveOffset(T)`：
-
-```text
-CoTravelAtSettledTime(state, T)
-    // public query / command pre-final；要求 ArrivalDue > T
-
-CoTravelBeforeSettlement(state, T)
-    // 仅供 SpatialMoment 的 complete entry state
-    // 允许 ArrivalDue == T
-    same PassageId / TargetEndpoint / SpeedSnapshot / ArrivalDue
-    same affine worldline key over a non-empty common physical interval:
-        SignedVelocity
-        Intercept = SegmentOriginOffset - SignedVelocity * SegmentStartedAt.Ticks
-                    // widened exact signed arithmetic
-```
-
-`CoTravelBeforeSettlement` 表示“进入 T 这次 settlement 时仍携带的共行关系”，并证明二者在各自 exact physical exit 前拥有同一条轨迹；它既不外露为 T 时刻的 location query，也不声称 Actor 在分数 exit 后仍物理停留于 Passage。Moment relation diff 使用这个 incoming evaluator 对比 settled final evaluator。于是共同 arrival 在 pre pair 中存在、final CoTravel 中消失，并按 `CoTravelEnded → CoPresenceStarted` 提交；未到达且运动未变的 pair 则前后都存在。
-
-## 10.6 Same-Passage relative motion 与瞬时 contact
-
-```text
-SamePassageEntityCandidate
-    ObserverEntityId
-    TargetEntityId
-    PassageId
-    ObserverOffset
-    TargetOffset
-    DirectionRelation: SameDirection | Opposing
-    AxialRelation: TowardA | Equal | TowardB
-    SeparationUnits
-    MotionRelation: CoTravel | Closing | Separating | ConstantGap
-```
-
-它只表示客观一维运动关系。`Closing` 可以支持 Game-owned pursuit / escape policy，但 Spatial 不把“正在追捕”这种意图写入 Law。
-
-```text
-PredictPassageInteraction(entityAId, entityBId)
-    Predicted
-        Kind
-        ContactInstant
-        ContactOffset
-        SettlementDue
-    NoFutureInteraction
-    EntityNotFound
-    NotTraversing
-    DifferentPassage
-```
-
-这是 Objective query，不是 Player-safe Forecast；Player/HUD 是否获知该预测仍受 009 与 Perception 边界约束。SpatialSubsystem 与 public query 必须调用同一个 `PassageInteractionPlanner`，不能分别实现两套 contact math。
-
-`PassageInteractionOccurred` 是两条 worldline 在 Passage 严格内部相交的瞬时客观事实：
-
-- `HeadOnMeeting`：方向相反并相向交叉；
-- `Overtake`：同方向较快的后方 Actor 追上并超过前方 Actor；
-- ordinary Actor 非阻挡，若没有后续 command，二者继续原 motion；
-- contact 自身不形成 CoTravel；只有 complete final state 形成相同 future worldline 才产生 CoTravelStarted；
-- Passage interaction 是 Game / Perception 产生喊话、辨认、短暂攻击或其它 Observation 的 cause，不代表参与者实际注意到对方；
-- 需要多回合停留、精确站位或长期战斗的地点仍必须升级为 Place。
-
-Game 可以在 interaction committed 后选择 NoOp、TurnBack、AdjustTraversalPace 或合法的 MatchTraversalAtContact。不同选择能够从同一 Fork 形成“擦身而过 / 追上后超过 / 相遇后转身同行”等不同轨迹，Spatial 不替 Player 选择。
-
----
-
-# 11. Events、Projector 与 Transition
-
-## 11.1 Primary events
-
-EventKind ID 与 payload schema 一起版本化：
-
-| EventKind.Id | Version | Payload |
-|---|---:|---|
-| `graph-spatial.entity-placed` | 1 | `EntityId, PlaceId` |
-| `graph-spatial.entity-removed` | 1 | `EntityId, ExpectedLocationSnapshot` |
-| `graph-spatial.passage-enabled-changed` | 1 | `PassageId, ExpectedOverride?, ResultOverride?` |
-| `graph-spatial.passage-mutation-scheduled` | 1 | `MutationId, PassageId, Due, Enabled` |
-| `graph-spatial.passage-mutation-applied` | 1 | `MutationId, PassageId, Due, Enabled, ExpectedOverride?, ResultOverride?` |
-| `graph-spatial.traversal-started` | 1 | `EntityId, TraversalId, PassageId, SpeedSnapshot` |
-| `graph-spatial.traversal-turned-back` | 1 | `EntityId, TraversalId, ExpectedGeneration, SpeedSnapshot` |
-| `graph-spatial.traversal-pace-adjusted` | 1 | `EntityId, TraversalId, ExpectedGeneration, SpeedSnapshot` |
-| `graph-spatial.traversal-matched-at-contact` | 1 | `EntityId, TraversalId, ExpectedGeneration, MatchEntityId, ExpectedMatchTraversalId, ExpectedMatchGeneration, ContactMomentOrdinal, ContactInteractionOrdinal, ExpectedContactKind/Instant/Offset` |
-| `graph-spatial.traversal-returned-to-origin` | 1 | `EntityId, TraversalId, ExpectedGeneration` |
-| `graph-spatial.traversal-arrived` | 1 | `EntityId, TraversalId, ExpectedGeneration` |
-| `graph-spatial.moment-resolved` | 1 | `MomentOrdinal, ResolvedMutationCount, ResolvedPassageInteractionCount, ResolvedTraversalCount` |
-
-表中每一项都注册为精确的 `EventKind(Id, Version)`；codec 不做“只看 Id”或自动升降级。
-
-```text
-ExpectedLocationSnapshot
-    AtPlace(PlaceId)
-    Traversing(TraversalId, Generation)
-```
-
-Primary payload 只携带外部裁决、identity 与必要的 expected→result audit。可从 pre-state、Definition 与 event ModelTime 唯一推导的运动字段，不形成第二份 authority。
-
-Projector effect 冻结为：
-
-| Event | State effect |
-|---|---|
-| EntityPlaced | 新建 AtPlace Entity |
-| EntityRemoved | 精确匹配 location；原子删除 Entity、Traversal 与 rebase guard |
-| PassageEnabledChanged | 精确匹配 expected sparse override；写入或删除 result override |
-| PassageMutationScheduled | 精确消费 NextMutationOrdinal 并新增 schedule |
-| PassageMutationApplied | 精确匹配并删除 schedule，同时原子投影 result sparse override |
-| TraversalStarted | 精确消费 NextTraversalOrdinal；创建 Generation=1 traversal 并改 Entity location |
-| TraversalTurnedBack | 保留 Passage/Traversal；投影新 segment、Generation+1 与 `LastTraversalRebasedAtByEntity[EntityId]` |
-| TraversalPaceAdjusted | 保留 Passage/方向/Traversal；在 event time rebase Offset，写新 speed、Generation+1 与 `LastTraversalRebasedAtByEntity[EntityId]` |
-| TraversalMatchedAtContact | 以 receipt payload + current motion 重算刚 committed contact；保留 Acting TraversalId，对齐 target 当前 motion，Generation+1 与 `LastTraversalRebasedAtByEntity[EntityId]` |
-| TraversalReturnedToOrigin | 删除 Traversal、Entity 回 endpoint，并写 `LastTraversalRebasedAtByEntity[EntityId]` |
-| TraversalArrived | 删除 Traversal、Entity 到 target Place |
-| MomentResolved | 精确消费 NextMomentOrdinal；把 PassageInteractionsSettledThrough 推进到 event time |
-
-每个成功 primary event 使 StateRevision checked `+1`。同一 transition 中 later primary 的 expected state 读取前一事件已经投影的 working state，但 command payload 的 ExpectedStateRevision 始终与 batch pre-state 比较。
-
-## 11.2 Derived events
-
-| EventKind.Id | Version | Payload |
-|---|---:|---|
-| `graph-spatial.passage-interaction-occurred` | 1 | `MomentOrdinal, InteractionOrdinal, PassageId, Kind, EntityA/B + TraversalId/Generation, OvertakerEntityId?, ContactInstant, ContactOffset` |
-| `graph-spatial.co-presence-ended` | 1 | `EntityA, EntityB, PlaceId` |
-| `graph-spatial.co-presence-started` | 1 | `EntityA, EntityB, PlaceId` |
-| `graph-spatial.co-travel-ended` | 1 | `EntityA, EntityB, PassageId, TargetEndpoint` |
-| `graph-spatial.co-travel-started` | 1 | `EntityA, EntityB, PassageId, TargetEndpoint, NaturalEndDue` |
-
-所有 Command / Moment transition 的 relation family order 统一为：全部 `CoTravelEnded → CoPresenceEnded → CoPresenceStarted → CoTravelStarted`；family 内按 canonical pair 与 own PlaceId / PassageId 排序。这样共同出发、共同到达和同步 rebase 都只暴露 complete-state 关系变化，不暴露 scratch prefix。
-
-Moment transition 的 terminal audit：
-
-```text
-MomentResolved
-    MomentOrdinal
-    ResolvedMutationCount
-    ResolvedPassageInteractionCount
-    ResolvedTraversalCount
-```
-
-`PassageInteractionOccurred` 是 exact no-op，但不是含糊的 narrative annotation：Projector 必须从 event-local pre-state 中两条 current segment 的 origin / start 重建其重叠 worldline，而不是从 event ModelTime 向未来求交；随后验证 event ModelTime 等于 `ceil(ContactInstant)`、contact 严格在 Passage 内、kind / overtaker / identities / generations 全部匹配。`InteractionOrdinal` 在 Moment 内从 1 连续递增，不另设 allocator；稳定引用是 `(MomentOrdinal, InteractionOrdinal)`。
-
-`SpatialTransition` / Replay batch audit 在 terminal 前一次性重算该 Moment 的完整 expected interaction list，验证无遗漏、无重复、phase、canonical order 与分项 count。不能让每个 event 各自 O(n²) 重算完整集合。
-
-## 11.3 唯一 Projector
-
-正式 reducer 与 scratch transition 必须调用同一个 `SpatialProjector`。
-
-Projector 使用：
-
-- exact EventKind；
-- payload；
-- event ModelTime；
-- pre-state；
-- immutable Definition。
-
-它负责验证并投影，不读取：
-
-- Kernel microstep 来决定领域结果；
-- Game state；
-- Navigator；
-- Perception；
-- Player/HUD。
-
-## 11.4 Projector 时间审计
-
-- Started 的 SegmentStartedAt = event time；
-- TurnBack Offset 由旧 segment 在 event time 精确推导；
-- TurnBack / Return time < old ArrivalDue；
-- Arrival time = ArrivalDue；
-- PassageMutationApplied 的 event time = schedule Due，并精确匹配 MutationId / PassageId / desired result；
-- PassageInteractionOccurred 的 event time = ceil(exact ContactInstant)，rational contact / kind / pair identity 可从 frozen traversal 唯一重算；
-- PaceAdjusted / MatchedAtContact 在 event time rebase segment，绝不原地改 speed 后重写旧运动历史；
-- ReturnedToOrigin 只能落到真实 endpoint；
-- Due 使用冻结 TravelTime；
-- stale identity / generation 拒绝；
-- 失败不产生部分状态。
-
-## 11.5 Transition
-
-Command transition：
-
-```text
-pre complete state
-→ plan primary events
-→ scratch-fold each primary through SpatialProjector
-→ validate complete final state
-→ diff pre/final CoPresence and CoTravel
-→ append canonical derived events
-→ formal fold all events
-→ assert formal state == scratch state
-```
-
-Moment transition 因 interaction event 是 no-op 且必须排在 Arrival 前，使用以下明确形状：
-
-这里的 pre 是 structurally complete 的 Resolve-entry state，不是 settled-at-T read context；它可以合法含有 `ArrivalDue == T`，且只能由 resolver 专用 evaluator 读取。
-
-```text
-pre complete state
-→ evaluate incoming CoTravel with CoTravelBeforeSettlement(pre, T)
-→ scratch-fold due mutation primary events
-→ derive and append the complete frozen PassageInteraction list (no-op)
-→ scratch-fold frozen arrival primary events
-→ validate complete final state
-→ diff incoming CoTravel / pre CoPresence against settled final relations
-→ append canonical relation events
-→ append and project the unique MomentResolved terminal
-→ formal fold all events
-→ assert formal state == scratch state
-```
-
-mutation 不改变 active traversal，因此 interaction 数学以 Resolve entry 的 frozen traversal set 为 authority；不能让 earlier pair event 或逐 Actor arrival prefix 改变同 tick 其余 contact。Moment transition 在 terminal 前同样执行完整防线。
-
-Public primary event constructors应限制在 Spatial assembly 内，避免任意调用方伪造 world history。
-
-## 11.6 Replay
-
-- 从 `CreateEmpty(definition)` 开始；
-- placements、schedules 和 mutations 都通过 committed events 建立；
-- definition stamp 必须精确匹配；
-- event kind / payload codec 使用本节精确版本；unknown kind/version 稳定拒绝；
-- replay 不运行 command handler、Navigator、MockPlayer 或 Game rule；
-- candidate 不持久化；
-- Replay 遇到 TraversalMatchedAtContact 时，除 Projector 的 local kinematic audit 外，还必须在当前 committed history prefix（可以是 Fork 继承的 ancestor prefix）的较早 batch 中找到同 ModelTime、同 `(MomentOrdinal, InteractionOrdinal)` 且 payload 精确匹配的 PassageInteractionOccurred receipt；不能靠当前数学“本来可能发生”伪造一张 contact receipt；
-- Fork 从 committed state + cursor 重新 Forecast；
-- Fork 只发生在 batch boundary。
-
-这里的 “state + cursor” 是 Spatial 纯计算输入，不等于 Host checkpoint 的完整持久化契约。Host checkpoint / split-run / Fork 必须同时保存或可寻址地绑定 **committed Journal prefix**；receipt resolver 以该 prefix 为信任根。Fork 的新 Lineage 继承只读 ancestor prefix，并把新事件追加到自己的 suffix，所以 contact 后、Match 前创建 Fork 或崩溃恢复仍能解析祖先 `PassageInteractionOccurred`。prefix 缺失或 hash 不匹配是 checkpoint corruption，不能降级成“连续运行可以 Match、恢复后却只能 NoRecentPassageContact”。
-
-Replay harness 还要先按 `EventCause.BatchOrdinal` 审计 batch envelope：同 batch 的 Cause 与 ModelTime 完全相同，LogicalTimestamp.Microstep 在 Journal 中连续；Resolve batch 的 SourceId / CandidateId / Due 必须与当时持久化的 cause 一致；external batch 不得伪造 candidate metadata。逐 event Projector 只验证局部 precondition。Resolve batch 的 mutation / interaction / arrival phase、exact-rational interaction order、唯一 terminal 与三项 resolved count 可以由 pre-state 与 committed events 审计；external batch 只能审计 envelope、event-local precondition 以及可由 committed events 推导的 family order。Command aliases、rejections、producing CommandId 与完整 results 不存在于 Kernel Journal，必须由 live `SpatialTransition` / command-handler test 对 command trace 验证，pure Replay 不能声称重构它们。
-
----
-
-# 12. Kernel Forecast 与 SpatialMoment
-
-## 12.1 Candidate
-
-```text
-SpatialMomentCandidate
-    DefinitionStamp
-    StateRevision
-    MomentOrdinal
-    Due
-```
-
-`ForecastNext` 返回 0 或 1 个 candidate：
-
-```text
-Due = min(
-    scheduled mutation Due,
-    unconsumed Passage interaction SettlementDue,
-    active traversal ArrivalDue)
-```
-
-约束：
-
-- 无 work 返回 none；
-- Due 不得小于 cursor.Now；
-- active traversal overdue 是状态错误；
-- interaction planner 只考虑 `SettlementDue > PassageInteractionsSettledThrough` 的 exact contact；
-- Forecast 不改变 State；
-- candidate identity 不依赖 collection order。
-
-V1 reference planner 按 PassageId 分组 active traversals，并对每组 unordered pair 求 exact contact；复杂度是 `O(Σ n_p²)`。可以增加 keyed by StateRevision 的非权威 kinetic index，但结果必须与 pairwise reference planner 逐字节相同，Replay / Fork 不读取 cache。
-
-`SpatialSubsystem` 构造时取得一个 Host manifest 中稳定且为正的 `SourceId`；所有 Spatial candidate 使用该值。`NextMomentOrdinal` 从 1 开始，candidate 的 `EventCandidateId = EventCandidateId(NextMomentOrdinal)`，payload.MomentOrdinal 必须相同。Resolve journal cause 必须精确记录这组 SourceId / CandidateId / Due；Fork 从 State 与 cursor 恢复后会 Forecast 出同一 identity。SourceId 是运行清单中的调度 identity，不进入 Graph content hash。
-
-## 12.2 Resolve stale audit
-
-Resolve 生成任何事件前重新验证：
-
-- DefinitionStamp；
-- StateRevision；
-- MomentOrdinal；
-- Due；
-- 该 Due 确为当前最早；
-- 由当前 Traversal 与 interaction watermark 重算的 canonical contact set。
-
-stale candidate 稳定拒绝，不能用空 batch 冒充成功。
-
-## 12.3 同刻 phases
-
-在 ModelTime T：
-
-```text
-Phase 1
-    按 MutationId 应用所有 Due == T 的 scheduled mutations
-
-Phase 2
-    从 complete pre-state 冻结所有 SettlementDue == T 的 Passage interactions
-    按 exact ContactInstant → PassageId → kind → canonical Entity pair 排序
-
-Phase 3
-    冻结并同时投影所有 ArrivalDue == T 的 traversal arrivals
-    event order 使用 (EntityId, TraversalId)
-
-Phase 4
-    比较 complete pre / final state
-    依次产生全部 CoTravelEnded、CoPresenceEnded、CoPresenceStarted、CoTravelStarted
-    各 family 使用 (EntityA, EntityB, own PlaceId/PassageId) canonical order
-
-Phase 5
-    MomentResolved，严格最后
-    写入 mutation / interaction / traversal 三项 resolved count
-    PassageInteractionsSettledThrough = T
-```
-
-mutation first 只影响 T 之后新的 BeginTraversal。它不取消已经在 Passage 上并于 T 到达的 Actor。
-
-Passage interaction 发生于 active motion 严格内部并先于同 tick Arrival 投影。contact 恰在 endpoint 时不产生 Passage interaction，由 Arrival 后的 Place CoPresence 表达。Game / Player 不能在 Phase 2 的两个 rational contact 之间插入 external command。
-
-三个 resolved count 分别等于 Resolve 开始时 Due == T 的 mutation 数、Passage interaction pair 数与 traversal 数。relation event 不计入这些 work count。
-
-每个非空 Resolve 恰有一个 MomentResolved；无 work 的 candidate 不合法。
-
-## 12.4 Confluent external input
-
-Spatial 的同刻语义是 internal first：
-
-```text
-settle Spatial internal work due at T
-→ admit external Spatial command at T
-```
-
-当前 Kernel `SimulationLoop` 会在 Forecast 前应用 external input，因此 internal-first 不能靠普通 `Run(externalInputs)` 自动得到。Host 必须通过唯一 `SpatialCommandGateway` admission seam 提交 Spatial commands：
-
-```text
-SpatialCommandGateway.Admit(cursor, commands)
-    1. 检查 Spatial Forecast 是否存在 Due <= cursor.Now 的 work
-    2. 若存在，拒绝接收 commands，并返回 NeedsInternalSettlement
-    3. Host 使用无 external input 的 internal-settlement run 继续执行
-    4. 若其它 system 在同刻请求 Decision，只缓存 request，不向 controller 暴露
-    5. 重复，直到 Spatial 不再有 Due <= cursor.Now
-    6. 重新验证 command ExpectedStateRevision
-    7. 才把 commands 交给 Kernel external batch
-```
-
-Host / composition coordinator 不得绕过 gateway 直接提交 Spatial external input。单纯给 Spatial 较小 SourceId 也不够，因为 external input 在 candidate ordering 之前应用。
-
-因此：
-
-- `ArrivalDue == T` 时 Actor 先成为 AtPlace；
-- `PassageInteraction SettlementDue == T` 时相遇 / 超过先提交，随后才允许 TurnBack、AdjustTraversalPace、MatchTraversalAtContact 或 Remove；
-- 同刻 TurnBack 随后因 NotTraversing 拒绝；
-- 不能依赖偶然注册顺序或 SourceId；
-- DecisionRequest 可以暂存，但不能在 Spatial due work settle 前交给 Mock/Human/LLM；
-- 真实 Kernel integration test 必须覆盖 arrival 与外部 pulse 同刻。
-
----
-
-# 13. Public API 与组件边界
-
-建议 Runtime 组件：
-
-```text
-Definitions/
-State/
-Commands/
-Events/
-Queries/
-Navigation/
-PassageInteractions/
-Relations/
-Simulation/
-```
-
-核心类型：
-
-```text
-SpatialGraphDefinition
-SpatialGraphState
-SpatialDefinitionStamp
-SpatialReadContext
-
-SpatialCommandHandler
-SpatialCommandBatchResult
-SpatialCommandAdmissionContext
-CommittedPassageInteractionReceipt
-
-SpatialProjector
-SpatialReducer
-SpatialTransition
-
-ObjectiveSpatialQueries
-ObjectiveNavigator
-PassageInteractionPlanner
-PassageRelationQueries
-
-SpatialSubsystem : ISimSystem<SpatialGraphState, SpatialMomentCandidate, SpatialEvent>
-
-SpatialCommandGateway
-```
-
-`SpatialCommandAdmissionContext` 是 Host 在 batch admission 时生成的瞬时、非持久化可信输入：普通 command 没有附加项；每个 Match command 必须按 CommandId 对应一张从 committed Journal 解析出的 `CommittedPassageInteractionReceipt`。它不进入 World State 或 command codec，也不能由 Player / Game payload 自报。Projector / Replay 仍依赖已经 committed 的 contact event 做历史审计，因此不会把这个瞬时 context 变成第二份 authority。
-
-`CommittedPassageInteractionReceipt` 还携带 Journal event address / hash 与其 committed history-prefix identity。连续运行、snapshot restore 与 descendant Fork 都通过同一个 Host receipt resolver 读取该 prefix；新 lineage 可以引用其只读 ancestor prefix 中的 contact，但不能引用 sibling / future / 未提交 event。Host snapshot 因而是 `World + Cursor + committed Journal prefix handle/hash`，而不只是两个内存值。
-
-## 13.1 Host composite lift
-
-上面的 `SpatialSubsystem` 是可独立测试的纯 Spatial 形状。当前 Kernel 要求同一 SimulationLoop 中的 systems 共享 `TWorld / TCandidatePayload / TEventPayload`，所以 Game、pulse 与 Spatial 共用一条时间线时，由 Host / Game project 提供机械 lift：
+生产组合使用当前 Kernel 形状：
 
 ```text
 HostWorld
-    Spatial: SpatialGraphState
-    Game: GameState
+    Game
+    Spatial: GraphSpatialState
 
 HostCandidate
-    Spatial(SpatialMomentCandidate)
+    SpatialMutation(...)
+    SpatialArrival(...)
+    SpatialContact(...)
     Game(...)
+    DecisionPoint(...)
 
-HostEvent
-    Spatial(SpatialEvent)
+HostFact
+    Spatial(GraphSpatialFact)
     Game(...)
-
-SpatialSystemLift
-    : ISimSystem<HostWorld, HostCandidate, HostEvent>
 ```
 
-Lift 只做四件事：从 HostWorld 取得 Spatial state；委托纯 Spatial Forecast / Resolve；原样保留 SourceId、CandidateId 与 Due；把 payload 包入 Host union。Host root reducer 按 exact union case / EventKind 把 Spatial event 交给 `SpatialReducer`，把 Game event 交给 Game reducer。`SpatialCommandGateway` 同样在一个 Host cursor + HostWorld.Spatial revision snapshot 上 admission，并把 accepted Spatial events 包成 HostEvent 后提交。
-
-Lift、Host union 与 composite reducer 依赖 Spatial；Spatial Runtime 不引用它们。Random pulse、`FishEaten` 与其它 Game event 因而可以进入同一 Kernel Journal，但不能回调或改写 Spatial reducer。Pure replay 只分派 committed union events，不重跑 Game rule。
-
-## 13.2 内容适配器
-
-内容适配器建议独立：
+Host-owned rule 使用当前接口：
 
 ```text
-Spatial.GraphContent
-    GraphSourceDto
-    GraphCompiler
-    CanonicalGraphWriter
+IOccurrenceRule<HostWorld, HostCandidate, HostFact>
 ```
 
-架构守卫：
+`SpatialForecast / SpatialPlanner` 始终是纯领域函数，Spatial library 不依赖 Game、Player 或 Host implementation。Slice 1 的 mutation / arrival rule 可以机械委托并包装 Spatial 候选与事实；Slice 2 的 contact candidate 则只由一个 composite Host encounter rule 拥有。该 rule 调用纯 Spatial contact Forecast / Plan，并在 selected Plan 中追加 Game-owned encounter facts。两条 rule 不得同时 Forecast 同一个 contact key，否则当前 Kernel 会以 duplicate `CandidateKey` 拒绝本轮。
 
-- Runtime production project只依赖 Kernel；
-- Runtime 不做文件 I/O；
-- GraphContent 不依赖 Game 或 Player；
-- Game adapter依赖 Spatial，而 Spatial 不反向依赖 Game；
-- MockPlayer 只存在于 tests / sample；
-- HUD/Fog 不进入 Runtime 类型系统。
+## 3.2 Forecast 必须枚举全部局部 candidates
+
+```text
+Forecast(spatial):
+    for each scheduled passage entry change:
+        yield PassageEntryChangeCandidate
+
+    for each traversing entity:
+        yield ArrivalCandidate
+
+    // Slice 2
+    for each unordered current-segment pair on the same Passage:
+        if pair has an unconsumed strict interior crossing:
+            yield PassageContactCandidate
+```
+
+Spatial 不得：
+
+- 只返回自己最早的一项；
+- 把同 Due 的 candidates 合成 Moment；
+- 按 mutation/contact/arrival family 预排序；
+- 读取或猜测 Kernel PRF rank；
+- 在 Forecast 中修改 state、消费 RNG 或做 I/O。
+
+## 3.3 CandidateKey
+
+规范 key 至少编码：
+
+```text
+Passage entry change
+    ["graph-spatial/entry-change",
+     PassageId, Due,
+     canonical patch mask + desired values]
+
+Arrival
+    ["graph-spatial/arrival",
+     EntityId, MovementGeneration,
+     PassageId, FromPlaceId, ToPlaceId,
+     StartedAt, SpeedSnapshot, ArrivalDue]
+
+Contact
+    ["graph-spatial/contact",
+     PassageId,
+     canonical(EntityA, MovementGenerationA),
+     canonical(EntityB, MovementGenerationB)]
+```
+
+Slice 2 泛化为 anchored traversal 后，arrival key 同步编码完整 current anchor/target motion fields；同一语义不同时保存 endpoint 与 anchor 两套候选身份。
+
+Key 在 Player 调用前只从 committed world 推导。Candidate 不持久化；提交后的 Journal cause 只保存 Kernel 的 `CandidateKey`。
+
+## 3.4 Entry access mutation 与 arrival
+
+scheduled change winner 返回一个原子 fact：
+
+```text
+ScheduledPassageEntryChangeApplied(PassageId, Due)
+```
+
+Reducer 同时：
+
+- 删除这一项 exact schedule；
+- 把 non-null patch fields 应用于 Due 时的 effective entry access；
+- 写入完整两位 sparse override，或在结果等于 Definition 初值时删除 override。
+
+即使 patch 的 desired value 已经生效，也必须消费自己的 schedule，避免同 key 永久复发。它不能消费同 tick 的其它 schedule。
+
+arrival winner 返回：
+
+```text
+TraversalArrived(EntityId, ExpectedMovementGeneration)
+```
+
+Reducer 验证当前 traversal identity 与 batch `LogicalInstant.ModelTime == ArrivalDue`，然后无条件把 Entity 变为 target `AtPlace`，并清理涉及旧 segment 的 contact keys。它不读取当前 entry access：arrival 是已获准 segment 的完成，不是新 segment。
+
+## 3.5 Passage contact：目标法则与第二竖切
+
+途中 contact 是本设计相对于“地点间计时跳转”的关键故事能力，但它不阻塞第一条 Place—Passage—Arrival 竖切。
+
+对两条同 Passage constant-linear segments，planner 在内部使用 widened integer / rational 运算求严格交点。它只在双方 motion law 的共同有效窗口求交：
+
+```text
+t0 = max(A.AnchorTime, B.AnchorTime)
+
+require both segments exist and are physically active at t0
+ContactTime = exact intersection of the two current worldlines
+
+require ContactTime > t0
+require ContactTime lies before both exact physical exits
+
+CandidateDue = ceil(ContactTime to 1ms)
+```
+
+只保留两个最小 kind：
+
+```text
+HeadOnMeeting
+Overtake
+```
+
+约束：
+
+- contact 严格位于 Passage 内部；endpoint 交会由 arrival 后的 same-place relation 表达；
+- 相对于共同窗口起点 `t0` 的 `tau == 0` overlap 不报 contact；
+- 相同 worldline 的 CoTravel 不报 contact；
+- `CandidateDue` 不得早于当前 committed `ModelTime`；Kernel 会拒绝 past-due candidate；
+- 已进入同一整数 tick 后，不得用 `ContactTime > current ModelTime` 过滤 peers：exact time 已过去但 `CandidateDue == current ModelTime` 的未消费 contact 仍须保留；
+- exact fraction 不进入 Candidate、World、Fact、Journal、query 或 Player view；
+- 同 tick contact 的顺序只由 Kernel `(Due, PRF rank, CandidateKey)` 决定；
+- contact 与 arrival/change/DecisionPoint 没有 fixed priority。
+
+entry access change 不删除、不重锚 active segment，也不改变其 speed、arrival 或内部 contact。它只改变此后能否创建某一方向的新 segment。
+
+winner 返回：
+
+```text
+PassageContactOccurred(
+    PassageId,
+    EntityA, MovementGenerationA,
+    EntityB, MovementGenerationB,
+    Kind)
+```
+
+Reducer 在加入 key 前复用同一个 pair math，验证 current segment/generation 精确匹配、key 尚未消费、存在唯一严格内部有效交点、`ceil(ContactTime) == batch.LogicalInstant.ModelTime` 且 Kind 匹配。验证成功后，它只把自己的 current-segment pair key 加入 `ConsumedContacts`；不重锚、不调速、不移动参与者。这是 fact-local 领域真实性校验，不是跨 build audited replay。这样：
+
+- 同一 contact 不会重复 Forecast；
+- A-B 提交不会吞掉同 tick 的 C-D；
+- A-B 提交也不会通过虚假 rebase 吞掉 A-C；
+- ordinary Actor 仍然非阻挡并继续原 motion。
+
+reference Forecast 可以是 `O(Σ n_passage²)`。在真实 profiler 证明瓶颈前不建 kinetic index、pair cache 或容量平台。
+
+### Contact 后的 AI response
+
+Spatial 不保证 contact 后紧接一个 Player phase。最小 Game 组合是：
+
+```text
+selected Host contact rule
+→ Spatial(PassageContactOccurred)
+→ Game(EncounterOpened(ContactKey, participants))
+→ same TransitionDraft / AppendBatch
+```
+
+`EncounterOpened` 是改变后续 affordance 的 Game state，不是 Journal receipt。它以 exact domain `ContactKey` 为 identity，允许同一 Actor 同 tick 打开多个独立 encounter。下一轮普通 DecisionPoint candidate 可以让 AI 选择 Continue、Reverse 或其它 Game action；它仍与同 tick 的其它 causes 参加 Kernel 仲裁。
+
+每个合法 response 都必须消费 exact pending encounter 并产生非空 draft：
+
+```text
+Continue
+    → Game(EncounterResolved(ContactKey, Continue))
+
+Reverse
+    → Game(EncounterResolved(ContactKey, Reverse))
+    → Spatial(TraversalReversed)
+```
+
+response candidate key 包含 encounter identity；只有已经 `EncounterResolved` 的 encounter 才停止 Forecast。若 arrival、remove 或其它 occurrence 先改变了空间条件，仍 open 的 encounter 必须继续产生一个可关闭它的 cleanup/response candidate，并提交：
+
+```text
+Game(EncounterResolved(ContactKey, WorldChanged | Expired))
+```
+
+也可以由使它失效的 composite occurrence 在同一 draft 中关闭。它不能因 affordance 过时而从 Forecast 静默消失并永久残留在 Game state。这里的 world-changed pending encounter 与 stale Player proposal 不同：后者零提交并可重问，前者必须最终留下 Game-owned 权威进展。Continue 因而不是空 draft，也不会让同一 DecisionPoint 永久复发。
+
+V1 不提供 `MatchTraversalAtContact`、Journal receipt、event address/hash 或“必须立即回应”的 gateway。若一个故事必须让策略在 selected contact 的同一 `PlanSelectedAsync` 内原子回应，可以由具体 Host encounter rule 完成，但不提升为 Spatial 通用协议。
+
+## 3.6 同 tick 语义
+
+例如 T 同时有：
+
+```text
+bridge A-side entry close
+Alice arrival
+Bob/Carol contact
+Dave DecisionPoint
+```
+
+四者都是普通 candidates。Kernel 选择一个，提交后从新 world 全量 Forecast。没有“Spatial internal first”，也没有“contact before arrival”。不同 WorldSeed 可以得到不同但可重放的因果顺序。
+
+任何 public query 都读取当前 committed prefix。它不得因为还存在 `Due == current ModelTime` 的 Spatial candidate 而拒绝；否则就会把旧的整 tick barrier 偷渡回来。
 
 ---
 
-# 14. 权威不变量
+# 4. Facts、纯规划与 reducer
 
-## 14.1 Definition
+## 4.1 最小 fact union
 
-- stamp 完整且受 RulesVersion gate；
-- Area 是单 root tree；
-- Place 引用存在 Area；
-- Passage endpoints 存在且不同；
-- Length 正且 EndpointA/B order 保留；
-- ViewLink directed、非 self、引用合法；
-- canonical hash 不依赖输入集合顺序；
-- Definition immutable。
+目标设计的 state-changing Spatial facts：
 
-## 14.2 State
+```text
+EntityPlaced(EntityId, PlaceId)
+EntityRemoved(EntityId)
 
-- Entity 恰好 AtPlace 或 TraversingPassage；
-- Traversal 与 Entity 一一对应；
-- Traversal math 完整合法；
-- sparse override canonical；
-- scheduled key 唯一；
-- allocators 指向未使用正 ordinal；
-- Definition / State / batch / schedule 数量不超过 `RulesVersion` 工程上限；
-- LastTraversalRebased guard 与 PassageInteractionsSettledThrough 可 Replay；
-- interaction watermark 单调，已消费 contact 不会在同 cursor time 重发；
-- State 不保存 adjacency、route、CoPresence、CoTravel、Passage occupancy/order 或 visibility cache 第二真理。
+TraversalStarted(
+    EntityId, PassageId, FromPlaceId,
+    SpeedSnapshot)
 
-## 14.3 Commands
+TraversalArrived(
+    EntityId, ExpectedMovementGeneration)
 
-- duplicate CommandId 整批拒绝；
-- conflict 结果不依赖输入顺序；
-- rejected command 零事件、零状态改变、零 allocator 消费；
-- Begin 只从 endpoint AtPlace 开始；
-- TurnBack 保留 PassageId / TraversalId；
-- TurnBack / AdjustTraversalPace / MatchTraversalAtContact 都从 command time 的当前 Offset rebase，绝不重写旧 segment；
-- 同 Entity / ModelTime 最多一次成功 traversal rebase；
-- Match 只能引用 current ModelTime 刚 committed 且可重算的 contact；
-- RulesVersion 容量按完整 planned final state、对所有同类 consumers 原子预检；
-- Passage disable 不追溯 active traversal；
-- Continue / Stop / Wait 不属于 World command。
+PassageEntryAccessChanged(PassageId, ResultAccess)
+PassageEntryChangeScheduled(PassageId, Due, Patch)
+ScheduledPassageEntryChangeApplied(PassageId, Due)
 
-## 14.4 Events与Replay
+// Slice 2：与 anchored traversal + 真实 encounter consumer 一起加入
+TraversalReversed(
+    EntityId, ExpectedMovementGeneration)
 
-- Projector 是唯一写状态路径；
-- ordinary event ModelTime 是运动 timestamp authority；Passage interaction 的 exact rational instant 只用于同 tick contact audit / order，Kernel settlement time 仍是其 ceil tick；
-- reducer 不寻路、不调用 Game、不做 perception；
-- derived events exact no-op；
-- CoTravel / CoPresence 都从 complete pre / final state 推导；
-- Moment 的 incoming CoTravel 使用 segment affine key，不在 `ArrivalDue == T` 调 ordinary EffectiveOffset；
-- scratch state 与 formal fold 完全相等；
-- Replay、split run 与 Fork deterministic，Host checkpoint 始终绑定可验证的 committed Journal prefix。
+PassageContactOccurred(...)
+```
 
-## 14.5 Kernel
+Payload 只保存 reducer 不能从 pre-state 与 batch instant 唯一推导的输入。没有 `EventKind` 跨版本矩阵、expected→result 审计镜像、terminal fact 或 derived no-op relation facts。
 
-- 0 或 1 earliest candidate；
-- overdue 是错误；
-- stale 在事件前拒绝；
-- mutation → Passage interaction → arrival → relation → terminal；
-- terminal event 唯一且最后；
-- external command 在同刻 internal work 之后；
-- Host 为 due internal work 预留 microstep；reserve 违约是原子 terminal failure，不是可重试空 Resolve。
+所有 state change 只经过同一个 pure reducer。owning rule 可以先用 reducer scratch-fold draft 并验证 final `HostWorld`；Kernel 会再次 fold/validate 并原子发布整个 batch。
+
+## 4.2 Pure Spatial planner
+
+Spatial 提供给可信 Game rule 的是同步纯 planner，不是 command bus：
+
+```text
+TryPlaceEntity(...)
+TryRemoveEntity(...)
+TryStartTraversal(entity, passage, speed, at)
+TrySetPassageEntryAccess(passage, patch)
+TrySchedulePassageEntryChange(passage, due, patch)
+
+    -> Accepted(facts) | Rejected(reason)
+```
+
+planner：
+
+- 不排队；
+- 不提交；
+- 不创建 CandidateKey；
+- 不读取 Journal；
+- 不处理 command batch alias 或 caller input order；
+- 不拥有 Player action economy；
+- 只验证 objective Spatial invariants。
+
+`TryStartTraversal` 与 reducer 共用 §2.2 的 direction predicate。一个 actor-specific ticket、阵营许可或守卫放行仍由 Game 检查，不能写入全局 entry access。
+
+Slice 2 与 anchored traversal 一起加入 `TryReverseTraversal(entity, at)`：它在 `at < ArrivalDue` 物化当前 offset，以相同 speed、相反 endpoint 与 `MovementGeneration + 1` 建立新 segment。Reverse 是新的方向承诺，必须检查反方向 effective entry access；例如 A→B 的 Reverse 检查 `EnterableFromB`。零进度或 boundary reversal 可以稳定拒绝。AdjustPace、Stop、WaitOnPassage 与 MatchAtContact 继续延期。
+
+## 4.3 非法 proposal 与世界内失败
+
+owning Game rule 区分：
+
+- malformed、stale、越权或不在当前 affordance 的 proposal：同一未完成 Step 内重问或失败，零提交；
+- 合法行动在世界里失败：返回描述结果的非空 Game facts；
+- Spatial objective precondition 不成立且尚未形成世界内行动：planner rejection，零提交。
+
+Spatial 不定义通用 `RejectedCommand` Journal history。
+
+## 4.4 Cross-domain atomicity
+
+例如 AI 选择持票登船：
+
+```text
+DecisionPointRule.PlanSelectedAsync(frozen HostWorld)
+    → build legal observation + affordances
+    → await AI strategy
+    → validate selected affordance
+    → SpatialPlanner.TryStartTraversal(...)
+    → return TransitionDraft([
+          TicketConsumed,
+          Spatial(TraversalStarted)
+      ])
+```
+
+若 ticket 或 traversal 任一条件失败，draft 在发布前失败，Game、Spatial、Journal 与 `WorldVersion` 全部不变。无需 transaction coordinator、2PC 或 compensating event。
 
 ---
 
-# 15. 可证伪验收
+# 5. Objective queries、navigation 与 Player projection
 
-## 15.1 共享 CoastGraph
+## 5.1 Query 读取 committed causal state
 
-使用 §4.7 的 Definition，固定默认 `SpeedSnapshot = 1 distance unit / ModelTick`。
-
-Graph 特性：
-
-- 3 Area；
-- 6 Place；
-- 5 Passage；
-- 1 directed ViewLink；
-- `fork → grotto` 有两条 total cost 都为 10 的路线；
-- `island` 从 lagoon 客观可见但不可达。
-
-同价 tie 固定选择 route key 较小的 `fork-cliff → cliff-grotto`。关闭 `fork-cliff` 后选择 `fork-ford → ford-grotto`。
-
-## 15.2 P0 验收矩阵
-
-| ID | 范围 | 硬断言 |
-|---|---|---|
-| IO-1 | Graph I/O | JSON 精确编译为 3 Area / 6 Place / 5 Passage / 1 ViewLink；canonical writer 的 exact bytes、无 BOM/换行、property/array order 与 SHA-256 用手写 golden 锁定；round-trip 语义与 hash 相等；A→B 的 origin=0、B→A 的 origin=Length。 |
-| IO-2 | Determinism | 任意重排输入数组，definition、hash、navigation、visibility result 完全相等；canonicalization 与 round-trip 永不交换 EndpointA / B。 |
-| IO-3 | Validation | unknown property、duplicate JSON property、numeric overflow、duplicate ID、unknown ref、Area cycle、多 root、坏 endpoint、Length≤0、坏 ViewLink、Passage 超 RulesVersion 上限、未知 schema/rules 全部在创建 State 前拒绝。 |
-| CMD-1 | Command batch | 同一 commands 的任意排列产生逐字节相同 events/results/final state；duplicate CommandId / 超 256 commands 整批结构拒绝；同 Entity lifecycle conflict；同 Passage immediate same desired 的 leader/no-change/alias、different desired conflict；existing schedule alias 与 new schedule leader 映射精确；同 `(PassageId,Due)` 的不同 desired（包括与 existing schedule 相反）整组 MutationConflict；future desired 即使等于当前 effective value 仍分配并持久化；leader rejection 向 alias 传播；同批 disable+Begin 按 topology-first 使 Begin 拒绝；两个合法 Begin 而只剩一个 Traversal ordinal 时全部 allocator consumer 拒绝；entity / mutation RulesVersion 只余部分容量时也全组拒绝，不能让低 ID 抢占；rejection precedence 精确；所有 rejected/conflict 零 event、零 Revision、零 allocator。 |
-| POS-1 | Location | Place 多 Actor 合法；Begin 原子形成唯一 Traversal；Remove 在途 Entity 原子清理 traversal 与 guard。 |
-| QRY-1 | Settled read | structural state 在 ArrivalDue==Now 或 unconsumed PassageInteractionDue==Now 尚未 settle 时不能创建 SpatialReadContext；public query / Navigator 稳定拒绝；Resolve 后 snapshot 可读。missing entity 与合法 empty 分离，结果 immutable 且 canonical。 |
-| MOV-1 | Lazy movement | length10/speed1/T0 → Due10；T0..9 Offset 精确；T10 只允许 Arrival；Journal 无 progress event。 |
-| MOV-2 | Ceil | length10/speed3 → Due4；T3 Offset9；T4 精确 endpoint。 |
-| MOV-3 | TurnBack | T4 掉头：Offset4，同 Passage/Traversal，Generation+1，回 origin Due8，旧 Due10 candidate stale。 |
-| MOV-4 | Liveness | 零进度 ReturnedToOrigin；同 Entity/T 的第二次 TurnBack / AdjustTraversalPace / MatchTraversalAtContact rebase 在事件、Revision、allocator 前拒绝。 |
-| INT-1 | Exact contact math | head-on fractional golden：length10，A 从 0 以 +4、B 从 10 以 -3，ContactTime=`10/7`、Offset=`40/7`、T2 settlement；integer contact、轴镜像、A/B identity swap、最后 ceil tick 与 UInt64/UInt128 overflow vectors 全部不用浮点且结果 canonical；`-1/2 → floor whole -1 + 1/2 → ceil 0`、`-1` 与 long.MinValue 邻域锁定 signed rational bytes。 |
-| INT-2 | Meeting / overtake | 整数 tick 从未同 Offset但世界线交叉仍产 HeadOnMeeting；同向快者从后追上产 Overtake 且 semantic roles 不随 EntityId 改变；同速分离为 ConstantGap；同起点不同速的 `f=0` 不伪报；endpoint contact 不产 interaction。 |
-| INT-3 | Contact liveness | interaction resolve 后 watermark 推进，同 cursor re-Forecast 不重发；future contact 前 TurnBack / AdjustTraversalPace / Remove 使旧 candidate stale；disabled Passage 上 active actors 仍可 meeting/overtake；full/split/Fork 在 contact 前后相等。 |
-| NAV-1 | Navigation | physical Passage 派生双向 arc；同价 tie 固定；disable 改走 detour；全断开 NoRoute。overflow 三向量：无关 overflow dead-end + disconnected goal → NoRoute；representable goal 与 overflow branch 并存 → RouteFound；唯一 goal route 总成本不可表示 → CostOverflow。 |
-| VIS-1 | Visibility | lagoon→island 单向 candidate；reverse 无；ViewLink 不产生路径；Traversing observer 返回空。 |
-| REL-1 | CoPresence | same Place pair canonical；Traversing 不共处；多人同刻 arrival 只按 final state 产 delta。 |
-| REL-2 | CoTravel | 两个陌生 Actor 同 Place 同刻同速 Begin：只产生客观 CoTravelStarted，不产生 Alliance / Conversation；单方调速或掉头结束；双方同批同步 rebase 且 final worldline 相同则关系连续；共同 Arrival 时用 incoming evaluator（不得读 EffectiveOffset(T)）证明 pre pair，CoTravelEnded 先于 CoPresenceStarted；三人 pair set canonical 且 State 无 pair cache。 |
-| REL-3 | Contact response | fractional HeadOn / Overtake committed 后，同 T MatchTraversalAtContact 可以显式对齐并形成 CoTravel；NoOp 继续原 motion；缺少 trusted admission receipt、伪造 expected ordinal/payload、旧 contact、stale generation、contact+arrival 同 T、target 同批改变、A↔B match cycle 全部稳定拒绝。 |
-| EVT-1 | Projector | 每类 v1 payload 的 pre/post/revision 精确；`EventKind(listedId,1)` 两部分都匹配；MutationApplied 原子消费 schedule+override；PassageInteraction 从 segment overlap 历史重建 exact rational / kind / pair，不能从 settlement Now 向未来求交；derived exact no-op；scratch fold 与 formal reducer state 相等；unknown kind/version 拒绝；replay batch envelope 的 cause/modelTime/microstep/order/terminal 审计精确。 |
-| MUT-1 | Topology | ordinary close 只阻止之后进入；active traversal 可继续/掉头/interaction/到达；reopen 恢复。另设同一 Passage scheduled disable、contact 与 active arrival 都 Due=T：disable → contact → arrival，final AtPlace 且 Passage disabled，三项 resolved count 精确，T 的后续 Begin 被拒绝。 |
-| SIM-1 | Moment | Forecast 唯一 earliest；SourceId 来自稳定 manifest、CandidateId 等于 NextMomentOrdinal，Fork 后 identity 相同；mutation / exact-rational interaction / arrival / relation total order 稳定；同刻关系只按 pre/final 产生；三项 work count 精确；watermark 单调；恰一个最后 MomentResolved；idle 无 candidate。 |
-| CON-1 | Confluence | InteractionDue / ArrivalDue 与外部 pulse 同 T：interaction 与 arrival 先完成，随后 stale TurnBack / Match 稳定拒绝；注册顺序不改变结果。 |
-| ARCH-1 | Boundary | Runtime production reference 只有 Kernel；无 Player/HUD/Knowledge 类型；直接绕过 SpatialCommandGateway 在 due boundary 提交 external Spatial input 的 integration harness 必须失败。 |
-| RPL-1 | Replay | full run / split run / pure replay 的 State、Journal、interaction watermark、next candidate 相等；contact 后、Match 前 snapshot/restore 仍从 prefix resolver 得到同 receipt；Replay 不运行 Navigator、interaction consumer 或 Mock。 |
-| FORK-1 | Fork | contact 前 fork：Continue 保留 meeting/overtake，TurnBack / AdjustTraversalPace 分支改变或取消 contact；contact 后同 T fork 不重发；contact 后、Match 前的 descendant 可从 ancestor prefix 合法 Match，但 sibling/future receipt 拒绝；源 state 不变，各分支 replay 相等。 |
-| PERF-1 | Passage interaction budget | reference pair planner 与 small-integer exact-rational oracle property-equivalent；64 / 256 active traversals on one Passage 的 Forecast、event bytes、Journal batch 与 Replay 达到 implementation plan 冻结预算；256 Actor worst-case Moment 为 102,273 events 并低于 131,072 上限；规则上限在 admission 前拒绝，microstep headroom 由 Host 预留，破坏 reserve 时 terminal fail 而非重复 Resolve。 |
-
-P0 全部通过才算 Objective Graph Spatial vertical slice 成立。
-
-## 15.3 Passage interaction / CoTravel 手算 golden
-
-### 迎面相遇与同刻选择
+最小 objective query：
 
 ```text
-Passage length = 10
-T0  A: offset 0  → B, speed 4, ArrivalDue T3
-T0  B: offset 10 → A, speed 3, ArrivalDue T4
-
-Exact contact:
-    ContactTime   = 10 / (4 + 3) = 10/7
-    ContactOffset = 4 * 10/7     = 40/7
-    SettlementDue = T2
-```
-
-T2 的 SpatialMoment 先提交 `PassageInteractionOccurred(HeadOnMeeting)`，不自动停下、不自动对话。随后 Game / Player 可以：
-
-- NoOp：A、B 继续擦身而过；
-- B TurnBack：从 B 在 T2 的普通边界 Offset 反向；
-- B `MatchTraversalAtContact(A)`：用刚 committed contact 作为 authority，B 在该 board-game tick 内完成转向 / 调速，T2 边界对齐 A 的 current motion，形成 `CoTravelStarted(A,B)`。
-
-第三种结果是显式、可 Replay 的 contact response，不撤销 interaction event，也不允许引用旧 contact。注意、认出和“为何转身”仍由 Perception / Player 决定。
-
-### 同向追上与超过
-
-```text
-Passage length = 10
-T0  slow 从 A 出发，speed 1
-T1  fast 从 A 出发，speed 3
-
-At T1:
-    slow offset = 1
-    fast offset = 0
-
-Exact contact:
-    ContactTime   = T1 + 1/(3-1) = T1.5
-    ContactOffset = 1.5
-    SettlementDue = T2
-```
-
-T2 提交 `PassageInteractionOccurred(Overtake, Overtaker=fast, Overtaken=slow)`。若 fast NoOp，二者继续分离且不形成 CoTravel；若 fast 合法 Match slow，则形成持续 CoTravel。两条分支都必须能从 contact 前 checkpoint Fork 并稳定 Replay。
-
-### 自然共行
-
-```text
-T0  A、B 同处 lagoon
-T0  分别 Begin lagoon-fork，SpeedSnapshot 都为 1
-    CoPresenceEnded(A,B,lagoon)
-    CoTravelStarted(A,B,lagoon-fork)
-
-T4  A AdjustTraversalPace(speed=2)
-    CoTravelEnded(A,B,lagoon-fork)
-```
-
-没有任何 Spatial event 声称 A 与 B 是朋友。若二者一路保持相同 motion 并同时到达，则同一 Moment 的关系顺序是 `CoTravelEnded → CoPresenceStarted`。
-
-## 15.4 Seeded RandomWalker
-
-RandomWalker 只验证 World 能长期运行，不替代 P0 精确测试。
-
-测试 fixture 固定：
-
-```text
-PRNG                 xorshift32
-Seed                 0x00C0A57
-Initial placement    wanderer@lagoon
-Default speed        1
-Wander pulse         T = 3, 6, 9, ...
-fork-cliff close     T = 25
-fork-cliff reopen    T = 60
-Non-Idle decisions   100
-```
-
-`xorshift32` 精确使用 unsigned 32-bit wrap：`x ^= x << 13; x ^= x >> 17; x ^= x << 5`。选择 index 为 `nextUInt32 % canonicalOptionCount`。
-
-close / reopen 都在 T0 作为 scheduled mutations 预排。T25 与 T60 先由 Spatial internal settlement 应用 mutation，再处理同刻 wander pulse；因此 T60 pulse 必须读取 reopened topology。
-
-```text
-AtPlace:
-    从按 PassageId 排序的 enabled incident Passages 中
-    用 seeded PRNG 选一个并请求 BeginTraversal
-    若 incident list 为空则稳定 Idle，不提交 Spatial command
-
-Traversing:
-    在 test driver 产生的正时间 wander pulse 上
-    从固定顺序 [Continue, TurnBack] 中
-    使用 nextUInt32 % 2 选择
+GetLocation(entityId, at)
+GetPassageEntryAccess(passageId)
+GetExits(placeId, speedSnapshot)
+GetCoLocatedEntities(entityId)
+GetSamePassageRelations(entityId, at)
+GetCoTravelingEntities(entityId, at)
+FindRoute(startPlaceId, goalPlaceId, speedSnapshot)
 ```
 
 规则：
 
-- PRNG algorithm / seed / initial placement / pulse times / mutation times 只属于冻结的 test fixture，不进入 Spatial authority；
-- RandomWalker 不直接修改 State；
-- 它不调用 Projector；
-- 它只通过 Game test adapter 获得已裁决 SpeedSnapshot；
-- Continue 不产 Spatial command；
-- `Non-Idle decision` 是 Game test adapter 接受的一次 Begin / Continue / TurnBack；Continue 计入 decision 数但不计入 Spatial command 数，Idle 两者都不计；
-- live test driver 单独保存所有 Non-Idle decision trace 与实际 Spatial command trace，Kernel Journal 只保存这些命令产生的 committed events；
-- Replay 不重新调用 RandomWalker；
-- 前 10 个 decision/event 使用人工核算、hard-coded golden trace，明确 PassageId、Continue/TurnBack、Due 与 Generation，不能由 Walker 或 Navigator 反算期望值；
-- 再运行至少 100 个 accepted decisions，并注入 fixed-time close/reopen；
-- 全程无 overdue、孤儿 traversal、零时循环或 collection-order nondeterminism。
+- `at` 必须来自当前 committed `ModelTime` 或 selected winner Due；
+- 所有集合按稳定 ID 排序并返回 immutable value；
+- unknown reference 与合法 empty result 分开；
+- query 不扫描“还有什么 candidate 没 settle”；
+- query 不 Forecast future contact；
+- `AtPlace` 才属于 same-place relation；endpoint-boundary `Traversing` 仍不属于 Place。
 
-## 15.5 大鱼吃小鱼薄组合测试
-
-Game test adapter 在 Spatial 外保存：
+`GetExits` 返回每条 incident Passage 的：
 
 ```text
-FishSize[EntityId]
+PassageId
+DestinationPlaceId
+EffectiveEntryAllowed             // 从当前 Place 创建该方向 segment
+ExpectedDuration at supplied SpeedSnapshot
 ```
 
-场景：
+`GetExits` 返回所有 incident Passages 的 objective descriptor，包括当前关闭的方向；Game / Perception 可以让 AI 看见“城门已关”，但只为 `EffectiveEntryAllowed == true` 的方向创建 `TakeExit` affordance。平行 Passage 因而始终可区分。
 
-- big-fish 从 lagoon 按 scripted trace 移动：`lagoon-fork → fork-ford → ford-grotto`；
-- small-fish 停留 grotto；
-- SpeedSnapshot=1；big-fish 分别在 T10、T13、T20 抵达 fork、ford、grotto；
-- Spatial 先提交完整 Arrival 与 CoPresenceStarted；
-- Game rule 比较 Size，提交 `FishEaten`；
-- Game 再请求 Spatial RemoveEntity(small-fish)。
+## 5.2 Current relations，不保存第二份 authority
 
-断言：
+CoLocation 从 `AtPlace` 直接推导。
 
-- Size 不进入 Spatial Definition / State / Event；
-- Spatial 不知道“吃”；
-- arrival final state 先于 Game rule；
-- Remove 后 CoPresenceEnded 按 final state 产生；
-- `FishEaten` 先作为 Game-owned committed event 落入一个完整 batch；随后 Game 在同一 ModelTime 通过 gateway 提交独立 Remove command batch；
-- replay 只投影已经提交的 Spatial 与 Game events，不重新决定谁吃谁。
-
-这个测试证明游戏规则可以组合在位置和共处事实之上，而无需污染 Spatial。
-
-## 15.6 建议测试目录
+CoTravel 是客观的“相同 future worldline”，不是朋友、party 或 escort：
 
 ```text
-tests/GraphSpatial.Tests/
-    Definition/
-    GraphIo/
-    State/
-    Commands/
-    Events/
-    Movement/
-    PassageInteractions/
-    Relations/
-    Queries/
-    Navigation/
-    Simulation/
-    Replay/
-    Acceptance/
+same Passage
+same current offset at `at`
+same target endpoint
+same SpeedSnapshot
+same affine line / ArrivalDue
 ```
+
+只有瞬时同 offset 但方向或 future worldline 不同，不构成 CoTravel。
+
+Spatial 不保存 CoLocation / CoTravel cache，也不提交 Started/Ended audit facts。若 Game 需要“第一次同行”“关系开始”或 Observation 历史，它在自己的 state 中消费当前关系与 Spatial causes。
+
+## 5.3 Objective Navigator
+
+V1 使用纯 Dijkstra：
+
+```text
+FindRoute(start, goal, speed)
+    edge cost = TravelDuration(Passage.Length, speed)
+    A → B edge exists iff effective EnterableFromA
+    B → A edge exists iff effective EnterableFromB
+```
+
+Result 至少区分：
+
+```text
+RouteFound(TotalDuration, Legs[])
+AlreadyAtGoal
+NoRoute
+UnknownStart
+UnknownGoal
+InvalidSpeed
+CostOverflow
+```
+
+每个 leg 携带 `(PassageId, FromPlaceId, ToPlaceId)`。同 cost route 使用完整 leg sequence 的 Ordinal 字典序 tie-break；结果不依赖 Definition 集合插入顺序。
+
+Navigator 不写 state、不保存 route cache、不被 reducer 调用。
+
+## 5.4 AI-safe projection
+
+Spatial query 是 objective，不是 Player-safe。owning Game / Perception rule 负责把合法子集投影成紧凑 view，例如：
+
+```text
+SpatialObservation
+    CurrentLocation
+    CoLocatedActors[]
+    KnownExits[]
+        AffordanceId
+        DestinationHandle
+        ExpectedDuration
+    CurrentTravel?
+        FromHandle
+        TowardHandle
+        ETA
+    RecentEncounter?
+```
+
+Player 提交的是 semantic intent：
+
+```text
+TakeExit(affordanceId)
+TravelTo(destinationHandle)         // Game-owned 长期目标，不直接指定 Passage
+ContinueCurrentIntent
+ReverseCurrentTraversal
+```
+
+对 immediate traversal，Game 用 frozen `AffordanceId` 精确映射唯一 objective Passage，因而 ferry 与 bridge 即使同终点也不会混淆。`DestinationHandle` 只用于显示或创建 Game-owned `TravelTo` 长期目标；Navigator / controller 再为它选择下一 Passage。Player 不直接提交 Spatial fact、CandidateKey、offset 或 hidden PassageId。
+
+以下不得进入 Player observation：
+
+- full objective Graph；
+- hidden Place / Passage / Entity；
+- complete same-Passage occupancy；
+- future contact candidates；
+- scheduler rank、WorldSeed 或 contender set；
+- 其它 Actor 的 route、goal 或 private state。
 
 ---
 
-# 16. 实施顺序
+# 6. Dynamic topology、Definition I/O 与 Replay
 
-推荐依赖波次：
+## 6.1 Passage entry access
 
 ```text
-1. Strong IDs + distance/time + canonical rational arithmetic
-2. Definition + validator + canonical Graph codec/hash
-3. State + interaction watermark + complete-state validator
-4. Event kinds/payloads + single Projector
-5. Commands/results/conflicts + segment rebase + SpatialTransition
-6. Queries ─┬─ Objective Navigator
-             ├─ Objective visibility opportunities
-             └─ CoTravel / same-Passage relations
-7. Passage interaction reference planner + Forecast/Resolve + SpatialMoment
-8. Event codec + Replay/Fork/split-run
-9. Coordinator integration + deterministic MockPlayer + Passage golden + RandomWalker + BigFish slice
+EffectiveEntryAccess = sparse full-value override
+                    ?? Definition.InitialEntryAccess
+
+CanCreateSegment(A → B) = EffectiveEntryAccess.EnterableFromA
+CanCreateSegment(B → A) = EffectiveEntryAccess.EnterableFromB
 ```
 
-第 6 波可以并行；第 7 波必须等待 rational arithmetic、Projector 与 Transition 稳定。Passage interaction 先实现 `O(Σ n_p²)` reference planner，再根据 benchmark 决定是否加入非权威 kinetic index；优化版本必须与 reference planner 逐字节等价。MockPlayer 是最后的纵向验收，不能反向把 Player/HUD 类型带进 Spatial。
+entry access 只决定能否创建一个方向的新 movement segment：
 
-## 16.1 与现有 `src/Spatial` 的关系
+- 从 Place 开始 traversal 时检查该 Place 所在 endpoint 的 bit；
+- 途中 Reverse 创建反向 segment，因此检查反方向的 bit；
+- Continue 不创建 segment，不重新检查；
+- 已经提交的 segment 不因后续关闭而取消、改速或失效；
+- arrival 始终允许 Actor 离开 Passage 进入目标 Place。
 
-可复用：
+例如一条 `Outside(A) — City(B)` Passage：
 
-- Kernel seam；
-- DefinitionStamp / RulesVersion / ContentHash 经验；
-- immutable State；
-- ID 与 total order；
-- command batch / result；
-- Projector / Reducer / Transition；
-- allocator / generation；
-- scheduled mutation；
-- single earliest SpatialMoment；
-- scratch = formal replay 防线；
-- Replay / Fork / split-run 测试；
-- non-blocking Actor；
-- pre / final relation diff。
+- `EnterableFromB=false` 表达“不能从 City 经此路离城”；
+- `EnterableFromA=false` 表达“不能从 Outside 经此路进城”；
+- 只修改 main gate Passage 而不修改 secret Passage，就表达“城门走不通但密道仍可走”。
 
-需要替换：
+Spatial 不再保存 `PlaceSealed / PlaceCanEnter / PlaceCanLeave` 第二层 authority。一次“封城”若必须原子改变多条公共 Passage，由一个 Game / Host occurrence 在同一 draft 中按稳定 `(PassageId)` 顺序追加多条 `PassageEntryAccessChanged` facts；未列入的密道保持原状。V1 不运行时新增 Passage，因此该 incident set 在规划时是完整的。
 
-| Grid Spatial | Graph Spatial World |
+若关闭必须拦住已经在途的 Actor，使用 §2.3 的城门外 Place。V1 明确不引入 `ExitAllowed`、`BlockedAtEndpoint`、reopen candidate 或任意 Passage stop state。
+
+每个 scheduled change：
+
+- Due 必须严格晚于创建它的 occurrence time；
+- patch 至少指定 `EnterableFromA / EnterableFromB` 之一；
+- `(PassageId, Due)` 最多一个 patch；
+- 同一 Passage 两个方向属于同一原子原因时放入一个 patch；
+- unspecified bit 在 Due 保留当时 current value；
+- 即使 desired values 与当前 effective values 相同，也要保存到 Due 并由自己的 winner 消费；
+- 不需要 `MutationId` allocator。
+
+跨多个 Passages 的原子未来变化属于 owning Game / Host rule，不把多条独立 Spatial schedules 假装成一个原因，也不为此引入 schedule group identity。
+
+## 6.2 Definition loading
+
+V1 只需要普通内容适配器：
+
+```text
+source DTO
+→ validate IDs / references / positive length / initialized entry access
+→ sort by stable ID
+→ immutable GraphDefinition
+```
+
+Runtime 不读文件，reducer/Forecast 不依赖 JSON。
+
+本轮不冻结：
+
+- exact canonical JSON bytes；
+- writer/write-back；
+- `ContentHash / DefinitionStamp / RulesVersion` matrix；
+- 旧 schema detection 或 migration。
+
+当真实地图编辑器、外部分发内容或需保留的持久 run 首次要求 definition binding 时，再加入最小 hash/format contract。此前 definition 改变就重建开发 run。
+
+## 6.3 Replay 与 Fork
+
+Spatial facts 作为 `HostFact` 的精确 union case 存在于当前 Journal batch。普通 Replay：
+
+```text
+read complete batch
+→ fold facts in array order at the shared LogicalInstant
+→ validate final HostWorld
+→ expose next committed boundary
+```
+
+Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不查 receipt。Fork 只发生在完整 batch boundary，并遵守当前 Kernel 的 new-lineage 语义。
+
+同 build 的 `SchedulerConformance` 可以重算 cause winner；这不是 Spatial 自己的 event audit framework。
+
+---
+
+# 7. 可执行不变量与验收
+
+## 7.1 核心不变量
+
+### Definition
+
+- stable typed IDs 唯一；
+- Passage endpoints 合法且不同；
+- Length 正；
+- EndpointA/B order 保留；
+- 每端 entry access 初始化，且不另存 whole-passage 或 directional authority；
+- immutable collections 使用 canonical order。
+
+### State
+
+- Entity 恰好 `AtPlace | Traversing`；
+- 一个 Entity 至多一条 active segment；
+- movement generation 单调且只标识 motion law；
+- traversal math 与 ArrivalDue 完整一致；
+- sparse entry-access override 保存完整两位结果且 canonical；
+- active segment 可以属于当前已经关闭的方向，因为合法性在 segment 创建时裁决；
+- schedule key 唯一；
+- Slice 2 consumed contact 只引用 current segments；
+- 不保存 adjacency、route、relation或visibility cache第二真理。
+
+### Kernel integration
+
+- Spatial Forecast 枚举全部 candidates；
+- 一个 winner 只消费自己的局部条件；
+- 同 tick 没有 Spatial phase 或 local winner；
+- contact 的 exact fraction 不参与排序；
+- committed prefix 在 `Due == Now` 时仍可查询；
+- facts 共享 batch LogicalInstant；
+- rejected proposal 零提交；
+- Player projection不泄露 simulator foresight。
+
+## 7.2 最小验收矩阵
+
+| ID | 必须证明 |
 |---|---|
-| GridMapDefinition | SpatialGraphDefinition |
-| CellRef | AtPlace / TraversingPassage |
-| Orthogonal edge | explicit two-ended Passage |
-| Portal special case | ordinary Passage |
-| Cell MoveCost | PassageLength + SpeedSnapshot |
-| Cell / Portal override | Passage enabled override |
-| Anchor | PlaceId |
-| Zone cells | AreaPath query / game tags |
-| EntityStepped | Traversal lifecycle events |
-| SameCell | SamePlace CoPresence |
-| 无直接等价 | Passage CoTravel + exact-rational meeting / overtake |
-| StrictSupercover LOS | same-place / ViewLink opportunities |
-
-本文不裁决就地重构还是并行 `GraphSpatial` project。执行前应根据现有 Grid Spatial 的复用成本另写 implementation plan；无论选择哪条路径，都不能让 Grid 与 Graph 同时成为 authority。
+| DEF-1 | Definition 重排不改变 graph、exit order或route；parallel Passage保持可区分；坏 endpoint/非正 Length拒绝；两端 entry 初值保留。 |
+| AI-1 | AI 只读取合法的 semantic location、known exits与ETA；选择一个 affordance后，Game把它映射为 objective traversal；hidden Graph/candidate/rank不泄露。 |
+| ATM-1 | `TicketConsumed + TraversalStarted` 同batch成功；Spatial planner拒绝时 Game/Spatial/Journal/WorldVersion全不变。 |
+| MOV-1 | length10/speed3：T0 start、Due T4、T1..T3 lazy offset、无progress facts；arrival fact前仍Traversing，提交后才AtPlace。 |
+| QRY-1 | Kernel已位于T，而另一arrival `Due==T` 尚未赢时，query仍合法并返回endpoint-boundary Traversing，不要求整tick settled。 |
+| ORD-1 | 两个arrival、一个passage entry change与DecisionPoint同T时各自独立；Kernel每次只提交一个，first winner不吞peers，注册/枚举顺序不改变结果。 |
+| DIR-1 | `A=true/B=false` 时 A→B 可 start、B→A 不可 start；Slice 2 的 A→B 途中 Reverse 因需创建 B→A segment 而被拒绝。 |
+| DIR-2 | entry close 与 start/reverse 同tick由Kernel仲裁：新segment先赢则获准完成，close先赢则不再合法；arrival从不因close失败。 |
+| GATE-1 | `Outside → GateFront → City` 中关闭 GateFront→City方向后，Actor仍可完成前段抵达GateFront，但不能创建入城segment；反向bit可独立表达不能离城。 |
+| GATE-2 | main gate关闭但secret Passage保持开放；一个Host winner可在同batch改变多条公共Passage而不修改密道。 |
+| MUT-1 | idempotent scheduled entry patch仍消费自己；unspecified方向保留Due时current值；同tick另一Passage schedule继续存在；active traversal不被破坏。 |
+| NAV-1 | Navigator只枚举origin endpoint当前允许的方向；equal-cost route使用完整leg key稳定tie-break；NoRoute、overflow与unknown input明确区分。 |
+| REL-1 | same-place只包含已提交AtPlace；同offset但不同future worldline不构成CoTravel。 |
+| CNT-1 | Slice 2：length10，A+4/B-3在 `10/7` 交会，CandidateDue=T2；Fact/World/Journal不保存fraction。 |
+| CNT-2 | Slice 2：A-B与A-C同T，提交一对后另一对仍Forecast；已提交pair不复发；C-D也不被whole-tick消费。 |
+| CNT-3 | Slice 2：contact、arrival、mutation同T仅由Kernel PRF仲裁；无contact-first；endpoint与`tau=0`不伪报。 |
+| ENC-1 | Slice 2：真实Host consumer把contact与`EncounterOpened`同draft提交；Continue提交`EncounterResolved`，Reverse同batch再提交`TraversalReversed`；exact pending encounter只消费一次。 |
+| RPL-1 | 当前格式full run/replay/fork在完整batch boundary重建同一HostWorld；Replay不调用AI、Navigator或Forecast。 |
 
 ---
 
-# 17. 结论
+# 8. 最小竖切顺序
 
-Graph Spatial World V1 的甜点位置是：
+## Slice 1：AI 能理解并使用的 Place—Passage—Arrival
 
-1. Area / Place / Passage 提供稳定语义拓扑；
-2. Actor 在 Place 或正沿 Passage 运动；
-3. Passage 可掉头、调速和基于刚 committed contact 匹配共行，但不可长期静止；
-4. CoTravel 提供持续途中 interaction locality，相遇 / 超过提供瞬时 objective opportunity；
-5. Length 与 ModelTime 分离，并以 lazy Offset + exact-rational contact math 保持 DEVS-like Simulation；
-6. Objective navigation、same-place、same-Passage 与 ViewLink 只回答客观空间关系；
-7. Kernel 保存 mutation、interaction、arrival、关系变化与 Replay；
-8. Graph Content 可以被严格读取、验证、规范写回与 hash；
-9. MockPlayer 足以验证 World，无需先实现 Player cognition。
+使用 3–5 个有记忆点的 Place、可区分的平行 Passage、一条单向 Passage、一个城门外 Place 与一个动态关闭的方向：
+
+```text
+AI DecisionPoint
+→ 看见合法 location / exits / ETA
+→ 选择 TakeExit，或建立由Game controller执行的TravelTo目标
+→ Game condition + TraversalStarted 同 batch
+→ lazy travel
+→ independent Arrival candidate
+→ AtPlace 后得到新的局部 observation
+→ Replay
+```
+
+Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁，并证明 Navigator、GetExits 与 traversal planner 复用同一个 direction predicate。它不得创建 exit gate、`BlockedAtEndpoint`、contact ledger、rational DTO、receipt、Moment或未来index占位。
+
+## Slice 2：一个真实的途中 Encounter
+
+只在 Slice 1 完成后加入，并且必须同时交付一个真实 Game/AI consumer：
+
+```text
+两名 scripted Actor 在同 Passage 相向而行
+→ internal exact intersection
+→ contact independent candidate
+→ pair-local consumed progress
+→ Spatial contact + Game EncounterOpened 同 batch
+→ AI 看见对方并选择 Continue 或 Reverse
+→ Reverse 只有在反方向 entry 当前允许时才成为合法新 segment
+→ EncounterResolved（Reverse 时同batch包含 TraversalReversed）
+```
+
+没有 `EncounterOpened`/Observation/Decision 的真实使用，就不先实现 contact planner 或 state。这样 contact 是一条垂直产品能力，不是一层 speculative infrastructure。
+
+## Slice 3：只由真实故事触发
+
+可能的后续能力必须逐项由 playable trace 触发，不能横向预建：
+
+- pace adjustment；
+- delayed/multi-actor encounter response；
+- known-map route planning；
+- Area hierarchy；
+- ViewLink；
+- content writer/hash；
+- performance index。
+
+---
+
+# 9. 明确延期与重开条件
+
+| 延期项 | 重开条件 |
+|---|---|
+| Area tree | AI/Game 真实需要稳定 region containment 查询或区域本身参与规则 |
+| directed ViewLink | 一个场景要求从 A 远距感知 B，且至少两个消费者需要复用该 objective relation |
+| canonical writer/hash/schema version | 地图编辑器、外部分发或需保留 run 首次要求 definition binding |
+| AdjustPace / Stop / WaitOnPassage | playable encounter 证明 Reverse 不足以表达必要回应 |
+| `ExitAllowed / BlockedAtEndpoint` | 一个不能用有故事身份的门前 Place 表达的场景，确实要求 topology change 拦住已经提交的 active segment |
+| persisted Place-wide seal | 运行时新增 Passage 必须自动继承 Place 状态，且一个 Host planner 原子修改已知 incident Passages 已不足 |
+| `MatchTraversalAtContact` | 真实玩法要求瞬时对齐同行，且能在1ms量化语义下给出不依赖receipt的世界状态 |
+| CoPresence/CoTravel Started/Ended facts | Game 需要关系delta而arrival/contact causes + current query不足 |
+| Player known-map / Fog / opaque handles | Design Note 009 的触发条件满足 |
+| contact kinetic index / caches | reference pair Forecast 被profiler证明是实际瓶颈 |
+| domain capacities | 真实合法内容触发可复现资源失败，且Kernel/Journal现有边界不足 |
+| old format migration | 本原型当前明确不做；未来若出现必须保留的数据，另立迁移设计 |
+
+以下内容不作为“延期功能”，而是除非部署模型根本改变就不再引入：
+
+- Spatial-local winner；
+- whole-tick settlement watermark；
+- fixed same-time phase；
+- external Spatial command gateway；
+- Journal receipt 作为 live World authority；
+- Source/Candidate/Moment 多套 identity；
+- 为法证而存在的 expected→result event 镜像。
+
+---
+
+# 10. 结论
+
+Graph Spatial World 的最小甜点位置是：
+
+1. 用稳定 Place / Passage 表达 AI 可以理解的语义世界；
+2. 用 EndpointA / EndpointB 两个 entry bit 表达双向、单向与关闭，并让 start、Reverse 与 Navigator 共用一个方向法则；
+3. 保证已经进入 Passage 的 segment 可以离开并抵达；需要门禁等待时用 Place 表达故事节点；
+4. 用一条 length + speed motion law 同时服务 lazy progress、ETA、route 与途中交会；
+5. 把 mutation、arrival、contact 分解为独立、局部可消费的 occurrence；
+6. 让 Kernel 决定同 tick 哪个原因先成为历史；
+7. 让 Game / Perception 把 committed objective state 投影为紧凑的 Player observation 与 affordance；
+8. 用 composite HostWorld 的一个 draft 原子连接物品、规则、移动与 encounter；
+9. 只实现有 playable consumer 的竖切，不建设第二 Kernel、审计平台或未来兼容层。
 
 一句话总结：
 
-> **先把客观 Graph 世界做成一个小而严密、可以相遇、超过、共行并长期重放的空间机器；Spatial 证明轨迹与机会，Player 决定是否注意、回应、追逐、结伴或并肩作战。**
+> **Spatial 用两个端点入口定义 Passage 的可行方向，让已进入者必能离开；Kernel 逐个决定不可逆原因，AI Player 只从已提交世界的合法局部视角决定下一步。**
