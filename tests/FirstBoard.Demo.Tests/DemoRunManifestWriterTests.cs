@@ -117,6 +117,24 @@ public sealed class DemoRunManifestWriterTests
         Assert.NotEqual(hash, ConfigurationHash(changedInterval));
     }
 
+    [Fact]
+    public void CanceledRunHasExplicitTerminalStatus()
+    {
+        using var output = new TempOutputDirectory();
+        DemoOptions options = DemoOptions.Parse(["--output", output.Path]);
+        var scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
+        var manifest = new DemoRunManifestWriter(output.Path, options, scenario);
+
+        manifest.Cancel();
+
+        using JsonDocument document = output.ReadManifest();
+        Assert.Equal("canceled", document.RootElement.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("errorType").ValueKind);
+        Assert.NotEqual(
+            JsonValueKind.Null,
+            document.RootElement.GetProperty("finishedAtUtc").ValueKind);
+    }
+
     private static string ConfigurationHash(DemoOptions options)
     {
         using var output = new TempOutputDirectory();

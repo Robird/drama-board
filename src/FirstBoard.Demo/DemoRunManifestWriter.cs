@@ -60,6 +60,8 @@ internal sealed class DemoRunManifestWriter
         Write("failed", result: null, exception.GetType().Name);
     }
 
+    public void Cancel() => Write("canceled", result: null, errorType: null);
+
     private void Write(string status, RunResultManifest? result, string? errorType)
     {
         (string? gitCommit, bool? gitDirty) = ReadGitState();

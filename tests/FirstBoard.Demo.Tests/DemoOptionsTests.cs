@@ -163,5 +163,7 @@ public sealed class DemoOptionsTests
         Assert.Contains("player requires a Human actor", DemoOptions.HelpText);
         Assert.Contains("--presentation-interval-ms N", DemoOptions.HelpText);
         Assert.Contains("default: 250", DemoOptions.HelpText);
+        Assert.Contains("Human-side overrides are not instantiated", DemoOptions.HelpText);
+        Assert.Contains("default: first actual AI backend", DemoOptions.HelpText);
     }
 }

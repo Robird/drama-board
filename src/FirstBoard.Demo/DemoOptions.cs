@@ -148,7 +148,7 @@ internal sealed record DemoOptions(
 
     public static string HelpText =>
         """
-        DramaBoard FirstBoard real-LLM demo
+        DramaBoard FirstBoard live-session demo
 
           dotnet run --project src/FirstBoard.Demo -- [options]
 
@@ -164,8 +164,9 @@ internal sealed record DemoOptions(
           --alice-model MODEL              Override Alice model
           --bob-backend BACKEND            Override Bob backend
           --bob-model MODEL                Override Bob model
+                                           Human-side overrides are not instantiated
           --memory-backend BACKEND         Backend for all private shard maintainers;
-                                           default: Alice backend
+                                           default: first actual AI backend
           --memory-model MODEL             Memory maintainer model; default follows matching actor
           --base-url URL                   OpenAI-compatible base URL; env fallback:
                                            DEEPSEEK_BASE_URL, then BASE_URL
