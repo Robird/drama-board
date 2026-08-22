@@ -16,7 +16,7 @@ namespace DramaBoard.FirstBoard.Persistence.Tests;
 public sealed class FirstBoardPersistenceTests
 {
     private const long LineageId = FirstBoardScenario.LineageId;
-    private const string PayloadCodec = "firstboard-host-fact-json/4";
+    private const string PayloadCodec = "firstboard-host-fact-json/5";
     private const long CellarDeadlineMs = 123;
     private const long RunBoundaryMs = 300_001;
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
@@ -148,6 +148,18 @@ public sealed class FirstBoardPersistenceTests
     [Fact]
     public void PayloadCodec_RoundTripsEveryCurrentHostFactShape()
     {
+        var headOnContact = new PassageContactKey(
+            new PassageId("passage"),
+            new EntityId("actor"),
+            movementGenerationA: 3,
+            new EntityId("target"),
+            movementGenerationB: 5);
+        var overtakeContact = new PassageContactKey(
+            new PassageId("passage"),
+            new EntityId("target"),
+            movementGenerationA: 8,
+            new EntityId("actor"),
+            movementGenerationB: 7);
         FirstBoardFact[] facts =
         [
             new GameBoardFact(new ActorTravelStartedEvent("actor", "exit:road", "goal")),
@@ -160,6 +172,24 @@ public sealed class FirstBoardPersistenceTests
                 "actor",
                 new PlaceId("goal"),
                 TravelGoalResolution.Blocked)),
+            new GameBoardFact(new PassageEncounterOpenedEvent(
+                headOnContact,
+                PassageContactKind.HeadOnMeeting)),
+            new GameBoardFact(new PassageEncounterOpenedEvent(
+                overtakeContact,
+                PassageContactKind.Overtake)),
+            new GameBoardFact(new PassageEncounterResolvedEvent(
+                headOnContact,
+                "actor",
+                PassageEncounterResolution.Continued)),
+            new GameBoardFact(new PassageEncounterResolvedEvent(
+                headOnContact,
+                "actor",
+                PassageEncounterResolution.Reversed)),
+            new GameBoardFact(new PassageEncounterResolvedEvent(
+                headOnContact,
+                RespondingActorId: null,
+                PassageEncounterResolution.WorldChanged)),
             new GameBoardFact(new TicketConsumedEvent("actor", "ticket")),
             new GameBoardFact(new ActorWaitStartedEvent("actor", new ModelTime(11))),
             new GameBoardFact(new ActorWaitedEvent("actor")),
@@ -177,6 +207,14 @@ public sealed class FirstBoardPersistenceTests
                 "actor",
                 new Intent(ActionKinds.Wait, DurationMs: 1),
                 "reason")),
+            new GameBoardFact(new ActionRejectedEvent(
+                "actor",
+                new Intent(ActionKinds.ContinueTravel, FreeText: "keep going"),
+                "reason")),
+            new GameBoardFact(new ActionRejectedEvent(
+                "actor",
+                new Intent(ActionKinds.ReverseTravel),
+                "reason")),
             new GameBoardFact(new CellarSealedEvent()),
             new SpatialBoardFact(new EntityPlacedFact(new EntityId("entity"), new PlaceId("place"))),
             new SpatialBoardFact(new EntityRemovedFact(new EntityId("entity"))),
@@ -185,6 +223,15 @@ public sealed class FirstBoardPersistenceTests
                 new PassageId("passage"),
                 new PlaceId("from"),
                 SpeedSnapshot: 2)),
+            new SpatialBoardFact(new TraversalReversedFact(
+                new EntityId("entity"),
+                ExpectedMovementGeneration: 3)),
+            new SpatialBoardFact(new PassageContactOccurredFact(
+                headOnContact,
+                PassageContactKind.HeadOnMeeting)),
+            new SpatialBoardFact(new PassageContactOccurredFact(
+                overtakeContact,
+                PassageContactKind.Overtake)),
             new SpatialBoardFact(new TraversalArrivedFact(new EntityId("entity"), 3)),
             new SpatialBoardFact(new PassageEntryAccessChangedFact(
                 new PassageId("passage"),
@@ -264,10 +311,321 @@ public sealed class FirstBoardPersistenceTests
         Assert.Equal(2, reopened.Batches.Count);
     }
 
+    [Theory]
+    [InlineData(PersistedEncounterPrefix.Pending)]
+    [InlineData(PersistedEncounterPrefix.Continued)]
+    [InlineData(PersistedEncounterPrefix.Reversed)]
+    [InlineData(PersistedEncounterPrefix.ArrivalBeforeWorldChanged)]
+    public void EncounterPrefix_PersistsReopensReplaysAndForksWithoutPlayer(
+        PersistedEncounterPrefix prefix)
+    {
+        using var directory = new TemporaryJournalDirectory();
+        ScenarioInstance instance = EncounterScenario(prefix);
+        FirstBoardWorld initial = instance.CreateInitialWorld();
+        JournalBatch<FirstBoardFact>[] prefixBatches = EncounterPrefixBatches(prefix);
+        using (var sink = CreateSink(directory.Path))
+        {
+            foreach (JournalBatch<FirstBoardFact> batch in prefixBatches)
+            {
+                sink.AppendBatch(batch);
+            }
+        }
+
+        using var reopened = CreateSink(directory.Path);
+        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
+        AssertBatchesEqual(prefixBatches, reopened.Batches);
+        AssertEncounterPrefix(replayed, prefix);
+
+        var source = new InMemoryJournal<FirstBoardFact>(LineageId);
+        foreach (JournalBatch<FirstBoardFact> batch in reopened.Batches)
+        {
+            source.AppendBatch(batch);
+        }
+
+        var reducer = new FirstBoardReducer(instance.Graph);
+        long forkLineageId = LineageId + 100 + (int)prefix;
+        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
+            initial,
+            ModelTime.Zero,
+            source,
+            prefixTransitionCount: source.Batches.Count,
+            forkLineageId,
+            new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
+            reducer.Apply,
+            reducer.Validate);
+
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(replayed),
+            FirstBoardScenario.WorldSnapshot(fork.Replay.World));
+        Assert.Equal(new WorldVersion(forkLineageId, source.Batches.Count), fork.Replay.Version);
+        Assert.Equal(reopened.Batches[^1].Instant, fork.Replay.LastCommittedInstant);
+        AssertEncounterPrefix(fork.Replay.World, prefix);
+    }
+
+    [Fact]
+    public async Task PendingEncounterFork_ContinuationCallsOnePlayerAndResolves()
+    {
+        PersistedEncounterFork persisted = PersistReopenAndForkEncounterPrefix(
+            PersistedEncounterPrefix.Pending,
+            forkLineageId: LineageId + 201);
+        var driver = new CountingIntentPlayerDriver(
+            new Intent(ActionKinds.ContinueTravel));
+        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
+        {
+            [BoardIds.Alice] = driver,
+        };
+        int prefixCount = persisted.Fork.Journal.Batches.Count;
+        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
+            FirstBoardScenario.CreateKernel(
+                drivers,
+                persisted.Instance,
+                persisted.Fork.Journal,
+                persisted.Fork.Replay.World,
+                persisted.Fork.Replay.Version,
+                persisted.Fork.Replay.LastCommittedInstant);
+
+        Assert.Equal(
+            StepStatus.Committed,
+            await kernel.StepAsync(persisted.Fork.Replay.CurrentModelTime));
+
+        Assert.Equal(1, driver.CallCount);
+        Assert.Null(kernel.World.Game.PendingEncounter);
+        Assert.Equal(prefixCount + 1, persisted.Fork.Journal.Batches.Count);
+        PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
+            Assert.IsType<GameBoardFact>(
+                Assert.Single(persisted.Fork.Journal.Batches[^1].Facts)).Value);
+        Assert.Equal(BoardIds.Alice, resolved.RespondingActorId);
+        Assert.Equal(PassageEncounterResolution.Continued, resolved.Resolution);
+    }
+
+    [Fact]
+    public async Task ArrivalBeforeCleanupFork_ContinuationSkipsPlayerAndCommitsWorldChanged()
+    {
+        PersistedEncounterFork persisted = PersistReopenAndForkEncounterPrefix(
+            PersistedEncounterPrefix.ArrivalBeforeWorldChanged,
+            forkLineageId: LineageId + 202);
+        var driver = new CountingIntentPlayerDriver(
+            new Intent(ActionKinds.ContinueTravel));
+        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
+        {
+            [BoardIds.Alice] = driver,
+        };
+        int prefixCount = persisted.Fork.Journal.Batches.Count;
+        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
+            FirstBoardScenario.CreateKernel(
+                drivers,
+                persisted.Instance,
+                persisted.Fork.Journal,
+                persisted.Fork.Replay.World,
+                persisted.Fork.Replay.Version,
+                persisted.Fork.Replay.LastCommittedInstant);
+
+        for (int step = 0; step < 3 && kernel.World.Game.PendingEncounter is not null; step++)
+        {
+            Assert.Equal(
+                StepStatus.Committed,
+                await kernel.StepAsync(persisted.Fork.Replay.CurrentModelTime));
+        }
+
+        Assert.Equal(0, driver.CallCount);
+        Assert.Null(kernel.World.Game.PendingEncounter);
+        PassageEncounterResolvedEvent cleanup = Assert.Single(
+            persisted.Fork.Journal.Batches
+                .Skip(prefixCount)
+                .SelectMany(batch => batch.Facts)
+                .OfType<GameBoardFact>()
+                .Select(fact => fact.Value)
+                .OfType<PassageEncounterResolvedEvent>());
+        Assert.Null(cleanup.RespondingActorId);
+        Assert.Equal(PassageEncounterResolution.WorldChanged, cleanup.Resolution);
+    }
+
     private static ScenarioInstance DeadlineScenario(ulong worldSeed) =>
         new(
             ScenarioDefinition.Default with { CellarDeadlineMs = CellarDeadlineMs },
             worldSeed);
+
+    private static ScenarioInstance EncounterScenario(PersistedEncounterPrefix prefix)
+    {
+        ScenarioDefinition definition = ScenarioDefinition.Default;
+        if (prefix == PersistedEncounterPrefix.ArrivalBeforeWorldChanged)
+        {
+            definition = definition with
+            {
+                Passages = Array.AsReadOnly(definition.Passages.Select(passage =>
+                    passage.Id == BoardIds.TavernMarketRoad
+                        ? passage with { Length = 1 }
+                        : passage).ToArray()),
+            };
+        }
+
+        return new ScenarioInstance(definition, worldSeed: 45);
+    }
+
+    private static PersistedEncounterFork PersistReopenAndForkEncounterPrefix(
+        PersistedEncounterPrefix prefix,
+        long forkLineageId)
+    {
+        using var directory = new TemporaryJournalDirectory();
+        ScenarioInstance instance = EncounterScenario(prefix);
+        FirstBoardWorld initial = instance.CreateInitialWorld();
+        JournalBatch<FirstBoardFact>[] batches = EncounterPrefixBatches(prefix);
+        using (var sink = CreateSink(directory.Path))
+        {
+            foreach (JournalBatch<FirstBoardFact> batch in batches)
+            {
+                sink.AppendBatch(batch);
+            }
+        }
+
+        using var reopened = CreateSink(directory.Path);
+        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
+        AssertBatchesEqual(batches, reopened.Batches);
+        AssertEncounterPrefix(replayed, prefix);
+        var source = new InMemoryJournal<FirstBoardFact>(LineageId);
+        foreach (JournalBatch<FirstBoardFact> batch in reopened.Batches)
+        {
+            source.AppendBatch(batch);
+        }
+
+        var reducer = new FirstBoardReducer(instance.Graph);
+        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
+            initial,
+            ModelTime.Zero,
+            source,
+            prefixTransitionCount: source.Batches.Count,
+            forkLineageId,
+            new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
+            reducer.Apply,
+            reducer.Validate);
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(replayed),
+            FirstBoardScenario.WorldSnapshot(fork.Replay.World));
+        return new PersistedEncounterFork(instance, fork);
+    }
+
+    private static JournalBatch<FirstBoardFact>[] EncounterPrefixBatches(
+        PersistedEncounterPrefix prefix)
+    {
+        ModelTime contactDue = prefix == PersistedEncounterPrefix.ArrivalBeforeWorldChanged
+            ? new ModelTime(1)
+            : new ModelTime(150_000);
+        var contactKey = new PassageContactKey(
+            new PassageId(BoardIds.TavernMarketRoad),
+            new EntityId(BoardIds.Alice),
+            movementGenerationA: 1,
+            new EntityId(BoardIds.Bob),
+            movementGenerationB: 1);
+        var start = new JournalBatch<FirstBoardFact>(
+            new LogicalInstant(ModelTime.Zero, 0),
+            CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/start"),
+            [
+                new GameBoardFact(new ActorTravelGoalSetEvent(
+                    BoardIds.Alice,
+                    new PlaceId(BoardIds.Cellar))),
+                new SpatialBoardFact(new TraversalStartedFact(
+                    new EntityId(BoardIds.Alice),
+                    new PassageId(BoardIds.TavernMarketRoad),
+                    new PlaceId(BoardIds.Tavern),
+                    BoardTiming.TravelSpeed)),
+                new SpatialBoardFact(new TraversalStartedFact(
+                    new EntityId(BoardIds.Bob),
+                    new PassageId(BoardIds.TavernMarketRoad),
+                    new PlaceId(BoardIds.Market),
+                    BoardTiming.TravelSpeed)),
+            ]);
+        var opened = new JournalBatch<FirstBoardFact>(
+            new LogicalInstant(contactDue, 0),
+            CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/opened"),
+            [
+                new SpatialBoardFact(new PassageContactOccurredFact(
+                    contactKey,
+                    PassageContactKind.HeadOnMeeting)),
+                new GameBoardFact(new PassageEncounterOpenedEvent(
+                    contactKey,
+                    PassageContactKind.HeadOnMeeting)),
+            ]);
+        if (prefix == PersistedEncounterPrefix.Pending)
+        {
+            return [start, opened];
+        }
+
+        JournalBatch<FirstBoardFact> outcome = prefix switch
+        {
+            PersistedEncounterPrefix.Continued => new(
+                new LogicalInstant(contactDue, 1),
+                CandidateKey.FromUtf8("test/persisted-encounter/continued"),
+                [new GameBoardFact(new PassageEncounterResolvedEvent(
+                    contactKey,
+                    BoardIds.Alice,
+                    PassageEncounterResolution.Continued))]),
+            PersistedEncounterPrefix.Reversed => new(
+                new LogicalInstant(contactDue, 1),
+                CandidateKey.FromUtf8("test/persisted-encounter/reversed"),
+                [
+                    new GameBoardFact(new PassageEncounterResolvedEvent(
+                        contactKey,
+                        BoardIds.Alice,
+                        PassageEncounterResolution.Reversed)),
+                    new SpatialBoardFact(new TraversalReversedFact(
+                        new EntityId(BoardIds.Alice),
+                        ExpectedMovementGeneration: 1)),
+                ]),
+            PersistedEncounterPrefix.ArrivalBeforeWorldChanged => new(
+                new LogicalInstant(contactDue, 1),
+                CandidateKey.FromUtf8("test/persisted-encounter/arrival-before-cleanup"),
+                [new SpatialBoardFact(new TraversalArrivedFact(
+                    new EntityId(BoardIds.Alice),
+                    ExpectedMovementGeneration: 1))]),
+            _ => throw new InvalidOperationException($"Unknown encounter prefix '{prefix}'."),
+        };
+        return [start, opened, outcome];
+    }
+
+    private static void AssertEncounterPrefix(
+        FirstBoardWorld world,
+        PersistedEncounterPrefix prefix)
+    {
+        BoardActor alice = world.Actor(BoardIds.Alice);
+        SpatialEntity aliceSpatial = world.Spatial.Entities.Single(entity =>
+            entity.Id == new EntityId(BoardIds.Alice));
+        switch (prefix)
+        {
+            case PersistedEncounterPrefix.Pending:
+                Assert.NotNull(world.Game.PendingEncounter);
+                Assert.Single(world.Spatial.ConsumedContacts);
+                Assert.IsType<TraversingLocation>(aliceSpatial.Location);
+                Assert.Equal(1, alice.DecisionSequence);
+                break;
+            case PersistedEncounterPrefix.Continued:
+                Assert.Null(world.Game.PendingEncounter);
+                Assert.Single(world.Spatial.ConsumedContacts);
+                Assert.IsType<TraversingLocation>(aliceSpatial.Location);
+                Assert.Equal(2, alice.DecisionSequence);
+                Assert.Equal(new PlaceId(BoardIds.Cellar), alice.TravelGoalPlaceId);
+                break;
+            case PersistedEncounterPrefix.Reversed:
+                Assert.Null(world.Game.PendingEncounter);
+                Assert.Empty(world.Spatial.ConsumedContacts);
+                TraversingLocation reversed = Assert.IsType<TraversingLocation>(aliceSpatial.Location);
+                Assert.Equal(new PlaceId(BoardIds.Tavern), reversed.TargetPlaceId);
+                Assert.Equal(2, aliceSpatial.MovementGeneration);
+                Assert.Equal(2, alice.DecisionSequence);
+                Assert.Null(alice.TravelGoalPlaceId);
+                break;
+            case PersistedEncounterPrefix.ArrivalBeforeWorldChanged:
+                Assert.NotNull(world.Game.PendingEncounter);
+                Assert.Empty(world.Spatial.ConsumedContacts);
+                Assert.Equal(
+                    new PlaceId(BoardIds.Market),
+                    Assert.IsType<AtPlaceLocation>(aliceSpatial.Location).PlaceId);
+                Assert.Equal(1, alice.DecisionSequence);
+                Assert.Equal(new PlaceId(BoardIds.Cellar), alice.TravelGoalPlaceId);
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown encounter prefix '{prefix}'.");
+        }
+    }
 
     private static FirstBoardWorld WithWaitingActor(
         FirstBoardWorld world,
@@ -351,6 +709,8 @@ public sealed class FirstBoardPersistenceTests
             "actor.travel-started" => Game<ActorTravelStartedEvent>(fact),
             "actor.travel-goal-set" => Game<ActorTravelGoalSetEvent>(fact),
             "actor.travel-goal-resolved" => Game<ActorTravelGoalResolvedEvent>(fact),
+            "passage-encounter.opened" => Game<PassageEncounterOpenedEvent>(fact),
+            "passage-encounter.resolved" => Game<PassageEncounterResolvedEvent>(fact),
             "ticket.consumed" => Game<TicketConsumedEvent>(fact),
             "actor.wait-started" => Game<ActorWaitStartedEvent>(fact),
             "actor.waited" => Game<ActorWaitedEvent>(fact),
@@ -366,6 +726,8 @@ public sealed class FirstBoardPersistenceTests
             "spatial.entity-placed" => Spatial<EntityPlacedFact>(fact),
             "spatial.entity-removed" => Spatial<EntityRemovedFact>(fact),
             "spatial.traversal-started" => Spatial<TraversalStartedFact>(fact),
+            "spatial.traversal-reversed" => Spatial<TraversalReversedFact>(fact),
+            "spatial.passage-contact-occurred" => Spatial<PassageContactOccurredFact>(fact),
             "spatial.traversal-arrived" => Spatial<TraversalArrivedFact>(fact),
             "spatial.passage-entry-access-changed" => Spatial<PassageEntryAccessChangedFact>(fact),
             "spatial.passage-entry-change-scheduled" => Spatial<PassageEntryChangeScheduledFact>(fact),
@@ -421,6 +783,18 @@ public sealed class FirstBoardPersistenceTests
 
     private sealed record FactEnvelope(string Kind, object Payload);
 
+    private sealed record PersistedEncounterFork(
+        ScenarioInstance Instance,
+        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> Fork);
+
+    public enum PersistedEncounterPrefix
+    {
+        Pending = 0,
+        Continued = 1,
+        Reversed = 2,
+        ArrivalBeforeWorldChanged = 3,
+    }
+
     private sealed class CountingFullMapGetter :
         IPlayerSpatialKnowledgeGetter<FirstBoardWorld>
     {
@@ -444,6 +818,20 @@ public sealed class FirstBoardPersistenceTests
             DecisionRequest request,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Replay continuation must not call a Player.");
+    }
+
+    private sealed class CountingIntentPlayerDriver(Intent intent) : IPlayerDriver
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<PlayerDecision> DecideAsync(
+            DecisionRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CallCount++;
+            return ValueTask.FromResult(new PlayerDecision(request.DecisionId, intent));
+        }
     }
 
     private sealed class TavernRoadThenWaitDriver : IPlayerDriver

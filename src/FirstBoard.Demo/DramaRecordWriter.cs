@@ -115,6 +115,8 @@ internal static class DramaRecordWriter
         {
             "action.travel" => $"选择出口 {intent.ExitId}",
             "action.travel-to" => $"委托旅行至 {DisplayPlace(intent.DestinationId)}",
+            "action.continue-travel" => "在当前通道中继续前进",
+            "action.reverse-travel" => "在当前通道中转身返回",
             "action.wait" =>
                 $"等待 {intent.DurationMs?.ToString(CultureInfo.InvariantCulture) ?? "默认"}ms",
             "action.talk" => $"与 {DisplayActor(intent.TargetActorId)} 交谈",
@@ -155,6 +157,22 @@ internal static class DramaRecordWriter
                 $"{DisplayPlace(value.DestinationPlaceId.Value)}，结束委托旅行。",
             _ => throw new InvalidOperationException(
                 $"Unknown TravelTo resolution '{value.Resolution}'."),
+        },
+        PassageEncounterOpenedEvent value =>
+            $"{DisplayActor(value.ContactKey.EntityA.Value)}与" +
+            $"{DisplayActor(value.ContactKey.EntityB.Value)}在通道 " +
+            $"{value.ContactKey.PassageId.Value} 中" +
+            $"{DisplayContactKind(value.Kind)}。",
+        PassageEncounterResolvedEvent value => value.Resolution switch
+        {
+            PassageEncounterResolution.Continued =>
+                $"{DisplayActor(value.RespondingActorId)}决定在相遇后继续前进。",
+            PassageEncounterResolution.Reversed =>
+                $"{DisplayActor(value.RespondingActorId)}决定在相遇后转身返回。",
+            PassageEncounterResolution.WorldChanged =>
+                "相遇双方的客观移动已经变化，本次途中相遇随之结束。",
+            _ => throw new InvalidOperationException(
+                $"Unknown passage encounter resolution '{value.Resolution}'."),
         },
         TicketConsumedEvent value =>
             $"{DisplayActor(value.ActorId)}消耗了{DisplayObject(value.TicketObjectId)}作为通行凭证。",
@@ -199,6 +217,14 @@ internal static class DramaRecordWriter
         TraversalStartedFact value =>
             $"{DisplayActor(value.EntityId.Value)}从{DisplayPlace(value.FromPlaceId.Value)}" +
             $"进入通道 {value.PassageId.Value}。",
+        TraversalReversedFact value =>
+            $"{DisplayActor(value.EntityId.Value)}结束第" +
+            $"{value.ExpectedMovementGeneration}段移动并在通道中反向行进。",
+        PassageContactOccurredFact value =>
+            $"通道 {value.ContactKey.PassageId.Value} 中，" +
+            $"{DisplayActor(value.ContactKey.EntityA.Value)}与" +
+            $"{DisplayActor(value.ContactKey.EntityB.Value)}" +
+            $"{DisplayContactKind(value.Kind)}。",
         TraversalArrivedFact value =>
             $"{DisplayActor(value.EntityId.Value)}完成第{value.ExpectedMovementGeneration}段旅行并抵达。",
         PassageEntryAccessChangedFact value =>
@@ -249,9 +275,17 @@ internal static class DramaRecordWriter
     {
         AtPlaceLocation atPlace => $"位于{DisplayPlace(atPlace.PlaceId.Value)}",
         TraversingLocation traversing =>
-            $"正沿 {traversing.PassageId.Value} 从{DisplayPlace(traversing.FromPlaceId.Value)}" +
-            $"前往{DisplayPlace(traversing.ToPlaceId.Value)}，ETA {FormatTime(traversing.ArrivalDue.Ticks)}",
+            $"正沿 {traversing.PassageId.Value} 前往" +
+            $"{DisplayPlace(traversing.TargetPlaceId.Value)}，" +
+            $"ETA {FormatTime(traversing.ArrivalDue.Ticks)}",
         _ => "空间位置未知",
+    };
+
+    private static string DisplayContactKind(PassageContactKind kind) => kind switch
+    {
+        PassageContactKind.HeadOnMeeting => "迎面相遇",
+        PassageContactKind.Overtake => "发生追及相遇",
+        _ => throw new InvalidOperationException($"Unknown passage contact kind '{kind}'."),
     };
 
     private static string DisplayActor(string? actorId) => actorId switch
