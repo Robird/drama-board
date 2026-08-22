@@ -1,6 +1,6 @@
 # Build Log 0003：权威模拟领先于表现的 Live Session 竖切
 
-> 状态：**Ready for implementation**
+> 状态：**Implemented and verified**
 > 记录日期：2026-08-23
 > 设计基线：`81ae496 docs(spatial): close passage encounter slice`
 > 产品方向：面向可在 Steam / TapTap 交付的单人单机游戏；第一版 Human UI 采用 Console，图形前端延期。
@@ -678,3 +678,136 @@ Human Alice + AI Bob
 - 单机产品不要求把这条投影边界建设成抵抗恶意本地用户的安全边界。
 
 这些裁决共同形成了本文的施工范围。
+
+## 18. 实施与验收记录
+
+### 18.1 实际落点与边界
+
+本批于 2026-08-23 完成。实现保持了第 12 节裁决：运行时能力全部落在
+[`src/FirstBoard.Demo/Live`](../../src/FirstBoard.Demo/Live)，没有建立 `src/Runtime`，也没有修改
+Kernel、Host、Protocol、FirstBoard、Spatial、Journal 或 Player 的权威语义与公共 API。两个 solution
+只增加了新的 internal Demo 测试项目。
+
+主要组成如下：
+
+- `LiveAuthorityLoop` 是唯一 Kernel writer；每个已安装的 commit 恰好投递一个
+  `CommittedTransition`。
+- `LiveSessionCoordination` 在一个同步对象中维护 C/P、catch-up gate 与 failure；authority fault
+  后仍允许已经入队的 committed prefix 前进 P，但 failure 优先于新的 Human prompt。
+- `FirstBoardPresentationLoop` 从 genesis 维护私有 replay world，完整 scratch-fold/validate 一个 batch
+  后才输出并 ack；正常运行中每个 visible cue/overlay 完成 pacing 后才推进 P。
+- `PresentationGatedHumanPlayerDriver` 捕获 request 产生时的 C，只在 P 追平后显示
+  `DecisionRequest`；解析错误和不在 affordance 内的输入原地重问。
+- `TerminalUi` 显示观察到的出口、目的地、预计时长、可用性、当前 action affordances 和全部候选
+  ID，因此 Human 不需要查看 objective world 或源码才能输入合法命令。
+- `DemoLlmComposition` 只为实际 AI Actor 创建 LLM driver、MemoryBank 和 backend；Human 侧配置保留
+  在 manifest 中作为声明，但不会实例化或调用。
+- `Program` 现在只做 composition、Ctrl+C/timeout、最终 artifacts 与资源释放；all-AI 和 Human+AI
+  都走同一个 LiveSession。
+
+取消采用“完整输出、取消 pacing、快速排空”的终止语义：已经提交的所有 cues/overlays 仍被输出，
+然后 P 才 ack；剩余人为 delay 被跳过。Authority 取消前已经提交的 prefix 会被保存在 app-local
+`LiveSessionCanceledCapture` 中，生成状态为 `Canceled` 的局部 drama record 和带 result summary 的
+manifest。若模拟已完成、只在 memory flush 时取消，则保存完整 authoritative capture，并在 manifest
+中记录 `CanceledAfter<StepStatus>`。
+
+`src/Runtime` 继续延期的具体证据是：本批仍只有 FirstBoard.Demo 一个真实 consumer；
+`Task + Channel<CommittedTransition> + WorldVersion` 已通过完整并发轨迹，未发生跨游戏复制，也没有
+cursor range-read、durable presentation ack 或第二个 frontend 的现实需求。此时提取泛型程序集只会增加
+尚无调用者的生命周期与恢复 API。
+
+### 18.2 实际 Player / Developer 披露规则
+
+Player projector 对当前 FirstBoard 的 17 种 Game payload 和 9 种 Spatial payload 使用显式、穷尽检查的
+whitelist；新增而未分类的 payload 默认不可见，并由测试迫使后续设计者明确裁决。
+
+- Human 自己的行动、等待、观察、票券、目标、拒绝结果和新增 KnownFacts 可见。
+- 与 Human 同地点的 Actor 行动、松散 Object 变化、抵达与开箱可见；对话只在 Human 是说话者或
+  接收者时可见。
+- passage contact/open/resolution 只对精确参与者可见；Continue/Reverse 都使用 commit 后 world
+  描述实际结果。
+- passage entry access 只在 Human 位于其任一端点时可见；未来 scheduled patch 本身不泄露，生效后
+  才按端点可见性显示。Cellar seal 的 Game/Spatial facts 合并为一个主 cue。
+- 同一 atomic batch 内的 Game/Spatial 配套 facts 会合并，避免重复讲述 travel、object move、contact
+  和 reversal。
+- 远方私有观察、KnownFact、行动和 passage 状态不显示，但 batch 仍完整 fold 并推进 P；跨越到更晚
+  ModelTime 时仍可产生不泄露远方事实的 `time.advance`。
+
+Developer mode 在上述 Player lane 之外显示每个 objective batch 的 WorldVersion、LogicalInstant、
+CauseKey、FactName/摘要以及当时 C/P/backlog。它不写回 Observation、MemoryBank、Journal 或
+Objective World。all-AI developer run 没有伪造 Human viewpoint，因此只显示 developer lane 与通用状态。
+
+### 18.3 测试与真实 smoke
+
+最终验证结果：
+
+```text
+dotnet restore DramaBoard.Local.slnx                  passed
+dotnet test DramaBoard.slnx                          448/448 passed
+dotnet test DramaBoard.Local.slnx                    472/472 passed
+dotnet test tests/FirstBoard.Demo.Tests              130/130 passed
+dotnet build src/FirstBoard.Demo                     0 warnings, 0 errors
+git diff --check                                     passed
+```
+
+其中项目级计数为 Kernel 95、Host 2、Protocol 33、Decision.Validation 31、Player 5、
+Player.Llm 31、Player.Agency 8、FirstBoard 61、FirstBoard.Demo 130、Spatial 52、
+Journal.Atelia 14、FirstBoard.Persistence 10。
+
+并发与可玩性证据包括：Authority ahead、AI backlog 排空后 buffering、Human future hidden、完整 batch
+后果、same-time ordinal、hidden fact、cancel-after-commit、fault-after-prefix、canceled prefix replay、
+Player privacy 和 real Kernel 最终 replay 等价。默认 genesis + seed 0 还形成了确定性的 4-batch
+passage encounter：Alice 与 controllable Bob 从道路两端进入，Human Alice 分别通过 Console command
+完成 Continue 与 Reverse；两条分支都验证 opened cue 在第二次 prompt 之前，resolved cue/事实在
+Kernel commit 之后。
+
+三次程序级 smoke 的可再现配置与结果：
+
+1. **Human Alice + real AI Bob**：`--human alice --presentation player
+   --presentation-interval-ms 100 --seed 0 --until-ms 0 --max-turns-per-actor 1`，Bob 使用本机 Codex
+   `gpt-5.6-luna/low`。Alice 输入 `wait 1000` 后，已提交的 `actor.wait-started` 在 Bob 二十余秒的真实
+   LLM 等待期间先播放，随后进入 buffering；最终 `BoundaryReached`、3 transitions、1 LLM turn，
+   record/turn trace/runtime profile/manifest 全部生成于 `artifacts/smoke-0003-human-ai`。
+2. **all-AI compatibility**：相同 seed/boundary，`--human none --presentation developer
+   --presentation-interval-ms 0`；最终 `BoundaryReached`、3 transitions、2 LLM turns，objective overlays
+   与全部 artifacts 生成于 `artifacts/smoke-0003-all-ai`。
+3. **真实 Console 取消**：Human prompt 正阻塞于 `Console.In.ReadLineAsync` 时发送 Ctrl+C；最终
+   `[status:canceled]`、进程正常退出，canceled manifest、局部 drama record、trace 与 profiler summary
+   生成于 `artifacts/smoke-0003-cancel-2`。
+
+`artifacts/` 按仓库规则忽略，不作为 source commit 的一部分。
+
+真实 LLM 行动具有非确定性，因此没有强迫一次 real-backend run 同时随机形成 passage encounter。
+验收把证据拆成“真实 LLM latency/resource/artifact smoke”与“real Kernel + controllable AI 的确定性
+Continue/Reverse 轨迹”；两者共同覆盖 UI-1，而不会为了测试操纵 LLM 输出或增加 initial-world seam。
+
+### 18.4 实施中发现并修正的 failure traces
+
+首次 Ctrl+C smoke 在当前 Windows PTY 中使 `ReadLineAsync` 先返回 EOF，`CancelKeyPress` 尚未来得及
+设置 token，旧实现因此抛出 `EndOfStreamException` 并把 run 标为 failed。实际修正是把 Human 输入
+结束建模为 app-local `HumanSessionExitException`，由 LiveSession 转换成带 committed capture 的 clean
+cancellation；随后同一 smoke 通过。没有为此引入后台输入线程、mailbox 或公共 Protocol 类型。
+
+独立收尾审查还发现两个取消相关的窄问题并已修正：一是不能为了快速取消而跳过 committed cues 后
+直接 ack P；现在只取消 pacing，完整输出保持 CUR-2。二是模拟完成后 memory flush 被取消时也必须保留
+完整 capture，而不能写一个声称“尚无 prefix”的空 manifest。最终 reviewer 未留下 blocking/high finding。
+
+### 18.5 提交记录
+
+本批 source commits：
+
+```text
+d85eab2 feat(demo): add live session coordination
+6cf74ce feat(demo): publish live authority commits
+0e5b3a5 feat(demo): configure live playback
+18d4650 refactor(demo): compose only active AI players
+c5110b0 feat(demo): gate human decisions on playback
+50fb1ca feat(demo): project committed history for humans
+ff04122 feat(demo): replay committed presentation history
+79d7c82 docs(demo): describe live player roster
+97b56ff feat(demo): run live human sessions
+6ccf3f9 fix(demo): make live sessions playable and cancelable
+2a27320 fix(demo): preserve live session cancellation
+```
+
+本文的验收回写由其后的 documentation commit 完成。
