@@ -76,6 +76,21 @@ public sealed class LiveSessionCoordinationTests
     }
 
     [Fact]
+    public async Task FailureWinsOverAnAlreadyCaughtUpPresentationWait()
+    {
+        var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));
+        var expected = new ArithmeticException("terminal failed while caught up");
+        coordination.Fail(expected);
+
+        ArithmeticException actual = await Assert.ThrowsAsync<ArithmeticException>(async () =>
+            await coordination.WaitUntilPresentedAsync(
+                new WorldVersion(17, 0),
+                CancellationToken.None));
+
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
     public async Task WaitCanBeCanceledWithoutPoisoningFutureWaiters()
     {
         var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));

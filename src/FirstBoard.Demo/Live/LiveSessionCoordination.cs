@@ -108,12 +108,13 @@ internal sealed class LiveSessionCoordination
                         "Cannot await a presentation prefix that is not committed.");
                 }
 
-                if (_presented.TransitionCount >= target.TransitionCount)
+                failure = _failure;
+                if (failure is null &&
+                    _presented.TransitionCount >= target.TransitionCount)
                 {
                     return;
                 }
 
-                failure = _failure;
                 changed = _presentationChanged.Task;
             }
 

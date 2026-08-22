@@ -55,8 +55,7 @@ internal sealed class PresentationGatedHumanPlayerDriver : IPlayerDriver
                 cancellationToken.ThrowIfCancellationRequested();
                 if (command is null)
                 {
-                    throw new EndOfStreamException(
-                        "Human input ended while a decision was pending.");
+                    throw new HumanSessionExitException();
                 }
 
                 if (string.Equals(command.Trim(), "help", StringComparison.OrdinalIgnoreCase))
@@ -120,4 +119,12 @@ internal sealed class PresentationGatedHumanPlayerDriver : IPlayerDriver
 
     private ValueTask ShowErrorAsync(string message, CancellationToken cancellationToken) =>
         _terminal.ShowInputErrorAsync(message, cancellationToken);
+}
+
+internal sealed class HumanSessionExitException : OperationCanceledException
+{
+    public HumanSessionExitException()
+        : base("Human input ended; the live session should exit cleanly.")
+    {
+    }
 }

@@ -105,7 +105,8 @@ internal static class LiveSession
                     terminalError.Message);
             await TryReportFailureStatusAsync(terminal, status).ConfigureAwait(false);
             if (terminalError is OperationCanceledException canceled &&
-                cancellationToken.IsCancellationRequested)
+                (cancellationToken.IsCancellationRequested ||
+                    terminalError is HumanSessionExitException))
             {
                 LiveFrontierSnapshot canceledFrontiers = coordination.Snapshot();
                 if (canceledFrontiers.Presented != kernel.Version)

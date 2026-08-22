@@ -265,6 +265,32 @@ public sealed class LiveSessionTests
             ReplayCanceledSnapshot(instance, canceled.Capture));
     }
 
+    [Fact]
+    public async Task HumanEndOfInputReturnsCanceledCaptureWithoutExternalCancellation()
+    {
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 0);
+        var terminal = new FakeTerminalUi();
+        Task<BoardRunCapture> run = LiveSession.RunAsync(
+            instance,
+            Drivers((BoardIds.Bob, new NullPlayerDriver())),
+            BoardIds.Alice,
+            PresentationMode.Player,
+            terminal,
+            new FixedIntervalPresentationPacer(TimeSpan.Zero),
+            ModelTime.Zero,
+            CancellationToken.None);
+
+        await terminal.WaitForPromptCountAsync(1);
+        DecisionRequest prompt = Assert.Single(terminal.Prompts);
+        await terminal.WaitForActiveReadAsync(prompt.DecisionId);
+        Assert.True(terminal.TrySubmit(prompt.DecisionId, command: null));
+
+        LiveSessionCanceledException canceled =
+            await Assert.ThrowsAsync<LiveSessionCanceledException>(async () => await run);
+        Assert.Empty(canceled.Capture.Journal.Batches);
+        Assert.Equal(TerminalStatusKind.Canceled, terminal.Statuses[^1].Kind);
+    }
+
     private static ulong FindFirstDecisionActorSeed(string expectedActorId)
     {
         IReadOnlyDictionary<string, IPlayerDriver> drivers = Drivers(

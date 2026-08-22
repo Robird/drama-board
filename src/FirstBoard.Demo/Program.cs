@@ -37,10 +37,11 @@ try
                 scenarioInstance,
                 profiler,
                 traceSink);
+        BoardRunCapture? completedCapture = null;
         try
         {
             var terminal = new TerminalUi();
-            BoardRunCapture capture = await LiveSession.RunAsync(
+            completedCapture = await LiveSession.RunAsync(
                 scenarioInstance,
                 llmComposition.AiDrivers,
                 options.HumanActorId,
@@ -53,22 +54,21 @@ try
             string recordPath = DramaRecordWriter.Write(
                 options,
                 scenarioInstance,
-                capture,
+                completedCapture,
                 traceSink.Traces,
                 llmComposition.ForcedSceneEndCount);
             manifest.Complete(
-                capture,
+                completedCapture,
                 traceSink.Traces.Count,
                 llmComposition.ForcedSceneEndCount);
 
             Console.WriteLine(
-                $"Completed: {capture.Result.Status}; " +
-                $"transitions={capture.Journal.Batches.Count}; " +
+                $"Completed: {completedCapture.Result.Status}; " +
+                $"transitions={completedCapture.Journal.Batches.Count}; " +
                 $"llmTurns={traceSink.Traces.Count}");
             Console.WriteLine($"Drama record: {recordPath}");
         }
         catch (LiveSessionCanceledException exception)
-            when (overallTimeout.IsCancellationRequested)
         {
             string recordPath = DramaRecordWriter.WriteCanceled(
                 options,
@@ -84,6 +84,23 @@ try
                 $"Live session canceled cleanly after " +
                 $"{exception.Capture.Journal.Batches.Count} committed transitions.");
             Console.WriteLine($"Partial drama record: {recordPath}");
+        }
+        catch (OperationCanceledException)
+            when (overallTimeout.IsCancellationRequested && completedCapture is not null)
+        {
+            string recordPath = DramaRecordWriter.Write(
+                options,
+                scenarioInstance,
+                completedCapture,
+                traceSink.Traces,
+                llmComposition.ForcedSceneEndCount);
+            manifest.Cancel(
+                completedCapture,
+                traceSink.Traces.Count,
+                llmComposition.ForcedSceneEndCount);
+            Console.WriteLine(
+                "Simulation completed, but cancellation interrupted final memory cleanup.");
+            Console.WriteLine($"Authoritative drama record: {recordPath}");
         }
     }
     catch (OperationCanceledException) when (overallTimeout.IsCancellationRequested)

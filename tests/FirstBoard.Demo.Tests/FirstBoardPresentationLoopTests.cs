@@ -199,7 +199,7 @@ public sealed class FirstBoardPresentationLoopTests
     }
 
     [Fact]
-    public async Task CancellationSkipsRemainingPacingButStillDrainsAndAcknowledgesCommittedPrefix()
+    public async Task CancellationSkipsRemainingPacingButStillOutputsAndAcknowledgesCommittedPrefix()
     {
         PresentationHarness harness = CreateHarness(PresentationMode.Player, BoardIds.Alice);
         CommittedTransition first = Transition(
@@ -226,7 +226,9 @@ public sealed class FirstBoardPresentationLoopTests
         Assert.Equal(
             ExpectedWorld(harness, first, second),
             FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
-        Assert.Single(harness.Terminal.Cues);
+        Assert.Equal(
+            ["actor.wait-started", "actor.waited"],
+            harness.Terminal.Cues.Select(cue => cue.Code));
     }
 
     private static PresentationHarness CreateHarness(

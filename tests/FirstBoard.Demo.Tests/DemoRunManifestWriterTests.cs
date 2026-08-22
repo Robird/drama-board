@@ -149,6 +149,33 @@ public sealed class DemoRunManifestWriterTests
         Assert.Equal(2, result.GetProperty("llmTurnCount").GetInt32());
     }
 
+    [Fact]
+    public void CancellationAfterSimulationCompletionPreservesItsResultSummary()
+    {
+        using var output = new TempOutputDirectory();
+        DemoOptions options = DemoOptions.Parse(["--output", output.Path]);
+        var scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
+        var manifest = new DemoRunManifestWriter(output.Path, options, scenario);
+        FirstBoardWorld initial = scenario.CreateInitialWorld();
+        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var result = new DramaBoard.Host.HostRunResult<FirstBoardWorld>(
+            initial,
+            new WorldVersion(FirstBoardScenario.LineageId, 0),
+            initial.Now,
+            StepStatus.BoundaryReached,
+            CommittedTransitionCount: 0);
+
+        manifest.Cancel(
+            new BoardRunCapture(initial, result, journal),
+            llmTurnCount: 1,
+            forcedSceneEndCount: 0);
+
+        using JsonDocument document = output.ReadManifest();
+        JsonElement summary = document.RootElement.GetProperty("result");
+        Assert.Equal("CanceledAfterBoundaryReached", summary.GetProperty("status").GetString());
+        Assert.Equal(0, summary.GetProperty("worldTransitionCount").GetInt32());
+    }
+
     private static string ConfigurationHash(DemoOptions options)
     {
         using var output = new TempOutputDirectory();

@@ -109,6 +109,25 @@ public sealed class PresentationGatedHumanPlayerDriverTests
     }
 
     [Fact]
+    public async Task EndOfInputRequestsCleanSessionExitAndClearsPendingRead()
+    {
+        var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));
+        var terminal = new FakeTerminalUi();
+        var driver = new PresentationGatedHumanPlayerDriver(coordination, terminal);
+        DecisionRequest request = Request(
+            "decision.alice.exit",
+            new Intent(ActionKinds.Observe));
+
+        ValueTask<PlayerDecision> pending = driver.DecideAsync(request, CancellationToken.None);
+        await terminal.WaitForPromptCountAsync(1);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
+        Assert.True(terminal.TrySubmit(request.DecisionId, command: null));
+
+        await Assert.ThrowsAsync<HumanSessionExitException>(async () => await pending);
+        Assert.False(terminal.TrySubmit(request.DecisionId, "observe"));
+    }
+
+    [Fact]
     public async Task CancellationClearsPendingReadAndLateInputCannotEnterNextRequest()
     {
         var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));

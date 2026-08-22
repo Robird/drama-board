@@ -77,6 +77,20 @@ internal sealed class DemoRunManifestWriter
                 forcedSceneEndCount),
             errorType: null);
 
+    public void Cancel(
+        BoardRunCapture capture,
+        int llmTurnCount,
+        int forcedSceneEndCount) =>
+        Write(
+            "canceled",
+            new RunResultManifest(
+                $"CanceledAfter{capture.Result.Status}",
+                capture.Result.CurrentModelTime.Ticks,
+                capture.Journal.Batches.Count,
+                llmTurnCount,
+                forcedSceneEndCount),
+            errorType: null);
+
     private void Write(string status, RunResultManifest? result, string? errorType)
     {
         (string? gitCommit, bool? gitDirty) = ReadGitState();

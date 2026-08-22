@@ -159,42 +159,34 @@ internal sealed class FirstBoardPresentationLoop
             postWorld);
         PresentationCue? intervalCue = CreateIntervalCue(transition.Batch.Instant);
 
-        try
+        if (intervalCue is not null)
         {
-            if (intervalCue is not null)
-            {
-                await PlayCueAsync(intervalCue, cancellationToken).ConfigureAwait(false);
-            }
+            await PlayCueAsync(intervalCue, cancellationToken).ConfigureAwait(false);
+        }
 
-            if (_humanActorId is not null)
+        if (_humanActorId is not null)
+        {
+            foreach (PresentationCue cue in projection.PlayerCues)
             {
-                foreach (PresentationCue cue in projection.PlayerCues)
-                {
-                    await PlayCueAsync(cue, cancellationToken).ConfigureAwait(false);
-                }
-            }
-
-            if (_mode == PresentationMode.Developer)
-            {
-                LiveFrontierSnapshot current = _coordination.Snapshot();
-                await PlayOverlayAsync(
-                        new DeveloperOverlay(
-                            "developer.frontiers",
-                            $"C={FormatVersion(current.Committed)} " +
-                            $"P={FormatVersion(current.Presented)} " +
-                            $"backlog={current.BacklogCount}"),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                foreach (DeveloperOverlay overlay in projection.DeveloperOverlays)
-                {
-                    await PlayOverlayAsync(overlay, cancellationToken).ConfigureAwait(false);
-                }
+                await PlayCueAsync(cue, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+        if (_mode == PresentationMode.Developer)
         {
-            // A canceled UI session skips remaining effects and pacing, but this immutable
-            // committed transition is still folded and acknowledged below.
+            LiveFrontierSnapshot current = _coordination.Snapshot();
+            await PlayOverlayAsync(
+                    new DeveloperOverlay(
+                        "developer.frontiers",
+                        $"C={FormatVersion(current.Committed)} " +
+                        $"P={FormatVersion(current.Presented)} " +
+                        $"backlog={current.BacklogCount}"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            foreach (DeveloperOverlay overlay in projection.DeveloperOverlays)
+            {
+                await PlayOverlayAsync(overlay, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         _replayWorld = postWorld;
@@ -241,18 +233,66 @@ internal sealed class FirstBoardPresentationLoop
         PresentationCue cue,
         CancellationToken cancellationToken)
     {
-        await _terminal.ShowCueAsync(cue, cancellationToken).ConfigureAwait(false);
-        await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
+        await ShowCueForDrainAsync(cue, cancellationToken).ConfigureAwait(false);
+        await PaceUnlessCanceledAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask PlayOverlayAsync(
         DeveloperOverlay overlay,
         CancellationToken cancellationToken)
     {
-        await _terminal
-            .ShowDeveloperOverlayAsync(overlay, cancellationToken)
-            .ConfigureAwait(false);
-        await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
+        await ShowOverlayForDrainAsync(overlay, cancellationToken).ConfigureAwait(false);
+        await PaceUnlessCanceledAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask ShowCueForDrainAsync(
+        PresentationCue cue,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _terminal.ShowCueAsync(cue, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await _terminal.ShowCueAsync(cue, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ShowOverlayForDrainAsync(
+        DeveloperOverlay overlay,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _terminal
+                .ShowDeveloperOverlayAsync(overlay, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await _terminal
+                .ShowDeveloperOverlayAsync(overlay, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask PaceUnlessCanceledAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Cancellation removes only presentation delay. Every committed cue is still
+            // emitted before its batch advances P.
+        }
     }
 
     private static string FormatVersion(WorldVersion version) =>
