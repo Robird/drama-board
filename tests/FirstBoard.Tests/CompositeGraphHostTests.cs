@@ -115,7 +115,7 @@ public sealed class CompositeGraphHostTests
         Assert.DoesNotContain(kernel.World.Objects, item => item.Key == BoardIds.SilverCoinOne);
         TraversingLocation traversal = AssertTraversing(kernel.World, BoardIds.Alice);
         Assert.Equal(new PassageId(BoardIds.TavernMarketFerry), traversal.PassageId);
-        Assert.Equal(new PlaceId(BoardIds.Market), traversal.ToPlaceId);
+        Assert.Equal(new PlaceId(BoardIds.Market), traversal.TargetPlaceId);
         Assert.Null(kernel.World.Actor(BoardIds.Alice).Activity);
         Assert.Single(alice.Requests);
     }

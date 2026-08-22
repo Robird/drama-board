@@ -27,6 +27,18 @@ public sealed record DeadlineCandidate : BoardCandidate;
 
 public sealed record SpatialBoardCandidate(SpatialOccurrenceData Value) : BoardCandidate;
 
+public sealed record PassageEncounterOpeningCandidate(
+    PassageContactOccurrenceData Value) : BoardCandidate;
+
+public sealed record PassageEncounterResponseCandidate(
+    PassageContactKey ContactKey,
+    string RespondingActorId,
+    long ActorGeneration,
+    long NextDecisionSequence) : BoardCandidate;
+
+public sealed record PassageEncounterCleanupCandidate(
+    PassageContactKey ContactKey) : BoardCandidate;
+
 public sealed class DecisionPointRule :
     IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
 {
@@ -52,6 +64,7 @@ public sealed class DecisionPointRule :
         SimulationRules rules) =>
         [
             .. world.Actors
+                .Where(actor => _drivers.ContainsKey(actor.Key))
                 .Where(world.IsReadyForDecision)
                 .OrderBy(actor => actor.Id)
                 .Select(actor => new OccurrenceCandidate<BoardCandidate>(
@@ -705,7 +718,8 @@ public sealed class TravelGoalRule :
         var candidates = new List<OccurrenceCandidate<BoardCandidate>>();
         foreach (BoardActor actor in world.Actors.OrderBy(value => value.Id))
         {
-            if (actor.Activity is not null ||
+            if (world.IsPendingEncounterParticipant(actor) ||
+                actor.Activity is not null ||
                 actor.TravelGoalPlaceId is not PlaceId destination ||
                 !world.Spatial.TryGetEntity(new EntityId(actor.Key), out SpatialEntity? entity) ||
                 entity!.Location is not AtPlaceLocation atPlace)
@@ -741,7 +755,8 @@ public sealed class TravelGoalRule :
         }
 
         BoardActor actor = world.Actor(goal.ActorId);
-        if (actor.Activity is not null ||
+        if (world.IsPendingEncounterParticipant(actor) ||
+            actor.Activity is not null ||
             actor.TravelGoalPlaceId != goal.DestinationPlaceId ||
             actor.Generation != goal.ActorGeneration ||
             !world.Spatial.TryGetEntity(new EntityId(actor.Key), out SpatialEntity? entity) ||
@@ -978,5 +993,343 @@ public sealed class SpatialHostOccurrenceRule :
             cancellationToken);
         return new TransitionDraft<FirstBoardFact>(
             innerDraft.Facts.Select(fact => new SpatialBoardFact(fact)));
+    }
+}
+
+/// <summary>
+/// Lifts one objective Spatial contact into an atomic FirstBoard encounter opening.
+/// </summary>
+public sealed class FirstBoardPassageEncounterRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
+{
+    private readonly SpatialContactOccurrenceRule _inner;
+    private readonly IReadOnlySet<string> _driverActorIds;
+
+    public FirstBoardPassageEncounterRule(
+        GraphDefinition definition,
+        IReadOnlyDictionary<string, IPlayerDriver> drivers)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(drivers);
+        _inner = new SpatialContactOccurrenceRule(definition);
+        _driverActorIds = drivers.Keys.ToHashSet(StringComparer.Ordinal);
+    }
+
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
+        FirstBoardWorld world,
+        SimulationRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(rules);
+        if (world.Game.PendingEncounter is not null)
+        {
+            return [];
+        }
+
+        return Array.AsReadOnly(
+        [
+            .. _inner.Forecast(world.Spatial, rules)
+                .Where(candidate => IsEligible(world, candidate.Data.ContactKey))
+                .Select(candidate => new OccurrenceCandidate<BoardCandidate>(
+                    candidate.Key,
+                    candidate.Due,
+                    new PassageEncounterOpeningCandidate(candidate.Data))),
+        ]);
+    }
+
+    public async ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(winner);
+        if (winner.Data is not PassageEncounterOpeningCandidate opening ||
+            opening.Value is null)
+        {
+            throw new InvalidOperationException(
+                "The passage encounter opening rule received another rule's candidate.");
+        }
+
+        if (world.Game.PendingEncounter is not null ||
+            !IsEligible(world, opening.Value.ContactKey))
+        {
+            throw new InvalidOperationException(
+                "The selected passage encounter opening is no longer eligible.");
+        }
+
+        var innerWinner = new OccurrenceCandidate<PassageContactOccurrenceData>(
+            winner.Key,
+            winner.Due,
+            opening.Value);
+        TransitionDraft<GraphSpatialFact> innerDraft = await _inner.PlanSelectedAsync(
+            world.Spatial,
+            innerWinner,
+            cancellationToken);
+        FirstBoardFact[] facts =
+        [
+            .. innerDraft.Facts.Select(fact => new SpatialBoardFact(fact)),
+            new GameBoardFact(new PassageEncounterOpenedEvent(
+                opening.Value.ContactKey,
+                opening.Value.Kind)),
+        ];
+        return new TransitionDraft<FirstBoardFact>(facts);
+    }
+
+    private bool IsEligible(FirstBoardWorld world, PassageContactKey key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        bool entityAIsActor = world.Actors.Any(actor =>
+            StringComparer.Ordinal.Equals(actor.Key, key.EntityA.Value));
+        bool entityBIsActor = world.Actors.Any(actor =>
+            StringComparer.Ordinal.Equals(actor.Key, key.EntityB.Value));
+        return entityAIsActor &&
+            entityBIsActor &&
+            (_driverActorIds.Contains(key.EntityA.Value) ||
+                _driverActorIds.Contains(key.EntityB.Value));
+    }
+}
+
+/// <summary>Requests one Player response or clears a passage encounter invalidated by world change.</summary>
+public sealed class FirstBoardPassageEncounterResponseRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
+{
+    private readonly IReadOnlyDictionary<string, IPlayerDriver> _drivers;
+    private readonly GraphDefinition _definition;
+    private readonly SpatialPlanner _spatialPlanner;
+
+    public FirstBoardPassageEncounterResponseRule(
+        GraphDefinition definition,
+        IReadOnlyDictionary<string, IPlayerDriver> drivers)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(drivers);
+        _drivers = new Dictionary<string, IPlayerDriver>(drivers, StringComparer.Ordinal);
+        _definition = definition;
+        _spatialPlanner = new SpatialPlanner(definition);
+    }
+
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
+        FirstBoardWorld world,
+        SimulationRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(rules);
+        PendingPassageEncounter? pending = world.Game.PendingEncounter;
+        if (pending is null)
+        {
+            return [];
+        }
+
+        if (!IsCurrent(world, pending.ContactKey))
+        {
+            return
+            [
+                new OccurrenceCandidate<BoardCandidate>(
+                    CreateCleanupKey(pending.ContactKey),
+                    new CandidateDue(world.Now),
+                    new PassageEncounterCleanupCandidate(pending.ContactKey)),
+            ];
+        }
+
+        BoardActor[] responders =
+        [
+            .. world.Actors
+                .Where(actor => IsParticipant(pending.ContactKey, actor.Key))
+                .Where(actor => _drivers.ContainsKey(actor.Key))
+                .OrderBy(actor => actor.Id),
+        ];
+        if (responders.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "A current passage encounter has no registered Player responder.");
+        }
+
+        return Array.AsReadOnly(
+        [
+            .. responders.Select(actor =>
+            {
+                long nextDecisionSequence = checked(actor.DecisionSequence + 1);
+                var data = new PassageEncounterResponseCandidate(
+                    pending.ContactKey,
+                    actor.Key,
+                    actor.Generation,
+                    nextDecisionSequence);
+                return new OccurrenceCandidate<BoardCandidate>(
+                    CreateResponseKey(data),
+                    new CandidateDue(world.Now),
+                    data);
+            }),
+        ]);
+    }
+
+    public async ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(winner);
+        cancellationToken.ThrowIfCancellationRequested();
+        return winner.Data switch
+        {
+            PassageEncounterCleanupCandidate cleanup =>
+                PlanCleanup(world, winner, cleanup),
+            PassageEncounterResponseCandidate response =>
+                await PlanResponseAsync(world, winner, response, cancellationToken),
+            _ => throw new InvalidOperationException(
+                "The passage encounter response rule received another rule's candidate."),
+        };
+    }
+
+    private static TransitionDraft<FirstBoardFact> PlanCleanup(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        PassageEncounterCleanupCandidate cleanup)
+    {
+        PendingPassageEncounter? pending = world.Game.PendingEncounter;
+        if (cleanup.ContactKey is null ||
+            pending is null ||
+            pending.ContactKey != cleanup.ContactKey ||
+            IsCurrent(world, cleanup.ContactKey) ||
+            winner.Due.ModelTime != world.Now ||
+            winner.Key != CreateCleanupKey(cleanup.ContactKey))
+        {
+            throw new InvalidOperationException(
+                "The selected passage encounter cleanup is stale.");
+        }
+
+        return new TransitionDraft<FirstBoardFact>(
+        [
+            new GameBoardFact(new PassageEncounterResolvedEvent(
+                cleanup.ContactKey,
+                RespondingActorId: null,
+                PassageEncounterResolution.WorldChanged)),
+        ]);
+    }
+
+    private async ValueTask<TransitionDraft<FirstBoardFact>> PlanResponseAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        PassageEncounterResponseCandidate response,
+        CancellationToken cancellationToken)
+    {
+        PendingPassageEncounter? pending = world.Game.PendingEncounter;
+        if (response.ContactKey is null ||
+            pending is null ||
+            pending.ContactKey != response.ContactKey ||
+            !IsCurrent(world, response.ContactKey) ||
+            !IsParticipant(response.ContactKey, response.RespondingActorId) ||
+            winner.Due.ModelTime != world.Now)
+        {
+            throw new InvalidOperationException(
+                "The selected passage encounter response is stale.");
+        }
+
+        BoardActor actor = world.Actor(response.RespondingActorId);
+        long nextDecisionSequence = checked(actor.DecisionSequence + 1);
+        if (actor.Generation != response.ActorGeneration ||
+            nextDecisionSequence != response.NextDecisionSequence ||
+            winner.Key != CreateResponseKey(response) ||
+            !_drivers.TryGetValue(actor.Key, out IPlayerDriver? driver))
+        {
+            throw new InvalidOperationException(
+                "The selected passage encounter response does not match its responder.");
+        }
+
+        SpatialPlanResult reversePlan = _spatialPlanner.TryReverseTraversal(
+            world.Spatial,
+            new EntityId(actor.Key),
+            world.Now);
+        SpatialPlanAccepted? acceptedReverse = reversePlan as SpatialPlanAccepted;
+        DecisionRequest request = FirstBoardScenario.BuildPassageEncounterRequest(
+            _definition,
+            world,
+            actor,
+            pending,
+            world.Now,
+            canReverse: acceptedReverse is not null);
+        PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
+            ?? throw new InvalidOperationException("A Player driver returned null.");
+        PlayerDecisionValidationResult validation = PlayerDecisionValidator.Validate(decision, request);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(validation.Message);
+        }
+
+        if (decision.Intent.ActionKind == ActionKinds.ContinueTravel)
+        {
+            return new TransitionDraft<FirstBoardFact>(
+            [
+                new GameBoardFact(new PassageEncounterResolvedEvent(
+                    response.ContactKey,
+                    actor.Key,
+                    PassageEncounterResolution.Continued)),
+            ]);
+        }
+
+        if (decision.Intent.ActionKind != ActionKinds.ReverseTravel || acceptedReverse is null)
+        {
+            throw new InvalidOperationException(
+                "The validated passage encounter response is not supported by the Host.");
+        }
+
+        FirstBoardFact[] facts =
+        [
+            new GameBoardFact(new PassageEncounterResolvedEvent(
+                response.ContactKey,
+                actor.Key,
+                PassageEncounterResolution.Reversed)),
+            .. acceptedReverse.Facts.Select(fact => new SpatialBoardFact(fact)),
+        ];
+        return new TransitionDraft<FirstBoardFact>(facts);
+    }
+
+    private static bool IsCurrent(FirstBoardWorld world, PassageContactKey key) =>
+        world.Spatial.ConsumedContacts.Contains(key);
+
+    private static bool IsParticipant(PassageContactKey key, string actorId) =>
+        key.EntityA == new EntityId(actorId) || key.EntityB == new EntityId(actorId);
+
+    private static CandidateKey CreateResponseKey(PassageEncounterResponseCandidate response)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue("firstboard/passage-encounter-response");
+            WriteContactKey(writer, response.ContactKey);
+            writer.WriteStringValue(response.RespondingActorId);
+            writer.WriteNumberValue(response.ActorGeneration);
+            writer.WriteNumberValue(response.NextDecisionSequence);
+            writer.WriteEndArray();
+        }
+
+        return CandidateKey.FromBytes(stream.ToArray());
+    }
+
+    private static CandidateKey CreateCleanupKey(PassageContactKey contactKey)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue("firstboard/passage-encounter-response");
+            WriteContactKey(writer, contactKey);
+            writer.WriteStringValue("world-changed");
+            writer.WriteEndArray();
+        }
+
+        return CandidateKey.FromBytes(stream.ToArray());
+    }
+
+    private static void WriteContactKey(Utf8JsonWriter writer, PassageContactKey contactKey)
+    {
+        ArgumentNullException.ThrowIfNull(contactKey);
+        writer.WriteStringValue(contactKey.PassageId.Value);
+        writer.WriteStringValue(contactKey.EntityA.Value);
+        writer.WriteNumberValue(contactKey.MovementGenerationA);
+        writer.WriteStringValue(contactKey.EntityB.Value);
+        writer.WriteNumberValue(contactKey.MovementGenerationB);
     }
 }

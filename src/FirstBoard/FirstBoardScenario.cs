@@ -54,6 +54,8 @@ public static class FirstBoardScenario
                     instance.Definition.CellarDeadlineMs),
                 new ActivityCompletionRule(),
                 new SpatialHostOccurrenceRule(instance.Graph),
+                new FirstBoardPassageEncounterRule(instance.Graph, drivers),
+                new FirstBoardPassageEncounterResponseRule(instance.Graph, drivers),
                 new TravelGoalRule(instance, knowledgeGetter),
                 new DecisionPointRule(drivers, instance, knowledgeGetter),
             ],
@@ -135,6 +137,99 @@ public static class FirstBoardScenario
             AvailableActions(instance, world, actor, placeId, exits, knowledge));
     }
 
+    public static DecisionRequest BuildPassageEncounterRequest(
+        GraphDefinition definition,
+        FirstBoardWorld world,
+        BoardActor actor,
+        PendingPassageEncounter encounter,
+        ModelTime modelTime,
+        bool canReverse)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(encounter);
+        ArgumentNullException.ThrowIfNull(encounter.ContactKey);
+        var actorEntityId = new EntityId(actor.Key);
+        EntityId counterpartId = encounter.ContactKey.EntityA == actorEntityId
+            ? encounter.ContactKey.EntityB
+            : encounter.ContactKey.EntityB == actorEntityId
+                ? encounter.ContactKey.EntityA
+                : throw new InvalidOperationException(
+                    "The encounter request actor is not a contact participant.");
+        if (!world.Spatial.ConsumedContacts.Contains(encounter.ContactKey) ||
+            !world.Spatial.TryGetEntity(actorEntityId, out SpatialEntity? entity) ||
+            entity!.Location is not TraversingLocation traversal ||
+            traversal.PassageId != encounter.ContactKey.PassageId)
+        {
+            throw new InvalidOperationException(
+                "A passage encounter request requires the exact current contact segments.");
+        }
+
+        PassageDefinition passage = definition.GetPassage(traversal.PassageId);
+        PlaceId reverseDestination = traversal.TargetPlaceId == passage.EndpointA
+            ? passage.EndpointB
+            : traversal.TargetPlaceId == passage.EndpointB
+                ? passage.EndpointA
+                : throw new InvalidOperationException(
+                    "A passage encounter traversal target must be one of its passage endpoints.");
+
+        var knownFacts = new List<KnownFact>
+        {
+            new(
+                new FactKind(BoardIds.CurrentTravelTarget),
+                traversal.TargetPlaceId.Value,
+                $"You are currently traveling toward {traversal.TargetPlaceId.Value}."),
+            new(
+                new FactKind(BoardIds.CurrentTravelReverseDestination),
+                reverseDestination.Value,
+                $"Reversing would send you toward {reverseDestination.Value}."),
+            new(
+                new FactKind(BoardIds.CurrentTravelEta),
+                traversal.TargetPlaceId.Value,
+                $"Your expected arrival model time is {traversal.ArrivalDue.Ticks}ms."),
+            new(
+                new FactKind(BoardIds.PassageContactKindKnown),
+                counterpartId.Value,
+                $"You just encountered {counterpartId.Value}: {encounter.Kind}."),
+            new(
+                new FactKind(BoardIds.PassageContactCounterpart),
+                counterpartId.Value,
+                $"The other actor in this passage encounter is {counterpartId.Value}."),
+        };
+        if (actor.TravelGoalPlaceId is PlaceId goal)
+        {
+            knownFacts.Add(new KnownFact(
+                new FactKind(BoardIds.ActiveTravelGoal),
+                goal.Value,
+                $"Your delegated travel goal is {goal.Value}."));
+        }
+
+        var actions = new List<AvailableAction>
+        {
+            new(ActionKinds.ContinueTravel),
+        };
+        if (canReverse)
+        {
+            actions.Add(new AvailableAction(ActionKinds.ReverseTravel));
+        }
+
+        var observation = new Observation(
+            actor.Key,
+            encounter.ContactKey.PassageId.Value,
+            modelTime.Ticks,
+            Exits: [],
+            VisibleActorIds: [counterpartId.Value],
+            VisibleObjectIds: [],
+            KnownFacts: knownFacts);
+        return new DecisionRequest(
+            new DecisionId($"decision.{actor.Key}.{actor.DecisionSequence + 1}"),
+            actor.Key,
+            modelTime.Ticks,
+            observation,
+            actions);
+    }
+
     public static string WorldSnapshot(FirstBoardWorld world)
     {
         string actors = string.Join(
@@ -171,9 +266,16 @@ public static class FirstBoardScenario
             world.Spatial.ScheduledPassageEntryChanges.Select(value =>
                 $"{value.PassageId.Value}:{value.Due.Ticks}:" +
                 $"{value.Patch.EnterableFromA}:{value.Patch.EnterableFromB}"));
+        string consumedContacts = string.Join(
+            ";",
+            world.Spatial.ConsumedContacts.Select(ContactKeySnapshot));
+        string pending = world.Game.PendingEncounter is PendingPassageEncounter encounter
+            ? $"{ContactKeySnapshot(encounter.ContactKey)}:{encounter.Kind}"
+            : "-";
         return $"seed={world.WorldSeed};now={world.Now.Ticks};sealed={world.CellarSealed};" +
             $"chestOpened={world.ChestOpened};actors={actors};objects={objects};" +
-            $"entities={entities};overrides={overrides};schedules={schedules}";
+            $"entities={entities};overrides={overrides};schedules={schedules};" +
+            $"consumedContacts={consumedContacts};pendingEncounter={pending}";
     }
 
     public static string[] EventSnapshots(InMemoryJournal<FirstBoardFact> journal) =>
@@ -396,11 +498,15 @@ public static class FirstBoardScenario
         {
             AtPlaceLocation atPlace => $"place:{atPlace.PlaceId.Value}",
             TraversingLocation traversing =>
-                $"passage:{traversing.PassageId.Value}:{traversing.FromPlaceId.Value}:" +
-                $"{traversing.ToPlaceId.Value}:{traversing.StartedAt.Ticks}:" +
+                $"passage:{traversing.PassageId.Value}:{traversing.AnchorOffset}:" +
+                $"{traversing.AnchorTime.Ticks}:{traversing.TargetPlaceId.Value}:" +
                 $"{traversing.SpeedSnapshot}:{traversing.ArrivalDue.Ticks}",
             _ => throw new InvalidOperationException("Unknown Spatial location."),
         };
+
+    private static string ContactKeySnapshot(PassageContactKey key) =>
+        $"{key.PassageId.Value}:{key.EntityA.Value}:{key.MovementGenerationA}:" +
+        $"{key.EntityB.Value}:{key.MovementGenerationB}";
 
     private static string PayloadSummary(FirstBoardFact fact) => fact switch
     {
@@ -418,6 +524,11 @@ public static class FirstBoardScenario
         ActorTravelGoalResolvedEvent resolved =>
             $"actor={resolved.ActorId} destination={resolved.DestinationPlaceId.Value} " +
             $"resolution={resolved.Resolution}",
+        PassageEncounterOpenedEvent opened =>
+            $"contact={ContactKeySnapshot(opened.ContactKey)} kind={opened.Kind}",
+        PassageEncounterResolvedEvent resolved =>
+            $"contact={ContactKeySnapshot(resolved.ContactKey)} " +
+            $"responder={resolved.RespondingActorId ?? "-"} resolution={resolved.Resolution}",
         TicketConsumedEvent consumed =>
             $"actor={consumed.ActorId} ticket={consumed.TicketObjectId}",
         ActorWaitStartedEvent waited =>
@@ -453,6 +564,10 @@ public static class FirstBoardScenario
         TraversalStartedFact started =>
             $"entity={started.EntityId.Value} passage={started.PassageId.Value} " +
             $"from={started.FromPlaceId.Value} speed={started.SpeedSnapshot}",
+        TraversalReversedFact reversed =>
+            $"entity={reversed.EntityId.Value} generation={reversed.ExpectedMovementGeneration}",
+        PassageContactOccurredFact contact =>
+            $"contact={ContactKeySnapshot(contact.ContactKey)} kind={contact.Kind}",
         TraversalArrivedFact arrived =>
             $"entity={arrived.EntityId.Value} generation={arrived.ExpectedMovementGeneration}",
         PassageEntryAccessChangedFact changed =>
@@ -470,6 +585,8 @@ public static class FirstBoardScenario
         ActorTravelStartedEvent => "actor.travel-started",
         ActorTravelGoalSetEvent => "actor.travel-goal-set",
         ActorTravelGoalResolvedEvent => "actor.travel-goal-resolved",
+        PassageEncounterOpenedEvent => "passage-encounter.opened",
+        PassageEncounterResolvedEvent => "passage-encounter.resolved",
         TicketConsumedEvent => "ticket.consumed",
         ActorWaitStartedEvent => "actor.wait-started",
         ActorWaitedEvent => "actor.waited",
@@ -490,6 +607,8 @@ public static class FirstBoardScenario
         EntityPlacedFact => "spatial.entity-placed",
         EntityRemovedFact => "spatial.entity-removed",
         TraversalStartedFact => "spatial.traversal-started",
+        TraversalReversedFact => "spatial.traversal-reversed",
+        PassageContactOccurredFact => "spatial.passage-contact-occurred",
         TraversalArrivedFact => "spatial.traversal-arrived",
         PassageEntryAccessChangedFact => "spatial.passage-entry-access-changed",
         PassageEntryChangeScheduledFact => "spatial.passage-entry-change-scheduled",

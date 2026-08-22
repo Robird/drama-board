@@ -38,6 +38,12 @@ public static class BoardIds
     public const string DialogueHeard = "dialogue.heard";
     public const string LastActionOutcome = "action.last-outcome";
     public const string ActionRejected = "action.rejected";
+    public const string CurrentTravelTarget = "travel.current-target";
+    public const string CurrentTravelReverseDestination = "travel.current-reverse-destination";
+    public const string CurrentTravelEta = "travel.arrival-eta";
+    public const string PassageContactKindKnown = "passage.contact-kind";
+    public const string PassageContactCounterpart = "passage.contact-counterpart";
+    public const string ActiveTravelGoal = "travel.active-goal";
 }
 
 public static class BoardTiming
@@ -66,6 +72,10 @@ public sealed record BoardObject(
     string Key,
     long? OwnerActorId);
 
+public sealed record PendingPassageEncounter(
+    PassageContactKey ContactKey,
+    PassageContactKind Kind);
+
 public sealed record FirstBoardGameState(
     ulong WorldSeed,
     long NextPersistentId,
@@ -73,7 +83,8 @@ public sealed record FirstBoardGameState(
     IReadOnlyList<BoardActor> Actors,
     IReadOnlyList<BoardObject> Objects,
     bool CellarSealed,
-    bool ChestOpened)
+    bool ChestOpened,
+    PendingPassageEncounter? PendingEncounter = null)
 {
     public BoardActor Actor(string actorId) =>
         Actors.Single(actor => actor.Key == actorId);
@@ -127,7 +138,22 @@ public sealed record FirstBoardWorld(
     public bool IsReadyForDecision(BoardActor actor) =>
         Game.IsIdle(actor) &&
         actor.TravelGoalPlaceId is null &&
+        !IsPendingEncounterParticipant(actor) &&
         TryGetPlace(actor.Key, out _);
+
+    public bool IsPendingEncounterParticipant(BoardActor actor)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        PendingPassageEncounter? pending = Game.PendingEncounter;
+        if (pending is null)
+        {
+            return false;
+        }
+
+        var entityId = new EntityId(actor.Key);
+        return pending.ContactKey.EntityA == entityId ||
+            pending.ContactKey.EntityB == entityId;
+    }
 
     public bool AreCoLocated(string firstEntityId, string secondEntityId) =>
         TryGetPlace(firstEntityId, out PlaceId first) &&
@@ -157,6 +183,22 @@ public sealed record ActorTravelGoalResolvedEvent(
     string ActorId,
     PlaceId DestinationPlaceId,
     TravelGoalResolution Resolution) : BoardEventPayload;
+
+public sealed record PassageEncounterOpenedEvent(
+    PassageContactKey ContactKey,
+    PassageContactKind Kind) : BoardEventPayload;
+
+public enum PassageEncounterResolution
+{
+    Continued = 0,
+    Reversed = 1,
+    WorldChanged = 2,
+}
+
+public sealed record PassageEncounterResolvedEvent(
+    PassageContactKey ContactKey,
+    string? RespondingActorId,
+    PassageEncounterResolution Resolution) : BoardEventPayload;
 
 public sealed record TicketConsumedEvent(
     string ActorId,
@@ -302,6 +344,26 @@ public sealed class FirstBoardReducer
             }
         }
 
+        if (world.Game.PendingEncounter is PendingPassageEncounter pending)
+        {
+            ArgumentNullException.ThrowIfNull(pending.ContactKey);
+            if (!Enum.IsDefined(pending.Kind))
+            {
+                throw new InvalidOperationException(
+                    $"Unknown pending passage contact kind '{pending.Kind}'.");
+            }
+
+            var actorKeys = world.Actors
+                .Select(actor => actor.Key)
+                .ToHashSet(StringComparer.Ordinal);
+            if (!actorKeys.Contains(pending.ContactKey.EntityA.Value) ||
+                !actorKeys.Contains(pending.ContactKey.EntityB.Value))
+            {
+                throw new InvalidOperationException(
+                    "A pending passage encounter must reference two FirstBoard actors.");
+            }
+        }
+
         foreach (BoardObject item in world.Objects)
         {
             bool hasSpatialEntity = world.Spatial.TryGetEntity(new EntityId(item.Key), out _);
@@ -329,6 +391,10 @@ public sealed class FirstBoardReducer
                 ApplyTravelGoalSet(world, game, set),
             ActorTravelGoalResolvedEvent resolved =>
                 ApplyTravelGoalResolved(world, game, resolved),
+            PassageEncounterOpenedEvent opened =>
+                ApplyPassageEncounterOpened(world, game, opened),
+            PassageEncounterResolvedEvent resolved =>
+                ApplyPassageEncounterResolved(game, resolved),
             TicketConsumedEvent consumed =>
                 ConsumeTicket(game, consumed),
             ActorWaitStartedEvent waited =>
@@ -366,6 +432,109 @@ public sealed class FirstBoardReducer
             _ => throw new InvalidOperationException(
                 $"Unknown FirstBoard Game fact '{fact.GetType().Name}'."),
         };
+    }
+
+    private static FirstBoardGameState ApplyPassageEncounterOpened(
+        FirstBoardWorld world,
+        FirstBoardGameState game,
+        PassageEncounterOpenedEvent opened)
+    {
+        ArgumentNullException.ThrowIfNull(opened.ContactKey);
+        if (game.PendingEncounter is not null)
+        {
+            throw new InvalidOperationException(
+                "FirstBoard supports only one pending passage encounter.");
+        }
+
+        if (!Enum.IsDefined(opened.Kind))
+        {
+            throw new InvalidOperationException(
+                $"Unknown passage contact kind '{opened.Kind}'.");
+        }
+
+        if (!world.Spatial.ConsumedContacts.Contains(opened.ContactKey))
+        {
+            throw new InvalidOperationException(
+                "A passage encounter can open only after its Spatial contact was consumed.");
+        }
+
+        var actorKeys = game.Actors
+            .Select(actor => actor.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!actorKeys.Contains(opened.ContactKey.EntityA.Value) ||
+            !actorKeys.Contains(opened.ContactKey.EntityB.Value))
+        {
+            throw new InvalidOperationException(
+                "A passage encounter requires two FirstBoard actors.");
+        }
+
+        return game with
+        {
+            PendingEncounter = new PendingPassageEncounter(opened.ContactKey, opened.Kind),
+        };
+    }
+
+    private static FirstBoardGameState ApplyPassageEncounterResolved(
+        FirstBoardGameState game,
+        PassageEncounterResolvedEvent resolved)
+    {
+        ArgumentNullException.ThrowIfNull(resolved.ContactKey);
+        PendingPassageEncounter pending = game.PendingEncounter ??
+            throw new InvalidOperationException("There is no pending passage encounter to resolve.");
+        if (pending.ContactKey != resolved.ContactKey)
+        {
+            throw new InvalidOperationException(
+                "The passage encounter resolution does not match the pending contact.");
+        }
+
+        if (resolved.Resolution == PassageEncounterResolution.WorldChanged)
+        {
+            if (resolved.RespondingActorId is not null)
+            {
+                throw new InvalidOperationException(
+                    "A WorldChanged encounter resolution cannot name a responding actor.");
+            }
+
+            return game with { PendingEncounter = null };
+        }
+
+        if (resolved.Resolution is not (
+                PassageEncounterResolution.Continued or
+                PassageEncounterResolution.Reversed))
+        {
+            throw new InvalidOperationException(
+                $"Unknown passage encounter resolution '{resolved.Resolution}'.");
+        }
+
+        if (resolved.RespondingActorId is not string responderId)
+        {
+            throw new InvalidOperationException(
+                "A Player passage encounter resolution requires a responding actor.");
+        }
+
+        var responderEntityId = new EntityId(responderId);
+        if (pending.ContactKey.EntityA != responderEntityId &&
+            pending.ContactKey.EntityB != responderEntityId)
+        {
+            throw new InvalidOperationException(
+                $"Actor '{responderId}' is not a participant in the pending passage encounter.");
+        }
+
+        BoardActor responder = game.Actor(responderId);
+        FirstBoardGameState cleared = game with { PendingEncounter = null };
+        return UpdateActor(cleared, responder.Id, actor =>
+        {
+            BoardActor completed = CompleteDecision(actor);
+            if (resolved.Resolution == PassageEncounterResolution.Continued)
+            {
+                return completed;
+            }
+
+            return AddFacts(
+                completed with { TravelGoalPlaceId = null },
+                [LastOutcome(
+                    "Your delegated travel was interrupted when you reversed after a passage encounter.")]);
+        });
     }
 
     private FirstBoardGameState ApplyTravelGoalSet(

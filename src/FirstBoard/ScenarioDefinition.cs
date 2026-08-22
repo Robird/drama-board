@@ -130,7 +130,8 @@ public sealed record ScenarioDefinition(
             Array.AsReadOnly(actors),
             Array.AsReadOnly(objects),
             CellarSealed: false,
-            ChestOpened: false);
+            ChestOpened: false,
+            PendingEncounter: null);
         return new FirstBoardWorld(
             game,
             GraphSpatialState.Create(graph, placements));
