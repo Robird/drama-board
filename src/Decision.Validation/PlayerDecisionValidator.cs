@@ -79,6 +79,13 @@ public static class PlayerDecisionValidator
                 !string.Equals(intent.DestinationId, currentLocationId, StringComparison.Ordinal) &&
                 intent.DurationMs is null &&
                 intent.UntilModelTimeMs is null,
+            "action.continue-travel" or "action.reverse-travel" =>
+                intent.TargetActorId is null &&
+                intent.TargetObjectId is null &&
+                intent.ExitId is null &&
+                intent.DestinationId is null &&
+                intent.DurationMs is null &&
+                intent.UntilModelTimeMs is null,
             "action.talk" => intent.TargetActorId is not null,
             "action.take" or "action.put" or "action.use" => intent.TargetObjectId is not null,
             "action.give" or "action.show" =>

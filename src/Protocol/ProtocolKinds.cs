@@ -9,6 +9,12 @@ public static class ActionKinds
     /// <summary>Identifies delegated travel toward one advertised destination.</summary>
     public static ActionKind TravelTo { get; } = new("action.travel-to");
 
+    /// <summary>Identifies continuing the actor's current committed travel direction.</summary>
+    public static ActionKind ContinueTravel { get; } = new("action.continue-travel");
+
+    /// <summary>Identifies reversing the actor's current committed travel direction.</summary>
+    public static ActionKind ReverseTravel { get; } = new("action.reverse-travel");
+
     /// <summary>Identifies waiting for a duration or model time.</summary>
     public static ActionKind Wait { get; } = new("action.wait");
 

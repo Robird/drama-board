@@ -254,6 +254,81 @@ public sealed class PlayerDecisionValidatorTests
         Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
     }
 
+    public static TheoryData<ActionKind> EncounterResponseActionKinds => new()
+    {
+        ActionKinds.ContinueTravel,
+        ActionKinds.ReverseTravel,
+    };
+
+    [Theory]
+    [MemberData(nameof(EncounterResponseActionKinds))]
+    public void Validate_EncounterResponse_WithOptionalFreeText_IsValid(ActionKind actionKind)
+    {
+        DecisionRequest request = Request(
+            actions: [new AvailableAction(actionKind)]);
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(
+                request.DecisionId,
+                new Intent(actionKind, FreeText: "I have made my choice.")),
+            request);
+
+        Assert.True(result.IsValid, result.Message);
+    }
+
+    public static IEnumerable<object[]> EncounterResponsesWithForbiddenFields()
+    {
+        foreach (ActionKind actionKind in new[]
+                 {
+                     ActionKinds.ContinueTravel,
+                     ActionKinds.ReverseTravel,
+                 })
+        {
+            yield return [new Intent(actionKind, TargetActorId: "actor.bob")];
+            yield return [new Intent(actionKind, TargetObjectId: "object.map")];
+            yield return [new Intent(actionKind, ExitId: "exit.market.bridge")];
+            yield return [new Intent(actionKind, DestinationId: "place.market")];
+            yield return [new Intent(actionKind, DurationMs: 1)];
+            yield return [new Intent(actionKind, UntilModelTimeMs: 10)];
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(EncounterResponsesWithForbiddenFields))]
+    public void Validate_EncounterResponseForbiddenField_IsInvalidEvenIfAdvertised(Intent intent)
+    {
+        DecisionRequest request = Request(
+            actions:
+            [
+                new AvailableAction(
+                    intent.ActionKind,
+                    CandidateActorIds: ["actor.bob"],
+                    CandidateObjectIds: ["object.map"],
+                    CandidateExitIds: ["exit.market.bridge"],
+                    CandidateDestinationIds: ["place.market"]),
+            ],
+            observation: ObservationWithBridge());
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(request.DecisionId, intent),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
+    }
+
+    [Fact]
+    public void Validate_ReverseTravel_WhenOnlyContinueIsAdvertised_IsInvalid()
+    {
+        DecisionRequest request = Request(
+            actions: [new AvailableAction(ActionKinds.ContinueTravel)]);
+
+        PlayerDecisionValidationResult result = PlayerDecisionValidator.Validate(
+            new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ReverseTravel)),
+            request);
+
+        Assert.Equal(PlayerDecisionValidationError.ActionNotAvailable, result.Error);
+    }
+
     [Fact]
     public void Validate_NonTravelExit_IsInvalidEvenIfAdvertised()
     {

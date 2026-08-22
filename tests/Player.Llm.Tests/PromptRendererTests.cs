@@ -90,6 +90,52 @@ public sealed class PromptRendererTests
     }
 
     [Fact]
+    public void Render_EncounterResponse_ExplainsAndListsOnlyAdvertisedTravelResponses()
+    {
+        var request = new DecisionRequest(
+            new DecisionId("decision.alice.encounter"),
+            ActorId: "alice",
+            ModelTimeMs: 420_000,
+            new Observation(
+                "alice",
+                "tavern-market-road",
+                ModelTimeMs: 420_000,
+                Exits: [],
+                VisibleActorIds: ["bob"],
+                VisibleObjectIds: [],
+                KnownFacts:
+                [
+                    new KnownFact(
+                        new FactKind("encounter.contact-kind"),
+                        "bob",
+                        "You and Bob are meeting head-on while traveling toward Market."),
+                ]),
+            [
+                new AvailableAction(ActionKinds.ContinueTravel),
+                new AvailableAction(ActionKinds.ReverseTravel),
+            ]);
+
+        LlmChatRequest rendered = PromptRenderer.Render(
+            Character,
+            Memory("我在路上遇见了鲍勃。"),
+            request,
+            []);
+
+        Assert.Contains("continue-travel 会保持当前移动方向", rendered.System);
+        Assert.Contains("reverse-travel 会尝试反向返回", rendered.System);
+        Assert.Contains("位置: tavern-market-road", rendered.User);
+        Assert.Contains("在场角色: [bob]", rendered.User);
+        Assert.Contains(
+            "- action.continue-travel; actorCandidates=[]; objectCandidates=[]; " +
+            "exitCandidates=[]; destinationCandidates=[]",
+            rendered.User);
+        Assert.Contains(
+            "- action.reverse-travel; actorCandidates=[]; objectCandidates=[]; " +
+            "exitCandidates=[]; destinationCandidates=[]",
+            rendered.User);
+    }
+
+    [Fact]
     public void Render_ReferenceMaterialPreservesSourceWithoutAssertingBelief()
     {
         ReferenceMaterial[] materials =

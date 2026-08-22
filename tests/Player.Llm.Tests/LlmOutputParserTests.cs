@@ -99,6 +99,34 @@ public sealed class LlmOutputParserTests
         Assert.Equal("我们去市场。", second.Intent.FreeText);
     }
 
+    public static TheoryData<ActionKind> EncounterResponseActionKinds => new()
+    {
+        ActionKinds.ContinueTravel,
+        ActionKinds.ReverseTravel,
+    };
+
+    [Theory]
+    [MemberData(nameof(EncounterResponseActionKinds))]
+    public void Parse_EncounterResponse_PreservesNoTargetIntent(ActionKind actionKind)
+    {
+        string response = $$"""
+            【独白】我必须立即回应途中相遇。
+            【行动】{"action":"{{actionKind.Id}}"}
+            【记忆】我在通道中遇见了另一个人。
+            """;
+
+        LlmOutputParseResult result = LlmOutputParser.Parse(response);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(actionKind, result.Intent!.ActionKind);
+        Assert.Null(result.Intent.TargetActorId);
+        Assert.Null(result.Intent.TargetObjectId);
+        Assert.Null(result.Intent.ExitId);
+        Assert.Null(result.Intent.DestinationId);
+        Assert.Null(result.Intent.DurationMs);
+        Assert.Null(result.Intent.UntilModelTimeMs);
+    }
+
     [Fact]
     public void Parse_ProseAroundJson_Succeeds()
     {

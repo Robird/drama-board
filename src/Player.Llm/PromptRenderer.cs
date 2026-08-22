@@ -30,6 +30,7 @@ public static class PromptRenderer
             .AppendLine()
             .AppendLine("[世界规则]")
             .AppendLine("你只能选择决策请求中列出的动作和候选目标。行动会由世界规则校验，不要虚构不可用的能力。")
+            .AppendLine("continue-travel 会保持当前移动方向；reverse-travel 会尝试反向返回。途中遭遇时只选择本次决策请求实际列出的回应。")
             .AppendLine("可反复查阅的材料只保证其来源和原文稳定，不保证内容真实，也不代表你必须相信它；判断权属于你。")
             .AppendLine("台词和口头承诺本身不会转移物品；give 会转移所有权，show 只展示而不转移。put 会把自持物放到当前公共环境并失去所有权，随后同地角色可检查或拿走；带物品目标的 observe 用于仔细检查候选物品。")
             .AppendLine("观察结果会完整进入当前观察/已知事实；环境与事实没有变化时，重复观察不会发现暗格或更深线索。")
