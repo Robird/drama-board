@@ -29,27 +29,33 @@ internal static class SpatialMath
         TraversingLocation traversal,
         ModelTime at)
     {
-        if (at < traversal.StartedAt || at > traversal.ArrivalDue)
+        if (at < traversal.AnchorTime || at > traversal.ArrivalDue)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(at),
                 "Location time must lie within the active traversal interval.");
         }
 
-        bool fromA = traversal.FromPlaceId == passage.EndpointA;
+        bool targetsB = traversal.TargetPlaceId == passage.EndpointB;
         if (at == traversal.ArrivalDue)
         {
-            return fromA ? passage.Length : 0;
+            return targetsB ? passage.Length : 0;
         }
 
-        long elapsed = (at - traversal.StartedAt).Ticks;
+        long elapsed = (at - traversal.AnchorTime).Ticks;
         Int128 advanced = (Int128)elapsed * traversal.SpeedSnapshot;
-        if (advanced < 0 || advanced >= passage.Length)
+        long targetOffset = targetsB ? passage.Length : 0;
+        long distanceToTarget = targetsB
+            ? checked(targetOffset - traversal.AnchorOffset)
+            : traversal.AnchorOffset;
+        if (advanced < 0 || advanced >= distanceToTarget)
         {
             throw new InvalidOperationException("Traversal offset is inconsistent with its arrival due time.");
         }
 
         long distance = checked((long)advanced);
-        return fromA ? distance : checked(passage.Length - distance);
+        return targetsB
+            ? checked(traversal.AnchorOffset + distance)
+            : checked(traversal.AnchorOffset - distance);
     }
 }

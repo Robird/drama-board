@@ -84,7 +84,8 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
     private GraphSpatialState(
         IEnumerable<SpatialEntity> entities,
         IEnumerable<PassageEntryAccessOverride> passageEntryAccessOverrides,
-        IEnumerable<ScheduledPassageEntryChange> scheduledPassageEntryChanges)
+        IEnumerable<ScheduledPassageEntryChange> scheduledPassageEntryChanges,
+        IEnumerable<PassageContactKey> consumedContacts)
     {
         SpatialEntity[] entityArray = Canonicalize(
             entities,
@@ -95,10 +96,15 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
             value => value.PassageId,
             "passage entry access override");
         ScheduledPassageEntryChange[] scheduleArray = CanonicalizeSchedules(scheduledPassageEntryChanges);
+        PassageContactKey[] contactArray = Canonicalize(
+            consumedContacts,
+            value => value,
+            "consumed contact");
 
         Entities = Array.AsReadOnly(entityArray);
         PassageEntryAccessOverrides = Array.AsReadOnly(overrideArray);
         ScheduledPassageEntryChanges = Array.AsReadOnly(scheduleArray);
+        ConsumedContacts = Array.AsReadOnly(contactArray);
     }
 
     public IReadOnlyList<SpatialEntity> Entities { get; }
@@ -106,6 +112,8 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
     public IReadOnlyList<PassageEntryAccessOverride> PassageEntryAccessOverrides { get; }
 
     public IReadOnlyList<ScheduledPassageEntryChange> ScheduledPassageEntryChanges { get; }
+
+    public IReadOnlyList<PassageContactKey> ConsumedContacts { get; }
 
     public static GraphSpatialState Create(
         GraphDefinition definition,
@@ -136,7 +144,7 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
                     new AtPlaceLocation(placement.PlaceId));
             }),
         ];
-        var state = new GraphSpatialState(entities, [], []);
+        var state = new GraphSpatialState(entities, [], [], []);
         GraphSpatialStateValidator.ValidateComplete(definition, state);
         return state;
     }
@@ -151,7 +159,8 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
         other is not null &&
         Entities.SequenceEqual(other.Entities) &&
         PassageEntryAccessOverrides.SequenceEqual(other.PassageEntryAccessOverrides) &&
-        ScheduledPassageEntryChanges.SequenceEqual(other.ScheduledPassageEntryChanges);
+        ScheduledPassageEntryChanges.SequenceEqual(other.ScheduledPassageEntryChanges) &&
+        ConsumedContacts.SequenceEqual(other.ConsumedContacts);
 
     public override bool Equals(object? obj) => Equals(obj as GraphSpatialState);
 
@@ -173,17 +182,24 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
             hash.Add(value);
         }
 
+        foreach (PassageContactKey value in ConsumedContacts)
+        {
+            hash.Add(value);
+        }
+
         return hash.ToHashCode();
     }
 
     internal GraphSpatialState Rebuild(
         IEnumerable<SpatialEntity>? entities = null,
         IEnumerable<PassageEntryAccessOverride>? passageEntryAccessOverrides = null,
-        IEnumerable<ScheduledPassageEntryChange>? scheduledPassageEntryChanges = null) =>
+        IEnumerable<ScheduledPassageEntryChange>? scheduledPassageEntryChanges = null,
+        IEnumerable<PassageContactKey>? consumedContacts = null) =>
         new(
             entities ?? Entities,
             passageEntryAccessOverrides ?? PassageEntryAccessOverrides,
-            scheduledPassageEntryChanges ?? ScheduledPassageEntryChanges);
+            scheduledPassageEntryChanges ?? ScheduledPassageEntryChanges,
+            consumedContacts ?? ConsumedContacts);
 
     internal PassageEntryAccessOverride? FindOverride(PassageId passageId) =>
         PassageEntryAccessOverrides.SingleOrDefault(value => value.PassageId == passageId);

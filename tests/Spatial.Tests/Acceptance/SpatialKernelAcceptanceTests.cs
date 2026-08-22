@@ -31,7 +31,7 @@ public sealed class SpatialKernelAcceptanceTests
             context.Queries.GetLocation(kernel.World, pendingArrival.Id, kernel.CurrentModelTime));
         PassageDefinition passage = context.Definition.GetPassage(boundary.PassageId);
         Assert.Equal(
-            boundary.ToPlaceId == passage.EndpointB ? passage.Length : 0,
+            boundary.TargetPlaceId == passage.EndpointB ? passage.Length : 0,
             boundary.Offset);
 
         IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> peers =

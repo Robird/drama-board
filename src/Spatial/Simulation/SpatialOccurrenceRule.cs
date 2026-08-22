@@ -151,9 +151,9 @@ public sealed class SpatialOccurrenceRule :
         writer.WriteStringValue(data.EntityId.Value);
         writer.WriteNumberValue(data.MovementGeneration);
         writer.WriteStringValue(traversal.PassageId.Value);
-        writer.WriteStringValue(traversal.FromPlaceId.Value);
-        writer.WriteStringValue(traversal.ToPlaceId.Value);
-        writer.WriteNumberValue(traversal.StartedAt.Ticks);
+        writer.WriteNumberValue(traversal.AnchorOffset);
+        writer.WriteNumberValue(traversal.AnchorTime.Ticks);
+        writer.WriteStringValue(traversal.TargetPlaceId.Value);
         writer.WriteNumberValue(traversal.SpeedSnapshot);
         writer.WriteNumberValue(traversal.ArrivalDue.Ticks);
         writer.WriteEndArray();

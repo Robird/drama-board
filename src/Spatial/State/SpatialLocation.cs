@@ -22,50 +22,51 @@ public sealed record AtPlaceLocation : SpatialLocation
     public PlaceId PlaceId { get; }
 }
 
-/// <summary>Stores one immutable endpoint-to-endpoint movement segment.</summary>
+/// <summary>Stores one immutable anchored movement segment toward a passage endpoint.</summary>
 public sealed record TraversingLocation : SpatialLocation
 {
     public TraversingLocation(
         PassageId passageId,
-        PlaceId fromPlaceId,
-        PlaceId toPlaceId,
-        ModelTime startedAt,
+        long anchorOffset,
+        ModelTime anchorTime,
+        PlaceId targetPlaceId,
         long speedSnapshot,
         ModelTime arrivalDue)
     {
         SpatialIdentifier.Require(passageId, nameof(passageId));
-        SpatialIdentifier.Require(fromPlaceId, nameof(fromPlaceId));
-        SpatialIdentifier.Require(toPlaceId, nameof(toPlaceId));
-        if (fromPlaceId == toPlaceId)
+        if (anchorOffset < 0)
         {
-            throw new ArgumentException("A traversal must have different endpoints.", nameof(toPlaceId));
+            throw new ArgumentOutOfRangeException(
+                nameof(anchorOffset),
+                "Traversal anchor offset cannot be negative.");
         }
 
+        SpatialIdentifier.Require(targetPlaceId, nameof(targetPlaceId));
         if (speedSnapshot <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(speedSnapshot), "Traversal speed must be positive.");
         }
 
-        if (arrivalDue <= startedAt)
+        if (arrivalDue <= anchorTime)
         {
             throw new ArgumentOutOfRangeException(nameof(arrivalDue), "Arrival must be later than traversal start.");
         }
 
         PassageId = passageId;
-        FromPlaceId = fromPlaceId;
-        ToPlaceId = toPlaceId;
-        StartedAt = startedAt;
+        AnchorOffset = anchorOffset;
+        AnchorTime = anchorTime;
+        TargetPlaceId = targetPlaceId;
         SpeedSnapshot = speedSnapshot;
         ArrivalDue = arrivalDue;
     }
 
     public PassageId PassageId { get; }
 
-    public PlaceId FromPlaceId { get; }
+    public long AnchorOffset { get; }
 
-    public PlaceId ToPlaceId { get; }
+    public ModelTime AnchorTime { get; }
 
-    public ModelTime StartedAt { get; }
+    public PlaceId TargetPlaceId { get; }
 
     public long SpeedSnapshot { get; }
 

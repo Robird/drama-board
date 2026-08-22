@@ -107,7 +107,7 @@ public sealed class SpatialQueries
             if (other.Id == entity.Id ||
                 other.Location is not TraversingLocation otherTraversal ||
                 otherTraversal.PassageId != traversal.PassageId ||
-                at < otherTraversal.StartedAt ||
+                at < otherTraversal.AnchorTime ||
                 at > otherTraversal.ArrivalDue)
             {
                 continue;
@@ -115,7 +115,7 @@ public sealed class SpatialQueries
 
             long otherOffset = SpatialMath.OffsetAt(passage, otherTraversal, at);
             bool coTraveling = ownOffset == otherOffset &&
-                traversal.ToPlaceId == otherTraversal.ToPlaceId &&
+                traversal.TargetPlaceId == otherTraversal.TargetPlaceId &&
                 traversal.SpeedSnapshot == otherTraversal.SpeedSnapshot &&
                 traversal.ArrivalDue == otherTraversal.ArrivalDue;
             relations.Add(new SamePassageRelation(other.Id, otherOffset, coTraveling));
@@ -143,9 +143,8 @@ public sealed class SpatialQueries
         PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
         return new TraversingView(
             traversal.PassageId,
-            traversal.FromPlaceId,
-            traversal.ToPlaceId,
             SpatialMath.OffsetAt(passage, traversal, at),
+            traversal.TargetPlaceId,
             traversal.SpeedSnapshot,
             traversal.ArrivalDue);
     }

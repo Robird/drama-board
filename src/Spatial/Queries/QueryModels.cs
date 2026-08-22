@@ -14,9 +14,8 @@ public sealed record AtPlaceView(PlaceId PlaceId) : SpatialLocationView;
 
 public sealed record TraversingView(
     PassageId PassageId,
-    PlaceId FromPlaceId,
-    PlaceId ToPlaceId,
     long Offset,
+    PlaceId TargetPlaceId,
     long SpeedSnapshot,
     ModelTime ArrivalDue) : SpatialLocationView;
 

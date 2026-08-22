@@ -15,6 +15,14 @@ public sealed record TraversalStartedFact(
     PlaceId FromPlaceId,
     long SpeedSnapshot) : GraphSpatialFact;
 
+public sealed record TraversalReversedFact(
+    EntityId EntityId,
+    long ExpectedMovementGeneration) : GraphSpatialFact;
+
+public sealed record PassageContactOccurredFact(
+    PassageContactKey ContactKey,
+    PassageContactKind Kind) : GraphSpatialFact;
+
 public sealed record TraversalArrivedFact : GraphSpatialFact
 {
     public TraversalArrivedFact(EntityId EntityId, long ExpectedMovementGeneration)

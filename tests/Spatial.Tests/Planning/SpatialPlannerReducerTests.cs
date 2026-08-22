@@ -25,6 +25,10 @@ public sealed class SpatialPlannerReducerTests
         SpatialEntity firstSegment = Assert.Single(state.Entities);
         Assert.Equal(1, firstSegment.MovementGeneration);
         TraversingLocation traversal = Assert.IsType<TraversingLocation>(firstSegment.Location);
+        Assert.Equal(0, traversal.AnchorOffset);
+        Assert.Equal(GraphTestWorld.Time(20), traversal.AnchorTime);
+        Assert.Equal(GraphTestWorld.B, traversal.TargetPlaceId);
+        Assert.Equal(3, traversal.SpeedSnapshot);
         Assert.Equal(GraphTestWorld.Time(24), traversal.ArrivalDue);
 
         state = reducer.Apply(
@@ -40,6 +44,181 @@ public sealed class SpatialPlannerReducerTests
         SpatialEntity secondSegment = Assert.Single(state.Entities);
         Assert.Equal(2, secondSegment.MovementGeneration);
         Assert.Equal(GraphTestWorld.Time(32), Assert.IsType<TraversingLocation>(secondSegment.Location).ArrivalDue);
+    }
+
+    [Fact]
+    public void ReverseTraversal_AnchorsCurrentOffsetAndEachNewArrivalUsesCeilingDuration()
+    {
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        GraphSpatialState state = GraphTestWorld.State(definition, ("actor", GraphTestWorld.A));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        var actor = new EntityId("actor");
+
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, actor, GraphTestWorld.Bridge, speedSnapshot: 3, GraphTestWorld.Time(0)));
+
+        SpatialPlanAccepted firstReverse = GraphTestWorld.Accepted(
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(2)));
+        Assert.Equal(new TraversalReversedFact(actor, ExpectedMovementGeneration: 1), Assert.Single(firstReverse.Facts));
+        state = GraphTestWorld.Fold(reducer, state, GraphTestWorld.Instant(2), firstReverse);
+
+        SpatialEntity entity = Assert.Single(state.Entities);
+        Assert.Equal(2, entity.MovementGeneration);
+        TraversingLocation towardA = Assert.IsType<TraversingLocation>(entity.Location);
+        Assert.Equal(6, towardA.AnchorOffset);
+        Assert.Equal(GraphTestWorld.Time(2), towardA.AnchorTime);
+        Assert.Equal(GraphTestWorld.A, towardA.TargetPlaceId);
+        Assert.Equal(3, towardA.SpeedSnapshot);
+        Assert.Equal(GraphTestWorld.Time(4), towardA.ArrivalDue);
+
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(3),
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(3)));
+
+        entity = Assert.Single(state.Entities);
+        Assert.Equal(3, entity.MovementGeneration);
+        TraversingLocation towardB = Assert.IsType<TraversingLocation>(entity.Location);
+        Assert.Equal(3, towardB.AnchorOffset);
+        Assert.Equal(GraphTestWorld.Time(3), towardB.AnchorTime);
+        Assert.Equal(GraphTestWorld.B, towardB.TargetPlaceId);
+        Assert.Equal(3, towardB.SpeedSnapshot);
+        Assert.Equal(GraphTestWorld.Time(6), towardB.ArrivalDue);
+
+        state = reducer.Apply(
+            state,
+            GraphTestWorld.Instant(6),
+            new TraversalArrivedFact(actor, ExpectedMovementGeneration: 3));
+        Assert.Equal(GraphTestWorld.B, Assert.IsType<AtPlaceLocation>(Assert.Single(state.Entities).Location).PlaceId);
+    }
+
+    [Fact]
+    public void ReverseTraversal_ChecksOppositeDirectionEntryOnlyWhenCreatingSegment()
+    {
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(
+                GraphTestWorld.Bridge,
+                GraphTestWorld.A,
+                GraphTestWorld.B,
+                length: 10,
+                enterableFromA: true,
+                enterableFromB: false)]);
+        GraphSpatialState state = GraphTestWorld.State(definition, ("actor", GraphTestWorld.A));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        var actor = new EntityId("actor");
+
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, actor, GraphTestWorld.Bridge, speedSnapshot: 2, GraphTestWorld.Time(0)));
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(1)),
+            "entry-closed");
+        Assert.Throws<InvalidOperationException>(() => reducer.Apply(
+            state,
+            GraphTestWorld.Instant(1),
+            new TraversalReversedFact(actor, ExpectedMovementGeneration: 1)));
+
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(1),
+            planner.TrySetPassageEntryAccess(state, GraphTestWorld.Bridge, new PassageEntryPatch(null, true)));
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(1, 1),
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(1)));
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(1, 2),
+            planner.TrySetPassageEntryAccess(state, GraphTestWorld.Bridge, new PassageEntryPatch(null, false)));
+
+        TraversingLocation reversed = Assert.IsType<TraversingLocation>(Assert.Single(state.Entities).Location);
+        Assert.Equal(GraphTestWorld.A, reversed.TargetPlaceId);
+        state = reducer.Apply(
+            state,
+            new LogicalInstant(reversed.ArrivalDue, 0),
+            new TraversalArrivedFact(actor, ExpectedMovementGeneration: 2));
+        Assert.Equal(GraphTestWorld.A, Assert.IsType<AtPlaceLocation>(Assert.Single(state.Entities).Location).PlaceId);
+    }
+
+    [Fact]
+    public void ReverseTraversal_RejectsBoundaryAndStaleSegmentProposals()
+    {
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        GraphSpatialState state = GraphTestWorld.State(
+            definition,
+            ("actor", GraphTestWorld.A),
+            ("waiting", GraphTestWorld.B));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        var actor = new EntityId("actor");
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, actor, GraphTestWorld.Bridge, speedSnapshot: 2, GraphTestWorld.Time(0)));
+
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(0)),
+            "reverse-outside-active-interval");
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(5)),
+            "reverse-outside-active-interval");
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, new EntityId("waiting"), GraphTestWorld.Time(1)),
+            "entity-not-traversing");
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, new EntityId("missing"), GraphTestWorld.Time(1)),
+            "entity-not-found");
+        Assert.Throws<InvalidOperationException>(() => reducer.Apply(
+            state,
+            GraphTestWorld.Instant(1),
+            new TraversalReversedFact(actor, ExpectedMovementGeneration: 0)));
+        Assert.Throws<InvalidOperationException>(() => reducer.Apply(
+            state,
+            GraphTestWorld.Instant(0),
+            new TraversalReversedFact(actor, ExpectedMovementGeneration: 1)));
+    }
+
+    [Fact]
+    public void ReverseTraversal_RejectsUnrepresentableArrivalWithoutFacts()
+    {
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(
+                GraphTestWorld.Bridge,
+                GraphTestWorld.A,
+                GraphTestWorld.B,
+                length: long.MaxValue)]);
+        GraphSpatialState state = GraphTestWorld.State(definition, ("actor", GraphTestWorld.A));
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        var actor = new EntityId("actor");
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, actor, GraphTestWorld.Bridge, speedSnapshot: 1, GraphTestWorld.Time(0)));
+
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(long.MaxValue - 1)),
+            "time-overflow");
+        Assert.Equal(1, Assert.Single(state.Entities).MovementGeneration);
     }
 
     [Fact]

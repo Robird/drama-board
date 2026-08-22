@@ -16,6 +16,10 @@ public static class GraphSpatialStateValidator
             value => value.PassageId,
             "passage entry access overrides");
         EnsureCanonicalSchedules(state.ScheduledPassageEntryChanges);
+        EnsureCanonicalUnique(
+            state.ConsumedContacts,
+            value => value,
+            "consumed contacts");
 
         foreach (SpatialEntity entity in state.Entities)
         {
@@ -43,6 +47,21 @@ public static class GraphSpatialStateValidator
         {
             RequirePassage(definition, schedule.PassageId);
             PassageEntryPatch.Validate(schedule.Patch, nameof(state));
+        }
+
+        foreach (PassageContactKey contact in state.ConsumedContacts)
+        {
+            RequirePassage(definition, contact.PassageId);
+            ValidateContactSegment(
+                state,
+                contact.PassageId,
+                contact.EntityA,
+                contact.MovementGenerationA);
+            ValidateContactSegment(
+                state,
+                contact.PassageId,
+                contact.EntityB,
+                contact.MovementGenerationB);
         }
     }
 
@@ -78,22 +97,36 @@ public static class GraphSpatialStateValidator
 
             case TraversingLocation traversing:
                 PassageDefinition passage = RequirePassage(definition, traversing.PassageId);
-                bool forward = traversing.FromPlaceId == passage.EndpointA &&
-                    traversing.ToPlaceId == passage.EndpointB;
-                bool reverse = traversing.FromPlaceId == passage.EndpointB &&
-                    traversing.ToPlaceId == passage.EndpointA;
-                if (!forward && !reverse)
+                bool targetsA = traversing.TargetPlaceId == passage.EndpointA;
+                bool targetsB = traversing.TargetPlaceId == passage.EndpointB;
+                if (!targetsA && !targetsB)
                 {
                     throw new InvalidOperationException(
-                        $"Entity '{entity.Id}' traversal endpoints do not match passage '{passage.Id}'.");
+                        $"Entity '{entity.Id}' traversal target does not match passage '{passage.Id}'.");
+                }
+
+                if (traversing.AnchorOffset > passage.Length)
+                {
+                    throw new InvalidOperationException(
+                        $"Entity '{entity.Id}' traversal anchor is outside passage '{passage.Id}'.");
+                }
+
+                long targetOffset = targetsB ? passage.Length : 0;
+                long distanceToTarget = targetsB
+                    ? checked(targetOffset - traversing.AnchorOffset)
+                    : traversing.AnchorOffset;
+                if (distanceToTarget <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Entity '{entity.Id}' traversal anchor must differ from its target endpoint.");
                 }
 
                 ModelTime expectedDue;
                 try
                 {
                     expectedDue = SpatialMath.ArrivalDue(
-                        traversing.StartedAt,
-                        passage.Length,
+                        traversing.AnchorTime,
+                        distanceToTarget,
                         traversing.SpeedSnapshot);
                 }
                 catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
@@ -106,7 +139,7 @@ public static class GraphSpatialStateValidator
                 if (traversing.ArrivalDue != expectedDue)
                 {
                     throw new InvalidOperationException(
-                        $"Entity '{entity.Id}' traversal arrival due is inconsistent with length and speed.");
+                        $"Entity '{entity.Id}' traversal arrival due is inconsistent with its anchor and speed.");
                 }
 
                 break;
@@ -117,6 +150,22 @@ public static class GraphSpatialStateValidator
             default:
                 throw new InvalidOperationException(
                     $"Entity '{entity.Id}' has unsupported location '{entity.Location.GetType().Name}'.");
+        }
+    }
+
+    private static void ValidateContactSegment(
+        GraphSpatialState state,
+        PassageId passageId,
+        EntityId entityId,
+        long movementGeneration)
+    {
+        SpatialEntity entity = RequireEntity(state, entityId);
+        if (entity.MovementGeneration != movementGeneration ||
+            entity.Location is not TraversingLocation traversal ||
+            traversal.PassageId != passageId)
+        {
+            throw new InvalidOperationException(
+                $"Consumed contact references a non-current segment for entity '{entityId}'.");
         }
     }
 

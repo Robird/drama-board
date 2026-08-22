@@ -27,6 +27,8 @@ public sealed class GraphSpatialReducer
             EntityPlacedFact placed => ApplyPlaced(state, placed),
             EntityRemovedFact removed => ApplyRemoved(state, removed),
             TraversalStartedFact started => ApplyStarted(state, instant.ModelTime, started),
+            TraversalReversedFact reversed => ApplyReversed(state, instant.ModelTime, reversed),
+            PassageContactOccurredFact contact => ApplyContact(state, instant.ModelTime, contact),
             TraversalArrivedFact arrived => ApplyArrived(state, instant.ModelTime, arrived),
             PassageEntryAccessChangedFact changed => ApplyAccessChanged(state, changed),
             PassageEntryChangeScheduledFact scheduled => ApplyScheduled(state, instant.ModelTime, scheduled),
@@ -60,7 +62,9 @@ public sealed class GraphSpatialReducer
     private static GraphSpatialState ApplyRemoved(GraphSpatialState state, EntityRemovedFact fact)
     {
         SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
-        return state.Rebuild(entities: state.Entities.Where(value => value != entity));
+        return state.Rebuild(
+            entities: state.Entities.Where(value => value != entity),
+            consumedContacts: WithoutSegmentContacts(state, entity));
     }
 
     private GraphSpatialState ApplyStarted(
@@ -106,9 +110,9 @@ public sealed class GraphSpatialReducer
 
         var traversal = new TraversingLocation(
             fact.PassageId,
-            fact.FromPlaceId,
-            toPlaceId,
-            at,
+            fact.FromPlaceId == passage.EndpointA ? 0 : passage.Length,
+            anchorTime: at,
+            targetPlaceId: toPlaceId,
             fact.SpeedSnapshot,
             arrivalDue);
         var updated = new SpatialEntity(
@@ -116,6 +120,105 @@ public sealed class GraphSpatialReducer
             checked(entity.MovementGeneration + 1),
             traversal);
         return ReplaceEntity(state, updated);
+    }
+
+    private GraphSpatialState ApplyReversed(
+        GraphSpatialState state,
+        ModelTime at,
+        TraversalReversedFact fact)
+    {
+        SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
+        if (entity.MovementGeneration != fact.ExpectedMovementGeneration ||
+            entity.Location is not TraversingLocation traversal)
+        {
+            throw new InvalidOperationException(
+                $"Spatial reverse for entity '{fact.EntityId}' does not match its current movement segment.");
+        }
+
+        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue)
+        {
+            throw new InvalidOperationException(
+                $"Spatial reverse for entity '{fact.EntityId}' must occur strictly during its traversal.");
+        }
+
+        PassageDefinition passage =
+            GraphSpatialStateValidator.RequirePassage(_definition, traversal.PassageId);
+        long currentOffset = SpatialMath.OffsetAt(passage, traversal, at);
+        if (currentOffset <= 0 || currentOffset >= passage.Length)
+        {
+            throw new InvalidOperationException(
+                $"Spatial reverse for entity '{fact.EntityId}' must occur strictly inside its passage.");
+        }
+
+        if (!EffectiveGraph.TryResolveDirection(
+                _definition,
+                state,
+                passage,
+                traversal.TargetPlaceId,
+                out PlaceId targetPlaceId,
+                out bool entryAllowed))
+        {
+            throw new InvalidOperationException(
+                $"Traversal target '{traversal.TargetPlaceId}' is not an endpoint of passage '{passage.Id}'.");
+        }
+
+        if (!entryAllowed)
+        {
+            throw new InvalidOperationException(
+                $"Passage '{passage.Id}' cannot currently be entered from '{traversal.TargetPlaceId}'.");
+        }
+
+        long distanceToTarget = targetPlaceId == passage.EndpointB
+            ? checked(passage.Length - currentOffset)
+            : currentOffset;
+        ModelTime arrivalDue;
+        long movementGeneration;
+        try
+        {
+            arrivalDue = SpatialMath.ArrivalDue(at, distanceToTarget, traversal.SpeedSnapshot);
+            movementGeneration = checked(entity.MovementGeneration + 1);
+        }
+        catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
+        {
+            throw new InvalidOperationException("Reversed traversal timing cannot be represented.", exception);
+        }
+
+        var reversed = new TraversingLocation(
+            passage.Id,
+            currentOffset,
+            at,
+            targetPlaceId,
+            traversal.SpeedSnapshot,
+            arrivalDue);
+        return ReplaceEntityAndClearSegmentContacts(
+            state,
+            entity,
+            new SpatialEntity(entity.Id, movementGeneration, reversed));
+    }
+
+    private GraphSpatialState ApplyContact(
+        GraphSpatialState state,
+        ModelTime at,
+        PassageContactOccurredFact fact)
+    {
+        ArgumentNullException.ThrowIfNull(fact.ContactKey);
+        if (state.ConsumedContacts.Contains(fact.ContactKey))
+        {
+            throw new InvalidOperationException("The passage contact has already been consumed.");
+        }
+
+        if (!PassageContactCalculator.TryCalculate(
+                _definition,
+                state,
+                fact.ContactKey,
+                out PassageContactCalculation calculation) ||
+            calculation.Kind != fact.Kind ||
+            calculation.Due != at)
+        {
+            throw new InvalidOperationException("The passage contact fact does not match current segment truth.");
+        }
+
+        return state.Rebuild(consumedContacts: state.ConsumedContacts.Append(fact.ContactKey));
     }
 
     private static GraphSpatialState ApplyArrived(
@@ -140,8 +243,8 @@ public sealed class GraphSpatialReducer
         var updated = new SpatialEntity(
             entity.Id,
             entity.MovementGeneration,
-            new AtPlaceLocation(traversal.ToPlaceId));
-        return ReplaceEntity(state, updated);
+            new AtPlaceLocation(traversal.TargetPlaceId));
+        return ReplaceEntityAndClearSegmentContacts(state, entity, updated);
     }
 
     private GraphSpatialState ApplyAccessChanged(
@@ -197,6 +300,20 @@ public sealed class GraphSpatialReducer
 
     private static GraphSpatialState ReplaceEntity(GraphSpatialState state, SpatialEntity updated) =>
         state.Rebuild(entities: state.Entities.Select(entity => entity.Id == updated.Id ? updated : entity));
+
+    private static GraphSpatialState ReplaceEntityAndClearSegmentContacts(
+        GraphSpatialState state,
+        SpatialEntity previous,
+        SpatialEntity updated) =>
+        state.Rebuild(
+            entities: state.Entities.Select(entity => entity.Id == updated.Id ? updated : entity),
+            consumedContacts: WithoutSegmentContacts(state, previous));
+
+    private static IEnumerable<PassageContactKey> WithoutSegmentContacts(
+        GraphSpatialState state,
+        SpatialEntity segment) =>
+        state.ConsumedContacts.Where(contact =>
+            !contact.References(segment.Id, segment.MovementGeneration));
 
     private static GraphSpatialState WithResultAccess(
         GraphSpatialState state,

@@ -103,6 +103,66 @@ public sealed class SpatialPlanner
         return Accepted(new TraversalStartedFact(entityId, passageId, atPlace.PlaceId, speedSnapshot));
     }
 
+    public SpatialPlanResult TryReverseTraversal(
+        GraphSpatialState state,
+        EntityId entityId,
+        ModelTime at)
+    {
+        RequireState(state);
+        if (!state.TryGetEntity(entityId, out SpatialEntity? entity))
+        {
+            return Rejected("entity-not-found");
+        }
+
+        if (entity!.Location is not TraversingLocation traversal)
+        {
+            return Rejected("entity-not-traversing");
+        }
+
+        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue)
+        {
+            return Rejected("reverse-outside-active-interval");
+        }
+
+        PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
+        long currentOffset = SpatialMath.OffsetAt(passage, traversal, at);
+        if (currentOffset <= 0 || currentOffset >= passage.Length)
+        {
+            return Rejected("reverse-not-inside-passage");
+        }
+
+        if (!EffectiveGraph.TryResolveDirection(
+                _definition,
+                state,
+                passage,
+                traversal.TargetPlaceId,
+                out PlaceId targetPlaceId,
+                out bool entryAllowed))
+        {
+            return Rejected("invalid-traversal-target");
+        }
+
+        if (!entryAllowed)
+        {
+            return Rejected("entry-closed");
+        }
+
+        long distanceToTarget = targetPlaceId == passage.EndpointB
+            ? checked(passage.Length - currentOffset)
+            : currentOffset;
+        try
+        {
+            _ = checked(entity.MovementGeneration + 1);
+            _ = SpatialMath.ArrivalDue(at, distanceToTarget, traversal.SpeedSnapshot);
+        }
+        catch (OverflowException)
+        {
+            return Rejected("time-overflow");
+        }
+
+        return Accepted(new TraversalReversedFact(entityId, entity.MovementGeneration));
+    }
+
     public SpatialPlanResult TrySetPassageEntryAccess(
         GraphSpatialState state,
         PassageId passageId,

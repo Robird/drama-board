@@ -110,6 +110,51 @@ public sealed class SpatialOccurrenceRuleTests
             await rule.PlanSelectedAsync(state, stale, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ReverseTraversal_InvalidatesOldArrivalAndForecastsTheNewAnchoredSegment()
+    {
+        GraphDefinition definition = GraphDefinition.Create(
+            [GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        GraphSpatialState state = GraphTestWorld.State(definition, ("actor", GraphTestWorld.A));
+        var actor = new EntityId("actor");
+        var planner = new SpatialPlanner(definition);
+        var reducer = new GraphSpatialReducer(definition);
+        var rule = new SpatialOccurrenceRule(definition);
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(0),
+            planner.TryStartTraversal(state, actor, GraphTestWorld.Bridge, speedSnapshot: 3, GraphTestWorld.Time(0)));
+        OccurrenceCandidate<SpatialOccurrenceData> oldArrival = Assert.Single(rule.Forecast(state, Rules));
+
+        state = GraphTestWorld.Fold(
+            reducer,
+            state,
+            GraphTestWorld.Instant(2),
+            planner.TryReverseTraversal(state, actor, GraphTestWorld.Time(2)));
+        OccurrenceCandidate<SpatialOccurrenceData> newArrival = Assert.Single(rule.Forecast(state, Rules));
+        TraversalArrivalOccurrenceData newData =
+            Assert.IsType<TraversalArrivalOccurrenceData>(newArrival.Data);
+
+        Assert.NotEqual(oldArrival.Key, newArrival.Key);
+        Assert.Equal(GraphTestWorld.Time(4), newArrival.Due.ModelTime);
+        Assert.Equal(2, newData.MovementGeneration);
+        Assert.Equal(6, newData.Traversal.AnchorOffset);
+        Assert.Equal(GraphTestWorld.Time(2), newData.Traversal.AnchorTime);
+        Assert.Equal(GraphTestWorld.A, newData.Traversal.TargetPlaceId);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await rule.PlanSelectedAsync(state, oldArrival, CancellationToken.None));
+
+        TransitionDraft<GraphSpatialFact> draft = await rule.PlanSelectedAsync(
+            state,
+            newArrival,
+            CancellationToken.None);
+        Assert.Equal(
+            new TraversalArrivedFact(actor, ExpectedMovementGeneration: 2),
+            Assert.Single(draft.Facts));
+    }
+
     private static TestContext CreateFourContenderContext()
     {
         var second = new PassageId("second");
