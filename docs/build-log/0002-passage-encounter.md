@@ -1,7 +1,8 @@
 # Build Log 0002：Passage Contact 与单响应 Encounter 竖切
 
-> 状态：**Ready for implementation**
+> 状态：**Implemented and verified**
 > 规划日期：2026-08-22
+> 实施日期：2026-08-23
 > 实现基线：`2b6761c docs(build-log): close TravelTo implementation`
 > 上位设计：[Design Note 008：Graph Spatial World](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
 > 前置竖切：[Build Log 0001：TravelTo](./0001-travel-to.md)
@@ -50,7 +51,7 @@ Design Note 008 要求 Contact 必须与真实 Game/AI consumer 同时交付。�
 
 因此现在可以交付“发现接触 → 打包关键事件 → Player 回应 → 客观运动改变”的完整产品路径，而不是孤立的 pair math。
 
-当前明确断链：
+实施基线上的断链（现均已闭合）：
 
 - [`TraversingLocation`](../../src/Spatial/State/SpatialLocation.cs) 只能表示 endpoint-to-endpoint segment，无法在途中整数时刻 Reverse。
 - [`GraphSpatialState`](../../src/Spatial/State/GraphSpatialState.cs) 没有 current-segment contact consumption。
@@ -259,7 +260,7 @@ exact numerator/denominator 不进入 Candidate data、World、Fact、Journal、
 - exact contact 严格晚于共同 window 起点。
 - exact contact 严格早于双方各自的 physical exit；endpoint contact 不报。
 - 相同 worldline / CoTravel 不报；`tau == 0` overlap 不报。
-- `ceil(contactTime) >= committed world.Now`；已经进入同一整数 tick 时仍保留 `Due == Now` 的未消费 contact。
+- Contact rule 与 arrival rule 一样从诚实、连续注册的 committed Kernel prefix 运行；`GraphSpatialState` 不复制 `Now` authority，Kernel 统一拒绝 past-due candidate。已经进入同一整数 tick 时仍保留 `Due == current Kernel time` 的未消费 contact。
 
 同向追及为 `Overtake`，反向交会为 `HeadOnMeeting`。reference Forecast 直接按 Passage 分组并做 `O(Σn²)` pair scan；不建 index、pair cache 或容量平台。
 
@@ -412,7 +413,7 @@ action.reverse-travel
 - `Exits = []`。
 - `VisibleActorIds = [counterpart actor id]`，Ordinal 排序。
 - `VisibleObjectIds = []`。
-- `KnownFacts` 至少包含当前 travel 的 from/toward/ETA、contact kind、counterpart，以及存在时的 TravelGoal destination。
+- `KnownFacts` 至少包含当前 travel 的 target/ETA、由 Passage endpoint + current target 推导的 reverse destination、contact kind、counterpart，以及存在时的 TravelGoal destination；anchored segment 不虚构历史 `from`。
 - `AvailableActions` 只有 Continue，以及条件成立时的 Reverse。
 
 普通地点 request 与 encounter request 使用不同 builder，避免把 `AvailableActions` 中大量地点行为带入 Passage。途中不广告 Talk、Observe、Wait、Travel、TravelTo、物品操作或任意 destination。
@@ -586,3 +587,44 @@ git status --short
 - 记录实际 commits、测试数量、复审结论与有意识偏差；
 - 更新 Design Note 008 顶部状态、§3.1—3.5 framework/application API 边界、§7.2 验收矩阵和 Slice 2 实施记录；
 - 若任何复杂性停线被触发，先记录用户裁决，再继续施工。
+
+## 15. 实施记录（2026-08-23）
+
+本批已按上述 waves 完整落地。代码提交：
+
+- `e166e3d feat(protocol): add passage encounter responses`
+- `9b3c55f feat(spatial): add anchored passage contacts`
+- `75d4db0 feat(firstboard): handle passage encounters`
+- `1633e19 test(firstboard): persist and replay passage encounters`
+
+实际结果：
+
+- endpoint traversal 已原位替换为唯一 anchored representation；Reverse 物化 current offset、检查反方向 entry bit、推进 movement generation，并清理旧 segment contact keys。
+- `SpatialContactOccurrenceRule` 可在 contact-only Spatial Kernel 中直接注册，完整拥有 objective Forecast→Plan→fact→fold；FirstBoard 只注册 outer adapter，不复制 pair math、candidate key builder 或 consumed authority。
+- FirstBoard outer opening 固定提交 `[Spatial Contact, Game Opened]`；response 固定提交 Continue 的单 Game resolved fact，或 `[Game Resolved(Reversed), Spatial TraversalReversed]`；arrival 使 pending stale 后由零 Player 的 WorldChanged candidate 清理。
+- encounter request 使用独立 builder，不调用 Player spatial knowledge Getter。它披露 current target/ETA 与 current reverse destination；后者由 Passage 两端和当前 target 推导，不恢复 anchored segment 已不再拥有的历史 `From`。
+- current-only persistence codec 已升至 `/5`；pending、continued、reversed、arrival-before-cleanup prefix 均覆盖 reopen、纯 reducer replay、fork 等价与 fork 续跑。Demo 只从 committed facts/state 展示新语义。
+
+有意识的实现澄清：
+
+- `GraphSpatialState` 没有 `Now`。Contact rule 与既有 arrival rule 一样依赖诚实、连续注册的 committed Kernel prefix；Kernel 负责拒绝 past-due candidate。没有为人工拼装的越时 state 复制时间 authority，也没有修改 Kernel。
+- API-1 指 contact-only Spatial Kernel：arrival 使用 `SpatialOccurrenceData`，contact 使用专用 `PassageContactOccurrenceData`。本批没有为“把所有 Spatial candidate union 成一个 rule”预建平台。
+- exact contact fraction 只存在于内部 `BigInteger` rational 计算，不进入 public candidate data、fact、state、Journal、snapshot 或 Player observation。
+- reference scan 先按 Passage 分组，复杂度为 `O(Σn_passage²)`；没有 index/cache。
+- 独立审查建议把历史 `from` 改写为语义稳定的 current reverse destination，并补齐同 tick 竞争与 fork 续跑；这些建议已落实。没有触发 §13 的复杂性停线。
+
+最终验证：
+
+| 范围 | 结果 |
+|---|---:|
+| Spatial.Tests | 52/52 |
+| Protocol.Tests | 33/33 |
+| Decision.Validation.Tests | 31/31 |
+| Player.Llm.Tests | 31/31 |
+| FirstBoard.Tests | 61/61 |
+| FirstBoard.Persistence.Tests | 10/10 |
+| standard `DramaBoard.slnx` | 318/318 |
+| local `DramaBoard.Local.slnx` | 342/342 |
+| FirstBoard.Demo | 0 warning / 0 error |
+
+最终 `git diff -- src/Kernel src/Host src/Player.Agency` 为空，独立跨层复审结论为 **PASS**。ORD-1 已用真实 candidates、不同 scheduler seeds 与完整 Kernel 覆盖 contact/arrival、response/arrival、response/entry-close 的双方合法分支；RPL-1 已证明 pending fork 续跑恰好调用一个 Player，stale fork 续跑零 Player 并提交 WorldChanged cleanup。

@@ -1,9 +1,9 @@
 # Design Note 008：Graph Spatial World
 ## ——建立在统一原子 Occurrence Kernel 上、面向 AI Player 的故事世界空间框架
 
-**状态：Slice 1 已实施并通过验收；Slice 2+ 按重开条件延期**
+**状态：Slice 1、Slice 2 已实施并通过验收；Slice 3+ 按真实故事触发延期**
 
-**本次修订：2026-08-22**
+**本次修订：2026-08-23**
 
 **Kernel 权威基线：** [研发计划 006](./研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)、[Design Note 003](./开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md) 与当前 `src/Kernel`。
 
@@ -278,7 +278,7 @@ TravelDuration(distance, speed)
 
 ## 2.5 Entity 与 traversal
 
-一个 Entity 直接内嵌自己的 location，不建立独立 Traversal table。第一竖切只保存 endpoint-to-endpoint traversal：
+一个 Entity 直接内嵌自己的 location，不建立独立 Traversal table。Slice 2 已把 endpoint-to-endpoint 表示原位替换为统一 anchored traversal；没有保留旧 constructor、旧 DTO 或双轨 authority：
 
 ```text
 SpatialEntity
@@ -288,9 +288,9 @@ SpatialEntity
         AtPlace(PlaceId)
         Traversing(
             PassageId,
-            FromPlaceId,
-            ToPlaceId,
-            StartedAt,
+            AnchorOffset,
+            AnchorTime,
+            TargetPlaceId,
             SpeedSnapshot,
             ArrivalDue)
 ```
@@ -299,27 +299,28 @@ SpatialEntity
 
 active traversal 必须满足：
 
-- From / To 是该 Passage 两个不同的 endpoint；
-- StartedAt 早于 ArrivalDue；
+- `0 <= AnchorOffset <= Passage.Length`；
+- Target 是该 Passage 的 A 或 B endpoint；
+- AnchorTime 早于 ArrivalDue；
 - speed 正；
-- ArrivalDue 精确等于 `StartedAt + TravelDuration(Passage.Length, speed)`。
+- ArrivalDue 精确等于 `AnchorTime + TravelDuration(abs(TargetOffset - AnchorOffset), speed)`。
 
-创建 `TraversalStarted` 时，planner 与 reducer 还必须验证 From 所定义方向的 effective entry access。该检查只证明 segment 在创建时合法，不成为 state 上持续成立的不变量：access 后续可能关闭，而 active traversal 仍继续。
+创建 `TraversalStarted` 时，planner 与 reducer 还必须验证 From 所定义方向的 effective entry access，并以 endpoint offset 建立 anchor。该检查只证明 segment 在创建时合法，不成为 state 上持续成立的不变量：access 后续可能关闭，而 active traversal 仍继续。
 
 整数时刻位置：
 
 ```text
 OffsetAt(segment, at)
-    require StartedAt <= at <= ArrivalDue
+    require AnchorTime <= at <= ArrivalDue
 
     if at == ArrivalDue:
-        return ToOffset
+        return TargetOffset
 
-    elapsed = at - StartedAt
+    elapsed = at - AnchorTime
     advanced = elapsed.Ticks * SpeedSnapshot
-    return FromPlaceId == EndpointA
-        ? advanced
-        : PassageLength - advanced
+    return TargetPlaceId == EndpointB
+        ? AnchorOffset + advanced
+        : AnchorOffset - advanced
 ```
 
 在 `at < ArrivalDue` 时，ceil 法则保证结果不会越过 endpoint。Journal 不产生 progress fact。
@@ -330,25 +331,25 @@ OffsetAt(segment, at)
 
 这使合法的同 `ModelTime` committed prefix 始终可查询，不需要“Spatial 已把这一 tick 全部 settle”的 barrier。
 
-Arrival 不重新检查 entry access。Actor 已经合法进入 Passage，目标端也没有独立的 exit gate；因此 selected arrival 始终把它变为 `AtPlace(ToPlaceId)`。运行时关闭只阻止此后创建同方向的新 segment，不能把在途 Actor 卡在端点、弹回起点或删除。
+Arrival 不重新检查 entry access。Actor 已经合法进入 Passage，目标端也没有独立的 exit gate；因此 selected arrival 始终把它变为 `AtPlace(TargetPlaceId)`。运行时关闭只阻止此后创建同方向的新 segment，不能把在途 Actor 卡在端点、弹回起点或删除。
 
-第二条 contact 竖切只有在真实 AI encounter 需要 Reverse 时，才把 traversal 泛化为：
+endpoint start 是 anchored traversal 的特例：A→B 使用 offset 0，B→A 使用 offset Length。Slice 2 的 Reverse 已在整数 committed time 物化严格内部 current offset，以相同 speed、相反 endpoint 与 `MovementGeneration + 1` 建立新 segment，并检查反方向当前 entry access。
 
 ```text
-AnchoredTraversal(
+Traversing(
     PassageId,
     AnchorOffset,
     AnchorTime,
-    TargetEndpoint,
+    TargetPlaceId,
     SpeedSnapshot,
     ArrivalDue)
 ```
 
-届时 start 只是 endpoint anchor 的特例；Reverse 在整数 committed time 物化当前 offset 后替换 anchor、target 与 movement generation，并检查反方向当前 entry access。当前没有旧 Graph 数据，因此第一竖切不预留字段，也不承担 schema migration。
+当前没有旧 Graph 数据，因此本次直接替换旧字段，不承担 schema migration。query 与 Demo 只报告当前 target/ETA，不从 anchor 虚构一个历史 `FromPlaceId`。
 
 ## 2.6 Dynamic state
 
-第一竖切：
+基础动态字段：
 
 ```text
 GraphSpatialState
@@ -367,7 +368,7 @@ effective access 是 `override ?? Definition.InitialEntryAccess`。若完整结�
 
 schedule 保存 patch 而不是 scheduling-time 的完整快照：到 Due 时只覆盖明确指定的方向，不回滚期间对另一方向的独立修改。同一 `(PassageId, Due)` 最多一项，调用方必须在规划时把同一原因的两个方向合成一个 patch；这使“在 T 把整条 Passage 双向关闭”成为一个 candidate 和一个原子 fact，而不是两个可被其它 winner 穿插的局部原因。
 
-第二条 contact 竖切加入：
+第二条 contact 竖切已加入：
 
 ```text
 ConsumedContacts[]
@@ -383,7 +384,7 @@ ConsumedContacts[]
 - 同一对 constant-linear segments 最多只有一个严格内部交点；
 - CoTravel 的相同 worldline 不产生 contact。
 
-第一竖切不得提前加入 contact 字段或占位类型；它与真实 contact + AI encounter consumer 在第二竖切一起交付。
+该状态与真实 contact + AI encounter consumer 已在第二竖切一起交付，没有预建历史 contact ledger、capacity 或 kinetic index。
 
 ---
 
@@ -416,7 +417,9 @@ Host-owned rule 使用当前接口：
 IOccurrenceRule<HostWorld, HostCandidate, HostFact>
 ```
 
-`SpatialForecast / SpatialPlanner` 始终是纯领域函数，Spatial library 不依赖 Game、Player 或 Host implementation。Slice 1 的 mutation / arrival rule 可以机械委托并包装 Spatial 候选与事实；Slice 2 的 contact candidate 则只由一个 composite Host encounter rule 拥有。该 rule 调用纯 Spatial contact Forecast / Plan，并在 selected Plan 中追加 Game-owned encounter facts。两条 rule 不得同时 Forecast 同一个 contact key，否则当前 Kernel 会以 duplicate `CandidateKey` 拒绝本轮。
+Spatial library 不依赖 Game、Player、Protocol 或 Host implementation。Slice 1 的 mutation / arrival 由 `SpatialOccurrenceRule` 提供；Slice 2 的客观 contact 则由可独立注册的 `SpatialContactOccurrenceRule : IOccurrenceRule<GraphSpatialState, PassageContactOccurrenceData, GraphSpatialFact>` 完整拥有 Forecast、selected Plan、fact 与 reducer truth。
+
+FirstBoard composite Kernel 不直接注册这个 inner contact rule，而只注册 `FirstBoardPassageEncounterRule`。外层 rule 投影 `FirstBoardWorld.Spatial`，原样保留 inner CandidateKey / Due / data，复用 inner selected Plan，再追加 Game-owned `PassageEncounterOpened`。这里“FirstBoard 是 production registration owner”只描述该 composite Kernel 的组装策略，不改变 Contact 属于 Spatial framework 的 authority；inner/outer 不能同时注册，否则会重复 Forecast 同一个 CandidateKey。
 
 ## 3.2 Forecast 必须枚举全部局部 candidates
 
@@ -455,8 +458,8 @@ Passage entry change
 Arrival
     ["graph-spatial/arrival",
      EntityId, MovementGeneration,
-     PassageId, FromPlaceId, ToPlaceId,
-     StartedAt, SpeedSnapshot, ArrivalDue]
+     PassageId, AnchorOffset, AnchorTime,
+     TargetPlaceId, SpeedSnapshot, ArrivalDue]
 
 Contact
     ["graph-spatial/contact",
@@ -465,7 +468,7 @@ Contact
      canonical(EntityB, MovementGenerationB)]
 ```
 
-Slice 2 泛化为 anchored traversal 后，arrival key 同步编码完整 current anchor/target motion fields；同一语义不同时保存 endpoint 与 anchor 两套候选身份。
+arrival key 编码完整 current anchor/target motion fields；同一语义不同时保存 endpoint 与 anchor 两套候选身份。
 
 Key 在 Player 调用前只从 committed world 推导。Candidate 不持久化；提交后的 Journal cause 只保存 Kernel 的 `CandidateKey`。
 
@@ -523,7 +526,7 @@ Overtake
 - contact 严格位于 Passage 内部；endpoint 交会由 arrival 后的 same-place relation 表达；
 - 相对于共同窗口起点 `t0` 的 `tau == 0` overlap 不报 contact；
 - 相同 worldline 的 CoTravel 不报 contact；
-- `CandidateDue` 不得早于当前 committed `ModelTime`；Kernel 会拒绝 past-due candidate；
+- `SpatialContactOccurrenceRule` 自身只接收 `GraphSpatialState`，没有第二份 `Now` authority；它依赖与 arrival rule 相同的 Host 前提：从诚实、连续注册的 committed Kernel prefix Forecast，Kernel 统一拒绝 past-due candidate。不得为了在 Spatial 内重复过滤而给 state 增加时钟；
 - 已进入同一整数 tick 后，不得用 `ContactTime > current ModelTime` 过滤 peers：exact time 已过去但 `CandidateDue == current ModelTime` 的未消费 contact 仍须保留；
 - exact fraction 不进入 Candidate、World、Fact、Journal、query 或 Player view；
 - 同 tick contact 的顺序只由 Kernel `(Due, PRF rank, CandidateKey)` 决定；
@@ -561,7 +564,9 @@ selected Host contact rule
 → same TransitionDraft / AppendBatch
 ```
 
-`EncounterOpened` 是改变后续 affordance 的 Game state，不是 Journal receipt。它以 exact domain `ContactKey` 为 identity，允许同一 Actor 同 tick 打开多个独立 encounter。下一轮普通 DecisionPoint candidate 可以让 AI 选择 Continue、Reverse 或其它 Game action；它仍与同 tick 的其它 causes 参加 Kernel 仲裁。
+`EncounterOpened` 是改变后续 affordance 的 Game state，不是 Journal receipt。FirstBoard MVP 在整个 world 中最多保存一个 exact pending encounter；pending 存在时，外层 adapter 暂停提升其它 objective contacts，resolve 后仍成立且未 consumed 的 peers 会在同一 model time 重新出现。这是 FirstBoard 的单响应策略，不是 Spatial capacity。
+
+pending encounter 由独立 response rule 产生候选；它 suppress 两位参与者的普通 DecisionPoint 与 TravelGoal continuation，但不阻塞无关 Actor。一个参与者有 driver 时只由它回应；双方都有 driver 时两个 response candidates 参加 Kernel PRF 仲裁，第一个被选中的 Player 回应一次后整个共享 encounter resolved。
 
 每个合法 response 都必须消费 exact pending encounter 并产生非空 draft：
 
@@ -577,12 +582,12 @@ Reverse
 response candidate key 包含 encounter identity；只有已经 `EncounterResolved` 的 encounter 才停止 Forecast。若 arrival、remove 或其它 occurrence 先改变了空间条件，仍 open 的 encounter 必须继续产生一个可关闭它的 cleanup/response candidate，并提交：
 
 ```text
-Game(EncounterResolved(ContactKey, WorldChanged | Expired))
+Game(EncounterResolved(ContactKey, WorldChanged))
 ```
 
 也可以由使它失效的 composite occurrence 在同一 draft 中关闭。它不能因 affordance 过时而从 Forecast 静默消失并永久残留在 Game state。这里的 world-changed pending encounter 与 stale Player proposal 不同：后者零提交并可重问，前者必须最终留下 Game-owned 权威进展。Continue 因而不是空 draft，也不会让同一 DecisionPoint 永久复发。
 
-V1 不提供 `MatchTraversalAtContact`、Journal receipt、event address/hash 或“必须立即回应”的 gateway。若一个故事必须让策略在 selected contact 的同一 `PlanSelectedAsync` 内原子回应，可以由具体 Host encounter rule 完成，但不提升为 Spatial 通用协议。
+V1 不提供 `MatchTraversalAtContact`、Journal receipt、event address/hash 或“必须立即回应”的 gateway。FirstBoard 的 response rule 是普通下一轮 occurrence，仍与 arrival、entry change 和其它 Game causes 全局仲裁；这不提升为 Spatial 通用协议。
 
 ## 3.6 同 tick 语义
 
@@ -622,7 +627,7 @@ PassageEntryAccessChanged(PassageId, ResultAccess)
 PassageEntryChangeScheduled(PassageId, Due, Patch)
 ScheduledPassageEntryChangeApplied(PassageId, Due)
 
-// Slice 2：与 anchored traversal + 真实 encounter consumer 一起加入
+// Slice 2：已与 anchored traversal + 真实 encounter consumer 一起加入
 TraversalReversed(
     EntityId, ExpectedMovementGeneration)
 
@@ -659,7 +664,7 @@ planner：
 
 `TryStartTraversal` 与 reducer 共用 §2.2 的 direction predicate。一个 actor-specific ticket、阵营许可或守卫放行仍由 Game 检查，不能写入全局 entry access。
 
-Slice 2 与 anchored traversal 一起加入 `TryReverseTraversal(entity, at)`：它在 `at < ArrivalDue` 物化当前 offset，以相同 speed、相反 endpoint 与 `MovementGeneration + 1` 建立新 segment。Reverse 是新的方向承诺，必须检查反方向 effective entry access；例如 A→B 的 Reverse 检查 `EnterableFromB`。零进度或 boundary reversal 可以稳定拒绝。AdjustPace、Stop、WaitOnPassage 与 MatchAtContact 继续延期。
+Slice 2 已加入 `TryReverseTraversal(entity, at)`：它要求 `AnchorTime < at < ArrivalDue`，物化严格内部 offset，以相同 speed、相反 endpoint 与 `MovementGeneration + 1` 建立新 segment。Reverse 是新的方向承诺，必须检查反方向 effective entry access；例如 A→B 的 Reverse 检查 `EnterableFromB`。零进度、boundary reversal、stale generation 与时间溢出稳定拒绝。AdjustPace、Stop、WaitOnPassage 与 MatchAtContact 继续延期。
 
 ## 4.3 非法 proposal 与世界内失败
 
@@ -785,8 +790,8 @@ SpatialObservation
         DestinationHandle
         ExpectedDuration
     CurrentTravel?
-        FromHandle
-        TowardHandle
+        TargetHandle
+        ReverseDestinationHandle
         ETA
     RecentEncounter?
 ```
@@ -796,8 +801,8 @@ Player 提交的是 semantic intent：
 ```text
 TakeExit(affordanceId)
 TravelTo(destinationHandle)         // Game-owned 长期目标，不直接指定 Passage
-ContinueCurrentIntent
-ReverseCurrentTraversal
+ContinueTravel
+ReverseTravel
 ```
 
 对 immediate traversal，Game 用 frozen `AffordanceId` 精确映射唯一 objective Passage，因而 ferry 与 bridge 即使同终点也不会混淆。`DestinationHandle` 只用于显示或创建 Game-owned `TravelTo` 长期目标；Navigator / controller 再为它选择下一 Passage。Player 不直接提交 Spatial fact、CandidateKey、offset 或 hidden PassageId。
@@ -934,6 +939,8 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 
 ## 7.2 最小验收矩阵
 
+截至 2026-08-23，表中 Slice 1 与 Slice 2 条目均已有自动化测试；更细的 Slice 2 evidence map 见 [Build Log 0002](./build-log/0002-passage-encounter.md)。
+
 | ID | 必须证明 |
 |---|---|
 | DEF-1 | Definition 重排不改变 graph、exit order或route；parallel Passage保持可区分；坏 endpoint/非正 Length拒绝；两端 entry 初值保留。 |
@@ -954,6 +961,8 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 | CNT-2 | Slice 2：A-B与A-C同T，提交一对后另一对仍Forecast；已提交pair不复发；C-D也不被whole-tick消费。 |
 | CNT-3 | Slice 2：contact、arrival、mutation同T仅由Kernel PRF仲裁；无contact-first；endpoint与`tau=0`不伪报。 |
 | ENC-1 | Slice 2：真实Host consumer把contact与`EncounterOpened`同draft提交；Continue提交`EncounterResolved`，Reverse同batch再提交`TraversalReversed`；exact pending encounter只消费一次。 |
+| ENC-2 | Slice 2：单/双 driver encounter 总共只调用一个 Player；Reverse 关闭时不广告且伪造 intent 零提交；arrival 先赢时自动 WorldChanged cleanup 且不调用 Player。 |
+| ENC-3 | Slice 2：encounter request 只披露 Passage、counterpart、当前 target/ETA、由两端与 current target 推导的 reverse destination、contact kind 与可选 TravelGoal；不披露 exact fraction、offset、route、occupancy 或 PRF rank。 |
 | RPL-1 | 当前格式full run/replay/fork在完整batch boundary重建同一HostWorld；Replay不调用AI、Navigator或Forecast。 |
 
 ---
@@ -1076,7 +1085,7 @@ Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁
 
 ## 8.7 Slice 2：一个真实的途中 Encounter
 
-只在 Slice 1 完成后加入，并且必须同时交付一个真实 Game/AI consumer：
+该竖切已在 Slice 1 完成后实施，并与真实 Game/AI consumer 同批交付：
 
 ```text
 两名 scripted Actor 在同 Passage 相向而行
@@ -1089,7 +1098,7 @@ Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁
 → EncounterResolved（Reverse 时同batch包含 TraversalReversed）
 ```
 
-没有 `EncounterOpened`/Observation/Decision 的真实使用，就不先实现 contact planner 或 state。这样 contact 是一条垂直产品能力，不是一层 speculative infrastructure。
+`EncounterOpened`、独立途中 Observation 与 Continue/Reverse Decision 已实际接通，因此 contact 是一条垂直产品能力，而不是孤立的 speculative infrastructure。
 
 ## 8.8 Slice 3：只由真实故事触发
 
@@ -1119,7 +1128,21 @@ Slice 1 同时覆盖 entry mutation/arrival/DecisionPoint 同tick的全局仲裁
 | Replay / persistence / Demo | 当前格式 composite fact codec 与 replay 已切换到 Graph；旧格式不读取、不迁移；Demo 直接投影 Graph travel、arrival、object 与 entry-change facts |
 | 验收 | Spatial acceptance、FirstBoard composite Host、失败零提交、Protocol capability、Player/LLM、current-format replay 与本地 persistence 测试均已落地 |
 
-本次 cutover 未修改 `src/Kernel`。途中 contact、Reverse、Encounter、战争迷雾、Area/ViewLink、旧格式迁移和审计型 hash/version 仍按 §8.7、§8.8 与 §9 延期；当前代码没有为它们预留第二套 authority 或兼容层。
+本次 cutover 未修改 `src/Kernel`。战争迷雾、Area/ViewLink、旧格式迁移和审计型 hash/version 仍按 §8.8 与 §9 延期；当前代码没有为它们预留第二套 authority 或兼容层。
+
+## 8.10 Slice 2 实施记录（2026-08-23）
+
+| 范围 | 已落地结果 |
+|---|---|
+| Anchored motion | `TraversingLocation` 原位改为 anchor/target 表示；endpoint start、lazy offset、arrival 与 Reverse 共用一套数学 authority，不保留旧 API/数据兼容层 |
+| Spatial Contact framework | `PassageContactKey/Kind`、current-segment `ConsumedContacts`、exact internal rational calculator 与可直接注册的 `SpatialContactOccurrenceRule` 已落地；reference Forecast 按 Passage 分组后做 `O(Σn²)` pair scan |
+| Framework/application seam | Spatial rule 完整拥有 objective Forecast→Plan→fact→fold；FirstBoard outer adapter 只做 eligibility 与 Game enrichment，并固定原子提交 `[Spatial Contact, Game Opened]` |
+| 单响应 Encounter | FirstBoard 只保存一个 pending；一个或两个 registered drivers 产生 response candidates，但整个 encounter 只调用一个 winner Player；Continue、Reverse、arrival 后 WorldChanged cleanup 均为非空进展 |
+| Player 边界 | 使用现有 Observation/Intent DTO；途中 request 不调用主观地图 getter，只披露局部 counterpart、target/ETA、reverse destination、contact 与可选 TravelGoal；Reverse 仅在 frozen world 的 Spatial planner 接受时广告 |
+| Replay / persistence / Demo | current-only codec 升至 `/5`；pending、continued、reversed、arrival-before-cleanup 四类 prefix 均覆盖 reopen/replay/fork；Demo 直接展示新 facts 与当前 target/ETA |
+| 复杂性裁决 | 未修改 Kernel/Host/Player.Agency，未加入 phase、暂停、event bus、旧 reader、contact ledger、index/cache 或审计镜像 |
+
+实现中的一个重要前提是：`GraphSpatialState` 不拥有当前模型时间，Contact rule 与既有 Arrival rule 一样运行在诚实、连续注册的 committed Kernel prefix 上。Kernel 统一拒绝 past-due candidate；没有为防御人工拼出的“时间已前进但旧 segment 未经过 occurrence 仲裁”状态而复制 `Now` authority。
 
 ---
 
