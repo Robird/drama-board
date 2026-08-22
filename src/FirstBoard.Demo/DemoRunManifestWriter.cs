@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DramaBoard.FirstBoard;
+using DramaBoard.FirstBoard.Demo.Live;
 
 namespace DramaBoard.FirstBoard.Demo;
 
@@ -61,6 +62,20 @@ internal sealed class DemoRunManifestWriter
     }
 
     public void Cancel() => Write("canceled", result: null, errorType: null);
+
+    public void Cancel(
+        LiveSessionCanceledCapture capture,
+        int llmTurnCount,
+        int forcedSceneEndCount) =>
+        Write(
+            "canceled",
+            new RunResultManifest(
+                "Canceled",
+                capture.CurrentModelTime.Ticks,
+                capture.Journal.Batches.Count,
+                llmTurnCount,
+                forcedSceneEndCount),
+            errorType: null);
 
     private void Write(string status, RunResultManifest? result, string? errorType)
     {

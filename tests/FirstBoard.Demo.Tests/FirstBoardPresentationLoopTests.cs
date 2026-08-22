@@ -198,6 +198,37 @@ public sealed class FirstBoardPresentationLoopTests
         await run;
     }
 
+    [Fact]
+    public async Task CancellationSkipsRemainingPacingButStillDrainsAndAcknowledgesCommittedPrefix()
+    {
+        PresentationHarness harness = CreateHarness(PresentationMode.Player, BoardIds.Alice);
+        CommittedTransition first = Transition(
+            transitionCount: 1,
+            new LogicalInstant(ModelTime.Zero, 0),
+            [new GameBoardFact(new ActorWaitStartedEvent(BoardIds.Alice, ModelTime.Zero))]);
+        CommittedTransition second = Transition(
+            transitionCount: 2,
+            new LogicalInstant(ModelTime.Zero, 1),
+            [new GameBoardFact(new ActorWaitedEvent(BoardIds.Alice))]);
+        var pacer = new ManualPresentationPacer();
+        using var cancellation = new CancellationTokenSource();
+        FirstBoardPresentationLoop loop = harness.CreateLoop(pacer);
+        harness.Publish(first);
+        harness.Publish(second);
+        harness.Channel.Writer.TryComplete();
+
+        Task run = loop.RunAsync(harness.Channel.Reader, cancellation.Token);
+        await pacer.WaitForRequestCountAsync(1);
+        cancellation.Cancel();
+        await run;
+
+        Assert.Equal(second.Version, harness.Coordination.Snapshot().Presented);
+        Assert.Equal(
+            ExpectedWorld(harness, first, second),
+            FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
+        Assert.Single(harness.Terminal.Cues);
+    }
+
     private static PresentationHarness CreateHarness(
         PresentationMode mode,
         string? humanActorId)

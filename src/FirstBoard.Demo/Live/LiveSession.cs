@@ -60,8 +60,9 @@ internal static class LiveSession
             channel.Writer,
             coordination,
             authorityStop.Token);
-        // Presentation drains the already-published prefix even when Authority is canceled.
-        Task presentationTask = presentation.RunAsync(channel.Reader, CancellationToken.None);
+        // Presentation uses cancellation to stop effects/pacing, then silently drains the
+        // already-published prefix so the replay frontier still catches Authority.
+        Task presentationTask = presentation.RunAsync(channel.Reader, cancellationToken);
 
         Task first = await Task.WhenAny(authorityTask, presentationTask).ConfigureAwait(false);
         bool presentationEndedFirst = ReferenceEquals(first, presentationTask);
@@ -103,6 +104,27 @@ internal static class LiveSession
                     $"Live session faulted: {terminalError.GetType().Name}: " +
                     terminalError.Message);
             await TryReportFailureStatusAsync(terminal, status).ConfigureAwait(false);
+            if (terminalError is OperationCanceledException canceled &&
+                cancellationToken.IsCancellationRequested)
+            {
+                LiveFrontierSnapshot canceledFrontiers = coordination.Snapshot();
+                if (canceledFrontiers.Presented != kernel.Version)
+                {
+                    throw new InvalidOperationException(
+                        "Canceled Presentation did not drain the committed session prefix.",
+                        canceled);
+                }
+
+                throw new LiveSessionCanceledException(
+                    new LiveSessionCanceledCapture(
+                        genesis,
+                        kernel.World,
+                        kernel.Version,
+                        kernel.CurrentModelTime,
+                        journal),
+                    canceled);
+            }
+
             ExceptionDispatchInfo.Capture(terminalError).Throw();
         }
 
@@ -200,4 +222,26 @@ internal static class LiveSession
             // Preserve the causal Authority/Presentation failure over a best-effort status write.
         }
     }
+}
+
+internal sealed record LiveSessionCanceledCapture(
+    FirstBoardWorld InitialWorld,
+    FirstBoardWorld World,
+    WorldVersion Version,
+    ModelTime CurrentModelTime,
+    InMemoryJournal<FirstBoardFact> Journal);
+
+internal sealed class LiveSessionCanceledException : OperationCanceledException
+{
+    public LiveSessionCanceledException(
+        LiveSessionCanceledCapture capture,
+        OperationCanceledException cause)
+        : base("Live session canceled after preserving its committed prefix.", cause,
+            cause.CancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        Capture = capture;
+    }
+
+    public LiveSessionCanceledCapture Capture { get; }
 }

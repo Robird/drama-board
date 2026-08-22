@@ -88,18 +88,31 @@ internal sealed class FirstBoardPresentationLoop
                 }
 
                 LiveFrontierSnapshot frontiers = _coordination.Snapshot();
-                if (!bufferingShown && frontiers.BacklogCount == 0)
+                if (!cancellationToken.IsCancellationRequested &&
+                    !bufferingShown &&
+                    frontiers.BacklogCount == 0)
                 {
-                    await _terminal.ShowStatusAsync(
-                            new TerminalStatus(
-                                TerminalStatusKind.Buffering,
-                                "Waiting for the next committed world transition."),
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    try
+                    {
+                        await _terminal.ShowStatusAsync(
+                                new TerminalStatus(
+                                    TerminalStatusKind.Buffering,
+                                    "Waiting for the next committed world transition."),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                        when (cancellationToken.IsCancellationRequested)
+                    {
+                        // Authority will complete the channel; keep draining silently.
+                    }
+
                     bufferingShown = true;
                 }
 
-                if (!await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+                // Cancellation ends presentation effects, not committed-prefix replay. Keep
+                // draining until Authority completes the channel so P can still catch C.
+                if (!await reader.WaitToReadAsync(CancellationToken.None).ConfigureAwait(false))
                 {
                     await reader.Completion.ConfigureAwait(false);
                     return;
@@ -146,34 +159,42 @@ internal sealed class FirstBoardPresentationLoop
             postWorld);
         PresentationCue? intervalCue = CreateIntervalCue(transition.Batch.Instant);
 
-        if (intervalCue is not null)
+        try
         {
-            await PlayCueAsync(intervalCue, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (_humanActorId is not null)
-        {
-            foreach (PresentationCue cue in projection.PlayerCues)
+            if (intervalCue is not null)
             {
-                await PlayCueAsync(cue, cancellationToken).ConfigureAwait(false);
+                await PlayCueAsync(intervalCue, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (_humanActorId is not null)
+            {
+                foreach (PresentationCue cue in projection.PlayerCues)
+                {
+                    await PlayCueAsync(cue, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            if (_mode == PresentationMode.Developer)
+            {
+                LiveFrontierSnapshot current = _coordination.Snapshot();
+                await PlayOverlayAsync(
+                        new DeveloperOverlay(
+                            "developer.frontiers",
+                            $"C={FormatVersion(current.Committed)} " +
+                            $"P={FormatVersion(current.Presented)} " +
+                            $"backlog={current.BacklogCount}"),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (DeveloperOverlay overlay in projection.DeveloperOverlays)
+                {
+                    await PlayOverlayAsync(overlay, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
-
-        if (_mode == PresentationMode.Developer)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            LiveFrontierSnapshot current = _coordination.Snapshot();
-            await PlayOverlayAsync(
-                    new DeveloperOverlay(
-                        "developer.frontiers",
-                        $"C={FormatVersion(current.Committed)} " +
-                        $"P={FormatVersion(current.Presented)} " +
-                        $"backlog={current.BacklogCount}"),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            foreach (DeveloperOverlay overlay in projection.DeveloperOverlays)
-            {
-                await PlayOverlayAsync(overlay, cancellationToken).ConfigureAwait(false);
-            }
+            // A canceled UI session skips remaining effects and pacing, but this immutable
+            // committed transition is still folded and acknowledged below.
         }
 
         _replayWorld = postWorld;

@@ -13,6 +13,7 @@ internal sealed class FakeTerminalUi : ITerminalUi
     private TaskCompletionSource _promptChanged = NewSignal();
     private TaskCompletionSource _errorChanged = NewSignal();
     private TaskCompletionSource _outputChanged = NewSignal();
+    private TaskCompletionSource _readChanged = NewSignal();
     private PendingRead? _activeRead;
 
     public IReadOnlyList<DecisionRequest> Prompts
@@ -114,6 +115,7 @@ internal sealed class FakeTerminalUi : ITerminalUi
     {
         cancellationToken.ThrowIfCancellationRequested();
         var pending = new PendingRead(decisionId);
+        TaskCompletionSource changed;
         lock (_sync)
         {
             if (_activeRead is not null)
@@ -122,10 +124,13 @@ internal sealed class FakeTerminalUi : ITerminalUi
             }
 
             _activeRead = pending;
+            changed = _readChanged;
+            _readChanged = NewSignal();
         }
 
         pending.Registration = cancellationToken.Register(
             () => CancelRead(pending, cancellationToken));
+        changed.TrySetResult();
         return AwaitReadAsync(pending);
     }
 
@@ -178,6 +183,25 @@ internal sealed class FakeTerminalUi : ITerminalUi
                 }
 
                 changed = _errorChanged.Task;
+            }
+
+            await changed.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    public async Task WaitForActiveReadAsync(DecisionId decisionId)
+    {
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                if (_activeRead?.DecisionId == decisionId)
+                {
+                    return;
+                }
+
+                changed = _readChanged.Task;
             }
 
             await changed.WaitAsync(TimeSpan.FromSeconds(5));

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using DramaBoard.Protocol;
 
 namespace DramaBoard.FirstBoard.Demo.Live;
@@ -33,34 +34,58 @@ internal sealed class TerminalUi : ITerminalUi
         await _output.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Console.WriteLine();
-            Console.WriteLine(
-                $"[decision] {request.ActorId} @ {FormatTime(request.ModelTimeMs)} " +
-                $"({request.Observation.LocationId})");
-            if (request.Observation.VisibleActorIds.Count > 0)
-            {
-                Console.WriteLine(
-                    $"  visible actors: {string.Join(", ", request.Observation.VisibleActorIds)}");
-            }
-
-            if (request.Observation.VisibleObjectIds.Count > 0)
-            {
-                Console.WriteLine(
-                    $"  visible objects: {string.Join(", ", request.Observation.VisibleObjectIds)}");
-            }
-
-            foreach (KnownFact fact in request.Observation.KnownFacts)
-            {
-                Console.WriteLine($"  known: {fact.Text}");
-            }
-
-            Console.WriteLine(
-                "  Type 'help' to list legal command forms, or press Ctrl+C to end the session.");
+            Console.WriteLine(FormatPrompt(request));
         }
         finally
         {
             _output.Release();
         }
+    }
+
+    internal static string FormatPrompt(DecisionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var text = new StringBuilder()
+            .AppendLine()
+            .Append("[decision] ").Append(request.ActorId)
+            .Append(" @ ").Append(FormatTime(request.ModelTimeMs))
+            .Append(" (").Append(request.Observation.LocationId).AppendLine(")");
+        if (request.Observation.VisibleActorIds.Count > 0)
+        {
+            text.Append("  visible actors: ")
+                .AppendLine(string.Join(", ", request.Observation.VisibleActorIds));
+        }
+
+        if (request.Observation.VisibleObjectIds.Count > 0)
+        {
+            text.Append("  visible objects: ")
+                .AppendLine(string.Join(", ", request.Observation.VisibleObjectIds));
+        }
+
+        foreach (ObservedExit exit in request.Observation.Exits)
+        {
+            text.Append("  exit: ").Append(exit.ExitId)
+                .Append(" -> ").Append(exit.DestinationId)
+                .Append("; duration=").Append(
+                    exit.ExpectedDurationMs.ToString(CultureInfo.InvariantCulture))
+                .Append("ms; ").AppendLine(exit.IsAvailable ? "available" : "unavailable");
+        }
+
+        foreach (KnownFact fact in request.Observation.KnownFacts)
+        {
+            text.Append("  known: ").AppendLine(fact.Text);
+        }
+
+        text.AppendLine("  available actions:");
+        foreach (AvailableAction action in request.AvailableActions)
+        {
+            text.Append("    ").Append(action.ActionKind.Id)
+                .AppendLine(FormatCandidates(action));
+        }
+
+        return text
+            .Append("  Type 'help' to list command forms, or press Ctrl+C to end the session.")
+            .ToString();
     }
 
     public ValueTask ShowInputErrorAsync(
@@ -113,6 +138,22 @@ internal sealed class TerminalUi : ITerminalUi
         return $"{minutes.ToString("00", CultureInfo.InvariantCulture)}:" +
             seconds.ToString("00", CultureInfo.InvariantCulture);
     }
+
+    private static string FormatCandidates(AvailableAction action)
+    {
+        string[] candidates =
+        [
+            CandidateList("actors", action.CandidateActorIds),
+            CandidateList("objects", action.CandidateObjectIds),
+            CandidateList("exits", action.CandidateExitIds),
+            CandidateList("destinations", action.CandidateDestinationIds),
+        ];
+        string[] present = [.. candidates.Where(value => value.Length > 0)];
+        return present.Length == 0 ? string.Empty : $" ({string.Join("; ", present)})";
+    }
+
+    private static string CandidateList(string label, IReadOnlyList<string>? values) =>
+        values is null ? string.Empty : $"{label}=[{string.Join(", ", values)}]";
 }
 
 internal sealed class FixedIntervalPresentationPacer : IPresentationPacer

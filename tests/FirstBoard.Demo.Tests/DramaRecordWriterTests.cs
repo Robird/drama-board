@@ -2,6 +2,7 @@ using DramaBoard.FirstBoard.Demo;
 using DramaBoard.Host;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.FirstBoard.Demo.Tests;
 
@@ -75,6 +76,33 @@ public sealed class DramaRecordWriterTests
         Assert.Contains("- 爱丽丝 Driver：LLM / codex / alice-ai", text);
         Assert.Contains("- 鲍勃 Driver：LLM / codex / bob-ai", text);
         Assert.Contains("- Presentation：developer；Human=none；interval=250ms", text);
+    }
+
+    [Fact]
+    public void CanceledRecordDescribesThePreservedCommittedPrefix()
+    {
+        using var output = new TempOutputDirectory();
+        DemoOptions options = DemoOptions.Parse(["--output", output.Path]);
+        ScenarioInstance scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
+        FirstBoardWorld initial = scenario.CreateInitialWorld();
+        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var capture = new LiveSessionCanceledCapture(
+            initial,
+            initial,
+            new WorldVersion(FirstBoardScenario.LineageId, 0),
+            ModelTime.Zero,
+            journal);
+
+        string recordPath = DramaRecordWriter.WriteCanceled(
+            options,
+            scenario,
+            capture,
+            traces: [],
+            budgetForcedCount: 0);
+        string text = File.ReadAllText(recordPath);
+
+        Assert.Contains("- 结束：Canceled @ 0ms", text);
+        Assert.Contains("- 世界 transition：0", text);
     }
 
     private static BoardRunCapture EmptyCapture(ScenarioInstance scenario)

@@ -37,37 +37,59 @@ try
                 scenarioInstance,
                 profiler,
                 traceSink);
-        var terminal = new TerminalUi();
-        BoardRunCapture capture = await LiveSession.RunAsync(
-            scenarioInstance,
-            llmComposition.AiDrivers,
-            options.HumanActorId,
-            options.PresentationMode,
-            terminal,
-            new FixedIntervalPresentationPacer(options.PresentationInterval),
-            new ModelTime(options.UntilModelTimeMs),
-            overallTimeout.Token);
-        await llmComposition.FlushMemoryAsync(overallTimeout.Token);
-        string recordPath = DramaRecordWriter.Write(
-            options,
-            scenarioInstance,
-            capture,
-            traceSink.Traces,
-            llmComposition.ForcedSceneEndCount);
-        manifest.Complete(
-            capture,
-            traceSink.Traces.Count,
-            llmComposition.ForcedSceneEndCount);
+        try
+        {
+            var terminal = new TerminalUi();
+            BoardRunCapture capture = await LiveSession.RunAsync(
+                scenarioInstance,
+                llmComposition.AiDrivers,
+                options.HumanActorId,
+                options.PresentationMode,
+                terminal,
+                new FixedIntervalPresentationPacer(options.PresentationInterval),
+                new ModelTime(options.UntilModelTimeMs),
+                overallTimeout.Token);
+            await llmComposition.FlushMemoryAsync(overallTimeout.Token);
+            string recordPath = DramaRecordWriter.Write(
+                options,
+                scenarioInstance,
+                capture,
+                traceSink.Traces,
+                llmComposition.ForcedSceneEndCount);
+            manifest.Complete(
+                capture,
+                traceSink.Traces.Count,
+                llmComposition.ForcedSceneEndCount);
 
-        Console.WriteLine(
-            $"Completed: {capture.Result.Status}; transitions={capture.Journal.Batches.Count}; " +
-            $"llmTurns={traceSink.Traces.Count}");
-        Console.WriteLine($"Drama record: {recordPath}");
+            Console.WriteLine(
+                $"Completed: {capture.Result.Status}; " +
+                $"transitions={capture.Journal.Batches.Count}; " +
+                $"llmTurns={traceSink.Traces.Count}");
+            Console.WriteLine($"Drama record: {recordPath}");
+        }
+        catch (LiveSessionCanceledException exception)
+            when (overallTimeout.IsCancellationRequested)
+        {
+            string recordPath = DramaRecordWriter.WriteCanceled(
+                options,
+                scenarioInstance,
+                exception.Capture,
+                traceSink.Traces,
+                llmComposition.ForcedSceneEndCount);
+            manifest.Cancel(
+                exception.Capture,
+                traceSink.Traces.Count,
+                llmComposition.ForcedSceneEndCount);
+            Console.WriteLine(
+                $"Live session canceled cleanly after " +
+                $"{exception.Capture.Journal.Batches.Count} committed transitions.");
+            Console.WriteLine($"Partial drama record: {recordPath}");
+        }
     }
     catch (OperationCanceledException) when (overallTimeout.IsCancellationRequested)
     {
         manifest.Cancel();
-        Console.WriteLine("Live session canceled cleanly.");
+        Console.WriteLine("Live session canceled before a committed prefix was available.");
     }
     catch (Exception exception)
     {

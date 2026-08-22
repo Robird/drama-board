@@ -118,6 +118,7 @@ public sealed class DemoOptionsTests
     [InlineData("-1")]
     [InlineData("1.5")]
     [InlineData("not-a-number")]
+    [InlineData("2147483648")]
     [InlineData("9223372036854775807")]
     public void InvalidPresentationIntervalIsRejected(string value)
     {

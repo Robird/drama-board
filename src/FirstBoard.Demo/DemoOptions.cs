@@ -218,15 +218,16 @@ internal sealed record DemoOptions(
     private static TimeSpan ReadPresentationInterval(
         IReadOnlyDictionary<string, string> values)
     {
+        const long maximumDelayMilliseconds = int.MaxValue;
         long milliseconds = ReadInt64(
             values,
             "presentation-interval-ms",
             fallback: 250,
             minimum: 0);
-        if (milliseconds > TimeSpan.MaxValue.Ticks / TimeSpan.TicksPerMillisecond)
+        if (milliseconds > maximumDelayMilliseconds)
         {
             throw new ArgumentException(
-                "--presentation-interval-ms exceeds the supported TimeSpan range.");
+                "--presentation-interval-ms exceeds the supported Task.Delay range.");
         }
 
         return TimeSpan.FromMilliseconds(milliseconds);

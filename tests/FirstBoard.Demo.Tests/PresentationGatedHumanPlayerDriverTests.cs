@@ -27,6 +27,7 @@ public sealed class PresentationGatedHumanPlayerDriverTests
         coordination.AcknowledgePresented(second);
         await terminal.WaitForPromptCountAsync(1);
         Assert.Same(request, Assert.Single(terminal.Prompts));
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "observe"));
         PlayerDecision decision = await pending;
         Assert.Equal(new Intent(ActionKinds.Observe), decision.Intent);
@@ -47,6 +48,7 @@ public sealed class PresentationGatedHumanPlayerDriverTests
 
         ValueTask<PlayerDecision> pending = driver.DecideAsync(request, CancellationToken.None);
         await terminal.WaitForPromptCountAsync(1);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, command));
 
         PlayerDecision actual = await pending;
@@ -66,10 +68,13 @@ public sealed class PresentationGatedHumanPlayerDriverTests
 
         ValueTask<PlayerDecision> pending = driver.DecideAsync(request, CancellationToken.None);
         await terminal.WaitForPromptCountAsync(1);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "not-a-command"));
         await terminal.WaitForErrorCountAsync(1);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "reverse"));
         await terminal.WaitForErrorCountAsync(2);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "observe"));
 
         PlayerDecision decision = await pending;
@@ -91,10 +96,12 @@ public sealed class PresentationGatedHumanPlayerDriverTests
 
         ValueTask<PlayerDecision> pending = driver.DecideAsync(request, CancellationToken.None);
         await terminal.WaitForPromptCountAsync(1);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "HELP"));
         await terminal.WaitForErrorCountAsync(1);
         Assert.Contains("travel-to <place>", Assert.Single(terminal.Errors));
         Assert.False(pending.IsCompleted);
+        await terminal.WaitForActiveReadAsync(request.DecisionId);
         Assert.True(terminal.TrySubmit(request.DecisionId, "observe"));
 
         Assert.Equal(request.DecisionId, (await pending).DecisionId);
@@ -130,6 +137,7 @@ public sealed class PresentationGatedHumanPlayerDriverTests
         await terminal.WaitForPromptCountAsync(2);
         Assert.False(terminal.TrySubmit(canceledRequest.DecisionId, "reverse"));
         Assert.False(next.IsCompleted);
+        await terminal.WaitForActiveReadAsync(nextRequest.DecisionId);
         Assert.True(terminal.TrySubmit(nextRequest.DecisionId, "observe"));
         Assert.Equal(nextRequest.DecisionId, (await next).DecisionId);
     }

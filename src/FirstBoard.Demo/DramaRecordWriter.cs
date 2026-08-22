@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
 using DramaBoard.FirstBoard;
+using DramaBoard.FirstBoard.Demo.Live;
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Time;
 using DramaBoard.Player.Llm;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
@@ -17,6 +19,41 @@ internal static class DramaRecordWriter
         DemoOptions options,
         ScenarioInstance scenarioInstance,
         BoardRunCapture capture,
+        IReadOnlyList<LlmTurnTrace> traces,
+        int budgetForcedCount) =>
+        WriteCore(
+            options,
+            scenarioInstance,
+            capture.Result.Status.ToString(),
+            capture.Result.CurrentModelTime,
+            capture.Result.World,
+            capture.Journal,
+            traces,
+            budgetForcedCount);
+
+    public static string WriteCanceled(
+        DemoOptions options,
+        ScenarioInstance scenarioInstance,
+        LiveSessionCanceledCapture capture,
+        IReadOnlyList<LlmTurnTrace> traces,
+        int budgetForcedCount) =>
+        WriteCore(
+            options,
+            scenarioInstance,
+            "Canceled",
+            capture.CurrentModelTime,
+            capture.World,
+            capture.Journal,
+            traces,
+            budgetForcedCount);
+
+    private static string WriteCore(
+        DemoOptions options,
+        ScenarioInstance scenarioInstance,
+        string status,
+        ModelTime currentModelTime,
+        FirstBoardWorld world,
+        InMemoryJournal<FirstBoardFact> journal,
         IReadOnlyList<LlmTurnTrace> traces,
         int budgetForcedCount)
     {
@@ -46,12 +83,12 @@ internal static class DramaRecordWriter
             .Append("- Instance SHA-256：").AppendLine(scenarioInstance.InstanceSha256)
             .Append("- 世界种子：").AppendLine(
                 options.WorldSeed.ToString(CultureInfo.InvariantCulture))
-            .Append("- 结束：").Append(capture.Result.Status)
+            .Append("- 结束：").Append(status)
             .Append(" @ ").Append(
-                capture.Result.CurrentModelTime.Ticks.ToString(CultureInfo.InvariantCulture))
+                currentModelTime.Ticks.ToString(CultureInfo.InvariantCulture))
             .AppendLine("ms")
             .Append("- 世界 transition：").AppendLine(
-                capture.Journal.Batches.Count.ToString(CultureInfo.InvariantCulture))
+                journal.Batches.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- 成功解析的 LLM turn：").AppendLine(
                 traces.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- turn 预算触发的收场等待：").AppendLine(
@@ -60,25 +97,25 @@ internal static class DramaRecordWriter
             .AppendLine("## 世界终局")
             .AppendLine()
             .Append("- 地窖入口：").AppendLine(
-                capture.Result.World.CellarSealed ? "已禁止进入" : "仍开放")
+                world.CellarSealed ? "已禁止进入" : "仍开放")
             .Append("- 锁箱：").AppendLine(
-                capture.Result.World.ChestOpened ? "已打开" : "仍上锁")
-            .Append("- 黄铜钥匙：").AppendLine(ObjectLocation(capture.Result.World))
+                world.ChestOpened ? "已打开" : "仍上锁")
+            .Append("- 黄铜钥匙：").AppendLine(ObjectLocation(world))
             .Append("- 公爵夫人的密信：").AppendLine(
-                ObjectLocation(capture.Result.World, BoardIds.DuchessLetter))
+                ObjectLocation(world, BoardIds.DuchessLetter))
             .Append("- 银币一：").AppendLine(
-                ObjectLocation(capture.Result.World, BoardIds.SilverCoinOne))
+                ObjectLocation(world, BoardIds.SilverCoinOne))
             .Append("- 银币二：").AppendLine(
-                ObjectLocation(capture.Result.World, BoardIds.SilverCoinTwo))
+                ObjectLocation(world, BoardIds.SilverCoinTwo))
             .Append("- 爱丽丝：").AppendLine(
-                ActorSummary(capture.Result.World, BoardIds.Alice))
+                ActorSummary(world, BoardIds.Alice))
             .Append("- 鲍勃：").AppendLine(
-                ActorSummary(capture.Result.World, BoardIds.Bob))
+                ActorSummary(world, BoardIds.Bob))
             .AppendLine()
             .AppendLine("## 世界事件叙事 dump")
             .AppendLine();
 
-        foreach (JournalBatch<FirstBoardFact> batch in capture.Journal.Batches)
+        foreach (JournalBatch<FirstBoardFact> batch in journal.Batches)
         {
             foreach (FirstBoardFact fact in batch.Facts)
             {

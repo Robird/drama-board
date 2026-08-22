@@ -3,7 +3,6 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
 using DramaBoard.Protocol;
-using DramaBoard.Spatial;
 
 namespace DramaBoard.FirstBoard.Demo.Tests;
 
@@ -61,6 +60,7 @@ public sealed class LiveSessionTests
         DecisionRequest prompt = Assert.Single(terminal.Prompts);
         Assert.Equal(BoardIds.Alice, prompt.ActorId);
         Assert.False(run.IsCompleted);
+        await terminal.WaitForActiveReadAsync(prompt.DecisionId);
         Assert.True(terminal.TrySubmit(prompt.DecisionId, "wait 1000"));
 
         BoardRunCapture capture = await run;
@@ -88,8 +88,9 @@ public sealed class LiveSessionTests
         string command,
         PassageEncounterResolution expectedResolution)
     {
-        ulong seed = FindEncounterResponderSeed(BoardIds.Alice);
-        ScenarioInstance instance = ScenarioInstance.CreateDefault(seed);
+        // Seed 0 selects Alice for both the first place decision and the later
+        // head-on encounter response in the default scenario.
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 0);
         var terminal = new FakeTerminalUi();
         Task<BoardRunCapture> run = LiveSession.RunAsync(
             instance,
@@ -104,6 +105,7 @@ public sealed class LiveSessionTests
         await terminal.WaitForPromptCountAsync(1);
         DecisionRequest travelPrompt = terminal.Prompts[0];
         Assert.Equal(BoardIds.Tavern, travelPrompt.Observation.LocationId);
+        await terminal.WaitForActiveReadAsync(travelPrompt.DecisionId);
         Assert.True(terminal.TrySubmit(
             travelPrompt.DecisionId,
             $"travel exit:{BoardIds.TavernMarketRoad}"));
@@ -118,6 +120,7 @@ public sealed class LiveSessionTests
         Assert.Contains(
             encounterPrompt.AvailableActions,
             action => action.ActionKind == ActionKinds.ReverseTravel);
+        await terminal.WaitForActiveReadAsync(encounterPrompt.DecisionId);
         Assert.True(terminal.TrySubmit(encounterPrompt.DecisionId, command));
 
         BoardRunCapture capture = await run;
@@ -250,11 +253,16 @@ public sealed class LiveSessionTests
                 overlay.Text.Contains(BoardIds.Bob, StringComparison.Ordinal));
 
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await run);
+        LiveSessionCanceledException canceled =
+            await Assert.ThrowsAsync<LiveSessionCanceledException>(async () => await run);
 
         Assert.False(terminal.TrySubmit(prompt.DecisionId, "wait"));
         Assert.Equal(TerminalStatusKind.Canceled, terminal.Statuses[^1].Kind);
         Assert.Single(terminal.Prompts);
+        Assert.Equal(canceled.Capture.Version.TransitionCount, canceled.Capture.Journal.Batches.Count);
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(canceled.Capture.World),
+            ReplayCanceledSnapshot(instance, canceled.Capture));
     }
 
     private static ulong FindFirstDecisionActorSeed(string expectedActorId)
@@ -281,102 +289,26 @@ public sealed class LiveSessionTests
             $"No scheduler seed selected '{expectedActorId}' first.");
     }
 
-    private static ulong FindEncounterResponderSeed(string expectedActorId)
-    {
-        for (ulong seed = 0; seed < 10_000; seed++)
-        {
-            ScenarioInstance instance = ScenarioInstance.CreateDefault(seed);
-            var reducer = new FirstBoardReducer(instance.Graph);
-            FirstBoardWorld world = instance.CreateInitialWorld();
-            var departureInstant = new LogicalInstant(ModelTime.Zero, 0);
-            world = StartRoadTraversal(
-                instance,
-                reducer,
-                world,
-                BoardIds.Alice,
-                BoardIds.Market,
-                departureInstant);
-            world = StartRoadTraversal(
-                instance,
-                reducer,
-                world,
-                BoardIds.Bob,
-                BoardIds.Tavern,
-                departureInstant);
-
-            var rules = new SimulationRules(seed, maxTransitionsPerModelTime: 10_000);
-            OccurrenceCandidate<PassageContactOccurrenceData> contact = Assert.Single(
-                new SpatialContactOccurrenceRule(instance.Graph).Forecast(world.Spatial, rules));
-            var contactInstant = new LogicalInstant(contact.Due.ModelTime, 0);
-            world = reducer.Apply(
-                world,
-                contactInstant,
-                new SpatialBoardFact(new PassageContactOccurredFact(
-                    contact.Data.ContactKey,
-                    contact.Data.Kind)));
-            world = reducer.Apply(
-                world,
-                contactInstant,
-                new GameBoardFact(new PassageEncounterOpenedEvent(
-                    contact.Data.ContactKey,
-                    contact.Data.Kind)));
-
-            var responseRule = new FirstBoardPassageEncounterResponseRule(
-                instance.Graph,
-                Drivers(
-                    (BoardIds.Alice, new NullPlayerDriver()),
-                    (BoardIds.Bob, new NullPlayerDriver())));
-            IReadOnlyList<OccurrenceCandidate<BoardCandidate>> responses =
-                responseRule.Forecast(world, rules);
-            PassageEncounterResponseCandidate winner =
-                Assert.IsType<PassageEncounterResponseCandidate>(
-                    OccurrenceScheduler.SelectWinner(responses, seed).Data);
-            if (winner.RespondingActorId == expectedActorId)
-            {
-                return seed;
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"No scheduler seed selected encounter responder '{expectedActorId}'.");
-    }
-
-    private static FirstBoardWorld StartRoadTraversal(
-        ScenarioInstance instance,
-        FirstBoardReducer reducer,
-        FirstBoardWorld world,
-        string actorId,
-        string destinationId,
-        LogicalInstant instant)
-    {
-        world = reducer.Apply(
-            world,
-            instant,
-            new GameBoardFact(new ActorTravelStartedEvent(
-                actorId,
-                $"exit:{BoardIds.TavernMarketRoad}",
-                destinationId)));
-        SpatialPlanAccepted plan = Assert.IsType<SpatialPlanAccepted>(
-            new SpatialPlanner(instance.Graph).TryStartTraversal(
-                world.Spatial,
-                new EntityId(actorId),
-                new PassageId(BoardIds.TavernMarketRoad),
-                BoardTiming.TravelSpeed,
-                instant.ModelTime));
-        foreach (GraphSpatialFact fact in plan.Facts)
-        {
-            world = reducer.Apply(world, instant, new SpatialBoardFact(fact));
-        }
-
-        reducer.Validate(world);
-        return world;
-    }
-
     private static IReadOnlyDictionary<string, IPlayerDriver> Drivers(
         params (string ActorId, IPlayerDriver Driver)[] values) =>
         values.ToDictionary(value => value.ActorId, value => value.Driver, StringComparer.Ordinal);
 
     private static string ReplaySnapshot(ScenarioInstance instance, BoardRunCapture capture)
+    {
+        var reducer = new FirstBoardReducer(instance.Graph);
+        ReplayResult<FirstBoardWorld> replay = SimulationReplay.Replay(
+            capture.InitialWorld,
+            capture.Journal.LineageId,
+            capture.InitialWorld.Now,
+            capture.Journal.Batches,
+            reducer.Apply,
+            reducer.Validate);
+        return FirstBoardScenario.WorldSnapshot(replay.World);
+    }
+
+    private static string ReplayCanceledSnapshot(
+        ScenarioInstance instance,
+        LiveSessionCanceledCapture capture)
     {
         var reducer = new FirstBoardReducer(instance.Graph);
         ReplayResult<FirstBoardWorld> replay = SimulationReplay.Replay(

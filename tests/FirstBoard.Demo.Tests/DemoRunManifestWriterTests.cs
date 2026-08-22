@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DramaBoard.FirstBoard.Demo;
+using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.FirstBoard.Demo.Tests;
 
@@ -125,14 +127,26 @@ public sealed class DemoRunManifestWriterTests
         var scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
         var manifest = new DemoRunManifestWriter(output.Path, options, scenario);
 
-        manifest.Cancel();
+        FirstBoardWorld initial = scenario.CreateInitialWorld();
+        var canceled = new LiveSessionCanceledCapture(
+            initial,
+            initial,
+            new WorldVersion(FirstBoardScenario.LineageId, 0),
+            ModelTime.Zero,
+            new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId));
+        manifest.Cancel(canceled, llmTurnCount: 2, forcedSceneEndCount: 1);
 
         using JsonDocument document = output.ReadManifest();
-        Assert.Equal("canceled", document.RootElement.GetProperty("status").GetString());
-        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("errorType").ValueKind);
+        JsonElement root = document.RootElement;
+        Assert.Equal("canceled", root.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("errorType").ValueKind);
         Assert.NotEqual(
             JsonValueKind.Null,
-            document.RootElement.GetProperty("finishedAtUtc").ValueKind);
+            root.GetProperty("finishedAtUtc").ValueKind);
+        JsonElement result = root.GetProperty("result");
+        Assert.Equal("Canceled", result.GetProperty("status").GetString());
+        Assert.Equal(0, result.GetProperty("worldTransitionCount").GetInt32());
+        Assert.Equal(2, result.GetProperty("llmTurnCount").GetInt32());
     }
 
     private static string ConfigurationHash(DemoOptions options)
