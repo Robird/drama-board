@@ -70,7 +70,6 @@ internal sealed class LiveSessionCoordination
         TaskCompletionSource signal;
         lock (_sync)
         {
-            ThrowIfFailed();
             RequireSameLineage(next, _presented, nameof(next));
             if (next.TransitionCount != checked(_presented.TransitionCount + 1))
             {

@@ -63,6 +63,19 @@ public sealed class LiveSessionCoordinationTests
     }
 
     [Fact]
+    public void FailureStillAllowsAlreadyCommittedPrefixToBePresented()
+    {
+        var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));
+        var first = new WorldVersion(17, 1);
+        coordination.PublishCommitted(first);
+        coordination.Fail(new ArithmeticException("later authority step failed"));
+
+        coordination.AcknowledgePresented(first);
+
+        Assert.Equal(first, coordination.Snapshot().Presented);
+    }
+
+    [Fact]
     public async Task WaitCanBeCanceledWithoutPoisoningFutureWaiters()
     {
         var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));

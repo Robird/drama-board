@@ -5,10 +5,14 @@ namespace DramaBoard.FirstBoard.Demo.Tests;
 internal sealed class FakeTerminalUi : ITerminalUi
 {
     private readonly object _sync = new();
+    private readonly List<PresentationCue> _cues = [];
+    private readonly List<DeveloperOverlay> _overlays = [];
+    private readonly List<TerminalStatus> _statuses = [];
     private readonly List<DecisionRequest> _prompts = [];
     private readonly List<string> _errors = [];
     private TaskCompletionSource _promptChanged = NewSignal();
     private TaskCompletionSource _errorChanged = NewSignal();
+    private TaskCompletionSource _outputChanged = NewSignal();
     private PendingRead? _activeRead;
 
     public IReadOnlyList<DecisionRequest> Prompts
@@ -33,12 +37,19 @@ internal sealed class FakeTerminalUi : ITerminalUi
         }
     }
 
+    public IReadOnlyList<PresentationCue> Cues => Snapshot(_cues);
+
+    public IReadOnlyList<DeveloperOverlay> DeveloperOverlays => Snapshot(_overlays);
+
+    public IReadOnlyList<TerminalStatus> Statuses => Snapshot(_statuses);
+
     public ValueTask ShowCueAsync(
         PresentationCue cue,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(cue);
         cancellationToken.ThrowIfCancellationRequested();
+        Record(_cues, cue);
         return ValueTask.CompletedTask;
     }
 
@@ -48,6 +59,7 @@ internal sealed class FakeTerminalUi : ITerminalUi
     {
         ArgumentNullException.ThrowIfNull(overlay);
         cancellationToken.ThrowIfCancellationRequested();
+        Record(_overlays, overlay);
         return ValueTask.CompletedTask;
     }
 
@@ -57,6 +69,7 @@ internal sealed class FakeTerminalUi : ITerminalUi
     {
         ArgumentNullException.ThrowIfNull(status);
         cancellationToken.ThrowIfCancellationRequested();
+        Record(_statuses, status);
         return ValueTask.CompletedTask;
     }
 
@@ -165,6 +178,52 @@ internal sealed class FakeTerminalUi : ITerminalUi
                 }
 
                 changed = _errorChanged.Task;
+            }
+
+            await changed.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    public Task WaitForCueCountAsync(int count) =>
+        WaitForOutputCountAsync(() => _cues.Count, count);
+
+    public Task WaitForStatusCountAsync(int count) =>
+        WaitForOutputCountAsync(() => _statuses.Count, count);
+
+    private IReadOnlyList<T> Snapshot<T>(IEnumerable<T> values)
+    {
+        lock (_sync)
+        {
+            return Array.AsReadOnly(values.ToArray());
+        }
+    }
+
+    private void Record<T>(ICollection<T> values, T value)
+    {
+        TaskCompletionSource changed;
+        lock (_sync)
+        {
+            values.Add(value);
+            changed = _outputChanged;
+            _outputChanged = NewSignal();
+        }
+
+        changed.TrySetResult();
+    }
+
+    private async Task WaitForOutputCountAsync(Func<int> count, int expected)
+    {
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                if (count() >= expected)
+                {
+                    return;
+                }
+
+                changed = _outputChanged.Task;
             }
 
             await changed.WaitAsync(TimeSpan.FromSeconds(5));
