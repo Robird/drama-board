@@ -4,8 +4,10 @@ using DramaBoard.FirstBoard;
 using DramaBoard.Host;
 using DramaBoard.Journal.Atelia;
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
 
@@ -14,7 +16,7 @@ namespace DramaBoard.FirstBoard.Persistence.Tests;
 public sealed class FirstBoardPersistenceTests
 {
     private const long LineageId = FirstBoardScenario.LineageId;
-    private const string PayloadCodec = "firstboard-host-fact-json/3";
+    private const string PayloadCodec = "firstboard-host-fact-json/4";
     private const long CellarDeadlineMs = 123;
     private const long RunBoundaryMs = 300_001;
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
@@ -149,6 +151,15 @@ public sealed class FirstBoardPersistenceTests
         FirstBoardFact[] facts =
         [
             new GameBoardFact(new ActorTravelStartedEvent("actor", "exit:road", "goal")),
+            new GameBoardFact(new ActorTravelGoalSetEvent("actor", new PlaceId("goal"))),
+            new GameBoardFact(new ActorTravelGoalResolvedEvent(
+                "actor",
+                new PlaceId("goal"),
+                TravelGoalResolution.Completed)),
+            new GameBoardFact(new ActorTravelGoalResolvedEvent(
+                "actor",
+                new PlaceId("goal"),
+                TravelGoalResolution.Blocked)),
             new GameBoardFact(new TicketConsumedEvent("actor", "ticket")),
             new GameBoardFact(new ActorWaitStartedEvent("actor", new ModelTime(11))),
             new GameBoardFact(new ActorWaitedEvent("actor")),
@@ -197,10 +208,82 @@ public sealed class FirstBoardPersistenceTests
         }
     }
 
+    [Fact]
+    public async Task ReopenActiveTravelGoalPrefix_ReplaysPurelyThenContinuesController()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 44);
+        FirstBoardWorld initial = WithWaitingActor(
+            instance.CreateInitialWorld(),
+            BoardIds.Bob,
+            new ModelTime(1_000_000));
+        var goalBatch = new JournalBatch<FirstBoardFact>(
+            new LogicalInstant(ModelTime.Zero, 0),
+            CandidateKey.FromUtf8("test/persisted-travel-goal-prefix"),
+            [
+                new GameBoardFact(new ActorTravelGoalSetEvent(
+                    BoardIds.Alice,
+                    new PlaceId(BoardIds.Cellar))),
+            ]);
+
+        using (var sink = CreateSink(directory.Path))
+        {
+            sink.AppendBatch(goalBatch);
+        }
+
+        var getter = new CountingFullMapGetter();
+        using var reopened = CreateSink(directory.Path);
+        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
+
+        Assert.Equal(new PlaceId(BoardIds.Cellar), replayed.Actor(BoardIds.Alice).TravelGoalPlaceId);
+        Assert.True(replayed.IsAtPlace(BoardIds.Alice, new PlaceId(BoardIds.Tavern)));
+        Assert.Equal(0, getter.CallCount);
+
+        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
+        {
+            [BoardIds.Alice] = new ThrowingPlayerDriver(),
+            [BoardIds.Bob] = new ThrowingPlayerDriver(),
+        };
+        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
+            FirstBoardScenario.CreateKernel(
+                drivers,
+                instance,
+                reopened,
+                replayed,
+                new WorldVersion(LineageId, reopened.Batches.Count),
+                reopened.Batches[^1].Instant,
+                getter);
+
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+
+        Assert.Equal(1, getter.CallCount);
+        Assert.Equal(new PlaceId(BoardIds.Cellar), kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
+        Assert.IsType<TraversingLocation>(
+            kernel.World.Spatial.Entities.Single(entity =>
+                entity.Id == new EntityId(BoardIds.Alice)).Location);
+        Assert.Equal(2, reopened.Batches.Count);
+    }
+
     private static ScenarioInstance DeadlineScenario(ulong worldSeed) =>
         new(
             ScenarioDefinition.Default with { CellarDeadlineMs = CellarDeadlineMs },
             worldSeed);
+
+    private static FirstBoardWorld WithWaitingActor(
+        FirstBoardWorld world,
+        string actorId,
+        ModelTime due) =>
+        world with
+        {
+            Game = world.Game with
+            {
+                Actors = Array.AsReadOnly(world.Actors
+                    .Select(actor => actor.Key == actorId
+                        ? actor with { Activity = new BoardWaitActivity(due) }
+                        : actor)
+                    .ToArray()),
+            },
+        };
 
     private static AteliaJournalSink<FirstBoardFact> CreateSink(string path) =>
         new(path, LineageId, PayloadCodec, SerializePayload, DeserializePayload);
@@ -266,6 +349,8 @@ public sealed class FirstBoardPersistenceTests
         return kind switch
         {
             "actor.travel-started" => Game<ActorTravelStartedEvent>(fact),
+            "actor.travel-goal-set" => Game<ActorTravelGoalSetEvent>(fact),
+            "actor.travel-goal-resolved" => Game<ActorTravelGoalResolvedEvent>(fact),
             "ticket.consumed" => Game<TicketConsumedEvent>(fact),
             "actor.wait-started" => Game<ActorWaitStartedEvent>(fact),
             "actor.waited" => Game<ActorWaitedEvent>(fact),
@@ -335,6 +420,31 @@ public sealed class FirstBoardPersistenceTests
     }
 
     private sealed record FactEnvelope(string Kind, object Payload);
+
+    private sealed class CountingFullMapGetter :
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>
+    {
+        public int CallCount { get; private set; }
+
+        public PlayerSpatialKnowledgeSnapshot GetKnownGraph(
+            FirstBoardWorld committedWorld,
+            string subjectId,
+            GraphDefinition objectiveGraph)
+        {
+            _ = committedWorld;
+            _ = subjectId;
+            CallCount++;
+            return PlayerSpatialKnowledgeSnapshot.FullMap(objectiveGraph);
+        }
+    }
+
+    private sealed class ThrowingPlayerDriver : IPlayerDriver
+    {
+        public ValueTask<PlayerDecision> DecideAsync(
+            DecisionRequest request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Replay continuation must not call a Player.");
+    }
 
     private sealed class TavernRoadThenWaitDriver : IPlayerDriver
     {

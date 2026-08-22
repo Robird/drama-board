@@ -67,6 +67,39 @@ public sealed class LlmOutputParserTests
     }
 
     [Fact]
+    public void Parse_TravelTo_PreservesDestinationAndAppliesExistingFreeTextRules()
+    {
+        const string withoutDialogue = """
+            【独白】先把目的地交给旅行能力。
+            【行动】{"action":"action.travel-to","destination":"cellar","freeText":"去地窖"}
+            【记忆】目的地是地窖。
+            """;
+        const string withDialogue = """
+            【独白】告诉同行者我的打算。
+            【行动】{"action":"action.travel-to","destination":"market","freeText":"JSON 草稿"}
+            【台词】我们去市场。
+            【记忆】先去市场。
+            """;
+
+        LlmOutputParseResult first = LlmOutputParser.Parse(withoutDialogue);
+        LlmOutputParseResult second = LlmOutputParser.Parse(withDialogue);
+
+        Assert.True(first.IsSuccess, first.Error);
+        Assert.Equal(ActionKinds.TravelTo, first.Intent!.ActionKind);
+        Assert.Equal("cellar", first.Intent.DestinationId);
+        Assert.Null(first.Intent.ExitId);
+        Assert.Null(first.Dialogue);
+        Assert.Equal("去地窖", first.Intent.FreeText);
+
+        Assert.True(second.IsSuccess, second.Error);
+        Assert.Equal(ActionKinds.TravelTo, second.Intent!.ActionKind);
+        Assert.Equal("market", second.Intent.DestinationId);
+        Assert.Null(second.Intent.ExitId);
+        Assert.Equal("我们去市场。", second.Dialogue);
+        Assert.Equal("我们去市场。", second.Intent.FreeText);
+    }
+
+    [Fact]
     public void Parse_ProseAroundJson_Succeeds()
     {
         const string response = """

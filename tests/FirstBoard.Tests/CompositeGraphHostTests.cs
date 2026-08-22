@@ -2,6 +2,7 @@ using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
 
@@ -42,7 +43,8 @@ public sealed class CompositeGraphHostTests
             instance,
             world,
             world.Actor(BoardIds.Alice),
-            ModelTime.Zero);
+            ModelTime.Zero,
+            FullKnowledge(instance, world, world.Actor(BoardIds.Alice)));
         ObservedExit road = Exit(aliceRequest, BoardIds.TavernMarketRoad);
         ObservedExit ferry = Exit(aliceRequest, BoardIds.TavernMarketFerry);
         ObservedExit cartFromTavern = Exit(aliceRequest, BoardIds.MarketTavernCart);
@@ -61,7 +63,8 @@ public sealed class CompositeGraphHostTests
             instance,
             world,
             world.Actor(BoardIds.Bob),
-            ModelTime.Zero);
+            ModelTime.Zero,
+            FullKnowledge(instance, world, world.Actor(BoardIds.Bob)));
         Assert.True(Exit(bobRequest, BoardIds.MarketTavernCart).IsAvailable);
         Assert.False(Exit(bobRequest, BoardIds.TavernMarketFerry).IsAvailable);
         AssertAdvertisesExactlyAvailableExits(bobRequest);
@@ -183,7 +186,8 @@ public sealed class CompositeGraphHostTests
             instance,
             kernel.World,
             kernel.World.Actor(BoardIds.Alice),
-            ModelTime.Zero));
+            ModelTime.Zero,
+            FullKnowledge(instance, kernel.World, kernel.World.Actor(BoardIds.Alice))));
 
         FirstBoardWorld bobCanObserve = WithObjectOwner(
             WithIdleActor(kernel.World, BoardIds.Bob),
@@ -193,7 +197,8 @@ public sealed class CompositeGraphHostTests
             instance,
             bobCanObserve,
             bobCanObserve.Actor(BoardIds.Bob),
-            ModelTime.Zero);
+            ModelTime.Zero,
+            FullKnowledge(instance, bobCanObserve, bobCanObserve.Actor(BoardIds.Bob)));
         Assert.DoesNotContain(BoardIds.Alice, originRequest.Observation.VisibleActorIds);
         Assert.DoesNotContain(
             originRequest.AvailableActions.SelectMany(action => action.CandidateActorIds ?? []),
@@ -393,7 +398,11 @@ public sealed class CompositeGraphHostTests
             closeFirstInstance,
             closeFirstKernel.World,
             closeFirstKernel.World.Actor(BoardIds.Alice),
-            new ModelTime(BoardTiming.DeadlineTicks));
+            new ModelTime(BoardTiming.DeadlineTicks),
+            FullKnowledge(
+                closeFirstInstance,
+                closeFirstKernel.World,
+                closeFirstKernel.World.Actor(BoardIds.Alice)));
         Assert.False(Exit(afterClose, BoardIds.CellarGatePassage).IsAvailable);
         Assert.DoesNotContain(
             ExitId(BoardIds.CellarGatePassage),
@@ -576,6 +585,15 @@ public sealed class CompositeGraphHostTests
     }
 
     private static string ExitId(string passageId) => $"exit:{passageId}";
+
+    private static PlayerSpatialKnowledgeSnapshot FullKnowledge(
+        ScenarioInstance instance,
+        FirstBoardWorld world,
+        BoardActor actor) =>
+        FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance.GetKnownGraph(
+            world,
+            actor.Key,
+            instance.Graph);
 
     private static (ulong StartFirst, ulong CloseFirst) FindGateContestSeeds()
     {

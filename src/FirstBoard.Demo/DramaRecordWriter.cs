@@ -114,6 +114,7 @@ internal static class DramaRecordWriter
         intent.ActionKind.Id switch
         {
             "action.travel" => $"选择出口 {intent.ExitId}",
+            "action.travel-to" => $"委托旅行至 {DisplayPlace(intent.DestinationId)}",
             "action.wait" =>
                 $"等待 {intent.DurationMs?.ToString(CultureInfo.InvariantCulture) ?? "默认"}ms",
             "action.talk" => $"与 {DisplayActor(intent.TargetActorId)} 交谈",
@@ -141,6 +142,20 @@ internal static class DramaRecordWriter
     {
         ActorTravelStartedEvent value =>
             $"{DisplayActor(value.ActorId)}选择{value.ExitId}，前往{DisplayPlace(value.DestinationId)}。",
+        ActorTravelGoalSetEvent value =>
+            $"{DisplayActor(value.ActorId)}开始委托旅行，目标是" +
+            $"{DisplayPlace(value.DestinationPlaceId.Value)}。",
+        ActorTravelGoalResolvedEvent value => value.Resolution switch
+        {
+            TravelGoalResolution.Completed =>
+                $"{DisplayActor(value.ActorId)}抵达{DisplayPlace(value.DestinationPlaceId.Value)}，" +
+                "完成委托旅行。",
+            TravelGoalResolution.Blocked =>
+                $"{DisplayActor(value.ActorId)}在当前位置无法继续前往" +
+                $"{DisplayPlace(value.DestinationPlaceId.Value)}，结束委托旅行。",
+            _ => throw new InvalidOperationException(
+                $"Unknown TravelTo resolution '{value.Resolution}'."),
+        },
         TicketConsumedEvent value =>
             $"{DisplayActor(value.ActorId)}消耗了{DisplayObject(value.TicketObjectId)}作为通行凭证。",
         ActorWaitStartedEvent value =>

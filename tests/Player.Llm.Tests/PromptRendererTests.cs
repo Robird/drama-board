@@ -56,6 +56,40 @@ public sealed class PromptRendererTests
     }
 
     [Fact]
+    public void Render_TravelTo_ShowsOnlyAdvertisedDestinationsWithoutInventingRouteData()
+    {
+        var request = new DecisionRequest(
+            new DecisionId("decision.alice.travel-to"),
+            ActorId: "alice",
+            ModelTimeMs: 300_000,
+            new Observation(
+                "alice",
+                "tavern",
+                ModelTimeMs: 300_000,
+                Exits: [],
+                VisibleActorIds: [],
+                VisibleObjectIds: [],
+                KnownFacts: []),
+            [
+                new AvailableAction(
+                    ActionKinds.TravelTo,
+                    CandidateDestinationIds: ["cellar", "market"]),
+            ]);
+
+        LlmChatRequest first = PromptRenderer.Render(Character, Memory("去地窖。"), request, []);
+        LlmChatRequest second = PromptRenderer.Render(Character, Memory("去地窖。"), request, []);
+
+        Assert.Equal(first, second);
+        Assert.Contains("出口:" + Environment.NewLine + "[]", first.User);
+        Assert.Contains(
+            "- action.travel-to; actorCandidates=[]; objectCandidates=[]; " +
+            "exitCandidates=[]; destinationCandidates=[cellar, market]",
+            first.User);
+        Assert.DoesNotContain("route=", first.User);
+        Assert.DoesNotContain("passage=", first.User);
+    }
+
+    [Fact]
     public void Render_ReferenceMaterialPreservesSourceWithoutAssertingBelief()
     {
         ReferenceMaterial[] materials =

@@ -631,6 +631,7 @@ public sealed record ScenarioDefinition(
             Generation: 0,
             DecisionSequence: 0,
             Activity: null,
+            TravelGoalPlaceId: null,
             KnownFacts: []);
 }
 

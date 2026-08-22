@@ -1,8 +1,10 @@
+using System.Text.Json;
 using DramaBoard.Decision.Validation;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
+using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
 
@@ -14,6 +16,13 @@ public sealed record DecisionPointCandidate(long ActorId, long Generation) : Boa
 
 public sealed record ActivityCandidate(long ActorId, long Generation) : BoardCandidate;
 
+public sealed record TravelGoalCandidate(
+    long ActorId,
+    long ActorGeneration,
+    long SpatialMovementGeneration,
+    PlaceId CurrentPlaceId,
+    PlaceId DestinationPlaceId) : BoardCandidate;
+
 public sealed record DeadlineCandidate : BoardCandidate;
 
 public sealed record SpatialBoardCandidate(SpatialOccurrenceData Value) : BoardCandidate;
@@ -23,15 +32,19 @@ public sealed class DecisionPointRule :
 {
     private readonly IReadOnlyDictionary<string, IPlayerDriver> _drivers;
     private readonly ScenarioInstance _instance;
+    private readonly IPlayerSpatialKnowledgeGetter<FirstBoardWorld> _spatialKnowledgeGetter;
 
     public DecisionPointRule(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
-        ScenarioInstance instance)
+        ScenarioInstance instance,
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>? spatialKnowledgeGetter = null)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(instance);
         _drivers = new Dictionary<string, IPlayerDriver>(drivers, StringComparer.Ordinal);
         _instance = instance;
+        _spatialKnowledgeGetter = spatialKnowledgeGetter ??
+            FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance;
     }
 
     public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
@@ -69,11 +82,17 @@ public sealed class DecisionPointRule :
             throw new InvalidOperationException($"No Player driver is registered for actor '{actor.Key}'.");
         }
 
+        PlayerSpatialKnowledgeSnapshot knowledge = _spatialKnowledgeGetter.GetKnownGraph(
+            world,
+            actor.Key,
+            _instance.Graph) ?? throw new InvalidOperationException(
+                "A Player spatial knowledge Getter returned null.");
         DecisionRequest request = FirstBoardScenario.BuildRequest(
             _instance,
             world,
             actor,
-            winner.Due.ModelTime);
+            winner.Due.ModelTime,
+            knowledge);
         PlayerDecision decision = await driver.DecideAsync(request, cancellationToken)
             ?? throw new InvalidOperationException("A Player driver returned null.");
         PlayerDecisionValidationResult validation = PlayerDecisionValidator.Validate(decision, request);
@@ -88,7 +107,8 @@ public sealed class DecisionPointRule :
                 world,
                 actor,
                 decision.Intent,
-                winner.Due.ModelTime));
+                winner.Due.ModelTime,
+                knowledge));
     }
 }
 
@@ -99,10 +119,18 @@ public static class FirstBoardActionPlanner
         FirstBoardWorld world,
         BoardActor actor,
         Intent intent,
-        ModelTime now) =>
+        ModelTime now,
+        PlayerSpatialKnowledgeSnapshot knowledge) =>
         intent.ActionKind.Id switch
         {
             "action.travel" => ResolveTravel(instance, world, actor, intent, now),
+            "action.travel-to" => ResolveTravelTo(
+                instance,
+                world,
+                actor,
+                intent,
+                now,
+                knowledge),
             "action.wait" => ResolveWait(world, actor, intent, now),
             "action.talk" => ResolveTalk(world, actor, intent),
             "action.observe" => ResolveObserve(world, actor, intent),
@@ -113,6 +141,84 @@ public static class FirstBoardActionPlanner
             "action.use" => ResolveUse(world, actor, intent),
             _ => Reject(actor, intent, "unknown action kind"),
         };
+
+    private static IReadOnlyList<FirstBoardFact> ResolveTravelTo(
+        ScenarioInstance instance,
+        FirstBoardWorld world,
+        BoardActor actor,
+        Intent intent,
+        ModelTime now,
+        PlayerSpatialKnowledgeSnapshot knowledge)
+    {
+        if (!world.IsReadyForDecision(actor))
+        {
+            return Reject(actor, intent, "actor is not idle at a place");
+        }
+
+        if (intent.DestinationId is not string destinationId)
+        {
+            throw new InvalidOperationException(
+                "A validated TravelTo intent must contain a destination.");
+        }
+
+        var destination = new PlaceId(destinationId);
+        FirstBoardTravelGoalPlan plan = FirstBoardTravelGoalPlanner.PlanNextLeg(
+            instance,
+            world,
+            actor,
+            destination,
+            knowledge);
+        if (plan.Route is not RouteFound || plan.FirstExit is null)
+        {
+            throw new InvalidOperationException(
+                $"An advertised TravelTo destination '{destination}' no longer has a legal first leg.");
+        }
+
+        return StartTravelGoalLeg(
+            instance,
+            world,
+            actor,
+            plan.FirstExit,
+            now,
+            destination);
+    }
+
+    internal static IReadOnlyList<FirstBoardFact> StartTravelGoalLeg(
+        ScenarioInstance instance,
+        FirstBoardWorld world,
+        BoardActor actor,
+        FirstBoardExit selected,
+        ModelTime now,
+        PlaceId? setGoalDestination = null)
+    {
+        var planner = new SpatialPlanner(instance.Graph);
+        SpatialPlanResult movement = planner.TryStartTraversal(
+            world.Spatial,
+            new EntityId(actor.Key),
+            selected.Objective.PassageId,
+            BoardTiming.TravelSpeed,
+            now);
+        if (movement is not SpatialPlanAccepted accepted)
+        {
+            throw new InvalidOperationException(
+                "A TravelTo first leg was rejected by objective Spatial: " +
+                ((SpatialPlanRejected)movement).Reason);
+        }
+
+        var facts = new List<FirstBoardFact>();
+        if (setGoalDestination is PlaceId destination)
+        {
+            facts.Add(new GameBoardFact(new ActorTravelGoalSetEvent(actor.Key, destination)));
+        }
+
+        if (selected.RequiredTicketObjectId is string ticket)
+        {
+            facts.Add(new GameBoardFact(new TicketConsumedEvent(actor.Key, ticket)));
+        }
+
+        facts.AddRange(accepted.Facts.Select(fact => new SpatialBoardFact(fact)));
+        return facts.AsReadOnly();
+    }
 
     private static IReadOnlyList<FirstBoardFact> ResolveTravel(
         ScenarioInstance instance,
@@ -573,6 +679,156 @@ public static class FirstBoardActionPlanner
 
     private static IReadOnlyList<FirstBoardFact> GameResult(BoardEventPayload payload) =>
         [new GameBoardFact(payload)];
+}
+
+public sealed class TravelGoalRule :
+    IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
+{
+    private readonly ScenarioInstance _instance;
+    private readonly IPlayerSpatialKnowledgeGetter<FirstBoardWorld> _spatialKnowledgeGetter;
+
+    public TravelGoalRule(
+        ScenarioInstance instance,
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld> spatialKnowledgeGetter)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(spatialKnowledgeGetter);
+        _instance = instance;
+        _spatialKnowledgeGetter = spatialKnowledgeGetter;
+    }
+
+    public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(
+        FirstBoardWorld world,
+        SimulationRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        var candidates = new List<OccurrenceCandidate<BoardCandidate>>();
+        foreach (BoardActor actor in world.Actors.OrderBy(value => value.Id))
+        {
+            if (actor.Activity is not null ||
+                actor.TravelGoalPlaceId is not PlaceId destination ||
+                !world.Spatial.TryGetEntity(new EntityId(actor.Key), out SpatialEntity? entity) ||
+                entity!.Location is not AtPlaceLocation atPlace)
+            {
+                continue;
+            }
+
+            var data = new TravelGoalCandidate(
+                actor.Id,
+                actor.Generation,
+                entity.MovementGeneration,
+                atPlace.PlaceId,
+                destination);
+            candidates.Add(new OccurrenceCandidate<BoardCandidate>(
+                CreateCandidateKey(actor.Key, data),
+                new CandidateDue(world.Now),
+                data));
+        }
+
+        return candidates.AsReadOnly();
+    }
+
+    public ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(
+        FirstBoardWorld world,
+        OccurrenceCandidate<BoardCandidate> winner,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (winner.Data is not TravelGoalCandidate goal)
+        {
+            throw new InvalidOperationException(
+                "The TravelTo goal rule received another rule's candidate.");
+        }
+
+        BoardActor actor = world.Actor(goal.ActorId);
+        if (actor.Activity is not null ||
+            actor.TravelGoalPlaceId != goal.DestinationPlaceId ||
+            actor.Generation != goal.ActorGeneration ||
+            !world.Spatial.TryGetEntity(new EntityId(actor.Key), out SpatialEntity? entity) ||
+            entity!.MovementGeneration != goal.SpatialMovementGeneration ||
+            entity.Location is not AtPlaceLocation atPlace ||
+            atPlace.PlaceId != goal.CurrentPlaceId ||
+            winner.Due.ModelTime != world.Now ||
+            winner.Key != CreateCandidateKey(actor.Key, goal))
+        {
+            throw new InvalidOperationException(
+                "The selected TravelTo goal candidate is stale for its actor.");
+        }
+
+        PlayerSpatialKnowledgeSnapshot knowledge = _spatialKnowledgeGetter.GetKnownGraph(
+            world,
+            actor.Key,
+            _instance.Graph) ?? throw new InvalidOperationException(
+                "A Player spatial knowledge Getter returned null.");
+        if (goal.CurrentPlaceId == goal.DestinationPlaceId)
+        {
+            return ValueTask.FromResult(Resolve(
+                actor,
+                goal.DestinationPlaceId,
+                TravelGoalResolution.Completed));
+        }
+
+        FirstBoardTravelGoalPlan plan = FirstBoardTravelGoalPlanner.PlanNextLeg(
+            _instance,
+            world,
+            actor,
+            goal.DestinationPlaceId,
+            knowledge);
+        return plan.Route switch
+        {
+            RouteFound when plan.FirstExit is not null =>
+                ValueTask.FromResult(new TransitionDraft<FirstBoardFact>(
+                    FirstBoardActionPlanner.StartTravelGoalLeg(
+                        _instance,
+                        world,
+                        actor,
+                        plan.FirstExit,
+                        world.Now))),
+            NoRoute or CostOverflow =>
+                ValueTask.FromResult(Resolve(
+                    actor,
+                    goal.DestinationPlaceId,
+                    TravelGoalResolution.Blocked)),
+            AlreadyAtGoal => throw new InvalidOperationException(
+                "TravelTo completion must be handled before route planning."),
+            UnknownStart or UnknownGoal or InvalidSpeed => throw new InvalidOperationException(
+                $"TravelTo planning violated a scenario invariant: {plan.Route.GetType().Name}."),
+            _ => throw new InvalidOperationException(
+                $"Unknown TravelTo route result '{plan.Route.GetType().Name}'."),
+        };
+    }
+
+    private static TransitionDraft<FirstBoardFact> Resolve(
+        BoardActor actor,
+        PlaceId destination,
+        TravelGoalResolution resolution) =>
+        new(
+        [
+            new GameBoardFact(new ActorTravelGoalResolvedEvent(
+                actor.Key,
+                destination,
+                resolution)),
+        ]);
+
+    private static CandidateKey CreateCandidateKey(
+        string actorKey,
+        TravelGoalCandidate goal)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue("firstboard/travel-goal");
+            writer.WriteStringValue(actorKey);
+            writer.WriteNumberValue(goal.ActorGeneration);
+            writer.WriteNumberValue(goal.SpatialMovementGeneration);
+            writer.WriteStringValue(goal.CurrentPlaceId.Value);
+            writer.WriteStringValue(goal.DestinationPlaceId.Value);
+            writer.WriteEndArray();
+        }
+
+        return CandidateKey.FromBytes(stream.ToArray());
+    }
 }
 
 public sealed class ActivityCompletionRule :

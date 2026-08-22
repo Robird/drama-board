@@ -5,6 +5,7 @@ using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
+using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
 
@@ -21,7 +22,8 @@ public static class FirstBoardScenario
         IJournalSink<FirstBoardFact> journal,
         FirstBoardWorld world,
         WorldVersion? version = null,
-        LogicalInstant? lastCommittedInstant = null)
+        LogicalInstant? lastCommittedInstant = null,
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>? spatialKnowledgeGetter = null)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(instance);
@@ -37,6 +39,9 @@ public static class FirstBoardScenario
 
         var reducer = new FirstBoardReducer(instance.Graph);
         reducer.Validate(world);
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld> knowledgeGetter =
+            spatialKnowledgeGetter ??
+            FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance;
         return new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
             world,
             version ?? new WorldVersion(journal.LineageId, journal.Batches.Count),
@@ -49,7 +54,8 @@ public static class FirstBoardScenario
                     instance.Definition.CellarDeadlineMs),
                 new ActivityCompletionRule(),
                 new SpatialHostOccurrenceRule(instance.Graph),
-                new DecisionPointRule(drivers, instance),
+                new TravelGoalRule(instance, knowledgeGetter),
+                new DecisionPointRule(drivers, instance, knowledgeGetter),
             ],
             journal,
             reducer.Apply,
@@ -99,9 +105,11 @@ public static class FirstBoardScenario
         ScenarioInstance instance,
         FirstBoardWorld world,
         BoardActor actor,
-        ModelTime modelTime)
+        ModelTime modelTime,
+        PlayerSpatialKnowledgeSnapshot knowledge)
     {
         ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(knowledge);
         if (!world.IsReadyForDecision(actor) ||
             !world.TryGetPlace(actor.Key, out PlaceId placeId))
         {
@@ -124,7 +132,7 @@ public static class FirstBoardScenario
             actor.Key,
             ModelTimeMs: modelTime.Ticks,
             observation,
-            AvailableActions(instance, world, actor, placeId, exits));
+            AvailableActions(instance, world, actor, placeId, exits, knowledge));
     }
 
     public static string WorldSnapshot(FirstBoardWorld world)
@@ -138,6 +146,7 @@ public static class FirstBoardScenario
                 actor.Generation.ToString(CultureInfo.InvariantCulture),
                 actor.DecisionSequence.ToString(CultureInfo.InvariantCulture),
                 actor.Activity?.Due.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
+                actor.TravelGoalPlaceId?.Value ?? "-",
                 string.Join(",", actor.KnownFacts.Select(fact =>
                     $"{fact.Kind}@{fact.RelatedId}")))));
         string objects = string.Join(
@@ -242,7 +251,8 @@ public static class FirstBoardScenario
         FirstBoardWorld world,
         BoardActor actor,
         PlaceId actorPlace,
-        IReadOnlyList<ObservedExit> exits)
+        IReadOnlyList<ObservedExit> exits,
+        PlayerSpatialKnowledgeSnapshot knowledge)
     {
         var actions = new List<AvailableAction>();
         string[] exitIds =
@@ -257,6 +267,41 @@ public static class FirstBoardScenario
             actions.Add(new AvailableAction(
                 ActionKinds.Travel,
                 CandidateExitIds: Array.AsReadOnly(exitIds)));
+        }
+
+        string[] destinationIds =
+        [
+            .. knowledge.KnownGraph.Places
+                .Where(destination => destination != actorPlace)
+                .Where(destination =>
+                {
+                    RouteResult route = FirstBoardTravelGoalPlanner.PlanNextLeg(
+                        instance,
+                        world,
+                        actor,
+                        destination,
+                        knowledge).Route;
+                    return route switch
+                    {
+                        RouteFound => true,
+                        NoRoute or CostOverflow => false,
+                        AlreadyAtGoal => false,
+                        UnknownStart or UnknownGoal or InvalidSpeed =>
+                            throw new InvalidOperationException(
+                                $"TravelTo affordance planning violated a scenario invariant: " +
+                                route.GetType().Name),
+                        _ => throw new InvalidOperationException(
+                            $"Unknown TravelTo route result '{route.GetType().Name}'."),
+                    };
+                })
+                .Select(destination => destination.Value)
+                .Order(StringComparer.Ordinal),
+        ];
+        if (destinationIds.Length > 0)
+        {
+            actions.Add(new AvailableAction(
+                ActionKinds.TravelTo,
+                CandidateDestinationIds: Array.AsReadOnly(destinationIds)));
         }
 
         actions.Add(new AvailableAction(ActionKinds.Wait));
@@ -343,7 +388,6 @@ public static class FirstBoardScenario
                 CandidateObjectIds: Array.AsReadOnly(heldObjects)));
         }
 
-        _ = instance;
         return actions.AsReadOnly();
     }
 
@@ -369,6 +413,11 @@ public static class FirstBoardScenario
     {
         ActorTravelStartedEvent started =>
             $"actor={started.ActorId} exit={started.ExitId} destination={started.DestinationId}",
+        ActorTravelGoalSetEvent set =>
+            $"actor={set.ActorId} destination={set.DestinationPlaceId.Value}",
+        ActorTravelGoalResolvedEvent resolved =>
+            $"actor={resolved.ActorId} destination={resolved.DestinationPlaceId.Value} " +
+            $"resolution={resolved.Resolution}",
         TicketConsumedEvent consumed =>
             $"actor={consumed.ActorId} ticket={consumed.TicketObjectId}",
         ActorWaitStartedEvent waited =>
@@ -419,6 +468,8 @@ public static class FirstBoardScenario
     private static string GameFactName(BoardEventPayload fact) => fact switch
     {
         ActorTravelStartedEvent => "actor.travel-started",
+        ActorTravelGoalSetEvent => "actor.travel-goal-set",
+        ActorTravelGoalResolvedEvent => "actor.travel-goal-resolved",
         TicketConsumedEvent => "ticket.consumed",
         ActorWaitStartedEvent => "actor.wait-started",
         ActorWaitedEvent => "actor.waited",

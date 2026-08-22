@@ -58,6 +58,7 @@ public sealed record BoardActor(
     long Generation,
     long DecisionSequence,
     BoardWaitActivity? Activity,
+    PlaceId? TravelGoalPlaceId,
     IReadOnlyList<BoardFact> KnownFacts);
 
 public sealed record BoardObject(
@@ -124,7 +125,9 @@ public sealed record FirstBoardWorld(
     }
 
     public bool IsReadyForDecision(BoardActor actor) =>
-        Game.IsIdle(actor) && TryGetPlace(actor.Key, out _);
+        Game.IsIdle(actor) &&
+        actor.TravelGoalPlaceId is null &&
+        TryGetPlace(actor.Key, out _);
 
     public bool AreCoLocated(string firstEntityId, string secondEntityId) =>
         TryGetPlace(firstEntityId, out PlaceId first) &&
@@ -139,6 +142,21 @@ public sealed record ActorTravelStartedEvent(
     string ActorId,
     string ExitId,
     string DestinationId) : BoardEventPayload;
+
+public sealed record ActorTravelGoalSetEvent(
+    string ActorId,
+    PlaceId DestinationPlaceId) : BoardEventPayload;
+
+public enum TravelGoalResolution
+{
+    Completed = 0,
+    Blocked = 1,
+}
+
+public sealed record ActorTravelGoalResolvedEvent(
+    string ActorId,
+    PlaceId DestinationPlaceId,
+    TravelGoalResolution Resolution) : BoardEventPayload;
 
 public sealed record TicketConsumedEvent(
     string ActorId,
@@ -269,6 +287,19 @@ public sealed class FirstBoardReducer
                 throw new InvalidOperationException(
                     $"Traversing actor '{actor.Key}' cannot also own a Wait activity.");
             }
+
+            if (actor.Activity is not null && actor.TravelGoalPlaceId is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Actor '{actor.Key}' cannot wait while owning a TravelTo goal.");
+            }
+
+            if (actor.TravelGoalPlaceId is PlaceId destination &&
+                !_definition.Contains(destination))
+            {
+                throw new InvalidOperationException(
+                    $"Actor '{actor.Key}' has an undefined TravelTo destination '{destination}'.");
+            }
         }
 
         foreach (BoardObject item in world.Objects)
@@ -282,7 +313,7 @@ public sealed class FirstBoardReducer
         }
     }
 
-    private static FirstBoardGameState ApplyGame(
+    private FirstBoardGameState ApplyGame(
         FirstBoardWorld world,
         LogicalInstant instant,
         BoardEventPayload fact)
@@ -294,6 +325,10 @@ public sealed class FirstBoardReducer
                 UpdateActor(game, started.ActorId, actor =>
                     AddFacts(CompleteDecision(actor), [LastOutcome(
                         $"Your travel via {started.ExitId} to {started.DestinationId} was accepted.")])),
+            ActorTravelGoalSetEvent set =>
+                ApplyTravelGoalSet(world, game, set),
+            ActorTravelGoalResolvedEvent resolved =>
+                ApplyTravelGoalResolved(world, game, resolved),
             TicketConsumedEvent consumed =>
                 ConsumeTicket(game, consumed),
             ActorWaitStartedEvent waited =>
@@ -331,6 +366,82 @@ public sealed class FirstBoardReducer
             _ => throw new InvalidOperationException(
                 $"Unknown FirstBoard Game fact '{fact.GetType().Name}'."),
         };
+    }
+
+    private FirstBoardGameState ApplyTravelGoalSet(
+        FirstBoardWorld world,
+        FirstBoardGameState game,
+        ActorTravelGoalSetEvent set)
+    {
+        BoardActor actor = game.Actor(set.ActorId);
+        if (actor.Activity is not null || actor.TravelGoalPlaceId is not null)
+        {
+            throw new InvalidOperationException(
+                $"Actor '{actor.Key}' must be idle without a TravelTo goal before setting one.");
+        }
+
+        if (!world.TryGetPlace(actor.Key, out PlaceId currentPlaceId))
+        {
+            throw new InvalidOperationException(
+                $"Actor '{actor.Key}' must be at a Place before setting a TravelTo goal.");
+        }
+
+        if (!_definition.Contains(set.DestinationPlaceId))
+        {
+            throw new InvalidOperationException(
+                $"TravelTo destination '{set.DestinationPlaceId}' does not exist.");
+        }
+
+        if (set.DestinationPlaceId == currentPlaceId)
+        {
+            throw new InvalidOperationException(
+                "A TravelTo goal must differ from the actor's current Place.");
+        }
+
+        return UpdateActor(game, actor.Id, current =>
+            AddFacts(
+                CompleteDecision(current) with
+                {
+                    TravelGoalPlaceId = set.DestinationPlaceId,
+                },
+                [LastOutcome(
+                    $"Your delegated travel toward {set.DestinationPlaceId} was accepted.")]));
+    }
+
+    private static FirstBoardGameState ApplyTravelGoalResolved(
+        FirstBoardWorld world,
+        FirstBoardGameState game,
+        ActorTravelGoalResolvedEvent resolved)
+    {
+        BoardActor actor = game.Actor(resolved.ActorId);
+        if (actor.Activity is not null ||
+            actor.TravelGoalPlaceId != resolved.DestinationPlaceId)
+        {
+            throw new InvalidOperationException(
+                $"Actor '{actor.Key}' does not own the TravelTo goal being resolved.");
+        }
+
+        if (!world.TryGetPlace(actor.Key, out PlaceId currentPlaceId))
+        {
+            throw new InvalidOperationException(
+                $"Actor '{actor.Key}' must be at a Place when resolving a TravelTo goal.");
+        }
+
+        string outcome = resolved.Resolution switch
+        {
+            TravelGoalResolution.Completed when currentPlaceId == resolved.DestinationPlaceId =>
+                $"You completed delegated travel to {resolved.DestinationPlaceId}.",
+            TravelGoalResolution.Blocked when currentPlaceId != resolved.DestinationPlaceId =>
+                $"Your delegated travel toward {resolved.DestinationPlaceId} is blocked from here.",
+            TravelGoalResolution.Completed => throw new InvalidOperationException(
+                "A completed TravelTo goal requires the actor to be at its destination."),
+            TravelGoalResolution.Blocked => throw new InvalidOperationException(
+                "A blocked TravelTo goal cannot be resolved at its destination."),
+            _ => throw new InvalidOperationException(
+                $"Unknown TravelTo resolution '{resolved.Resolution}'."),
+        };
+        return UpdateActor(game, actor.Id, current =>
+            AddFacts(CompleteTravelGoal(current), [LastOutcome(outcome)]));
     }
 
     private static FirstBoardGameState ApplyRejected(
@@ -587,6 +698,13 @@ public sealed class FirstBoardReducer
         actor with
         {
             Activity = null,
+            Generation = checked(actor.Generation + 1),
+        };
+
+    private static BoardActor CompleteTravelGoal(BoardActor actor) =>
+        actor with
+        {
+            TravelGoalPlaceId = null,
             Generation = checked(actor.Generation + 1),
         };
 
