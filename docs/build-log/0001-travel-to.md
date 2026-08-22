@@ -4,21 +4,23 @@
 > 记录日期：2026-08-22
 > 实现基线：`d9165cf feat(spatial): replace Grid with Graph Spatial slice`
 > 记录创建前的 HEAD：`1e02a57 归档Design Note 007：Spatial Framework`；它相对实现基线只移动文档，没有代码差异。
+> 后续裁决：先建立独立 `Player.Agency` 程序集与 Spatial Knowledge Getter；默认实现返回完整静态地图。
 
 ## 1. 目的与边界
 
-下一批实现 **Slice 1.5：Game-owned `TravelTo` 多段旅行闭环**。它接通已经存在的 Graph Spatial 导航能力和 Player destination 协议面，是进入途中 Contact/Encounter 之前最小的 AI Player 增益。
+下一批实现 **Slice 1.5：FirstBoard Game-owned `TravelTo` 多段旅行闭环**。它是 `Player.Agency` Spatial Knowledge Getter 的首个 consumer：接通 Graph Spatial 导航能力和 Player destination 协议面，同时建立客观世界与 conscious Player 之间的第一个正式程序集边界。
 
 权威上下文：
 
 - 总体空间设计：[Design Note 008](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
-- 暂缓的主观地图设计：[Design Note 009](../开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md)
+- 已部分激活的 Player Agency / 主观地图边界：[Design Note 009](../开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md)
 - 当前 Kernel 语义背景：[研发计划 006](../研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)
 
 本批约束：
 
 - 无旧数据、旧 API 或旧 persistence codec 兼容；只维护新的当前格式。
 - 简单性、灵活性优先，不引入审计型路线缓存、自动 phase 或第二套导航系统。
+- 新建 `src/Player.Agency/**`，但本批 public surface 只包含 Spatial Knowledge Getter、知识快照和全图默认实现。
 - `src/Kernel/**` 与 `src/Spatial/**` 预期零修改；若实现必须改它们，先停下重新论证。
 - Spatial 继续独占客观位置、Passage 进入权、Traversal 与 Arrival；Game 只拥有旅行意图和叙事结果。
 - Kernel 继续在同一 model time 对所有 occurrence 做全局确定性仲裁；rule 注册顺序不表示优先级。
@@ -39,6 +41,7 @@
 - [`src/FirstBoard/FirstBoardDomain.cs`](../../src/FirstBoard/FirstBoardDomain.cs) 中 `CompleteDecision` 同时推进 `Generation` 和 `DecisionSequence`，而 activity completion 只推进 `Generation`。
 - [`src/FirstBoard/FirstBoardScenario.cs`](../../src/FirstBoard/FirstBoardScenario.cs) 负责 rule 注册、request、snapshot、fact name/summary 等集成面。
 - [`tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs`](../../tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs) 的测试 codec 当前为 `firstboard-host-fact-json/3`。
+- 当前没有 `Player.Agency` 项目；现有 solution/project graph 必须显式加入新项目，依赖方向固定为 `FirstBoard → Player.Agency → Spatial`。
 
 继续实施前，以这些文件中的实际代码为准；若它们已经被后续 commit 改动，先重新核对本文假设，不要机械套用。
 
@@ -65,7 +68,9 @@ action.travel-to + DestinationId
 
 因此，自动续行是 `travel-to` 的选择语义，不是所有旅行的默认行为。AI 想在下一站重新评估时，继续选择 `action.travel`。
 
-FirstBoard MVP 把 `GraphDefinition.Places` 全部视为公开的稳定 destination handle。这里不新增 known-map、hidden-place、ViewLink 或 Observation DTO。将来出现玩家特有的未知地点时，回到 Design Note 009，而不是悄悄让 request 读取远端动态世界。
+FirstBoard MVP 仍把完整静态 `GraphDefinition` 视为已向每个 Player 披露，但所有 TravelTo consumer 必须先经过 `IPlayerSpatialKnowledgeGetter`。默认 `FullMapPlayerSpatialKnowledgeGetter` 返回完整静态地图，因此当前行为等价于地图全开；不能再在 destination advertisement 或 remote route planning 中绕过 Getter 直接枚举 `instance.Graph`。
+
+这个形式边界不是战争迷雾的伪实现。真实 per-player known-token state、披露 facts、未知出口、错误地图与 last-seen 动态残影仍延期；未来替换 Getter 后，TravelTo 算法只消费它返回的 exact objective subgraph。
 
 ## 4. 最小持久状态与 Game facts
 
@@ -123,29 +128,56 @@ Reducer 只按 facts 折叠，不调用 Navigator。`Blocked` 是 live controlle
 
 ## 5. AI-safe 的纯下一腿算法
 
+### 5.1 Frozen Player knowledge snapshot
+
+新增独立项目：
+
+```text
+src/Player.Agency/Player.Agency.csproj
+namespace DramaBoard.Player.Agency.Spatial
+```
+
+规范 contract 由 Design Note 009 §4 拥有。施工时至少提供：
+
+```text
+IPlayerSpatialKnowledgeGetter<TWorld>
+PlayerSpatialKnowledgeSnapshot
+FullMapPlayerSpatialKnowledgeGetter<TWorld>
+```
+
+Getter 显式接收 committed world、`subjectId` 与 objective `GraphDefinition`，返回只读 `KnownGraph`。Snapshot factory 验证它只能是 objective graph 的 exact subgraph：retained Place/Passage 必须存在，Passage 的 endpoints、length 与两个 initial entry bits 不得被修改，parallel Passage 不得合并。
+
+在一个 selected DecisionPoint 内只取一次 snapshot，并把同一实例依次交给 BuildRequest 与 ActionPlanner。不能先用一张图广告 destination，再为 Player 已选 action 重新调用 Getter。活动 TravelGoal 的 selected rule 在每个新的 AtPlace committed world 上取一次 snapshot；Forecast、Candidate、World 与 Journal 都不保存 snapshot。
+
+默认 Getter 返回完整 `instance.Graph` 的 snapshot，但只返回静态 Definition，不读取 `GraphSpatialState`、remote runtime overrides、schedule、entity 或 ticket。未来 provider 若按 Player token 过滤，token state 必须来自 committed `TWorld`，不能藏在 provider 私有可变字段或 LLM MemoryBank。
+
+`FirstBoardScenario.CreateKernel` 通过 constructor/composition parameter 接收 `IPlayerSpatialKnowledgeGetter<FirstBoardWorld>`，未显式提供时规范化为 FullMap default，并把同一个 policy 实例交给 `DecisionPointRule` 与 `TravelGoalRule`。不要使用 service locator 或让 FirstBoard 自行寻找 provider。
+
+### 5.2 Current-live overlay 与 route
+
 不能简单地“枚举一条 live 第一腿，再从它的终点跑静态 tail”。例如 Cellar gate 已关闭时，这种算法可能反复选择 `GateFront → Market → GateFront → Cellar` 的静态尾部，使 actor 在 GateFront 与 Market 之间往返。
 
 建议新增 `src/FirstBoard/FirstBoardTravelGoalPlanner.cs`，每次调用构造一个 **ephemeral planning graph**：
 
 1. 读取 actor 的 current Place，并调用现有 `FirstBoardSpatialProjection.GetExits` 得到当前所有平行 Passage 的 live `CanTakeNow`。
-2. 复制 `instance.Graph` 的 Places 和 Passages。
-3. 对每条与 current Place 相接的 Passage，只把“从 current endpoint 进入”的 initial bit 替换为对应 exit 的 `CanTakeNow`；反向 endpoint 仍保留 Definition 的 initial bit。
+2. 复制本次 `PlayerSpatialKnowledgeSnapshot.KnownGraph` 的 Places 和 Passages；TravelTo 不纳入 snapshot 中不存在的 objective Passage。
+3. 对 KnownGraph 中每条与 current Place 相接的 Passage，只把“从 current endpoint 进入”的 initial bit 替换为对应 objective live exit 的 `CanTakeNow`；反向 endpoint 仍保留 KnownGraph 的 initial bit。
 4. 其他所有方向只保留 Definition 的 `InitialEntryAccess`，不复制 runtime overrides、scheduled changes 或 entities。
 5. 用复制出的 `GraphDefinition` 和 `GraphSpatialState.Create(planningGraph, [])` 调用现有 `SpatialNavigator.FindRoute(current, goal, BoardTiming.TravelSpeed)`。
-6. `RouteFound.Legs[0]` 必须按 `PassageId + From + To` 精确映射回当前一个 `CanTakeNow` 的 `FirstBoardExit`；随后仍用真实 `world.Spatial` 调用 `SpatialPlanner.TryStartTraversal`。
+6. `RouteFound.Legs[0]` 必须按 `PassageId + From + To` 精确映射回当前一个 `CanTakeNow` 的 objective `FirstBoardExit`；随后仍用真实 `instance.Graph + world.Spatial` 调用 `SpatialPlanner.TryStartTraversal`。
 
 这个 scratch graph/state 只存在于纯规划调用栈，不进入 World、fact、Journal 或 snapshot，也不要求修改 Spatial。它同时保证：
 
 - 当前已知的 gate/entry override 和当前 actor 的票券能力会约束第一腿；
-- 远端 runtime gate 不会提前影响 route 或 destination affordance；
+- 远端 runtime gate 不会提前影响 route 或 destination affordance；远端只读取 KnownGraph 的静态内容；
 - 从本地关闭点离开后再回到同一点，不能绕过本地已知关闭方向；
 - Navigator 原有的 duration 比较和完整 leg sequence Ordinal tie-break 保持唯一权威；不复制 Dijkstra。
 
 票券的 MVP 边界也是有意局部化的：`CanTakeNow` 只覆盖当前 endpoint，远端 tail 不做 consumable/resource-state search。抵达远端 Place 后再按届时实际持有的票券重算。这足以覆盖当前 FirstBoard 内容；若真实内容要求“现在决定把同一张票留给后面哪条 Passage”，应停下讨论，而不是把背包规划偷偷塞进本批。
 
-不要为了小图优化或缓存。BuildRequest 可对每个公开且非 current 的 Place 调用这个 helper；仅 `RouteFound` 的 destination 进入 `CandidateDestinationIds`，按 PlaceId Ordinal 排序。没有 candidate 时不广告 `TravelTo` affordance。
+不要为了小图优化或缓存。BuildRequest 只遍历 KnownGraph 中非 current 的 Places；仅 `RouteFound` 的 destination 进入 `CandidateDestinationIds`，按 PlaceId Ordinal 排序。没有 candidate 时不广告 `TravelTo` affordance。现有 exact `travel` 仍可使用当前 Observation 已广告的 live ExitId，不被 remote known graph 替代。
 
-### 5.1 Navigator 结果映射
+### 5.3 Navigator 结果映射
 
 | 结果 | BuildRequest / 初始 action | 活动 goal controller |
 |---|---|---|
@@ -174,7 +206,9 @@ PlayerDecisionValidator 冻结两种不同 shape：
 一个 idle-at-place actor 的 request 可同时拥有：
 
 - 一个现有 `Travel` affordance，`CandidateExitIds` 是当前可用的精确 exits；
-- 一个新的 `TravelTo` affordance，`CandidateDestinationIds` 是 §5 helper 判定为 `RouteFound` 的公开 Places。
+- 一个新的 `TravelTo` affordance，`CandidateDestinationIds` 是 §5 helper 在本次 frozen KnownGraph 中判定为 `RouteFound` 的 Places。
+
+DecisionPoint rule 在调用 Player 前取得一次 knowledge snapshot；BuildRequest 和随后 selected `TravelTo` 的 ActionPlanner 必须复用这个 snapshot。若 advertised route 无法在同一 frozen world/snapshot 中映射为第一腿，属于 Host invariant failure。
 
 ### 6.1 初始 `TravelTo`
 
@@ -253,7 +287,7 @@ Activity == null
 Spatial location is AtPlace
 ```
 
-每个 actor 最多一个 candidate，Due=`world.Now`。`PlanSelectedAsync` 重验 candidate 的五个状态字段和 key/due；然后按顺序处理：
+每个 actor 最多一个 candidate，Due=`world.Now`。Forecast 不调用 knowledge Getter。`PlanSelectedAsync` 重验 candidate 的五个状态字段和 key/due，随后对 selected actor/current world 取得一次 knowledge snapshot，再按顺序处理：
 
 1. current == destination：Completed；
 2. helper `RouteFound`：ticket? + Spatial start；
@@ -267,27 +301,35 @@ Spatial location is AtPlace
 - Replay 只折叠 journal facts，不调用 Player、Navigator 或 goal controller。
 - Fork creation 同样只复制/折叠 committed state，不调用 Navigator。
 - Fork 创建后若继续运行 Kernel，正常 Forecast/Plan 当然会再次调用 Navigator；“Fork 不调用 Navigator”只指创建过程。
+- Replay 与 fork creation 也不调用 PlayerSpatialKnowledge Getter；fork 续跑时 Getter 从 fork 的 committed world 重新投影。
 - 每一腿已经选择的确切 Passage 在 `TraversalStartedFact` 中，重放不需要重新选路。
-- 当前 request 可以暴露公开 destination 和本地 live exits；不能读取远端 runtime entry override、scheduled gate change 或远端失败原因。
+- 当前 request 可以暴露 KnownGraph destinations 和本地 live exits；不能读取远端 runtime entry override、scheduled gate change 或远端失败原因。
 - Gate close 与自动续行同 tick 时不加 phase：不同 world seed 可以让任一候选先赢；已进入 Passage 后 arrival 必须完成，尚未进入则留在门外并 Blocked。
 
 ## 9. 依赖顺序与文件落点
 
 按以下顺序施工，保持每一步可编译：
 
-1. Protocol 增 `TravelTo` stable identifier；Decision.Validation 增新的 intent shape 与测试。
-2. `BoardActor` goal、两类 Game facts、reducer、完整 world validator 与 Genesis 初始化。
-3. 新增纯 `FirstBoardTravelGoalPlanner` 和 overlay-route 单元/宿主测试。
-4. BuildRequest 生成 destination affordance；ActionPlanner 原子启动 `TravelTo`。
-5. 增 `TravelGoalCandidate/Rule`，注册进 FirstBoard kernel，并让 active goal suppress DecisionPoint。
-6. 补 snapshot、fact name/payload summary、Demo drama record exhaustive cases。
-7. 测试 persistence codec 直接从 `/3` 升 `/4`，加入两种新 Game fact shape；不写 `/3` reader 或 migration。
-8. 跑 focused、全 solution、local solution 和 Demo build 验收。
+1. 新建 `Player.Agency` 与 tests 项目，加入两个 solution；先落 exact-subgraph snapshot、Getter、FullMap default 与 dependency guard。
+2. Protocol 增 `TravelTo` stable identifier；Decision.Validation 增新的 intent shape 与测试。
+3. `BoardActor` goal、两类 Game facts、reducer、完整 world validator 与 Genesis 初始化。
+4. 新增纯 `FirstBoardTravelGoalPlanner`；以 injected KnownGraph 为静态底图完成 overlay-route 测试。
+5. DecisionPoint 一次获取 knowledge snapshot；BuildRequest 生成 destination affordance；ActionPlanner 复用 snapshot 原子启动 `TravelTo`。
+6. 增 `TravelGoalCandidate/Rule`，注册进 FirstBoard kernel，并让 active goal suppress DecisionPoint。
+7. 补 world snapshot、fact name/payload summary、Demo drama record exhaustive cases。
+8. 测试 persistence codec 直接从 `/3` 升 `/4`，加入两种新 Game fact shape；不写 `/3` reader 或 migration。
+9. 跑 focused、全 solution、local solution 和 Demo build 验收。
 
 预期生产修改：
 
+- 新建 `src/Player.Agency/Player.Agency.csproj`
+- 新建 `src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs`
+- 新建 `src/Player.Agency/Spatial/PlayerSpatialKnowledgeSnapshot.cs`
+- 新建 `src/Player.Agency/Spatial/FullMapPlayerSpatialKnowledgeGetter.cs`
+- `DramaBoard.slnx`、`DramaBoard.Local.slnx`
 - `src/Protocol/ProtocolKinds.cs`
 - `src/Decision.Validation/PlayerDecisionValidator.cs`
+- `src/FirstBoard/FirstBoard.csproj`
 - `src/FirstBoard/FirstBoardDomain.cs`
 - `src/FirstBoard/ScenarioDefinition.cs`
 - `src/FirstBoard/FirstBoardSpatialProjection.cs`（只在确有共享 helper 需要时改）
@@ -298,6 +340,9 @@ Spatial location is AtPlace
 
 预期测试修改：
 
+- 新建 `tests/Player.Agency.Tests/Player.Agency.Tests.csproj`
+- 新建 `tests/Player.Agency.Tests/SpatialKnowledgeTests.cs` 与 dependency guard
+- `tests/FirstBoard.Tests/FirstBoard.Tests.csproj`
 - `tests/Protocol.Tests/StableIdentifierTests.cs`
 - `tests/Protocol.Tests/IntentJsonTests.cs`
 - `tests/Decision.Validation.Tests/PlayerDecisionValidatorTests.cs`
@@ -325,17 +370,22 @@ Spatial location is AtPlace
 | T12 | 在 `AtPlace + active goal` prefix 停止、snapshot/replay/fork 均合法，并可继续自动推进。 |
 | T13 | 同成本路线沿用 Navigator 的完整 leg Ordinal tie-break；parallel Passage 不被 destination 合并。 |
 | T14 | Slice 1 的 immediate exit、parallel Passage、arrival、endpoint gate、atomic batch 与 replay 测试全部回归通过。 |
+| K01 | FullMap Getter 对任意 subject 返回完整静态 graph；不同 runtime overrides 不改变 snapshot。 |
+| K02 | Exact-subgraph snapshot 拒绝 unknown/modified/missing-endpoint content，并保留 parallel Passage 与 A/B direction bits。 |
+| K03 | fake subset Getter 隐藏 objective shortcut 后，TravelTo 只走较长的 known route，不能回读 `instance.Graph` 偷路。 |
+| K04 | DecisionPoint advertisement 与 selected first leg 使用同一个 knowledge snapshot；Getter 不在 Forecast 中调用。 |
+| K05 | snapshot 只影响规划；current live/ticket 与真实 SpatialPlanner 仍可否决第一腿，且失败零提交。 |
 
 ## 11. 明确不做与复杂性停线
 
-本批不做 Contact/Encounter、Reverse/pause/resume、途中 anchored interaction、waypoint/avoid/prefer、Area/ViewLink、战争迷雾、远端动态知识投影、route cache、旧格式迁移。
+本批不做 Contact/Encounter、Reverse/pause/resume、途中 anchored interaction、waypoint/avoid/prefer、Area/ViewLink、真实 known-token store、披露 facts、战争迷雾、远端动态知识投影、route cache、旧格式迁移，也不建立通用 cognition/skill/signal 框架。
 
 遇到以下真实需求或失败时，先与用户讨论，不在实现中临时扩张模型：
 
 - 同一 consumable 可用于多条 Passage，需要决定“在哪里花”；
 - 路线必须先取得票券、载具或其他能力，或需要资源状态搜索；
 - 玩家需要 waypoint、avoid/prefer、暂停/恢复或中间 Place 交互；
-- destination 可见性因 actor 而异；
+- 真实 content 要求 destination 可见性因 actor 而异，此时启动 known-token state/facts 设计；
 - 产品要求远端 runtime 变化影响当前决策；
 - Contact/Reverse 与 active goal 的取消语义无法用一条简单 resolve fact 表达；
 - 实现需要改变 Kernel 仲裁或 Spatial authority 才能成立。
@@ -345,6 +395,8 @@ Spatial location is AtPlace
 至少执行：
 
 ```powershell
+dotnet restore DramaBoard.Local.slnx --nologo
+dotnet test tests/Player.Agency.Tests/Player.Agency.Tests.csproj --no-restore --nologo
 dotnet test DramaBoard.slnx --no-restore --nologo
 dotnet test DramaBoard.Local.slnx --no-restore --nologo
 dotnet build src/FirstBoard.Demo/FirstBoard.Demo.csproj --no-restore --nologo
