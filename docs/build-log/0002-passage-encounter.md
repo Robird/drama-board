@@ -5,7 +5,8 @@
 > 实现基线：`2b6761c docs(build-log): close TravelTo implementation`
 > 上位设计：[Design Note 008：Graph Spatial World](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
 > 前置竖切：[Build Log 0001：TravelTo](./0001-travel-to.md)
-> 重开裁决：只重开 Design Note 008 的 Slice 2 MVP，并在同批交付真实 FirstBoard / Player consumer；不单独建设 Contact 基础设施。
+> 重开裁决：只重开 Design Note 008 的 Slice 2 MVP，并在同批交付可复用 Contact framework 与真实 FirstBoard / Player consumer；不把二者拆成孤立批次。
+> 架构澄清：Contact Forecast / Plan / fact / reducer 是 `Spatial` 的第一等可复用框架能力；FirstBoard 只包装该 occurrence 并原子追加 Game encounter 语义。
 
 ## 1. 批次目标
 
@@ -28,9 +29,10 @@
 
 - 无旧数据、旧 API 或旧 persistence codec 兼容；当前格式直接演进。
 - 简单性、灵活性优先，不为审计、规模或尚不存在的 encounter 类型预建平台。
-- `src/Kernel/**` 预期零修改；所有 contact、response、arrival 与 entry change 继续参加 Kernel 全局仲裁。
-- Spatial 只拥有客观 motion、contact truth、Reverse 与 pair-local consumption。
-- FirstBoard 只拥有“这次接触是否需要 Player 回应、谁作出回应以及 TravelGoal 如何结束”。
+- `src/Kernel/**` 与 `src/Host/**` 预期零修改；所有 contact、response、arrival 与 entry change 继续参加 Kernel 全局仲裁。
+- Spatial 拥有客观 motion、Contact 的完整 occurrence API、contact truth、Reverse 与 pair-local consumption。
+- FirstBoard 不实现或复制 Contact 预测；它只拥有“本次 Host 是否把这个 Contact 提升成 Encounter、谁作出回应以及 TravelGoal 如何结束”。
+- FirstBoard.Demo 只展示 committed facts/state，不 Forecast、不 Plan，也不注册事件处理器。
 - Player 只看到已提交 encounter 的局部材料；future contact、exact fraction、全图 occupancy 与 PRF rank 不得泄露。
 - 不引入 fixed contact phase、暂停时间、外部 command gateway 或空 draft。
 
@@ -52,16 +54,41 @@ Design Note 008 要求 Contact 必须与真实 Game/AI consumer 同时交付。�
 
 - [`TraversingLocation`](../../src/Spatial/State/SpatialLocation.cs) 只能表示 endpoint-to-endpoint segment，无法在途中整数时刻 Reverse。
 - [`GraphSpatialState`](../../src/Spatial/State/GraphSpatialState.cs) 没有 current-segment contact consumption。
-- [`SpatialOccurrenceRule`](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs) 只 Forecast entry change 与 arrival。
+- [`SpatialOccurrenceRule`](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs) 只 Forecast entry change 与 arrival；当前还没有可供所有 Host 复用的 Contact occurrence rule。
 - FirstBoard 没有 pending encounter、途中 observation、response candidate 或 Continue/Reverse intent。
 - 普通 `DecisionPointRule` 只服务 idle `AtPlace` Actor，不能直接复用为途中决策。
 - `TravelGoal` 在 Reverse 后若仍保留，会在 Actor 返回上一 Place 后再次自动朝原目标出发，使 Reverse 失去实际含义。
+
+### 2.1 当前已有的组合接缝
+
+项目已经有正确但尚未被明确命名的 engine/framework → application 组合形状：
+
+```text
+Kernel
+    IOccurrenceRule<TWorld, TCandidateData, TFact>
+
+Spatial framework
+    SpatialOccurrenceRule
+        IOccurrenceRule<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact>
+
+FirstBoard application
+    SpatialHostOccurrenceRule
+        project FirstBoardWorld → GraphSpatialState
+        delegate inner Forecast / Plan
+        lift GraphSpatialFact → FirstBoardFact
+```
+
+[`SpatialHostOccurrenceRule`](../../src/FirstBoard/FirstBoardSystems.cs) 已证明 application adapter 可以原样保留 inner CandidateKey / Due，并把 inner Spatial facts 提升到 composite Host fact union。`src/Host` 当前只提供运行循环，没有通用 rule decorator/composer；本批不为一个使用点提前建立高阶泛型包装平台。
+
+Contact 沿用这个接缝，但多一步 Game enrichment：外层 FirstBoard rule 调用 inner Spatial Contact rule 得到同一个 objective candidate 与 Spatial draft，再追加 `EncounterOpened`。不得让 Spatial 反向调用 FirstBoard callback，也不引入 event bus；依赖方向继续是 `FirstBoard → Spatial → Kernel`。
+
+若第二个独立游戏原型以后重复了完全相同的 project/lift/enrich 样板，再考虑把薄 adapter 提取到 `Host`。当前优先让 Spatial Contact rule 本身成为清晰、稳定、可独立运行的框架 API。
 
 ## 3. 冻结的 MVP 裁决
 
 ### 3.1 一个共享 pending encounter
 
-FirstBoard MVP 在整个 world 中最多保存一个：
+`FirstBoardGameState` 在 MVP 中最多保存一个：
 
 ```text
 PendingPassageEncounter?
@@ -69,10 +96,11 @@ PendingPassageEncounter?
     Kind: HeadOnMeeting | Overtake
 ```
 
-这是有意识的产品限额，不是 Spatial capacity：
+这是 FirstBoard 回应策略的有意识限额，不是 Spatial capacity，也不是 framework API 限额：
 
-- Spatial contact key 仍是 pair-local；一个 contact 不会消费同 tick 的其它 pair。
-- 有 pending encounter 时，Host 暂不 Forecast 新的 contact opening。
+- `GraphSpatialState` 不保存 pending encounter；它可以同时保存多个仍属于 current segments 的 consumed contact keys。
+- Spatial Contact rule 始终能够从任意 `GraphSpatialState` 枚举全部客观 contact candidates；一个 contact 不会消费同 tick 的其它 pair。
+- 有 pending encounter 时，只是 FirstBoard 外层 adapter 暂不把新的 Spatial contact candidates 提升成 Game encounter openings。
 - 当前 encounter resolve 后，其它已经到期且仍成立的 contact 会在同一 model time 重新 Forecast。
 - 已消费 key 保证原 contact 不复发；未消费 peers 不会被吞掉。
 
@@ -86,7 +114,7 @@ PendingPassageEncounter?
 - 一个参与者有 driver 时，由该 Player 回应；两个都有 driver 时，两人的 response candidates 同时参加 Kernel PRF 仲裁。
 - 第一个被选中的 Player 作出 Continue 或 Reverse 后，整个共享 encounter resolved，另一参与者不再获得第二轮回应。
 - 没有 driver 的 Actor 可由测试或 Game rule 作为简单装置移动；本批不建立 NPC cognition/decision framework。
-- contact opening 至少要求一个可响应 Player；纯规则 Actor 之间的交点不 Forecast、不消费。
+- FirstBoard encounter opening 至少要求一个可响应 Player；纯规则 Actor 之间的交点不会被 FirstBoard adapter 提升或消费，但这不限制 Spatial rule 对它们的客观 Forecast 能力。
 
 这表达“谁先对相遇作出反应”，并保持一个 encounter 只有一次不可逆回应。双方协商、轮流反应、战斗回合和 delayed multi-actor response 继续延期。
 
@@ -203,7 +231,17 @@ PassageContactOccurredFact(
 
 ### 5.2 Exact math 不越过领域边界
 
-新增纯 contact Forecast/Plan helper，内部可使用 `BigInteger` 或等价 widened rational 运算。public 结果只含：
+新增第一等、public、可独立测试和注册的 Spatial occurrence rule：
+
+```text
+SpatialContactOccurrenceRule
+    : IOccurrenceRule<
+        GraphSpatialState,
+        PassageContactOccurrenceData,
+        GraphSpatialFact>
+```
+
+它拥有完整的 Contact Forecast / selected Plan，并在内部使用 `BigInteger` 或等价 widened rational 运算。`PassageContactOccurrenceData` 和 public candidate 结果只含：
 
 ```text
 CandidateKey
@@ -236,7 +274,26 @@ Contact CandidateKey 使用 canonical structured bytes：
 
 selected Plan 从 committed state 重算 pair math，验证 key、kind、due 与 current segments 后生成一个 `PassageContactOccurredFact`。Reducer 在 batch instant 再做同一真实性验证，然后只加入自己的 consumed key，不移动、不重锚、不改速。
 
-Contact helper 不注册为独立 production `IOccurrenceRule`。FirstBoard composite encounter rule 是本批唯一 production owner，避免同一个 contact key 被 Spatial wrapper 与 Game rule重复 Forecast。
+`SpatialContactOccurrenceRule` 可以在 Spatial-only simulation 或只需要 objective Contact facts 的未来游戏中直接注册。它不依赖 FirstBoard、Player、Protocol、Host implementation 或任何 handler callback。
+
+### 5.3 三种 ownership 必须分开
+
+| Ownership | Owner | 精确含义 |
+|---|---|---|
+| 领域预测与事实真实性 | Spatial | 谁会相遇、何时成为 candidate、key/kind、selected Plan、fact fold 与 consumed progress |
+| 当前 composite Kernel 的注册 | FirstBoard outer rule | 哪一个外层 rule 把该 CandidateKey 交给 Kernel，并返回完整 `FirstBoardFact` draft |
+| Game 回应策略 | FirstBoard Game | Contact 是否形成 Encounter、pending 限额、Player affordance、TravelGoal 后果 |
+
+“FirstBoard 是唯一 production owner”只能指第二行：在 **FirstBoard 这一个 composite Kernel** 中，只注册外层 adapter，不能同时直接注册 inner `SpatialContactOccurrenceRule`，否则同一 CandidateKey 会被两个 rules Forecast。它绝不表示 Contact 算法、candidate 或 Spatial fact 属于 FirstBoard。
+
+未来应用可以选择：
+
+- 直接注册 `SpatialContactOccurrenceRule`，只提交 objective Spatial fact；或
+- 像 FirstBoard 一样用 application rule 包装它，在同一个 outer draft 中追加自己的 Game facts。
+
+两条路径共享同一个 Spatial Forecast / Plan / reducer，不允许 application 重算交点、重新生成 CandidateKey 或维护第二份 consumed state。
+
+本文所说的“事件处理器”必须按领域拆开理解：Spatial 层的处理器就是 inner rule 的 selected `PlanSelectedAsync` 加 `GraphSpatialReducer`，负责把客观 Contact 变成权威 Spatial fact/state；Game 层的处理器是 outer rule 的 enrichment，负责把同一 occurrence 解释为 Encounter。Spatial 不应持有一个回调到 FirstBoard 的 `Action<PassageContact...>`，否则会反转程序集依赖并把具体游戏政策塞进框架。
 
 ## 6. FirstBoard Game state 与 facts
 
@@ -274,29 +331,35 @@ Reducer 语义：
 
 不保存 contact exact time、offset、future response、双方 route、Player prompt 或 Journal address。
 
-## 7. 两条 Host rules
+## 7. 两条 FirstBoard composite rules
 
-### 7.1 PassageEncounterOpeningRule
+### 7.1 FirstBoardPassageEncounterRule（composite adapter）
 
-职责：把 objective contact 与真实 Game encounter 原子连接。
+职责：把可复用的 objective Spatial Contact occurrence 与 FirstBoard Game encounter 原子连接。它是 application adapter，不是 Contact detector。
+
+内部持有：
+
+```text
+SpatialContactOccurrenceRule _inner
+```
 
 Forecast：
 
 1. 若已有 pending encounter，返回空。
-2. 调用纯 Spatial contact helper枚举所有 pair candidates。
+2. 调用 `_inner.Forecast(world.Spatial, rules)` 枚举所有 objective pair candidates。
 3. 只保留双方都是 `BoardActor` 且至少一方有注册 driver 的 contacts。
-4. 保留 Spatial contact CandidateKey 与 Due；Host candidate data 额外携带已验证的 domain contact data。
+4. 原样保留 inner CandidateKey、Due 与 `PassageContactOccurrenceData`，只把 data 提升进 FirstBoard candidate union。
 
-selected Plan 重验全部条件并提交固定顺序：
+selected Plan 先重验 FirstBoard consumer 条件，再调用 `_inner.PlanSelectedAsync(world.Spatial, innerWinner)` 完成全部 Spatial 重验与 planning；最后把 inner Spatial draft 与 Game fact 合成固定顺序：
 
 ```text
 Spatial(PassageContactOccurred)
 Game(PassageEncounterOpened)
 ```
 
-两者一个 batch 全成全败。不得另外注册一个会 Forecast contact 的普通 Spatial rule。
+两者一个 batch 全成全败。在 FirstBoard Kernel 中不得同时直接注册 `_inner`；其它游戏是否直接注册它由各自的 Host composition 决定。
 
-### 7.2 PassageEncounterResponseRule
+### 7.2 FirstBoardPassageEncounterResponseRule
 
 Forecast：
 
@@ -404,7 +467,7 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 
 1. 把 endpoint traversal 原位替换为 anchored traversal，更新 arrival/query/snapshot 与现有 Slice 1 回归。
 2. 加 Reverse planner/fact/reducer、direction checks 与 current-segment cleanup。
-3. 加 ContactKey/kind、ConsumedContacts、exact pair math 与纯 Forecast/Plan。
+3. 加 ContactKey/kind、ConsumedContacts、exact pair math 与第一等 `SpatialContactOccurrenceRule`。
 4. 加 Protocol action kinds、validator 与 Player.Llm tests。
 5. 加 FirstBoard pending encounter、两类 facts、opening/response rules 与 encounter request。
 6. 接通 TravelGoal Continue/Reverse/WorldChanged 语义和原子失败路径。
@@ -422,6 +485,8 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 - `src/Spatial/Queries/**`
 - `src/Spatial/Simulation/SpatialOccurrenceData.cs`
 - `src/Spatial/Simulation/SpatialOccurrenceRule.cs`（只更新 anchored arrival identity，不 Forecast contact）
+- 新建 `src/Spatial/Simulation/PassageContactOccurrenceData.cs`
+- 新建 `src/Spatial/Simulation/SpatialContactOccurrenceRule.cs`
 - `src/Protocol/ProtocolKinds.cs`
 - `src/Decision.Validation/PlayerDecisionValidator.cs`
 - `src/Player.Llm/PromptRenderer.cs`
@@ -434,13 +499,13 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 
 - 更新现有 `tests/Spatial.Tests/**` 中 endpoint traversal fixtures。
 - 新建 `tests/Spatial.Tests/Contacts/PassageContactTests.cs`。
-- 扩展 Spatial planner/reducer/occurrence/acceptance tests。
+- 扩展 Spatial planner/reducer/occurrence/acceptance tests，包括直接把 `SpatialContactOccurrenceRule` 注册进 Spatial-only Kernel 的闭环。
 - 扩展 Protocol、Decision.Validation 与 Player.Llm tests。
-- 新建 `tests/FirstBoard.Tests/PassageEncounterHostTests.cs`。
+- 新建 `tests/FirstBoard.Tests/PassageEncounterHostTests.cs`，验证 outer adapter 与 inner rule 的 Key/Due/Spatial fact 完全相同。
 - 新建或扩展 FirstBoard atomicity/replay/fork tests。
 - 更新 `tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs`。
 
-不新建程序集，不修改 solution project graph。`Spatial` 继续只直接依赖 Kernel；`FirstBoard` 继续通过 composite Host 使用 Spatial。
+不新建程序集，不修改 solution project graph，也不修改 `Host`。`Spatial` 继续只直接依赖 Kernel；`FirstBoard` 继续通过薄 composite adapter 使用 Spatial。
 
 ## 12. 验收矩阵
 
@@ -454,6 +519,8 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 | CNT-3 | A-B consumed 后不复发，不吞 A-C/C-D；arrival/reverse/remove 只清理涉及旧 segment 的 keys。 |
 | CNT-4 | Contact candidate key canonical；Definition/entity 枚举顺序不改变 candidates；tampered key/due/kind/generation 被拒绝。 |
 | CNT-5 | reference `O(Σn²)` Forecast 在 `Due==Now` 的 committed prefix 可用，无 whole-tick barrier。 |
+| API-1 | Spatial-only Kernel 可直接注册 `SpatialContactOccurrenceRule`，独立完成 Forecast→Plan→fact→fold→replay；不引用 FirstBoard/Player/Protocol/Host implementation。 |
+| API-2 | FirstBoard outer adapter 原样保留 inner Key/Due/data，selected Plan 复用 inner Spatial draft 并只追加 Game fact；FirstBoard 中没有 pair math、contact key builder 或第二份 consumed state。 |
 | ENC-1 | selected contact 原子提交 Spatial Contact + Game Opened；任一 fold 失败时 World/Journal/Version 零半批。 |
 | ENC-2 | 一个 driver participant 时只调用它；两个 driver participants 时不同 seed 可让任一方先回应，但每个 encounter 总共只调用一个 Player。 |
 | ENC-3 | Continue 提交非空 resolved fact，DecisionSequence 只增一次，movement 与 TravelGoal 保留并可继续 arrival/自动导航。 |
@@ -489,6 +556,7 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 - Reverse 清 TravelGoal 不能表达必要的“暂停后恢复”产品语义；
 - 1ms 量化让 contact 后 Reverse 出现不可接受的位置跳变；
 - FirstBoard 需要新增 NPC 调度系统才能构造真实 consumer；
+- FirstBoard 必须复制 pair math、CandidateKey 或 selected Spatial Plan 才能完成包装，说明 Spatial occurrence API 仍过窄；
 - reducer 完整性必须依赖跨 fact 审计镜像或 Kernel 改造；
 - reference pair scan 被真实基准证明不可用。
 
@@ -508,13 +576,13 @@ dotnet test DramaBoard.slnx --no-restore --nologo
 dotnet test DramaBoard.Local.slnx --no-restore --nologo
 dotnet build src/FirstBoard.Demo/FirstBoard.Demo.csproj --no-restore --nologo
 git diff --check
-git diff -- src/Kernel src/Player.Agency
+git diff -- src/Kernel src/Host src/Player.Agency
 git status --short
 ```
 
-最后一个 Kernel/Player.Agency diff 必须为空；`git status` 只能包含本批预期文件。实现完成后应：
+最后一个 Kernel/Host/Player.Agency diff 必须为空；`git status` 只能包含本批预期文件。实现完成后应：
 
 - 把本文状态改为 Implemented and verified；
 - 记录实际 commits、测试数量、复审结论与有意识偏差；
-- 更新 Design Note 008 顶部状态、§7.2 验收矩阵和 Slice 2 实施记录；
+- 更新 Design Note 008 顶部状态、§3.1—3.5 framework/application API 边界、§7.2 验收矩阵和 Slice 2 实施记录；
 - 若任何复杂性停线被触发，先记录用户裁决，再继续施工。
