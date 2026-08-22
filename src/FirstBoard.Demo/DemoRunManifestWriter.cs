@@ -65,7 +65,7 @@ internal sealed class DemoRunManifestWriter
         (string? gitCommit, bool? gitDirty) = ReadGitState();
         var manifest = new
         {
-            Schema = "dramaboard.run-manifest/1",
+            Schema = "dramaboard.run-manifest/2",
             RunId = _runId,
             Status = status,
             StartedAtUtc = _startedAtUtc,
@@ -93,6 +93,12 @@ internal sealed class DemoRunManifestWriter
                 Player(BoardIds.Alice, _options.AliceBackend),
                 Player(BoardIds.Bob, _options.BobBackend),
             },
+            Presentation = new
+            {
+                _options.HumanActorId,
+                Mode = _options.PresentationMode.ToString().ToLowerInvariant(),
+                IntervalMs = checked((long)_options.PresentationInterval.TotalMilliseconds),
+            },
             MemoryRuntime = new
             {
                 _options.MemoryBackend.Backend,
@@ -104,7 +110,7 @@ internal sealed class DemoRunManifestWriter
             {
                 OverallTimeoutMs = checked((long)_options.OverallTimeout.TotalMilliseconds),
                 RequestTimeoutMs = checked((long)_options.RequestTimeout.TotalMilliseconds),
-                EndpointIdentity = SafeEndpointIdentity(_options.BaseUrl),
+                EndpointIdentity = ActualEndpointIdentity(_options),
             },
             Software = new
             {
@@ -125,13 +131,20 @@ internal sealed class DemoRunManifestWriter
             Utf8NoBom);
     }
 
-    private object Player(string actorId, DemoBackendOptions backend) => new
-    {
-        ActorId = actorId,
-        backend.Backend,
-        backend.Model,
-        ThinkingEffort = ThinkingEffort(backend),
-    };
+    private PlayerManifest Player(string actorId, DemoBackendOptions backend) =>
+        actorId == _options.HumanActorId
+            ? new PlayerManifest(
+                actorId,
+                DriverKind: "human",
+                Backend: null,
+                Model: null,
+                ThinkingEffort: null)
+            : new PlayerManifest(
+                actorId,
+                DriverKind: "llm",
+                backend.Backend,
+                backend.Model,
+                ThinkingEffort(backend));
 
     private string ThinkingEffort(DemoBackendOptions backend) =>
         backend.Backend == "codex"
@@ -146,25 +159,52 @@ internal sealed class DemoRunManifestWriter
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteString("schema", "dramaboard.run-configuration/1");
+            writer.WriteString("schema", "dramaboard.run-configuration/2");
             writer.WriteString("definitionSha256", instance.DefinitionSha256);
             writer.WriteString("instanceSha256", instance.InstanceSha256);
             writer.WriteNumber("lineageId", FirstBoardScenario.LineageId);
             writer.WriteNumber("untilModelTimeMs", options.UntilModelTimeMs);
             writer.WriteNumber("maxTurnsPerActor", options.MaxTurnsPerActor);
-            WriteBackend(writer, "alice", options.AliceBackend, options.ReasoningEffort);
-            WriteBackend(writer, "bob", options.BobBackend, options.ReasoningEffort);
+            writer.WriteStartArray("players");
+            WritePlayerConfiguration(
+                writer,
+                BoardIds.Alice,
+                options.AliceBackend,
+                options);
+            WritePlayerConfiguration(
+                writer,
+                BoardIds.Bob,
+                options.BobBackend,
+                options);
+            writer.WriteEndArray();
             WriteBackend(writer, "memory", options.MemoryBackend, options.ReasoningEffort);
             writer.WriteString(
                 "memoryMaintenanceMode",
                 options.MemoryMaintenanceMode.ToString().ToLowerInvariant());
+            writer.WriteStartObject("presentation");
+            if (options.HumanActorId is null)
+            {
+                writer.WriteNull("humanActorId");
+            }
+            else
+            {
+                writer.WriteString("humanActorId", options.HumanActorId);
+            }
+
+            writer.WriteString(
+                "mode",
+                options.PresentationMode.ToString().ToLowerInvariant());
+            writer.WriteNumber(
+                "intervalMs",
+                checked((long)options.PresentationInterval.TotalMilliseconds));
+            writer.WriteEndObject();
             writer.WriteNumber(
                 "overallTimeoutMs",
                 checked((long)options.OverallTimeout.TotalMilliseconds));
             writer.WriteNumber(
                 "requestTimeoutMs",
                 checked((long)options.RequestTimeout.TotalMilliseconds));
-            string? endpointIdentity = SafeEndpointIdentity(options.BaseUrl);
+            string? endpointIdentity = ActualEndpointIdentity(options);
             if (endpointIdentity is null)
             {
                 writer.WriteNull("endpointIdentity");
@@ -180,6 +220,24 @@ internal sealed class DemoRunManifestWriter
         return Convert.ToHexString(SHA256.HashData(stream.ToArray())).ToLowerInvariant();
     }
 
+    private static void WritePlayerConfiguration(
+        Utf8JsonWriter writer,
+        string actorId,
+        DemoBackendOptions backend,
+        DemoOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("actorId", actorId);
+        bool isHuman = actorId == options.HumanActorId;
+        writer.WriteString("driverKind", isHuman ? "human" : "llm");
+        if (!isHuman)
+        {
+            WriteBackendFields(writer, backend, options.ReasoningEffort);
+        }
+
+        writer.WriteEndObject();
+    }
+
     private static void WriteBackend(
         Utf8JsonWriter writer,
         string propertyName,
@@ -187,6 +245,15 @@ internal sealed class DemoRunManifestWriter
         string? codexReasoningEffort)
     {
         writer.WriteStartObject(propertyName);
+        WriteBackendFields(writer, backend, codexReasoningEffort);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteBackendFields(
+        Utf8JsonWriter writer,
+        DemoBackendOptions backend,
+        string? codexReasoningEffort)
+    {
         writer.WriteString("backend", backend.Backend);
         writer.WriteString("model", backend.Model);
         writer.WriteString(
@@ -194,7 +261,6 @@ internal sealed class DemoRunManifestWriter
             backend.Backend == "codex"
                 ? codexReasoningEffort ?? "provider-default"
                 : "provider-default");
-        writer.WriteEndObject();
     }
 
     private static string? SafeEndpointIdentity(string? baseUrl)
@@ -213,6 +279,12 @@ internal sealed class DemoRunManifestWriter
         };
         return safe.Uri.AbsoluteUri.TrimEnd('/');
     }
+
+    private static string? ActualEndpointIdentity(DemoOptions options) =>
+        DemoLlmRosterPlan.Create(options).RequiredBackends.Any(
+            backend => backend.Backend != "codex")
+            ? SafeEndpointIdentity(options.BaseUrl)
+            : null;
 
     private static (string? Commit, bool? Dirty) ReadGitState()
     {
@@ -270,4 +342,11 @@ internal sealed class DemoRunManifestWriter
         int WorldTransitionCount,
         int LlmTurnCount,
         int ForcedSceneEndCount);
+
+    private sealed record PlayerManifest(
+        string ActorId,
+        string DriverKind,
+        string? Backend,
+        string? Model,
+        string? ThinkingEffort);
 }

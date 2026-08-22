@@ -24,10 +24,17 @@ internal static class DramaRecordWriter
         var text = new StringBuilder()
             .AppendLine("# DramaBoard · FirstBoard 首场记录")
             .AppendLine()
-            .Append("- 爱丽丝后端：").Append(options.AliceBackend.Backend).Append(" / ")
-            .AppendLine(options.AliceBackend.Model)
-            .Append("- 鲍勃后端：").Append(options.BobBackend.Backend).Append(" / ")
-            .AppendLine(options.BobBackend.Model)
+            .Append("- 爱丽丝 Driver：").AppendLine(
+                DriverDescription(options, BoardIds.Alice, options.AliceBackend))
+            .Append("- 鲍勃 Driver：").AppendLine(
+                DriverDescription(options, BoardIds.Bob, options.BobBackend))
+            .Append("- Presentation：")
+            .Append(options.PresentationMode.ToString().ToLowerInvariant())
+            .Append("；Human=").Append(options.HumanActorId ?? "none")
+            .Append("；interval=").Append(
+                checked((long)options.PresentationInterval.TotalMilliseconds)
+                    .ToString(CultureInfo.InvariantCulture))
+            .AppendLine("ms")
             .Append("- 记忆维护后端：").Append(options.MemoryBackend.Backend).Append(" / ")
             .AppendLine(options.MemoryBackend.Model)
             .Append("- 记忆维护调度：").AppendLine(
@@ -86,6 +93,11 @@ internal static class DramaRecordWriter
         text.AppendLine()
             .AppendLine("## 演员内心轨迹")
             .AppendLine();
+        if (traces.Count == 0)
+        {
+            text.AppendLine("（本局没有 LLM 内心轨迹。）").AppendLine();
+        }
+
         foreach (LlmTurnTrace trace in traces)
         {
             text.Append("### ").Append(DisplayActor(trace.Request.ActorId))
@@ -109,6 +121,14 @@ internal static class DramaRecordWriter
         File.WriteAllText(path, text.ToString(), Utf8NoBom);
         return path;
     }
+
+    private static string DriverDescription(
+        DemoOptions options,
+        string actorId,
+        DemoBackendOptions backend) =>
+        actorId == options.HumanActorId
+            ? "Human / Console"
+            : $"LLM / {backend.Backend} / {backend.Model}";
 
     public static string FormatIntent(Intent intent) =>
         intent.ActionKind.Id switch
