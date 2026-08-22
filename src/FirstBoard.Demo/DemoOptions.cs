@@ -1,4 +1,5 @@
 using System.Globalization;
+using DramaBoard.FirstBoard.Demo.Live;
 using DramaBoard.Player.Llm;
 
 namespace DramaBoard.FirstBoard.Demo;
@@ -9,6 +10,9 @@ internal sealed record DemoOptions(
     DemoBackendOptions AliceBackend,
     DemoBackendOptions BobBackend,
     DemoBackendOptions MemoryBackend,
+    string? HumanActorId,
+    PresentationMode PresentationMode,
+    TimeSpan PresentationInterval,
     string OutputDirectory,
     ulong WorldSeed,
     long UntilModelTimeMs,
@@ -21,13 +25,41 @@ internal sealed record DemoOptions(
     string? ReasoningEffort,
     MemoryMaintenanceMode MemoryMaintenanceMode)
 {
+    private static readonly HashSet<string> AllowedOptionNames = new(
+        [
+            "backend",
+            "model",
+            "alice-backend",
+            "alice-model",
+            "bob-backend",
+            "bob-model",
+            "memory-backend",
+            "memory-model",
+            "human",
+            "presentation",
+            "presentation-interval-ms",
+            "base-url",
+            "api-key-env",
+            "output",
+            "seed",
+            "until-ms",
+            "max-turns-per-actor",
+            "timeout-minutes",
+            "request-timeout-seconds",
+            "codex-command",
+            "reasoning",
+            "memory-maintenance",
+        ],
+        StringComparer.OrdinalIgnoreCase);
+
     public static DemoOptions Parse(string[] args)
     {
+        ArgumentNullException.ThrowIfNull(args);
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (int index = 0; index < args.Length; index++)
         {
             string argument = args[index];
-            if (argument is "--help" or "-h")
+            if (argument.Equals("--help", StringComparison.OrdinalIgnoreCase) || argument == "-h")
             {
                 throw new DemoHelpRequestedException();
             }
@@ -37,9 +69,23 @@ internal sealed record DemoOptions(
                 throw new ArgumentException($"Expected '--name value', but found '{argument}'.");
             }
 
-            values[argument[2..]] = args[++index];
+            string optionName = argument[2..];
+            if (!AllowedOptionNames.Contains(optionName))
+            {
+                throw new ArgumentException($"Unknown option '--{optionName}'.");
+            }
+
+            values[optionName] = args[++index];
         }
 
+        string? humanActorId = ReadHumanActorId(values);
+        PresentationMode presentationMode = ReadPresentationMode(values);
+        if (presentationMode == PresentationMode.Player && humanActorId is null)
+        {
+            throw new ArgumentException("--presentation player requires --human alice or bob.");
+        }
+
+        TimeSpan presentationInterval = ReadPresentationInterval(values);
         string backend = ReadBackend(values, "backend", "codex");
         string model = Read(values, "model", DefaultModel(backend));
         string aliceBackend = ReadBackend(values, "alice-backend", backend);
@@ -52,28 +98,37 @@ internal sealed record DemoOptions(
             values,
             "bob-model",
             bobBackend == backend ? model : DefaultModel(bobBackend));
-        string memoryBackend = ReadBackend(values, "memory-backend", aliceBackend);
+        string defaultMemoryBackend = humanActorId == BoardIds.Alice ? bobBackend : aliceBackend;
+        string defaultMemoryModel = humanActorId == BoardIds.Alice ? bobModel : aliceModel;
+        string memoryBackend = ReadBackend(values, "memory-backend", defaultMemoryBackend);
         string memoryModel = Read(
             values,
             "memory-model",
-            memoryBackend == aliceBackend
-                ? aliceModel
-                : memoryBackend == bobBackend
-                    ? bobModel
-                    : DefaultModel(memoryBackend));
+            memoryBackend == defaultMemoryBackend
+                ? defaultMemoryModel
+                : memoryBackend == aliceBackend
+                    ? aliceModel
+                    : memoryBackend == bobBackend
+                        ? bobModel
+                        : DefaultModel(memoryBackend));
         string output = Read(
             values,
             "output",
             Path.Combine(
                 "artifacts",
-                "wp24",
+                "live",
                 $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-" +
+                $"human-{humanActorId ?? "none"}-" +
+                $"presentation-{presentationMode.ToString().ToLowerInvariant()}-" +
                 $"alice-{aliceBackend}-{aliceModel}-bob-{bobBackend}-{bobModel}"));
 
         return new DemoOptions(
             new DemoBackendOptions(aliceBackend, aliceModel),
             new DemoBackendOptions(bobBackend, bobModel),
             new DemoBackendOptions(memoryBackend, memoryModel),
+            humanActorId,
+            presentationMode,
+            presentationInterval,
             Path.GetFullPath(output),
             ReadUInt64(values, "seed", 20_260_817),
             ReadInt64(values, "until-ms", BoardTiming.RandomRunBoundaryTicks, minimum: 0),
@@ -98,6 +153,11 @@ internal sealed record DemoOptions(
           dotnet run --project src/FirstBoard.Demo -- [options]
 
         Options:
+          --human alice|bob|none           Console Human actor; default: none
+          --presentation player|developer Presentation view; default: developer;
+                                           player requires a Human actor
+          --presentation-interval-ms N     Minimum visible cue interval; default: 250;
+                                           use 0 for tests and fast playback
           --backend codex|deepseek|openai   Default backend for both actors: codex
           --model MODEL                    Default model for both actors
           --alice-backend BACKEND          Override Alice backend
@@ -120,6 +180,56 @@ internal sealed record DemoOptions(
           --reasoning EFFORT               Codex effort; default: low
           --memory-maintenance MODE        blocking|pipelined; default: blocking
         """;
+
+    private static string? ReadHumanActorId(IReadOnlyDictionary<string, string> values)
+    {
+        if (!values.TryGetValue("human", out string? raw))
+        {
+            return null;
+        }
+
+        return raw.ToLowerInvariant() switch
+        {
+            "alice" => BoardIds.Alice,
+            "bob" => BoardIds.Bob,
+            "none" => null,
+            _ => throw new ArgumentException("--human must be alice, bob, or none."),
+        };
+    }
+
+    private static PresentationMode ReadPresentationMode(
+        IReadOnlyDictionary<string, string> values)
+    {
+        if (!values.TryGetValue("presentation", out string? raw))
+        {
+            return PresentationMode.Developer;
+        }
+
+        return raw.ToLowerInvariant() switch
+        {
+            "player" => PresentationMode.Player,
+            "developer" => PresentationMode.Developer,
+            _ => throw new ArgumentException(
+                "--presentation must be player or developer."),
+        };
+    }
+
+    private static TimeSpan ReadPresentationInterval(
+        IReadOnlyDictionary<string, string> values)
+    {
+        long milliseconds = ReadInt64(
+            values,
+            "presentation-interval-ms",
+            fallback: 250,
+            minimum: 0);
+        if (milliseconds > TimeSpan.MaxValue.Ticks / TimeSpan.TicksPerMillisecond)
+        {
+            throw new ArgumentException(
+                "--presentation-interval-ms exceeds the supported TimeSpan range.");
+        }
+
+        return TimeSpan.FromMilliseconds(milliseconds);
+    }
 
     private static MemoryMaintenanceMode ReadMemoryMaintenanceMode(
         IReadOnlyDictionary<string, string> values)
