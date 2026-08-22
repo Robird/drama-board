@@ -1,10 +1,11 @@
 # Build Log 0001：`TravelTo` 多段旅行竖切
 
-> 状态：**Ready for implementation**
+> 状态：**Implemented and verified**
 > 记录日期：2026-08-22
 > 实现基线：`d9165cf feat(spatial): replace Grid with Graph Spatial slice`
 > 记录创建前的 HEAD：`1e02a57 归档Design Note 007：Spatial Framework`；它相对实现基线只移动文档，没有代码差异。
 > 后续裁决：先建立独立 `Player.Agency` 程序集与 Spatial Knowledge Getter；默认实现返回完整静态地图。
+> 实现提交：`dac5356 feat(player-agency): add spatial knowledge seam`、`dd35cf4 feat(firstboard): implement delegated TravelTo`
 
 ## 1. 目的与边界
 
@@ -26,24 +27,24 @@
 - Kernel 继续在同一 model time 对所有 occurrence 做全局确定性仲裁；rule 注册顺序不表示优先级。
 - Host 一次提交完整 fact batch；不存在可观察的半批状态。
 
-这是一份压缩后可以直接施工的上下文交接件，不是实现完成声明。实现完成后应把顶部状态、测试结果和实现 commit 补回本文。
+本文先作为压缩后可直接施工的上下文交接件使用，现已同时补入第 13 节竣工记录；第 3—12 节继续保留为实现语义、取舍与回归依据。
 
 ## 2. 当前代码证据与接缝
 
-当前断链已经很具体：
+竣工后的接缝如下；它们也是后续演进应继续守住的边界：
 
-- [`src/Spatial/Navigation/SpatialNavigator.cs`](../../src/Spatial/Navigation/SpatialNavigator.cs) 已实现确定性最短路，但没有生产调用方。
-- [`src/Protocol/Intent.cs`](../../src/Protocol/Intent.cs) 已有 `DestinationId`；[`src/Protocol/DecisionRequest.cs`](../../src/Protocol/DecisionRequest.cs) 已有 `CandidateDestinationIds`。
-- [`src/Decision.Validation/PlayerDecisionValidator.cs`](../../src/Decision.Validation/PlayerDecisionValidator.cs) 当前只接受 `action.travel + ExitId`，明确不接受 goal-directed travel。
+- [`src/Spatial/Navigation/SpatialNavigator.cs`](../../src/Spatial/Navigation/SpatialNavigator.cs) 继续独占确定性最短路；[`src/FirstBoard/FirstBoardTravelGoalPlanner.cs`](../../src/FirstBoard/FirstBoardTravelGoalPlanner.cs) 是首个生产调用方，只负责 KnownGraph overlay、route 与 live first-leg 映射。
+- [`src/Protocol/Intent.cs`](../../src/Protocol/Intent.cs) 的 `DestinationId` 与 [`src/Protocol/DecisionRequest.cs`](../../src/Protocol/DecisionRequest.cs) 的 `CandidateDestinationIds` 直接承载 `action.travel-to`，没有新增 Player DTO。
+- [`src/Decision.Validation/PlayerDecisionValidator.cs`](../../src/Decision.Validation/PlayerDecisionValidator.cs) 已冻结 `travel + ExitId` 与 `travel-to + DestinationId` 两种互斥 shape。
 - [`src/Player/RandomPlayerDriver.cs`](../../src/Player/RandomPlayerDriver.cs) 与 [`src/Player.Llm/LlmOutputParser.cs`](../../src/Player.Llm/LlmOutputParser.cs) 已通用地传递 destination；不要另造 Player DTO 或第二个 parser。
 - [`src/FirstBoard/FirstBoardSpatialProjection.cs`](../../src/FirstBoard/FirstBoardSpatialProjection.cs) 已能投影当前 Place 的 live exit、票券要求与 `CanTakeNow`。
 - [`src/FirstBoard/FirstBoardSystems.cs`](../../src/FirstBoard/FirstBoardSystems.cs) 中的 `ActorTravelStartedEvent` 路径会完成一次 Player decision，只能继续服务精确单腿 `travel`。
 - [`src/FirstBoard/FirstBoardDomain.cs`](../../src/FirstBoard/FirstBoardDomain.cs) 中 `CompleteDecision` 同时推进 `Generation` 和 `DecisionSequence`，而 activity completion 只推进 `Generation`。
 - [`src/FirstBoard/FirstBoardScenario.cs`](../../src/FirstBoard/FirstBoardScenario.cs) 负责 rule 注册、request、snapshot、fact name/summary 等集成面。
-- [`tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs`](../../tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs) 的测试 codec 当前为 `firstboard-host-fact-json/3`。
-- 当前没有 `Player.Agency` 项目；现有 solution/project graph 必须显式加入新项目，依赖方向固定为 `FirstBoard → Player.Agency → Spatial`。
+- [`tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs`](../../tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs) 的当前测试 codec 为 `firstboard-host-fact-json/4`；没有 `/3` reader 或 migration。
+- [`src/Player.Agency`](../../src/Player.Agency) 已进入两个 solution；依赖方向保持为 `FirstBoard → Player.Agency → Spatial`，`Player.Agency` 只有一个直接生产依赖 `Spatial`。
 
-继续实施前，以这些文件中的实际代码为准；若它们已经被后续 commit 改动，先重新核对本文假设，不要机械套用。
+继续演进前，以这些文件中的实际代码和第 13 节实现提交为准；若它们已经被后续 commit 改动，先重新核对本文假设，不要机械套用。
 
 ## 3. 冻结的产品语义
 
@@ -405,4 +406,33 @@ git diff -- src/Kernel src/Spatial
 git status --short
 ```
 
-最后一个 Kernel/Spatial diff 必须为空；`git status` 只能包含本批预期文件。实现完成后在此记录实际测试数量、任何有意识的偏差和实现 commit。
+最后一个 Kernel/Spatial diff 必须为空；`git status` 只能包含本批预期文件。
+
+## 13. 实施结果（2026-08-22）
+
+本批按依赖顺序分两次实现提交完成：
+
+1. `dac5356 feat(player-agency): add spatial knowledge seam`
+   - 新建 `Player.Agency` 与 8 项测试，加入 standard/local solution。
+   - 落地 exact-subgraph snapshot、Getter、FullMap default 与依赖守卫。
+   - 增加 `action.travel-to` stable identifier、协议文档与 validator shape。
+2. `dd35cf4 feat(firstboard): implement delegated TravelTo`
+   - 落地 actor travel goal、Set/Resolved facts、reducer/world invariants 与 persistence codec `/4`。
+   - 落地 KnownGraph 驱动的 `FirstBoardTravelGoalPlanner`、destination advertisement、原子首腿和自动续行 rule。
+   - 补齐 LLM 输入输出、snapshot/fact summary、Demo 展示、replay/fork、并发仲裁、失败注入与旧 Spatial slice 回归。
+
+实现与冻结语义一致，没有需要反向修改本文的设计偏差。`FirstBoardSpatialProjection` 未修改，因为新 planner 可以复用已有投影和 Spatial API，不需要为形式统一增加一层共享 helper。没有持久化 route、knowledge snapshot、candidate 或 ETA，也没有增加 phase、cache、旧 codec migration 或第二套导航器。
+
+独立复审覆盖了程序集边界、FirstBoard 状态机/Kernel 语义、Protocol/LLM/persistence 和测试缺口。初审提出的三段 batch fold 故障注入、精确 `travel` 二次询问、真实 prefix replay/fork continuation、stale candidate 全字段拒绝均已补齐；复审结论为 PASS，无未解决的 blocking、high 或 normal finding。
+
+最终验证证据：
+
+- `dotnet restore DramaBoard.Local.slnx --nologo`：成功。
+- `dotnet test tests/Player.Agency.Tests/Player.Agency.Tests.csproj --no-restore --nologo`：8/8 通过。
+- `dotnet test DramaBoard.slnx --no-restore --nologo`：254/254 通过。
+- `dotnet test DramaBoard.Local.slnx --no-restore --nologo`：272/272 通过，其中 Journal.Atelia 14/14、FirstBoard.Persistence 4/4。
+- `dotnet build src/FirstBoard.Demo/FirstBoard.Demo.csproj --no-restore --nologo`：成功，0 warning、0 error。
+- `git diff --check`：通过。
+- `git diff -- src/Kernel src/Spatial`：为空；本批没有修改 Kernel 或 Spatial 生产代码。
+
+第 10 节验收矩阵均有自动测试覆盖；第 11 节延期项保持延期，下一批不应把它们误认为 `TravelTo` 的隐含欠账。
