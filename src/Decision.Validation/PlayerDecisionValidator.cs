@@ -39,7 +39,7 @@ public static class PlayerDecisionValidator
         }
 
         if (!request.AvailableActions.Any(action =>
-            Matches(decision.Intent, action)))
+            Matches(decision.Intent, action, request.Observation.LocationId)))
         {
             return new(
                 PlayerDecisionValidationError.ActionNotAvailable,
@@ -49,7 +49,10 @@ public static class PlayerDecisionValidator
         return PlayerDecisionValidationResult.Valid;
     }
 
-    private static bool Matches(Intent intent, AvailableAction available)
+    private static bool Matches(
+        Intent intent,
+        AvailableAction available,
+        string currentLocationId)
     {
         if (intent.ActionKind != available.ActionKind ||
             !MatchesOptional(intent.TargetActorId, available.CandidateActorIds) ||
@@ -68,6 +71,14 @@ public static class PlayerDecisionValidator
         return intent.ActionKind.Id switch
         {
             "action.travel" => intent.ExitId is not null && intent.DestinationId is null,
+            "action.travel-to" =>
+                intent.TargetActorId is null &&
+                intent.TargetObjectId is null &&
+                intent.ExitId is null &&
+                intent.DestinationId is not null &&
+                !string.Equals(intent.DestinationId, currentLocationId, StringComparison.Ordinal) &&
+                intent.DurationMs is null &&
+                intent.UntilModelTimeMs is null,
             "action.talk" => intent.TargetActorId is not null,
             "action.take" or "action.put" or "action.use" => intent.TargetObjectId is not null,
             "action.give" or "action.show" =>

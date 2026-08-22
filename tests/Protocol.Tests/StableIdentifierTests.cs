@@ -20,6 +20,7 @@ public sealed class StableIdentifierTests
     public void Equality_SameKindIdentifier_HasValueSemantics()
     {
         Assert.Equal(new ActionKind("action.travel"), ActionKinds.Travel);
+        Assert.Equal(new ActionKind("action.travel-to"), ActionKinds.TravelTo);
         Assert.Equal(new ActionKind("action.put"), ActionKinds.Put);
         Assert.Equal(new ActionKind("action.show"), ActionKinds.Show);
         Assert.Equal(new FactKind("fact.secret.known"), new FactKind("fact.secret.known"));
@@ -30,6 +31,7 @@ public sealed class StableIdentifierTests
     {
         AssertStringRoundTrip(new DecisionId("decision-42"), "decision-42");
         AssertStringRoundTrip(new ActionKind("action.travel"), "action.travel");
+        AssertStringRoundTrip(ActionKinds.TravelTo, "action.travel-to");
         AssertStringRoundTrip(new FactKind("fact.secret.known"), "fact.secret.known");
     }
 

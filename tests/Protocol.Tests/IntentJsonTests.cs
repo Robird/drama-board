@@ -7,6 +7,10 @@ public sealed class IntentJsonTests
     public static TheoryData<Intent> FirstBoardActions => new()
     {
         new Intent(ActionKinds.Travel, ExitId: "exit.inn.front-door"),
+        new Intent(
+            ActionKinds.TravelTo,
+            DestinationId: "place.old-harbor",
+            FreeText: "Take me to the old harbor."),
         new Intent(ActionKinds.Wait, DurationMs: 15_000),
         new Intent(ActionKinds.Talk, TargetActorId: "actor.bob", FreeText: "Meet me at the inn."),
         new Intent(ActionKinds.Observe, TargetObjectId: "object.letter"),

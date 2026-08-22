@@ -5,7 +5,7 @@ namespace DramaBoard.Protocol;
 /// <param name="TargetActorId">The optional actor involved in the action.</param>
 /// <param name="TargetObjectId">The optional object involved in the action.</param>
 /// <param name="ExitId">The optional observed exit selected for an immediate travel action.</param>
-/// <param name="DestinationId">The optional destination reserved for a future goal-directed travel action.</param>
+/// <param name="DestinationId">The optional destination selected for a goal-directed travel action.</param>
 /// <param name="FreeText">The optional natural-language content of the action.</param>
 /// <param name="DurationMs">The optional duration in model-time milliseconds.</param>
 /// <param name="UntilModelTimeMs">The optional absolute model time in milliseconds at which waiting ends.</param>

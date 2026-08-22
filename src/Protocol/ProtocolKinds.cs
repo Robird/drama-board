@@ -3,8 +3,11 @@ namespace DramaBoard.Protocol;
 /// <summary>Provides the first-version action identifiers understood by the Player boundary.</summary>
 public static class ActionKinds
 {
-    /// <summary>Identifies travel to a destination.</summary>
+    /// <summary>Identifies immediate travel through one observed exit.</summary>
     public static ActionKind Travel { get; } = new("action.travel");
+
+    /// <summary>Identifies delegated travel toward one advertised destination.</summary>
+    public static ActionKind TravelTo { get; } = new("action.travel-to");
 
     /// <summary>Identifies waiting for a duration or model time.</summary>
     public static ActionKind Wait { get; } = new("action.wait");
