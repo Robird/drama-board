@@ -2,6 +2,8 @@
 
 **状态：WP24 已采纳。日期：2026-08-18。**
 
+**后继裁决（2026-08-23）：** 本文保留 WP24 的历史类型名和当时的 Pack-specific `RulesetId`。当前目标边界以 [Build Log 0004](build-log/0004-game-content-and-composite-save.md) 为 authority：keyed Definition collections 的输入排列不再属于语义；`game-definition.json`、content-neutral Ruleset compatibility、fresh root/child lineage 与 Resumable Save 均由后继路线实现。software/git provenance 只供审计，不能替代 Save compatibility gate。
+
 ## 问题
 
 FirstBoard 的客观初态原本在 `FirstBoardWorld.CreateInitial` 中命令式构造，角色卡、私有 ReferenceMaterial 和初始 Memory 又散落在 Demo `Program`。这对单场原型足够，但会阻碍 Providence / Scenario Forge：复制场景、改变 deadline 或私有材料、批量换 seed、比较不同 Player runtime 时，无法可靠回答“究竟是场景变了，还是运行配置变了”。
@@ -35,7 +37,7 @@ WP24 不引入配置 DSL，也不实现 Providence。目标只是把已经存在
 
 外部传入的 `List<T>` 此后再被修改，不会让同一 instance 的 hash 或初始世界漂移。Definition hash 不含 seed；换 seed 保留相同 definition identity，但产生不同 instance identity。显示用 `Id` 只截取 hash 前缀，研究关联使用完整 64 位十六进制 SHA-256。
 
-列表顺序当前属于语义：它同时影响 persistent numeric id、同刻 source order、prompt 中材料/Memory 顺序，所以 canonical writer 与 world 实例化必须读取同一冻结顺序，不擅自排序。
+Place、Passage、Actor、Object、ReferenceMaterial 与 Memory shard 都是 keyed collections；它们的输入排列不属于语义。`Freeze()`、canonical writer、Genesis 与 Prompt 输入都按稳定 key 读取同一冻结顺序，collection reorder 不改变 canonical bytes/hash。只有显式定义为 sequence 的字段保留作者顺序。这个 canonical order 与 Journal 的 committed batch / `Facts[]` 因果顺序无关；后者始终属于语义，绝不能排序。
 
 ### Run Manifest：一次具体执行
 
@@ -79,7 +81,7 @@ ScenarioInstance
 - 不实现在线 Providence、intervention command 或 meta journal。
 - 不把 Definition 放进 WorldState；checkpoint/fork 必须通过 manifest 找回相同 definition artifact。
 - travel/default wait、锁箱特殊语义仍属于 FirstBoard ruleset；等真实 mutation 需要再逐项数据化。
-- `LineageId=10001` 仍是 Demo 固定值。RunId 与 LineageId 已概念分离，但多 root run / fork 的 lineage 分配留给后续 provenance 工作。
+- `LineageId=10001` 是 WP24 的 Demo fixture，不是 production identity。后继 Runner 为每个 new run 分配 fresh root lineage；从可复制 Save 恢复时分配 fresh child lineage，避免不同 committed prefix 共享同一 `WorldVersion`。
 
 ## 验收发现
 

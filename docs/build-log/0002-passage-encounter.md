@@ -455,6 +455,8 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 - FirstBoard world snapshot、fact name/payload summary 与 Demo writer 对新 location/facts 做 exhaustive 更新。
 - `ScenarioDefinition` schema、revision 与 ruleset 不因本次纯运行时能力自动升级；run manifest 的代码版本继续承担 build binding。
 
+> 后继说明（2026-08-23）：本条是 production Save 出现前的 current-build-only 历史决定。自 [Build Log 0004](0004-game-content-and-composite-save.md) 起，wire compatibility 与 Ruleset semantic compatibility 分开；会改变既有 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，software provenance 只供审计。
+
 合法持久 prefix 至少包括：
 
 1. contact 已 consumed 且 Game encounter pending；

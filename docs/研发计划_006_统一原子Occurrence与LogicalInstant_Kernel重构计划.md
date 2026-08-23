@@ -6,6 +6,8 @@
 
 **关联核心设计：`开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md`**
 
+**后继 package 边界（2026-08-23）：** 第 11–12 条仍禁止 Kernel 内的重型 audited replay、旧格式 reader 与 migration。后继 [Build Log 0004](build-log/0004-game-content-and-composite-save.md) 在 Runner/Ruleset package 层增加 current-format、exact-ID 的 fail-fast Save；pure wire 变化由各 codec ID 承担，同一 bytes 的 Ruleset meaning/future behavior 变化由 `RulesetId` 承担，software provenance 只作审计。
+
 ---
 
 ## 1. 已冻结的目标

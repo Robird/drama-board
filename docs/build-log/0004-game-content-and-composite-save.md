@@ -1,507 +1,540 @@
-# Build Log 0004：GameContent 与复合 Save 的最小边界
+# Build Log 0004：编译式 Game Content 与可继续 Save 的目标边界
 
-> 状态：**Design converged; implementation candidate**
+> 状态：**Target design re-adjudicated; implementation consolidated**
 >
 > 记录日期：2026-08-23
 >
-> 代码基线：`7e2a7f4 docs(build-log): close live session playback slice`
+> 代码基线：`994eeb4 docs(content): define minimal content and save boundary`
 >
 > 上位设计：[Design Note 008：Graph Spatial World](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
 >
-> 核心裁决：**Content 描述名词、初态、文本与关系结构；编译期 Ruleset 定义动词、因果与不变量；Save 绑定一个冻结的语义定义、世界 Journal 与 Player checkpoint。**
+> 核心裁决：**C# Content 构造封闭 Game Definition；Ruleset 独占行为与因果；Runner 一次只加载一个 Content Module；Save 从终止并 join 的 Session 捕获 Definition、完整 Journal 与 closed Player composition。每次 new run 使用 fresh root lineage，每次 resume 使用 fresh child lineage。**
 
-## 1. 为什么现在重开 Content 管线
+## 1. 当前产品决定
 
-DramaBoard 已经把客观空间收敛为 `Place + Passage`，并完成了移动、途中接触、AI/Human 决策与 current-format Replay 的真实竖切。下一项高价值能力不是继续扩张世界 Law，而是让同一套 Engine 与美术资产能够运行多个具体游戏原型：
+DramaBoard 下一阶段需要让同一 Engine、Ruleset 与美术资产运行多个具体游戏原型。当前冻结：
 
-```text
-Shared Engine + Shared Ruleset + Shared Asset Library
-                        │
-                        ▼
-                  GameContent/
-                        │ compile / validate
-                        ▼
-             immutable GameDefinition
-                        │ new lineage
-                        ▼
-                      Save/
-```
+- C# 是唯一 Content 作者语言，直接复用编译器、IDE、重构、测试与静态分析工具链；
+- 每个 Prototype 编译为独立 DLL，但不能注册或替换 Ruleset Law；
+- 一个公共 Runner 接收 Content Pack 目录并启动目标游戏；
+- 至少用两个共享同一 Ruleset、作者 ID 完全不相交的 Prototype 验伪；
+- Content Pack 与 Save 是独立目录；resume 不再访问原 Pack；
+- 当前部署模型是可信、本地、单进程、一次只加载一个 Pack；
+- 当前 live Session 继续使用 `InMemoryJournal`。只有终止并 join 后的 immutable capture 才能写 Save；
+- Save 是可复制、可多次恢复的 immutable checkpoint。每次恢复都产生新的 child lineage 和 successor Save；
+- V1 只承诺 fail-closed publication：旧 Save 永不修改，新目标要么完整可验证，要么被拒绝。不承诺断电后的最新进度或跨文件 fsync durability；
+- Runner 保留不同 Actor 使用不同 decision backend/model 的现有能力，只把 Alice/Bob 固定槽改成 ActorId-keyed override；
+- 不要求第三方 Mod 沙箱、热加载、卸载、同进程换包、私有依赖隔离、旧格式迁移或独立 Objective Replay 产品格式。
 
-用户当前的产品决定是：
-
-- 游戏启动时加载一个 `GameContent` 目录；
-- 运行状态写入另一个独立 `Save` 目录；
-- 多个原型共享大体相同的世界能力与角色能力；
-- 原型的核心差异来自角色塑造、情感联结，以及角色、秘密、资源与期限形成的戏剧结构；
-- Content 必须容易被人和 Coding Agent 阅读、局部修改、验证与测试。
-
-这正好满足 Design Note 008 §6.2 / §9 对内容身份的重开条件：一旦出现外部内容目录和需要继续的持久 run，就必须给 Definition 加入最小的加载、格式与绑定契约。
-
-## 2. 当前代码已经拥有的半条管线
-
-这不是从零建设 Content 平台。当前代码已经有很接近目标的内存模型：
-
-- [`ScenarioDefinition`](../../src/FirstBoard/ScenarioDefinition.cs) 已包含 Graph、Actor 初始位置、Role、ReferenceMaterial、Memory shards、Object 初态与 deadline；
-- `Validate → Freeze → ToCanonicalJsonUtf8 → ComputeSha256` 已形成强类型校验、冻结、canonical writer 与 Definition identity；
-- [`ScenarioInstance`](../../src/FirstBoard/ScenarioDefinition.cs) 已把 Definition hash 与 WorldSeed 组合成 instance identity；
-- [`DemoRunManifestWriter`](../../src/FirstBoard.Demo/DemoRunManifestWriter.cs) 已把 canonical scenario definition 和运行身份写入输出目录；
-- [`AteliaJournalSink`](../../src/Journal.Atelia/AteliaJournalSink.cs) 已能持久化完整 Kernel batches 并 reopen / fork。
-
-真正缺少的是：
-
-1. 从目录读取 typed source 的 production loader；
-2. 去掉规则、Demo roster 与叙事输出对 Alice、Bob、地窖、钥匙、锁箱和密信等作者 ID 的直接认识；
-3. 把测试中的 FirstBoard fact codec 提升为 production codec；
-4. 让 live run 使用 durable Journal，而不只是 `InMemoryJournal`；
-5. 保存能够继续同一角色的完整 Player runtime checkpoint，而不只是人类可读的 Memory trace。
-
-只添加一个 JSON reader、却保留上述硬编码，会得到“可调参数但不可换游戏结构”的假 Content 化。
-
-## 3. 对 Coding Agent 的结论
-
-Content 化本身不会增加 Coding Agent 的开发难度。Agent 真正偏好的是：
-
-- 明确、封闭的 schema；
-- stable ID 与可追踪的引用；
-- path + JSON pointer 级错误；
-- deterministic formatter / canonical output；
-- 单命令 validation、route inspection 与 headless smoke test；
-- 小而局部、不会意外修改公共 Law 的 diff。
-
-Agent 不偏好的不是 JSON，而是三套同时存在的行为表达：
+目标进程形态是：
 
 ```text
-C# rules
-+ 配置中的任意 predicate/effect DSL
-+ Content 目录中的热加载 DLL
+dramaboard run --content <pack-dir> --save <new-save-dir>
+
+               one Runner EXE
+                      │
+          load exactly one Content Module
+              ┌───────┴───────┐
+              │               │
+       Prototype A DLL  Prototype B DLL
+              └──── same compiled Ruleset ────┘
 ```
 
-一旦配置可以分支、调用、写 World 或绕过 typed planner，它就是一门缺少成熟类型系统、调试器和 Replay 约束的自制编程语言，通常比直接修改 C# 更难。
+“两个 Prototype DLL”不表示进程中只有两个 DLL；Kernel、Spatial、Player、Ruleset 等共享程序集仍正常存在。它表示具体 Prototype 不再编译进 Runner，也不要求修改 Runner 或 Ruleset 才能被选择。
 
-因此本轮守住一句边界：
+## 2. 统一术语
 
-> **Configuration becomes code when it controls execution.**
->
-> **GameContent 只声明世界与戏剧前提；Ruleset 代码独占可执行因果。**
+| 术语 | 精确定义 |
+|---|---|
+| **Engine** | Kernel、Spatial、Protocol、Player、Journal 与 Host primitives 等跨游戏基础 Law。 |
+| **Ruleset** | 受信任的编译期 C# 游戏规则：World state、action、fact、Forecast、reducer、validator、observation 与 codec。 |
+| **Prototype** | 一个具体可玩的角色与戏剧结构；它是产品概念，不是 Runtime 接口。 |
+| **Content Source** | 构造 Prototype 的 C# 源码及其测试。 |
+| **Content Module** | Content Source 编译得到的入口 DLL；只负责物化 Game Definition。 |
+| **Content Pack** | Runner 接收的部署目录，包含 bootstrap manifest、一个 Content Module 及可选 Pack-owned assets。 |
+| **Content Provider** | Content Module 中唯一的短命入口对象；只返回 Game Definition。 |
+| **Game Definition** | 经验证、冻结并 canonicalize 的完整语义对象图；描述新 lineage 的初始世界与角色前提。 |
+| **Game Instance** | `Game Definition + WorldSeed` 的不可变 genesis identity。 |
+| **Game Session** | 一次正在运行的 Instance：Objective World、Journal、Players、Presentation 与资源生命周期。 |
+| **Runner** | 唯一 EXE / composition root；加载 Pack、组合 Players、启动 Session、写 Save、恢复 Save。 |
+| **Objective component** | Save 内部的 Definition + sealed Journal 组件及其 production verifier；不是独立产品格式。 |
+| **Resumable Save** | 能恢复客观世界、完整 Player composition 与下一次输入，并创建 successor Session branch 的 immutable checkpoint。 |
 
-## 4. 四层 authority
+“Scenario”仍可表示某个 Game 内的局部剧本或开局方案。当前 Pack 定义整个 Prototype；`GameDefinition` 是目标术语，但 CLR/project rename 不阻塞功能路线。
 
-### 4.1 Engine
-
-Engine 拥有跨游戏稳定的基础 Law：
-
-- Kernel winner、LogicalInstant、atomic batch、Replay / Fork；
-- Graph Spatial 的位置、移动、接触、导航与动态入口；
-- Player / Protocol 端口；
-- Journal 与 Host composition primitives。
-
-### 4.2 Compiled Ruleset
-
-Ruleset 是受信任、随 Engine 编译和测试的 C# 代码。它拥有：
-
-- action vocabulary 与合法性；
-- occurrence rules、fact union、reducer 与 validator；
-- Game + Spatial 的原子规划；
-- observation / affordance projection；
-- production fact codec；
-- 对 Content 中 typed bindings 的解释。
-
-V1 只有一个已知 `RulesetId`。未知 Ruleset 必须在启动时 fail-fast。现在不为未来第二个 Ruleset 抽取 registry、plugin ABI 或通用 composition framework；已有 `RulesetId` 已足够保留未来演化身份。
-
-### 4.3 GameContent
-
-GameContent 是新游戏 lineage 的作者源。它拥有：
-
-- Place / Passage 与入口初值；
-- Actor、Object 的 stable author-owned ID；
-- Actor、Place、Passage、Object 的 Player-visible display name 与必要 description；
-- 初始位置、持有关系与隐藏状态；
-- 角色名、traits、goal、voice；
-- 私有 ReferenceMaterial、initial Memory 与关系叙述；
-- 当前 Ruleset 已支持的 typed parameters / bindings；
-
-它描述的是“谁在哪里、拥有什么、知道什么、想要什么、受什么期限与依赖约束”，而不是一棵预写剧情树。DramaBoard 最重要的角色动力恰好可以主要由这些初态产生：
+## 3. 权威与依赖方向
 
 ```text
-目标不一致
-+ 信息不对称
-+ 资源与证据分散
-+ 空间和期限约束
-+ 可自由交谈、展示、交换、欺骗与反悔
+Kernel / Spatial / Player / Host / Journal
+                    ↑
+        DramaBoard.Rulesets.FirstBoard
+        state / laws / Definition / codecs
+                    ↑
+      ┌─────────────┴──────────────┐
+      │                            │
+Content Module DLL    DramaBoard.FirstBoard.Runner EXE
+      │                            │
+      └──── runtime load once ─────┘
 ```
 
-V1 不先建立通用 Relationship 数值模型。信任、戒备、债务和情感可以继续以每角色私有材料与 Memory shard 表达，直到真实玩法证明至少两个规则消费者需要结构化关系数值。
+依赖保持单向：
 
-### 4.4 Save lineage
+- Runner 与 Content Module 都编译依赖 Ruleset；
+- Runner 不 `ProjectReference` 具体 Content Module；
+- Content Module 不引用 Runner；
+- Engine / Ruleset 不反向引用具体 Content；
+- Content Module 不能注册 reducer、codec、Player factory、service 或 Kernel rule。
 
-Save 是某个已开始 lineage 的恢复 authority。它拥有：
+V1 只有一个真实 Ruleset，Content contract 直接属于 `Rulesets.FirstBoard`。不建立 Engine-level `IGamePlugin`、通用 Ruleset registry 或 `Content.Abstractions` 项目。
 
-- 本局冻结的 canonical semantic definition；
-- committed Objective World Journal；
-- stateful Player 的完整 checkpoint；
-- 精确绑定这些部分的 manifest frontier。
+Authority 分层：
 
-Save 不拥有另一份可独立编辑的 World snapshot。Objective World 始终由：
+- **Engine**：Kernel winner、LogicalInstant、有序 atomic batch、Replay / Fork、Graph Spatial、Player / Protocol 端口、Journal 与 Host primitives；
+- **Ruleset**：action/fact vocabulary、occurrence law、reducer、validator、Game + Spatial 原子规划、observation、production codec，以及 typed Ruleset binding 的解释；
+- **Content**：实体与初态、stable author IDs、显示文本、角色材料、初始 Memory，以及 Ruleset 已声明的 typed bindings；
+- **Save lineage**：frozen Definition、selected committed Journal chain、closed Player composition 与精确 continuation frontier。它不拥有并列可写 World snapshot。
+
+## 4. Content Pack 是部署包装，不是语义格式
+
+普通 `dotnet build` 输出目录可直接作为 Pack：
 
 ```text
-content.snapshot + committed journal prefix
+ContentPack/
+  content-pack.json
+  DramaBoard.Content.DuchessLetterMarket.dll
+  assets/                                      # 有真实消费者后才出现
 ```
 
-重建。可选缓存或报告不是 authority。
-
-## 5. V1 GameContent 目录
-
-### 5.1 最小布局
-
-当前 `ScenarioDefinition.Default` 的真正作者内容只有约百余行，且现有 canonical writer 本来就输出一个完整 JSON object。V1 因而先采用一个必需的 semantic source：
-
-```text
-GameContent/
-  game.json
-```
-
-`game.json` 完整拥有：
-
-```text
-schema / contentId / revision / rulesetId
-rulesetConfig
-Places / Passages
-Actors / Roles / private materials / initial Memory
-Objects / initial placement / ownership
-```
-
-`rulesetConfig` 是所有跨实体因果参数的唯一 owner，例如 deadline target、ticket、key、container 与 revealed object。Place / Passage / Actor / Object records 只保存自身固有定义和初态，不重复声明 Ruleset binding。
-
-V1 明确不支持：
-
-- include 或外部 semantic text blob；
-- overlay / inheritance；
-- patch 文件；
-- glob / recursive discovery；
-- 环境特定覆盖；
-- source 文件优先级或 merge order；
-- per-Actor 自定义 schema。
-
-Loader 读取 `game.json`，做全局引用校验，最终只产生一个 immutable compiled definition。Runtime reducer、Forecast、Navigator 与 Player driver 永远不读取 Content 文件。
-
-使用目录作为 package identity，仍允许未来在真实角色规模、编辑冲突或 renderer 消费出现后增加 writer-managed source 分片与普通资产文件；这只改变 authoring loader，不改变 compiled model、Ruleset 或 Save。当前不冻结 `assets.json`、asset resolver 或 asset fingerprint。纯美术字节不属于 semantic content，但具体映射协议等第一个真实 renderer consumer 再设计。
-
-### 5.2 Author-owned identity 与 Ruleset semantic binding
-
-必须区分两种稳定名字：
-
-```text
-Author-owned identity
-    ActorId / PlaceId / PassageId / ObjectId
-    例：mara、old-archive、archive-door、seal-ring
-
-Ruleset semantic binding key
-    compiled Ruleset 需要的稳定槽位
-    例：deadlineTargetPassage、unlockingObject、lockedContainer、revealedObject
-```
-
-Engine / Ruleset 不得从 `alice`、`cellar`、`brass-key` 等字面值推断意义。当前已经存在的锁箱、钥匙、隐藏内容、通行凭证与入口 deadline，不需要改写为通用 DSL；只需要由 `game.json.rulesetConfig` 中一个封闭的 typed binding 指向本 Content 的 author-owned ID。
-
-示意：
+`content-pack.json` 只有：
 
 ```json
 {
-  "rulesetId": "firstboard.duchess-letter/2",
-  "rulesetConfig": {
-    "deadlineTargetPassage": "archive-door",
-    "unlockingObject": "seal-ring",
-    "lockedContainer": "document-case",
-    "revealedObject": "private-ledger"
-  }
+  "format": "dramaboard.content-pack/1",
+  "entryAssembly": "DramaBoard.Content.DuchessLetterMarket.dll"
 }
 ```
 
-最终字段名应在实施时跟随当前 Ruleset 的真实消费者裁决；这里冻结的是“一个唯一的 typed `rulesetConfig`”，不是这四个字符串的永久公共 API。
+它只解决入口定位。`contentId / revision / rulesetId / semantic hash / entities / bindings / Save` 都不进入 bootstrap manifest。manifest 指向不同 DLL，而两个 Provider 构造出相同 canonical Definition 时，语义身份相同。
 
-### 5.3 一个 compiled semantic snapshot
+Runner 在装载代码前验证：
 
-加载管线只有一条：
+- `format` 精确匹配；
+- `entryAssembly` 是 non-rooted、无 `..`、无目录分隔符的 `.dll` basename；
+- regular file 精确位于 Pack 根目录；
+- 未知属性、overlay、环境替换、递归 discovery 均拒绝。
 
-```text
-game.json source DTO
-→ parse with provenance
-→ cross-file Validate
-→ Freeze / canonical order
-→ CompiledGameDefinition
-→ canonical semantic JSON
-→ SemanticContentSha256
+V1 不支持 include、patch、merge order、platform variants、signature、DLL catalog 或 Pack 组合。
+
+## 5. C# Content authoring contract
+
+Ruleset 暴露窄接口：
+
+```csharp
+public interface IFirstBoardContentProvider
+{
+    ScenarioDefinition CreateDefinition(); // CLR rename 延期；语义上是 Game Definition
+}
 ```
 
-`CompiledGameDefinition` 可以演进自当前 `ScenarioDefinition`；不要再建立一套 file-backed runtime Content model。每项错误必须保留 source path 与 JSON pointer，例如：
+Content Module 恰好导出一个 public、concrete、closed、具有 public parameterless constructor 的 Provider。Runner 创建一次、调用一次，随后丢弃 Provider；它不进入 Game Instance、Session、Kernel、Player 或 Save。
+
+返回值是 sealed、closed-data Definition。对象图禁止包含 delegate、strategy、callback、Ruleset/codec、Player factory、service registry、时钟、随机源、句柄、网络客户端或 mutable Runtime service。
+
+Content C# 是可信 authoring executable，不是安全沙箱。作者约定 `CreateDefinition()` context-free、deterministic、无可观察副作用；Content 项目用两次独立构造的 canonical bytes/hash exact equality 做 smoke test。production loader 仍只调用一次。该测试不是纯度证明。
+
+## 6. Runtime loader 的最小边界
+
+V1 使用 `AssemblyLoadContext.Default.LoadFromAssemblyPath`：
+
+1. Runner 已加载 Ruleset 与 Provider contract；
+2. 读取并验证 bootstrap manifest；
+3. 将入口 DLL 加入 Default ALC；
+4. 找到恰好一个有效 Provider；
+5. 对 0/2 Provider、构造或调用失败、null Definition 稳定拒绝；
+6. 立即 `Validate → Freeze → canonicalize → SHA-256`；
+7. 此后 Runtime 不再访问 Pack 或 Provider。
+
+部署约束：
+
+- 一个进程只加载一个 Pack；A/B 验收使用不同子进程；
+- Content Module assembly simple name 唯一；
+- Pack 只依赖 BCL 与 Runner 已拥有的共享 Ruleset assemblies；
+- Pack 不携带第二份 contract/Ruleset，也没有私有 managed/native dependencies；
+- 不 unload、不 hot reload、不在同进程切换 Pack；
+- stale binary 统一要求用当前 Runner/Ruleset rebuild，不承诺 binary compatibility。
+
+只有 Pack-private dependencies、同进程多 Pack 或独立二进制兼容成为真实需求后，才重开 custom ALC + `AssemblyDependencyResolver`。untrusted Content 必须使用进程隔离；ALC 不是安全边界。
+
+所有实际执行 `LoadFromAssemblyPath` 或 Provider 的测试都必须在 fresh one-shot child process；纯 manifest/path parser 才留在 xUnit 进程。
+
+## 7. Definition、identity 与 compatibility
+
+新 run：
 
 ```text
-GameContent/game.json#/actors/1/initialPlaceId
-  references unknown PlaceId 'north-dock'
+C# Content Source
+→ build Pack
+→ CreateDefinition once
+→ Validate / Freeze / canonical order
+→ exact canonical game-definition.json
+→ DefinitionSha256
+→ fresh root LineageId + WorldSeed
+→ Game Session
 ```
 
-semantic hash 必须覆盖所有会改变后续世界或 Player 决策的材料：
+Definition hash 覆盖所有会改变世界或 Player 决策的 **Content-owned** 材料：Graph、初态、typed bindings、Role、ReferenceMaterial、initial Memory，以及 Content 提供给 Observation、Prompt 或 Presentation 的语义文本。Ruleset-owned template 与解释行为由 `RulesetId` 绑定，不假装进入 Definition SHA。纯贴图、立绘、音频不进入；会改变 visibility、affordance 或信息获得的 asset metadata 必须进入。
 
-- Graph 与初态；
-- Ruleset parameters / bindings；
-- Role、ReferenceMaterial、initial Memory；
-- 会进入 Observation、Prompt 或 action description 的语义文本。
+DLL bytes、MVID、assembly version、source commit 只作 provenance，不能成为 Save 的语义身份。
 
-纯贴图、立绘、音频等表现字节不进入 semantic hash；换头像不应使 Objective Save 失效。V1 尚无真实美术加载器 consumer，因此不定义 asset mapping 或 fingerprint。若未来某项“美术元数据”会改变 visibility、affordance 或 AI/Human 获得的信息，它已经不是纯美术，必须进入 semantic snapshot。
+各兼容 ID 只有一个 owner：
 
-## 6. V1 不引入脚本或 DLL
+| 边界 | Authority | 不兼容时变化 |
+|---|---|---|
+| Content Pack bootstrap | Runner 的 `dramaboard.content-pack/1` 常量 | manifest/入口/path 解释 |
+| Definition wire | Ruleset codec；root `schema` 就是 codec ID | 字段、canonical encoding、restore mapping |
+| Fact payload wire | FirstBoard fact codec；Save 声明 expected ID，每个 envelope 镜像 | closed union/kind/payload mapping |
+| Journal envelope | Atelia physical format + versioned opaque frame kind | envelope 或 lineage metadata shape |
+| Ruleset semantics | Definition 的 `RulesetId` | Genesis、fact meaning、fold、validation、Forecast、Plan、Observation 或续局未来行为 |
+| Player checkpoint wire | checkpoint codec constant | private state wire/restore mapping |
+| Player composition behavior | versioned `playerCompositionId` | 相同 request/config/state 的 next request、Prompt 或 wrapper behavior |
+| Save package | Runner 的 `dramaboard.save/1` | manifest、目录、publication/restore contract |
 
-V1 不创建：
+Definition `Id/Revision` 是作者 metadata，不是 codec 或 Ruleset gate。software/git version 只供审计，不替代 compatibility ID。历史 build log 0001/0002 的“不因运行时能力自动 bump”属于 production Save 出现前的 current-build-only 阶段；本节从首个 resumable Save contract 起前瞻生效。V1 不迁移，只接受当前明确支持的 ID。
 
-- `scripts/` 目录；
-- `plugins/` 目录；
-- `IScriptExtension`；
-- `IGameRuleset` registry；
-- expression / predicate / effect DSL；
-- assembly discovery / hot reload hook；
-- manifest 中的空 script / DLL 字段。
+## 8. Typed Ruleset bindings 是 Content 化核心
 
-遇到一个新的真实世界 Law 时，默认流程是：
+必须区分：
 
-1. 在共享 C# Ruleset 中实现并测试；
-2. 如果它需要作者参数，暴露一个窄的 typed Content record；
-3. 用第二个真实消费者检验该 record 是否值得保留。
+```text
+Ruleset-owned kinds
+    action / fact / event / internal state concept
 
-只有满足以下更强条件才重开：
+Author-owned identities
+    ActorId / PlaceId / PassageId / ObjectId
 
-| 能力 | 重开条件 |
-|---|---|
-| 受限脚本 | 多个真实 Content 反复需要一次性编排，继续加共享 C# Law 已明显阻碍创作 |
-| 第二 compiled Ruleset | 一个 playable game 需要新的 state / fact / action Law，放入现有 Ruleset 会扭曲已有语义 |
-| DLL plugin loader | Content 必须独立分发行为、不能重编 Engine，并且 codec / validator / reducer / version binding 能一起定义 |
+Typed Ruleset bindings
+    compiled Ruleset 所需的封闭语义槽位
+```
 
-未来 schema 变更的成本远小于现在维护一个没有消费者的执行 ABI。当前不留占位就是最小、最诚实的扩展策略。
+首版不建立 predicate/effect DSL、ECS 或 property bag。一个 sealed `FirstBoardRulesetConfig` 至少拥有：
 
-## 7. V1 复合 Save
+```text
+DeadlineMs
+DeadlinePassageId
+LockedContainerObjectId
+UnlockingObjectId
+RevealedObjectId
+RevealedObjectAuthenticityText
+RevealedObjectContentsText
+```
 
-### 7.1 目录模型
+最后两个文本分别供“真伪知识”和“内容知识”两个独立 Ruleset facts 使用；普通可见、开箱、deadline、拒绝与 report 文本由实体 label/description 加 Ruleset template 生成。Content 不能注册 fact kind 或任意 prose bag。
 
-V1 把一个已发布的 Save 目录视为 immutable checkpoint。续局不得在原目录或原 Journal branch 上追加，而必须产生一个新的 successor Save：
+synthetic locked chest 必须进入普通 Object definitions 与 placement。Ruleset 不再从 `alice / cellar / brass-key / duchess-letter` 等字面值推断语义。内部状态可暂时叫 `ChestOpened / CellarSealed`，因为它们是 Ruleset concept；结构化 fact kind 应改成 content-neutral Ruleset 名称。
+
+Place、Passage、Actor、Object 拥有 Content-defined display name 与必要 description。所有 Player-visible semantic text 都进入 canonical Definition。
+
+## 9. Content-neutral Runner 与 Player composition
+
+Runner 仍只跨 Content Pack，不跨 Ruleset。它直接了解 FirstBoard World、Fact、Presentation projection 与 codecs，不建立泛型 `IGameRuleset` framework。
+
+Options 两阶段绑定：
+
+```text
+parse syntax/defaults/repeated overrides
+→ load Definition
+→ ordinal-exact bind ActorId
+→ reject duplicate/unknown/Human-slot override
+→ resolve every slot before backend creation
+```
+
+最小 CLI：
+
+```text
+dramaboard content validate --content <pack-dir>
+dramaboard run --content <pack-dir> --save <new-save-dir>
+    [--human <actorId>]
+    [--backend <backend> --model <model>]
+    [--actor-llm <actorId> <backend> <model>]...
+dramaboard resume --save <source> --out-save <successor> --until-ms <absolute-boundary>
+```
+
+公共 backend/model 是默认值；`--actor-llm` 保留当前 mixed-model 能力。Memory backend/model 仍是进程级 resolved config。manifest/Save 记录最终每个 Actor 的 closed composition，不记录“来自 default 还是 override”。resume 的 `--until-ms` 是本次 invocation 的绝对 ModelTime 停止边界，必须不早于 restored current ModelTime；它不改变保存的 Player composition。
+
+生产 CLI 暂不新增 random mode。A/B session smoke 由 one-shot test probe 复用 production Runner pipeline，并在唯一 composition seam 注入完整的 roster-keyed `ResolvedPlayerSlot` plan：descriptor 与 factory 都声明 deterministic `Random(seed)`。不能只把已解析为 LLM 的 slot 偷换成 Random factory，否则 manifest/report/后续 checkpoint 会谎报实际执行者；probe 仍不得绕过 manifest、report、Presentation 或 cleanup surface。
+
+Runner Presentation/report 可以保持 FirstBoard-specific，但必须从 Definition 枚举 roster 与 labels，不认识 Pack A author IDs。
+
+## 10. Naming cleanup 不阻塞功能
+
+目标词汇仍是：
+
+```text
+ScenarioDefinition    → GameDefinition
+ScenarioInstance      → GameInstance
+FirstBoardScenario    → FirstBoardRuleset
+FirstBoard.Demo       → FirstBoard.Runner
+```
+
+但 CLR、project、folder、assembly rename 没有运行时消费者，不能作为 codec、checkpoint 或 Save 的 gate。`scenario-definition.json → game-definition.json` 属于 0012 的 artifact contract，不伪装成机械 rename。其余 rename 是可延期 leaf，最迟在首个外部 API/格式冻结前或第二 Ruleset 出现前完成。
+
+wire/codec/composition IDs 必须是显式稳定字符串，不得来自 CLR type、namespace、assembly-qualified name 或项目路径。
+
+## 11. 当前代码与目标差距
+
+已有：
+
+- C# frozen Definition、canonical bytes/hash 与 seed identity；
+- Kernel complete ordered batches、Replay/Fork 与 `WorldVersion`；
+- production `InMemoryJournal` live path；
+- Atelia adapter 及 persistence tests；
+- LLM Memory、previous-known-facts 与 pipelined maintenance；
+- mixed decision backends、Memory backend、Presentation frontier 与取消语义。
+
+真实缺口：
+
+1. Ruleset、Runner、Presentation/report 仍直接消费 Pack A IDs 与文本；
+2. 尚无 Content Provider、真实 Pack 与 runtime loader；
+3. Definition/fact production codecs 与 strict reader 尚未形成；
+4. Atelia 默认依赖仓库外 sibling，且没有 strict read-only Save reader；
+5. capture 仍暴露 live `InMemoryJournal`，尚无 terminal immutable snapshot/export；
+6. Player checkpoint 与 Runner-owned slot guard 尚未形成；
+7. production lineage 仍是固定常量，新 run 与 resume 都没有 fresh allocation；
+8. Live Session、coordination 与 Presentation 尚不能从非零 verified frontier 启动。
+
+live 使用 InMemory 不是缺口。只有出现 crash recovery/autosave、实时 tail、超长局内存压力或 O(n) final export 成本不可接受时，才重开 live durable sink。
+
+## 12. Save 的唯一 authority
+
+### 12.1 目录与最小 manifest
 
 ```text
 Save/
-  save.json
-  content.snapshot.json
-  journal/
-  players/
-    0001.json                 # safe opaque file name; actorId lives in manifest/payload
-  reports/                  # optional; non-authoritative
+  save.json                  # recognition marker; written last
+  game-definition.json       # exact canonical bytes
+  journal/                   # sealed package-local main
+  players/0001.json          # opaque safe filenames
+  reports/                   # optional, non-authoritative
 ```
 
-```text
-resume --save Save-A --out-save Save-B
-
-Save-A 永不修改
-Save-B 在 staging 中写完、关闭并校验后才发布 save.json
-```
-
-`save.json` 至少绑定：
+`save.json` 最小拥有：
 
 ```text
-save schema
-contentId / revision
-SemanticContentSha256
-rulesetId
+format = dramaboard.save/1
+definitionSha256
 worldSeed
-lineageId / transitionCount
+selectedJournalChainSha256
 payloadCodecId
-playerCheckpointCodecId
-compiledSnapshotCodecId
-每个 component 的 digest
-每个 stateful Player 的 actorId / driver kind / config identity /
-    decisionSequence / PlayerStateFingerprint / safe checkpoint file
+playerCompositionId
+players[]:
+  actorId
+  closed driver union + canonical non-secret resolved config
+  capturedDecisionSequence
+  checkpoint? = checkpointCodecId / opaqueFilename / checkpointFileSha256
 ```
 
-Player checkpoint 文件名不得直接拼接 author-owned `ActorId`。Manifest 分配安全、不透明的文件名，并在 manifest 与 payload 内保存真实 `actorId` 和 digest；不要为了迁就 Windows 路径、保留名或大小写规则而收紧领域 ID 语义。
+Definition canonical SHA 同时是 exact file digest 与 semantic identity。Player checkpoint 是 canonical closed bytes，其 SHA 同时承担 file integrity 与 exact state comparison；不再持久化第二个 `PlayerStateFingerprint`。roster/composition fingerprint 都是可派生诊断，不是 authority。
 
-新局时：
+`contentId/revision/rulesetId/definition codec` 从 Definition 派生；`lineageId/parent frontier/transitionCount/last instant` 从 checked Journal chain 派生；driver variant/stateful 由 `playerCompositionId` 所定义的 closed union 与 checkpoint presence 表达。固定 branch `main`、physical EventAddress head、batchCount、whole-directory digest 都不进入 manifest。
+
+### 12.2 selected Journal chain
+
+Atelia `EventAddress` 是物理地址，不是 content hash。Save 的 Journal frontier 是：
 
 ```text
-external GameContent → compile → new content.snapshot
+fixed package-local main
++ checked chronological traversal from its actual ref head
++ selectedJournalChainSha256
 ```
 
-续局时：
+chain digest 采用 versioned、domain-separated、length-prefixed 编码，按顺序覆盖每一帧的 opaque kind 与 exact logical payload bytes，包括 lineage metadata 和完整 batch envelope。它不覆盖 orphan、inactive ref、reflog、cache、压缩或物理 layout。
+
+因此 selected tail、截断、重排、metadata/envelope replacement 都改变 digest；合法 physical rewrite 不改变语义 identity。batch 顺序、`LogicalInstant`、`CandidateKey` 与 `Facts[]` 原始数组顺序必须逐层保留，绝不能 canonical-sort Journal 因果顺序。
+
+V1 Journal 恰有一个 active `main`。selected chain 必须以 batch boundary 0 的唯一 root `LineageCreatedV1` 开始，其 `ParentWorldVersion=null`；每次 resume 在 exact inherited prefix boundary 插入 fresh child metadata，显式携带 `ParentLineageId + ParentTransitionCount`。parent count 使用与 `WorldVersion.TransitionCount` 一致的 `long`，相邻 lineage metadata 必须验证 parent ID 与 prefix count。
+
+Save reader 必须 strict read-only existing：不创建 Journal、branch、metadata 或 orphan，不 advance ref，不返回 writable sink；成功与失败都不修改 source bytes。当前 `OpenOrCreate` sink 不能冒充 verifier。
+
+### 12.3 Restore 顺序
+
+1. strict parse `save.json`，验证固定路径、Definition/Player raw SHA、known `playerCompositionId` 与 checkpoint codec；
+2. peek Definition root schema，strict decode、Validate、Freeze、canonical re-encode，验证 exact SHA 与 supported `RulesetId`；
+3. read-only inspect actual `main` checked chain，验证 frame kinds、lineage ancestry、expected payload codec 与 chain SHA；derive active lineage、transition count 和 last instant；
+4. 用 decoded Definition 验证 exact Actor slot set、resolved config、slot binding 与 Player payload；
+5. 使用 production codec decode ordered batches，并通过 `SimulationReplay` 或等价完整 batch law fold；
+6. 以 folded World 的 `Actor.DecisionSequence` 作为唯一 authority，验证 slot 的 captured binding；
+7. import Players，返回 verified capture。Provider、Pack、backend request 与 Session 启动次数均为 0。
+
+envelope codec mismatch 必须在把该 payload 交给 `TFact` decoder 前拒绝。整个 restore 是否完全零 decoder call 只是内部 layering test，不是产品语义；所有结构/身份错误仍必须在 fold、Player import 或可变状态发布前拒绝。
+
+### 12.4 Player checkpoint 与 clean frontier
+
+LLM checkpoint 的 persistent mutable closure 只有：
 
 ```text
-Save/content.snapshot.json → exact definition authority
+Memory shard contents
+previous-known-facts frontier
 ```
 
-续局不再从外部 GameContent 按字段补全或 overlay。若调用方同时提供外部 Content，只允许 semantic hash 相同；不一致时在 fold Journal 之前拒绝。恢复还必须验证 snapshot codec、component digests、Journal branch head 与 batch count 精确等于 manifest frontier；额外 tail 不是“可忽略的更新”，而是损坏或错误的输入。
+CharacterCard、ReferenceMaterial 与 Memory schema 来自 frozen Definition；Actor、resolved backend/model/maintenance config 与 wrapper order 来自 slot descriptor。payload 用派生 `slotBindingSha256` 防串槽，不复制这些 authority。
 
-快照不是第二真理：GameContent 是创建新 run 的 authoring source；`content.snapshot.json` 是既有 run 的冻结 genesis source。二者不会同时参与一个 runtime definition。
+closed composition 是 versioned union：`Human | Random(seed) | Null | Llm(config, checkpoint)` 加 ordered wrappers。`ScriptedPlayerDriver` 是 test-only，不属于 resumable union。`DecisionBudget` 在 V1 从 committed World decision sequence 与 `maxTurns` 派生并与 live counters交叉验证；未来允许动态装卸 wrapper 时才持久化独立 counters。
 
-### 7.2 为什么 Journal 不够
-
-Objective Journal 可以恢复：
-
-- Actor / Object 的客观状态；
-- Graph movement 与 topology；
-- Game facts 与当前活动。
-
-它不能恢复 LLM Player 的全部运行时认知。当前 Memory trace 主要面向观察和诊断；只恢复 World Journal 会让角色回到 initial Memory，从而抹掉承诺、背叛、信任和戒备的连续性。这恰好会破坏产品最重视的情感联结。
-
-可继续的 Save 因而必须把每一种 built-in stateful Player composition 定义为一个 closed production checkpoint contract，覆盖所有会改变下一次 request、prompt 或 driver 行为的状态，至少包括：
-
-- Memory shards；
-- 会影响下一次 prompt diff 的 previous-known-facts frontier；
-- Actor / Decision sequence binding；
-- `DecisionBudgetPlayerDriver` 等 wrapper 的 budget / turn counters；
-- driver kind 与 non-secret runtime config identity；
-- checkpoint codec identity；
-- canonical `PlayerStateFingerprint` 或等价的逐字段校验；
-- 实施发现的其它真实 Player state，且 pending maintenance 必须为空。
-
-Human、Random、Null 等无状态 driver 不需要伪造 Memory 文件。Player checkpoint 继续属于 Player runtime，不混入 Objective World facts。
-
-### 7.3 Clean-frontier save
-
-V1 只承诺显式 Save / 正常退出后的 resume。安全边界必须同时满足：
+只检查 `pending maintenance == null` 不够。当前 Kernel 可能发生：
 
 ```text
-完整 Journal batch 已提交并安装
-没有 in-flight Kernel Step / Player request
-若有 Presentation，则 P == C
-所有 pipelined Memory maintenance 已 Flush
-每个 Player checkpoint 的 decisionSequence 与 committed World 匹配
+Player 已返回并更新私有状态
+→ cancellation / publication failure 发生在 Journal commit 前
+→ World.DecisionSequence 未前进
 ```
 
-写入 successor Save 时，先完成 content snapshot、封存的 exact Journal prefix、Player checkpoints 与全部校验，关闭 writer，最后发布 `save.json`。任何中途失败只留下一个未发布的新目录，不得覆盖上一个已发布 Save 的任何 component。恢复只接受完整 manifest 指向的 frontier。
+Runner-owned actor-slot guard 必须 single-flight，记录已返回 decision frontier，并在 capture 时与 folded World sequence 对齐。任一 Player、maintenance 或 trace fault 后不得发布 Save。
 
-V1 不承诺：
-
-- mid-decision save；
-- 保存未提交的 Player proposal；
-- 每次 world commit 后 crash-zero-loss autosave；
-- 在同一个已发布 Save 或 Journal branch 上原位续写；
-- `P < C` 时强行截取 Human session；
-- 通用 `ISaveParticipant` registry；
-- 旧 Content / Save / fact codec migration；
-- 可写 World snapshot 与 Journal 并列成为两份 authority。
-
-若当前实现不愿导出 / 导入完整 Player checkpoint，只能把产物称为 **Objective Replay Package**，不能称为可继续的 Save。
-
-## 8. 第二个 Content 包是防伪验收，不是第二套游戏 Law
-
-必须提供第二个很小的 smoke package，使用同一个 compiled Ruleset 与相同能力骨架。它的目的不是证明 DramaBoard 已成为通用 RPG 引擎，而是证伪 `BoardIds` 和 Demo display switch 仍在暗中拥有作者身份。
-
-作为测试策略，Pack B 的 author-owned Actor / Place / Passage / Object ID 集应与 FirstBoard 完全不相交；Ruleset semantic binding keys 保持相同。
-
-Pack B 不必：
-
-- 改变 cast 数量；
-- 加入第三人；
-- 增加新 action；
-- 改变 encounter / travel Law；
-- 替换锁—钥匙—容器—隐藏内容—deadline 这一编译期能力骨架；
-- 引入脚本或第二 Ruleset。
-
-最小可证伪 trace：
-
-1. 以全新 Actor ID 枚举 roster，并为两名 Actor 生成首个 DecisionRequest；
-2. 使用全新的 Place / Passage ID 完成一次 travel；
-3. deadline 改变 binding 指向的新 Passage，而不是旧 `cellar-gate-passage`；
-4. 新 Actor 使用 binding 指向的新 key 打开新 container，并取得新 revealed object；
-5. manifest、World、Observation 与 Journal 中所有 author-ID fields 只引用 Pack B ID；Pack A author-owned ID 集零命中。`rulesetId`、fact kind 与 binding key 不参加这项 raw text 检查；
-6. Observation、Presentation 与 report 精确使用 Pack B Content 提供的 display name / description，而不是 raw ID 或 Pack A label。
-
-Pack B 的 save / reopen / continue 在 Save Slice 完成后再加入同一 fixture，不反向阻塞 Content identity Slice。
-
-这只要求代码分离“作者身份”与“规则语义槽位”，不要求通用 cast、标签系统、ECS 或剧情 DSL。
-
-## 9. 最小进程入口
-
-V1 只把当前竖切确实需要的三个入口公开为 CLI：
+V1 只从 terminal immutable capture 保存：
 
 ```text
-dramaboard content validate <dir>
-dramaboard run --content <dir> --save <dir>
-dramaboard resume --save <source> --out-save <successor>
+Authority 停止并 join；无 in-flight Step / Player request
+→ Presentation drain 并 join；P == C
+→ Flush 全部 Player maintenance
+→ 验证 slot/world frontier、wrapper invariant 与 healthy state
+→ 冻结 World、ordered batches 与 Player payloads
 ```
 
-最小要求：
+### 12.5 Fail-closed publication
 
-- validator 给 path + JSON pointer 诊断；
-- loader 内部 compile output 使用稳定顺序；
-- `run` 只向尚未发布的新 Save 目录写入；
-- `resume` 不修改 source Save；
-- Replay 不重新调用 Player、Navigator 或 Content compiler；
-- `git diff` 能直接审阅作者源，不要求打开二进制编辑器。
+```text
+要求 final path 不存在
+→ 在同卷唯一 sibling staging 写 components
+→ close writers，计算 SHA/digest
+→ 最后写并关闭 save.json
+→ 用正式 read-only reader self-verify staging
+→ rename staging 到 final path
+```
 
-`content init / compile / inspect-graph / smoke`、MCP 与 GUI 都等真实创作摩擦出现后再评估。当前 smoke 由自动化测试承担；不得为了 Agent-first 的名义先建设完整 authoring platform。
+`save.json` 是 recognition marker，不是多文件 filesystem transaction。final rename 前故障只留下 unpublished staging；source/已有 Save 永不 writable。final 存在但验证失败时 reader fail-closed。应以 writer subprocess 在各 barrier 被 kill 的测试证明 process-failure contract，而不只做异常注入。
 
-## 10. 最小施工顺序
+V1 不承诺 successful return 后立即断电仍保留 Save-B，也不承诺 latest-progress recovery。跨组件 `Flush(true)`、目录 fsync、平台 filesystem 语义与 power-cut harness 等有真实需求后再设计。
 
-### Slice A：Content loader 等价性
+### 12.6 Resume 与 successor lineage
 
-1. 把当前 `ScenarioDefinition.Default` 搬到第一个 `GameContent/game.json`；
-2. 实现 typed DTO loader、provenance、全局引用校验与 canonical compile；
-3. 加 `--content`；
-4. 证明 disk package 与旧内存定义得到相同 canonical hash、Graph、Genesis 与 scripted trace；
-5. production 不再从 `CreateDefault()` 构造作者内容。
+Save 可复制、可多次 resume，因此每次恢复必须分配 fresh child lineage。不能让两个不同 suffix 都拥有相同 `(LineageId, TransitionCount)`。
 
-### Slice B：删除作者 ID 硬编码
+```text
+Save-A active version = (L0, N)
+resume A → B: child initial version = (L1, N)
+resume A → C: child initial version = (L2, N)
+L0 != L1 != L2
+```
 
-1. roster / driver composition 改为读取 cast；
-2. display name、Place / Object 文案改读 Content；
-3. 当前 Ruleset 的 gate / key / container / reward 改读窄 typed bindings；
-4. 添加 ID 完全不相交的 Pack B 与 §8 trace；
-5. 不顺手抽取第二 Ruleset 或脚本宿主。
+child ID 使用不可由 parent frontier 唯一决定的 collision-resistant fresh `long`；测试可注入固定 allocator。产品命令仍叫 `resume`，但 identity 语义是从 saved frontier 创建 successor branch。lineage metadata 不是 Objective transition，count 仍为 N。
 
-### Slice C：可继续的 clean Save
+resume-aware Session 初始化：
 
-1. 将 FirstBoard fact codec 提升为 production；
-2. live run 使用 durable Atelia Journal；
-3. 为内建 LLM Player 实现完整 checkpoint export / import；
-4. 实现 compiled snapshot 的 production read / write / codec verify；
-5. 生成 immutable Save、canonical content snapshot 与最后发布的 `save.json`；
-6. 用 deterministic stateful Scripted Player 验证 one-shot 与 save/reopen/continue 的 World、Journal 和 checkpoint frontier 等价；
-7. 对内建 LLM Player 只验证 checkpoint round-trip 后，在不调用 backend 的情况下得到逐字段相同的 Player state、下一 `DecisionRequest` 与 Prompt；不要求重新调用 LLM 后的输出等价；
-8. 在 Pack B fixture 上补 clean save → successor reopen → continue；
-9. content hash、ruleset、codec、component digest 或 frontier mismatch 在 Replay 前稳定拒绝。
+```text
+Kernel = folded World + child WorldVersion(Lchild,N)
+       + inherited ordered batches + inherited last LogicalInstant
+Coordination C = P = (Lchild,N)
+Presentation replay baseline = folded World + inherited last instant
+channel only carries suffix N+1...
+```
 
-## 11. 可证伪验收矩阵
+旧 Presentation cue 不重播。第一项新 commit 必须是 child `(Lchild,N+1)`。Session 继续使用 InMemory Journal；终止并 join 后再把 inherited logical chain、child metadata 与新 suffix 导出成 self-contained successor Save。Save-A 与原 Pack 均不修改。
+
+uninterrupted control 与 save/reopen/continue 比较 Definition、seed、inherited batch envelopes、folded/final World、last instant、Player state、exact next request/Prompt 和 deterministic fake-backend suffix；明确不比较 lineage、physical EventAddress/head、raw journal bytes、staging path或真实 LLM 后续输出。
+
+## 13. 双 Prototype 防伪验收
+
+Pack B 复用完全相同的 FirstBoard Ruleset 能力骨架，但 Actor/Place/Passage/Object IDs 全部与 Pack A 不相交。它不能增加 action、fact、第三名角色、脚本、第二 Ruleset 或新世界 Law。
+
+两层验收：
+
+1. 内存态 B Definition 在第一个 Ruleset vertical 中完成 decision、travel、deadline、Use/container/reveal、inspect、Journal/replay exact trace；
+2. 真实 A/B Content Module 在不同 one-shot 子进程通过同一个 production loader；test probe 复用 production post-bind Runner pipeline，注入 deterministic Random Players，跑 manifest、Presentation、report 与 cleanup。
+
+结构化 author-ID fields 对另一 Pack 的 ID 集零命中；自然语言不做 raw substring 禁令，但所有 Player-visible文本必须来自 Pack B Definition 或 content-neutral Ruleset template。删除或替换 Pack B DLL 后，Save restore 对 Pack/Provider访问为 0。
+
+## 14. 可证伪验收矩阵
 
 | ID | 必须证明 |
 |---|---|
-| CNT-1 | `game.json` 任意 JSON property / collection input order 经 compile 后得到相同 canonical snapshot 与 semantic hash。 |
-| CNT-2 | duplicate ID、unknown reference、坏 binding、未知 Ruleset 或缺少 `game.json` 均以 source path + JSON pointer 在 Genesis 前拒绝。 |
-| CNT-3 | Role、private material、initial Memory 或 display text 变化会改变 semantic hash。 |
-| CNT-4 | Runtime reducer、Forecast、Navigator 与 Player driver 不读取 source file；加载后只消费 immutable compiled definition。 |
-| BND-1 | Pack B 的全部 author-owned IDs 与 Pack A 不相交，仍由同一 build / Ruleset 完成 decision、travel、deadline 与 container trace。 |
-| BND-2 | source actor 是集合；roster、Memory、Observation 与 Presentation 不引用 Alice / Bob 固定槽；结构化 author-ID fields 只出现 Pack B IDs。 |
-| BND-3 | Pack B 的 Observation、Presentation 与 report 精确使用 Content label / description，而不是 raw ID 或 Pack A label。 |
-| SAV-1 | `content.snapshot + journal prefix` 重建 exact committed Objective World；不存在并列可写 World snapshot。 |
-| SAV-2 | 同一 clean frontier 的 uninterrupted control 与 reopen 在不调用 backend / Player 的情况下得到逐字段相同的 checkpoint fingerprint、下一 `DecisionRequest` 与 Prompt；Replay / import 调用 backend 次数为 0。 |
-| SAV-3 | semantic content、ruleset、snapshot / payload / checkpoint codec、component digest 或 frontier mismatch 在 fold 前拒绝。 |
-| SAV-4 | 外部 GameContent 被修改或删除后，Save 仍只用自己的 verified snapshot 续局；不 merge 外部字段；source Save 永不被 successor 修改。 |
-| SAV-5 | 未完成 Player call、未 Flush maintenance 或 `P < C` 时拒绝 clean save；在任一 successor component write 后注入失败，上一个 published Save 仍可 reopen。 |
-| EXT-1 | V1 manifest、目录与 production references 中不存在 script/plugin/overlay/hot-reload 占位。 |
+| CNT-1 | typed config + Genesis + Ruleset + Observation + reducer 在一个 vertical 中移除 Pack A identity；内存 B exact trace 通过。 |
+| CNT-2 | 真伪/内容两个 typed prose slot 独立进入 fact、canonical bytes 与 hash。 |
+| PAK-1 | manifest/path 在 load 前拒绝；所有 assembly activation case 使用 fresh process。 |
+| PAK-2 | 真实 Pack A build output 被 production CLI 激活，Runner 与 Pack 无静态反向引用。 |
+| RUN-1 | Runner 从 Definition 枚举 roster/labels，ActorId override 保留 mixed-model 能力。 |
+| RUN-2 | 真实 Pack B 经 production loader 和 post-bind pipeline 推进，结构化 author IDs 对 A 零命中。 |
+| DEF-1 | Definition keyed collection reorder 不改 canonical bytes/hash；semantic field mutation 必改。 |
+| COD-1 | Definition/fact/checkpoint codecs strict self-describing；wire 与 semantic compatibility IDs 各自唯一。 |
+| OBJ-1 | sealed main checked chain 与 chain SHA 恢复 exact ordered batches/World；source bytes不变。 |
+| OBJ-2 | Pack/Provider/Player/backend 调用为 0；wrong codec/digest/lineage ancestry 在 fold/import 前拒绝。 |
+| PLY-1 | Memory + previous-known-facts round-trip；same supplied request 的 Prompt exact。 |
+| PLY-2 | driver-returned-before-Journal-cancel、pending maintenance、faulted slot 或 world/slot sequence mismatch 均拒绝 capture。 |
+| SAV-1 | terminal/joined capture 经 sibling staging、manifest-last、self-verify、rename 后 valid-or-reject；旧 Save不变。 |
+| SAV-2 | 同一 Save 两次 resume 得到不同 sibling lineage；nonzero C=P baseline 和 suffix-only Presentation 正确。 |
+| SAV-3 | deterministic fake backend 下 uninterrupted 与 resume 的 logical suffix、World、Player next input exact；不要求真实 LLM 输出相同。 |
 
-## 12. 最终裁决表
+## 15. 实施路线
+
+路线保留可审阅 commit 边界，但以四个可证伪里程碑组织，不再让未消费 scaffold 或机械 rename 成为全局 gate。
+
+### Milestone A：Ruleset 真正 content-neutral
+
+1. [Build Log 0005：Game Definition、typed bindings 与 Ruleset 中立化](0005-game-definition-and-ruleset-bindings.md)
+2. [Build Log 0007：真实 Pack A 与 one-shot loader](0007-content-pack-contract-and-loader-probe.md)
+3. [Build Log 0009：Content-neutral Runner 与 Pack B](0009-content-neutral-runner.md)
+
+### Milestone B：Objective Save component
+
+4. [Build Log 0012：Game Definition production codec](0012-game-definition-codec.md)
+5. [Build Log 0013：FirstBoard Fact production codec](0013-firstboard-fact-codec.md)
+6. [Build Log 0014：Journal-neutral immutable capture](0014-journal-neutral-capture.md)
+7. [Build Log 0015：Hermetic Atelia 与 sealed Journal export](0015-durable-atelia-journal.md)
+8. [Build Log 0016：Objective Save component 与 verifier](0016-objective-replay-package.md)
+
+### Milestone C：Closed Player continuation
+
+9. [Build Log 0017：LLM Player checkpoint](0017-llm-player-checkpoint.md)
+10. [Build Log 0018：Runner Player composition checkpoint](0018-player-composition-checkpoint.md)
+
+### Milestone D：Composite Save 与 successor
+
+11. [Build Log 0019：Composite Save fail-closed publication](0019-composite-save-package.md)
+12. [Build Log 0020：Runner resume 与 child-lineage successor](0020-runner-resume-successor.md)
+
+[Build Log 0011：命名清理](0011-mechanical-naming-cleanup.md) 是 non-blocking leaf，不进入主 DAG。
+
+```text
+0005 → 0007 → 0009 ───→ 0012 ──────────────────────┐
+  └────→ 0013 → 0014 → 0015 ───────────────────────┴→ 0016 ─┐
+0009 ────────────────┐
+0017 ────────────────┴→ 0018 ─────────────────────────┤
+                                                     ↓
+                                                    0019 → 0020
+
+0009 ──→ 0011a/0011b                         # optional/deferred leaf
+```
+
+0007/0009 内可以保留两个提交边界，但不能把“production 尚未消费”的中间态称为已完成 vertical。0015 的 hermetic pin 是该 slice 的硬 entry gate；失败时不得用本机 sibling checkout 冒充完成。
+
+## 16. 最终裁决表
 
 | Verdict | 项目 | 理由 |
 |---|---|---|
-| **keep** | external typed GameContent | 不做则每个原型仍需修改 `CreateDefault()` 和重新编译 |
-| **merge** | loader 输出进入现有 Definition / Graph pipeline | 避免 file DTO 与 runtime model 成为双 authority |
-| **keep** | canonical semantic snapshot + full hash | Save 必须精确绑定 Genesis、Player materials 与 Ruleset parameters |
-| **keep** | Objective Journal +完整 Player checkpoint | 少任一方都不能继续同一个世界中的同一个角色 |
-| **simplify** | 一个 compiled Ruleset +窄 typed bindings | 复用世界能力，同时允许作者自由命名实体 |
-| **simplify** | 每个 Content 目录一个 `game.json` | 直接复用现有 canonical object；真实规模出现前不引入 fragments / merge language |
-| **defer** | script、第二 Ruleset、DLL loader | 当前没有能力差异消费者；`RulesetId` 已足够作为未来身份 |
-| **defer** | hot reload、old-save migration、crash-latest autosave | 当前原型部署模型不需要 |
-| **defer** | generator、inspect/smoke CLI、MCP / GUI editor | 当前 loader / validate / run / resume 竖切稳定后再扩作者前端 |
-| **delete** | 空 extension interfaces、`scripts/` / `plugins/` 占位 | 新抽象唯一消费者仍是假设需求 |
-| **delete** | include / overlay / patch / arbitrary property bag | 会形成来源、优先级和验证不清的第二语言 |
-| **delete** | 可写 World snapshot 与 Journal 双 authority | restore frontier 可以静默分裂 |
+| **keep** | C# Content + Ruleset-specific Provider | 最小 authoring/loader contract。 |
+| **keep** | typed config + disjoint-ID B | 当前硬编码有真实 failure trace。 |
+| **keep** | mixed per-Actor LLM composition | 已有代码、测试和研究消费者。 |
+| **keep** | canonical Definition + complete ordered Journal + closed Player composition | 分别拥有 genesis、Objective history 与角色连续性。 |
+| **keep** | fresh root/child lineage + parent metadata | 防止不同 committed prefix 得到相同 WorldVersion。 |
+| **simplify** | Save manifest | 只存不可派生 binding；Definition/Player SHA 与 selected-chain SHA 各有唯一职责。 |
+| **simplify** | Objective Replay | 保留 production verifier，删除第二产品格式。 |
+| **merge** | 0005+0006、0007+0008、0009+0010 | 更早抵达可证伪 vertical。 |
+| **defer** | live Atelia injection | 当前无 crash/autosave/tail/memory-pressure consumer。 |
+| **defer** | CLR/project rename | 无运行失败，不能阻塞 codec/checkpoint/Save。 |
+| **defer** | custom ALC、private dependencies、hot reload、sandbox | 当前部署模型没有消费者。 |
+| **delete** | physical head/count/whole-dir digest 作为 Save authority | 物理地址不绑定逻辑 history；count 可派生。 |
+| **delete** | 独立 ReplayPackage/replay.json | 只有 Composite Save 一个真实产品 consumer。 |
+| **delete** | writable World snapshot、generic participant registry、Content behavior registration | 会制造第二 authority 或 speculative framework。 |
 
-## 13. 一句话结论
+## 17. 一句话结论
 
-DramaBoard 的 Content 不应是一套伪装成 JSON 的游戏编程语言，而应是一份可编译的戏剧前提：
-
-> **Engine / Ruleset 决定世界允许哪些动词；GameContent 决定谁带着什么欲望、秘密、关系、资源和时间压力进入这个世界；Save 冻结这份前提，并延续已经发生的世界历史与角色记忆。**
-
-这条边界既服务项目真正的差异化，也比“配置 + 脚本 + DLL”更适合 Coding Agent 持续创作。
+> **Content 定义戏剧前提；Ruleset 定义允许的因果；Runner 组合角色并托管一次 Session；Save 在终止边界冻结 Definition、selected Journal chain 与 closed Player composition；每次 resume 从该 frontier 创建新的 child lineage，而不是伪装成同一条可唯一续写的历史。**

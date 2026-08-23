@@ -353,6 +353,8 @@ Spatial location is AtPlace
 
 `ScenarioDefinition` 的 content revision/ruleset 不因新增运行时行为自动升级；run manifest 已记录代码版本。除非实际 content schema 改变，不为可审计性增加额外版本层。
 
+> 后继说明（2026-08-23）：本段记录的是 production Save 出现前的 current-build-only 决定。自 [Build Log 0004](0004-game-content-and-composite-save.md) 的 resumable contract 起，software provenance 不再承担 restore gate；会改变旧 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，仍不提供旧格式迁移。
+
 ## 10. 验收矩阵
 
 | ID | 必须证明的行为 |

@@ -78,7 +78,7 @@ maintainer 只能返回自己的：
 
 ## 后端与成本
 
-决策模型和认知维护模型解耦。Demo 增加独立 memory backend 配置，默认跟随 Alice；混合场可以由 DeepSeek 并行维护两个角色的全部分块，同时让 Alice/Bob 使用不同决策模型。maintainer 是压缩与自我整理部件而非行动者，但仍带角色卡和第一人称维护约束，避免变成全知旁白。
+决策模型和认知维护模型解耦。Demo 增加独立的进程级 memory backend 配置；Content-neutral Runner 的默认值跟随 canonical roster 中首个实际 AI slot，也允许显式指定。混合场继续允许一个 backend 维护多个角色的全部分块，同时让不同 Actor 使用各自的 decision backend/model；后继 CLI 以 ActorId-keyed override 表达，不再使用 Alice/Bob 固定槽。maintainer 是压缩与自我整理部件而非行动者，但仍带角色卡和第一人称维护约束，避免变成全知旁白。
 
 一次 actor turn 从一次调用增加为一次决策调用 + N 次分块维护调用；N 个维护调用可并行。当前优先观察认知质量，暂不增加 dirty router、分层调用频率或 batched maintainer。真实延迟/收益将决定后续是否优化。
 
