@@ -72,7 +72,7 @@ DurableXXX graph 就是 Runtime 持久状态骨架
 - commit parent、historical root、`CreateBranch(fromCommit)`、branch ref/reflog 已存在。
 - `DurableObject.DiscardChanges()` 与 container revert 目前是 internal；没有 public `Revision.DiscardAll` 或 isolated graph draft transaction。
 - 这不是 strict fail-stop 模型的 correctness blocker：任何 working mutation 异常后废弃整个 Repository/Revision，reopen 只读取 branch HEAD。
-- `Repository.Commit` 结果可能 ambiguous：data 与 primary ref 已推进后，backup/reflog failure 仍可能向 caller 返回 failure 并 poison Repository。
+- `Repository.Commit` 结果可能 ambiguous：正常 overwrite 顺序是 backup → primary ref → reflog；backup failure发生在primary发布前，而primary已发布后的reflog failure仍可能向 caller返回failure并poison Repository。
 - 当前没有 `Repository.OpenReadOnlyExisting`；普通 `Open` 获取 exclusive lock，并可能做 best-effort segment layout maintenance。
 - `Repository.Commit(root, note)` 的 note 属 branch ref/reflog，不是 immutable commit-level domain payload。
 
@@ -96,7 +96,8 @@ StateJournal main.GraphRoot
   rulesetId
   playerCompositionId
 
-  transactionLedger : DurableDeque<ByteString>
+  transactionLedger : mixed DurableDeque
+    values restricted by wrapper to canonical ByteString
   frontier
     businessLineageId
     objectiveTransitionCount
@@ -116,7 +117,7 @@ StateJournal main.GraphRoot
   playerStatesByActor
 ```
 
-StateJournal `LocalId` / `CommitAddress` 是物理身份，不得替代 ActorId、EntityId、WorldVersion 或 transaction identity。
+当前 StateJournal typed value registry 不支持 `DurableDeque<ByteString>`；首个 probe 使用 wrapper 内部的 mixed `DurableDeque`，并在 append/read 时把 element domain严格限制为 `ByteString`。StateJournal `LocalId` / `CommitAddress` 是物理身份，不得替代 ActorId、EntityId、WorldVersion 或 transaction identity。
 
 ### 4.2 唯一 authority 分工
 
@@ -340,7 +341,7 @@ resume Save-A
 ### 8.2 建议步骤
 
 1. 建立 test-only `DurableFirstBoardRootV1`、Game/Spatial wrappers 和 schema constants。
-2. 从最小 Definition/Genesis 构造 root，提交唯一 Genesis transaction。
+2. 从最小 Definition/Genesis 构造 root，提交 empty-ledger baseline HEAD；Genesis 不计 Objective transaction。
 3. 定义 `BoardTransactionV1` envelope 与 strict canonical codec。
 4. 通过 private projector 把 deadline batch 应用到 durable wrappers。
 5. Validate、append ledger、advance frontier、commit。
@@ -350,20 +351,22 @@ resume Save-A
 9. 在第一个 fact 后、第二个 fact后、Validate、data write、primary ref replace、backup/reflog点注入 failure。
 10. 用 TransactionId + reopen 证明结果只为完整 parent 或完整 child，永不发布半批。
 
-### 8.3 验收矩阵
+Phase 1 的实际裁决、代码与证据见 [Build Log 0022](0022-statejournal-native-objective-probe-results.md)。首轮把随机 nonce进一步简化为 canonical envelope bytes + derived digest，并以 physical parent、exact tail与materialized post-state联合裁决 ambiguous outcome；若将来出现 delayed reconciliation、external-effect dedupe或多 writer，再引入独立 TransactionId。
 
-| ID | 必须证明 |
-|---|---|
-| SJ-V1 | raw Durable container 不泄漏给 rule/query consumer；所有 mutation 要求 active lease。 |
-| SJ-V2 | deadline transaction 只有一个 ledger envelope、一个 Objective frontier advance 和一个 StateJournal commit。 |
-| SJ-V3 | Game + Spatial 多 fact order exact，HEAD 不暴露 batch prefix。 |
-| SJ-V4 | close/reopen 直接得到 exact state，不执行 ledger replay。 |
-| SJ-V5 | Genesis + ledger rebuild 得到与 HEAD exact 的 state。 |
-| SJ-V6 | 第 k fact/Validate failure 后 working Session poisoned；reopen HEAD 为 parent。 |
-| SJ-V7 | ambiguous commit 通过 TransactionId resolve 为 parent 或 exact child；禁止 blind retry。 |
-| SJ-V8 | historical commit branch 产生两个独立 suffix，source HEAD不动。 |
-| SJ-V9 | unknown schema/tag/field、wrong definition/ruleset/frontier、duplicate transaction ID fail-fast。 |
-| SJ-V10 | 记录实现 LOC、测试可读性、领域 API 噪声和使用者主观 friction；性能只作观察。 |
+### 8.3 验收 disposition
+
+| ID | Phase 1 disposition | 证据或后续边界 |
+|---|---|---|
+| SJ-V1 | **passed，机制简化** | raw Durable container不泄漏给rule/query consumer；private Session + facade epoch取代独立active lease类型。 |
+| SJ-V2 | **passed，frontier改为derived** | deadline只有一个canonical ledger envelope与一个StateJournal child commit；Objective frontier由strict-scanned ledger派生。 |
+| SJ-V3 | **passed** | Game + Spatial facts按exact顺序编码/apply；first-fact failure后reopen仍为parent。 |
+| SJ-V4 | **passed** | close/reopen直接query exact materialized state，不执行ledger replay。 |
+| SJ-V5 | **passed（one-tail范围）** | fresh repo从deterministic Genesis + canonical deadline tail重建，与source HEAD schema-aware state exact。 |
+| SJ-V6 | **passed，矩阵收窄** | first-fact failure与complete-graph batch-end validation failure都会poison Session；reopen HEAD为parent。 |
+| SJ-V7 | **passed，identity revised** | 不使用随机TransactionId；以expected physical parent + proposed canonical bytes + derived digest + exact post-state裁决parent/exact child，禁止blind retry。 |
+| SJ-V8 | **deferred** | historical sibling的物理能力已存在；fresh business lineage与ParentWorldVersion在紧邻Save/resume slice验证。 |
+| SJ-V9 | **partial** | noncanonical/unknown field与wrong Definition binding已fail-fast；full schema/tag/history/lineage与独立TransactionId matrix随相应slice再扩。 |
+| SJ-V10 | **passed** | 0022记录LOC、API friction、测试可读性与未解决边界；未做performance SLO。 |
 
 ## 9. 实验后的裁决问题
 
