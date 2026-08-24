@@ -1,16 +1,22 @@
 # Build Log 0021：StateJournal-native OOP vertical probe
 
-> 状态：**Research charter / context anchor；尚未裁决 production cutover**
+> 状态：**Phase 1 research charter preserved；Phase 2 graph-authority probe accepted；尚未裁决 production cutover**
 >
-> 记录日期：2026-08-24
+> 首次记录：2026-08-24
 >
-> 代码与文档基线：`6433945 docs(content): reconcile content and save refactor plan`
+> Phase 2 裁决：2026-08-25
 >
-> 关联现行方案：[Build Log 0004](0004-game-content-and-composite-save.md)、[Build Log 0014](0014-journal-neutral-capture.md)–[0020](0020-runner-resume-successor.md)
+> 初始代码与文档基线：`6433945 docs(content): reconcile content and save refactor plan`
+>
+> 关联既有方案：[Build Log 0004](0004-game-content-and-composite-save.md)、[Build Log 0014](0014-journal-neutral-capture.md)–[0020](0020-runner-resume-successor.md)
+>
+> 实验结果：[Build Log 0022](0022-statejournal-native-objective-probe-results.md)
 >
 > Atelia 使用契约：[`StateJournal usage-guide`](../../../Atelia-org/atelia/docs/StateJournal/usage-guide.md)
->
-> 本文件用于在上下文压缩与后续专项实验之间保存已经收敛的事实、裁决和实验边界。它不授权通过字符串替换把 0014–0020 改成 StateJournal，也不宣称 StateJournal 路线已经胜出。
+
+本文件保存 StateJournal-native 研究的时间顺序、当前裁决与实验边界。Phase 1 的 rebuildable ledger 实验是真实发生过的研究，不因 Phase 2 改变方向而被改写；但其中“ledger 是 semantic authority、graph 是 materialized view”的结论已经被后续裁决取代。
+
+本文件不授权通过字符串替换修改 0004/0014–0020，也不宣称 production `FirstBoard`、`Spatial`、Runner 或 Save 已经迁移到 StateJournal。
 
 ## 1. 为什么重开持久化裁决
 
@@ -24,20 +30,31 @@ immutable POCO World
 + independent Player checkpoints
 ```
 
-重新考虑的候选不是“用 StateJournal 替换 EventJournal adapter”，而是 StateJournal 原本的目标使用方式：
+Phase 1 重新考虑的候选不是“用 StateJournal 替换 EventJournal adapter”，而是改变 Runtime state model 与 mutation authority：
 
 ```text
-DurableXXX graph 就是 Runtime 持久状态骨架
+DurableXXX graph 是 Runtime 持久状态骨架
 + 薄 OOP wrapper 提供领域 API
-+ 每次 semantic transaction 同时推进 transaction ledger 与 materialized graph
-+ checkout HEAD 直接恢复完整 Objective + Player state
++ semantic ledger 与 materialized graph 同 commit
++ checkout HEAD 直接恢复完整状态
 ```
 
-这是一项 Runtime state model 与 mutation authority 迁移；若最终采纳，0004 与 0014–0020 必须整体重裁。
+Phase 1 的窄 probe 证明了 graph/ledger co-commit、normal reopen、one-tail rebuild 与 fail-stop mechanics，也暴露出 event codec、projector、derived frontier 和 rebuild proof 的真实 ceremony。随后用户明确降低 semantic-history 需求：快速原型阶段更重视 normal resume、fork 与 rewind，不要求从完整 event history 重建状态。
+
+Phase 2 因而采用更小的模型：
+
+```text
+canonical durable graph + directly persisted frontier
++ StateJournal physical commit history
++ optional lossy per-root summary
++ exact JournalBatch only for the current in-memory transition
+```
+
+这不是“event-sourcing 仍然存在，只是少记几个 event”。DramaBoard V1 probe 明确放弃 rebuildable semantic history；若未来重新需要审计、event-level query 或替换 projector 后重算历史，必须以新的真实需求重新引入相应成本。
 
 ## 2. 当前用户决定与产品边界
 
-本轮已经明确：
+已经明确：
 
 - 不以 persistence 性能为主要裁决依据；DramaBoard 当前规模下两条路线都足够快。
 - 更重视能力完整性、日常编码复杂度和心智模型是否容易理解。
@@ -46,104 +63,104 @@ DurableXXX graph 就是 Runtime 持久状态骨架
 - 当前仍是可信、本地、单进程、single Authority writer。
 - 可以接受 transaction 期间的 mutable working Revision 不对外可见。
 - 可以接受 apply / validate / commit 发生异常后整个 Session fail-stop，dispose 并从 durable HEAD reopen；不要求在同一 Revision 上 rollback 后继续。
-- Performance、lazy load、compaction、通用 query language、merge 和多 writer 不进入首个实验。
+- committed durable Objective/Player graph 与直接持久化的 frontier 是状态与版本 authority。
+- exact ordered `JournalBatch<TFact>` 是当前 transaction 的内存契约，也是 live Presentation 的输入；它不进入永久 ledger。
+- 每个 committed historical root 可以保存一条 lossy summary。summary 只供人类浏览、诊断或 UI 使用，不参与恢复、frontier 推导、去重或 outcome 裁决。
+- fork/rewind 的 V1 物理原语是在同一个 StateJournal repository 中从精确 historical `CommitAddress` 创建 branch/ref；不为每个分支复制整个 repository。
+- Performance、lazy load、compaction、通用 query language、merge 和多 writer 不进入当前 probe。
 
-尚未最终决定：
+仍然延后：
 
-- StateJournal-native 模型是否比当前 immutable World + EventJournal 路线更容易实现和维护。
-- Player persistent closure 是否首版就成为 transaction ledger 可完整 rebuild 的 view，还是先保留独立 checkpoint authority。
-- 实验通过后是 production cutover、继续两路线对比，还是只吸收 StateJournal API 改进。
+- production cutover，以及 0004/0014–0020 的整体重裁；
+- 完整 FirstBoard OOP wrapper 的 schema pressure；
+- Player Memory/previous-known-facts 的 durable closure；
+- Presentation resume/fork baseline 与 commit 后 cue 丢失边界；
+- 沿 commit 父链只读取 meta info、而不 materialize historical roots 的 fast path；
+- portable/self-contained Save、export、ancestor retention、GC/repack 与 strict verifier。
 
 ## 3. 已核实的代码事实
 
 ### 3.1 DramaBoard
 
-- `JournalBatch<TFact>` 保存一个 occurrence 的 `LogicalInstant + CandidateKey + ordered non-empty Facts[]`；facts order 是 authoritative fold order。
+- `JournalBatch<TFact>` 保存一个 occurrence 的 `LogicalInstant + CandidateKey + ordered non-empty Facts[]`；facts order 是 authoritative apply order。
 - 当前 `SimulationKernel` 使用 immutable scratch fold：逐 fact 得到 scratch World、batch-end Validate、Journal publication 成功后才安装 World。
-- `Kernel.World` 当前是可公开持有的 immutable snapshot；fold / validation failure tests 断言同一 Kernel 的 World 与 Journal 不变。
-- Presentation 不并发读取 Authority current World；它消费 committed batch channel，并维护自己的 replay/projection state。
+- `Kernel.World` 当前是可公开持有的 immutable snapshot；StateJournal direct-wrapper 若 production cutover，会有意放弃这项 same-instance promise。
+- Presentation 不并发读取 Authority current World；它消费 committed batch channel，并维护自己的 projection/read model。
 - LLM Player 会在 Objective publication 前改变 Memory 与 previous-known-facts；Pipelined maintenance 还能跨 decision return 继续运行。
 
-### 3.2 StateJournal
+### 3.2 StateJournal 与当前依赖边界
 
 - StateJournal 不是任意 POCO serializer，只持久化 Revision-owned Durable containers 与受支持 scalar。
 - `Repository.Commit(root)` 从 root 做 reachability walk，写 dirty object delta/rebase，最后用 branch ref 发布 HEAD。
 - `CheckoutBranch` 直接 materialize HEAD 完整对象图；当前为 eager full load。
-- commit parent、historical root、`CreateBranch(fromCommit)`、branch ref/reflog 已存在。
-- `DurableObject.DiscardChanges()` 与 container revert 目前是 internal；没有 public `Revision.DiscardAll` 或 isolated graph draft transaction。
-- 这不是 strict fail-stop 模型的 correctness blocker：任何 working mutation 异常后废弃整个 Repository/Revision，reopen 只读取 branch HEAD。
-- `Repository.Commit` 结果可能 ambiguous：正常 overwrite 顺序是 backup → primary ref → reflog；backup failure发生在primary发布前，而primary已发布后的reflog failure仍可能向 caller返回failure并poison Repository。
-- 当前没有 `Repository.OpenReadOnlyExisting`；普通 `Open` 获取 exclusive lock，并可能做 best-effort segment layout maintenance。
-- `Repository.Commit(root, note)` 的 note 属 branch ref/reflog，不是 immutable commit-level domain payload。
+- commit parent、historical root、`CreateBranch(fromCommit)`、branch ref/reflog 与 effective-history traversal 已存在。
+- `Repository.Commit(root, note)` 的 note 属 branch ref/reflog，不是 immutable commit-level domain payload；Phase 2 summary 因而存在 historical root 内。
+- StateJournal `LocalId`、branch name 与 `CommitAddress` 是物理身份，不得替代 ActorId、EntityId、business lineage 或 `WorldVersion`。
+
+DramaBoard 当前 local project reference 对应 Atelia sibling `main@7e56aa37`。用户对三个 Phase 1 API friction 的修复已在 `origin/feature/derived-recap-grid-rewrite@e21fc61a` 由源码和 StateJournal tests 验证：typed `ByteString` scalar collections、Repository-owned object lifetime invalidation、结构化 commit publication outcome。它们尚未成为 DramaBoard 的 repository-controlled dependency pin，因此默认 build仍使用旧 API shape。
+
+Phase 2没有强依赖`RepositoryCommitError` CLR类型，而是消费基类`AteliaError`的stable code/details。相同DramaBoard focused tests已在当前main fallback与detached exact `e21fc61a` worktree各跑 **9/9**：e21路径确实取得candidate，并断言`FailurePhase=AppendReflog`、`PublicationState=Published`。这证明兼容路径可执行；仍不能把临时override冒充正式dependency pin。
 
 ### 3.3 EventJournal 对照证据
 
-- EventJournal 与 current JournalBatch authority 同构，并已有 strict read-only、parent chain 与 ForwardPlan。
-- 临时 Release 量级实验中，1,000 个当前 FirstBoard batches 的纯 fold 约几十毫秒；1,000 个 256-byte EventJournal frames 的 checked read 也为几十毫秒量级。当前 replay 不是已证明的产品瓶颈。
-- 当前 `AppendEventFrame` 每帧执行 `DurableFlush()`；临时实验写 1,000 frames 约二十秒。若保留 0015 路线，repository pin 之外还需要 terminal batch append / deferred durability + single flush，不能朴素逐帧调用现有 API。
-- 上述数字只用于识别量级与热点；OS cache、磁盘和 payload codec 会影响绝对结果，不是产品 SLO。
+- EventJournal 与原 JournalBatch authority 同构，并已有 strict read-only、parent chain 与 ForwardPlan。
+- Phase 1 的 Release 量级实验表明，当前规模的 replay 并非已证明的性能瓶颈；Phase 2 放弃 event-sourcing 是为了缩小 authority/codec/projector 复杂度，而不是为了修复一个已证实的性能故障。
+- EventJournal 的这些能力仍可服务未来 semantic-history 需求，但不再是 StateJournal-native V1 probe 的状态恢复前提。
 
-## 4. 收敛的 StateJournal-native authority model
+## 4. 当前 StateJournal-native authority model
 
 ### 4.1 Root
 
-首个实验允许使用最容易理解、非最省空间的完整 ledger：
+Phase 2 probe 的 schema `/2` 形状是：
 
 ```text
-StateJournal main.GraphRoot
+StateJournal GraphRoot
   schemaId
   definitionSha256
   rulesetId
-  playerCompositionId
+  worldSeed
 
-  transactionLedger : mixed DurableDeque
-    values restricted by wrapper to canonical ByteString
-  frontier
-    businessLineageId
-    objectiveTransitionCount
-    lastLogicalInstant?
+  lineageId
+  transitionCount
+  parentWorldVersion?       # child lineage 的精确业务来源
+  lastTransition?
+    logicalInstant
+    causeKey
+
+  commitKind                # genesis | lineage-start | objective-transition | metadata-only
+  commitSummary?            # lossy；读取时允许缺失
 
   objectiveWorld
     game
-      actorsById
-      objectsById
-      pending state
     spatial
-      entitiesById
-      entry overrides
-      schedules
-      consumed contacts
 
-  playerStatesByActor
+  playerStatesByActor?      # production 候选；当前 probe 尚未实现
 ```
 
-当前 StateJournal typed value registry 不支持 `DurableDeque<ByteString>`；首个 probe 使用 wrapper 内部的 mixed `DurableDeque`，并在 append/read 时把 element domain严格限制为 `ByteString`。StateJournal `LocalId` / `CommitAddress` 是物理身份，不得替代 ActorId、EntityId、WorldVersion 或 transaction identity。
+`lineageId + transitionCount + lastTransition` 直接存在 graph 中，不从摘要或 event history 派生。`parentWorldVersion` 是 business lineage provenance；它不等于 StateJournal commit parent。
+
+每个 writer commit 写入描述“本次 commit”的 `commitKind` 与 summary。历史 StateJournal root 保留该时刻的字段值，所以遍历 physical commit parent chain并加载各 historical root，可以得到一条与 commit 对齐的摘要序列。当前 helper 会 materialize historical roots；“只反序列化 meta info”的优化尚未验证，也不是 correctness 前提。
 
 ### 4.2 唯一 authority 分工
 
 ```text
-canonical transaction ledger
-    = 领域语义 authority
+committed Durable objective/player graph + persisted frontier
+    = 状态恢复、WorldVersion、fork/rewind 的 canonical authority
 
-committed Durable objective/player graph
-    = 同一 transaction frontier 的 mandatory materialized view
+StateJournal commit parent + branch/ref
+    = physical version graph
+
+per-root commitSummary
+    = optional lossy description；不是 reducer input
+
+in-memory exact JournalBatch
+    = 当前 Objective transition 与 live Presentation contract
 
 StateJournal object delta/rebase
     = storage implementation detail
 ```
 
-一次 Objective transaction 的最小 envelope 是完整 `JournalBatchV1`，不是单个 fact：
-
-```text
-TransactionId
-ParentWorldVersion
-LogicalInstant
-CandidateKey
-ordered Facts[]
-PlayerEffects[]?          # 若要从 ledger 完整 rebuild Player
-```
-
-所有随机、LLM、Human 或 tool 的 accepted outcome 必须写入 transaction；rebuild 不能重新调用外部 effect。
+summary 缺失时必须仍能 reopen 和继续运行。不能从 summary 推导状态、frontier、commit identity 或重放外部 effect；summary 文案和结构将来可以演进或被截断。
 
 ### 4.3 Mutation authority
 
@@ -151,70 +168,59 @@ PlayerEffects[]?          # 若要从 ledger 完整 rebuild Player
 
 ```text
 任意 caller 直接 mutate durable graph
-→ 事后补写一条描述性 event
+→ 事后用 summary 猜测发生了什么
 ```
 
 唯一合法路径：
 
 ```text
-strict immutable BoardTransaction
-→ private projector / event applier
+Forecast / Plan against committed facade
+→ construct exact ordered JournalBatch in memory
 → internal OOP wrapper mutators
-→ batch-end Validate
-→ append exact transaction envelope
-→ advance frontier
+→ batch-end Validate complete graph
+→ advance persisted frontier
+→ write commitKind + lossy summary
 → one Repository.Commit(root)
+→ resolve physical outcome
+→ publish the original in-memory batch to live Presentation
 ```
 
 OOP wrapper 对业务侧只暴露 query、command validation 或 transaction-draft generation；raw Durable containers 和 unrestricted setter 不出 Ruleset state assembly。
 
-### 4.4 示例 wrapper
+### 4.4 Phase 1 模型为什么被取代
 
-```csharp
-public sealed class BoardActor
-{
-    private readonly DurableDict<string> _data;
+Phase 1（`d543307`）曾选择：
 
-    public long Id => _data.GetOrThrow<long>(Fields.Id);
-    public string Key => _data.GetOrThrow<string>(Fields.Key)!;
-    public long DecisionSequence =>
-        _data.GetOrThrow<long>(Fields.DecisionSequence);
-
-    internal void Apply(
-        ActorDecisionCompletedEvent fact,
-        WorldMutationLease lease)
-    {
-        lease.RequireActive();
-        _data.Upsert(
-            Fields.DecisionSequence,
-            checked(DecisionSequence + 1));
-    }
-}
+```text
+canonical transaction ledger = semantic authority
+committed durable graph       = mandatory materialized view
+frontier                       = strict-scanned ledger derivative
 ```
 
-字段 key、union discriminator、composite identity、null/missing 语义和 enum encoding 都是 versioned Ruleset persistence schema；不得依赖 CLR member/type name。typed `string` 的 null-to-empty 规范化必须显式规避。
+它用完整 `JournalBatchV1` canonical codec、private projector 与 one-tail rebuild 证明了最小 event-sourcing consistency。该证据仍记录在 [0022](0022-statejournal-native-objective-probe-results.md)，但不再是当前模型：normal resume 不需要 replay，而为了让 Player、随机数、LLM、Human 与 tool outcomes 都可重建，仍需支付 closed event schema、codec、projector evolution 和 completeness proof。当前产品需求不足以证明这些成本必要。
 
-## 5. 最小 commit / failure law
+## 5. Commit 与 failure law
 
 ### 5.1 Happy path
 
 ```text
 Forecast / Plan 只读 committed facade
-→ acquire private WorldMutationLease
 → Player accepted effects 已固定；首版不允许后台 maintenance 越界
+→ 形成 exact in-memory ordered batch
 → 按 Facts[] 顺序 mutate Objective wrappers
 → Validate complete Objective + Player frontier
-→ append exact transaction envelope
-→ update frontier
+→ update direct frontier + commit metadata/summary
 → Repository.Commit(root)
 → resolve committed HEAD
 → invalidate old read facade
-→ publish exact batch to Presentation
+→ publish exact in-memory batch to Presentation
 ```
+
+一个 ordered complete batch 仍是唯一 Objective transition。summary 不是 batch，也不能替代 batch boundary、facts order 或被覆盖的瞬时 presentation evidence。
 
 ### 5.2 Apply / validation / cancellation failure
 
-首版不建设 deep draft/rollback：
+V1 不建设 deep draft/rollback：
 
 ```text
 任何 post-Plan working mutation failure
@@ -224,35 +230,43 @@ Forecast / Plan 只读 committed facade
 → reopen branch HEAD
 ```
 
-未被 branch HEAD 选择的 dirty memory / orphan data 不是 committed state。
+未被 branch HEAD 选择的 dirty memory / orphan data 不是 committed state。StateJournal lifetime 修复 pin 进来后，Repository-owned DurableObject 自己也必须 fail-fast；Session poison guard 仍保留明确的领域边界。
 
 ### 5.3 Commit outcome unknown
 
-每次 transaction 分配 stable nonce/ID，并把它写进 ledger envelope：
+当前 DramaBoard 仍编译于 Atelia `main@7e56aa37` 的 generic failure API。Phase 2 在每次 Objective 或 lineage-start commit 前都捕获完整 authoritative parent/child snapshot；其中包含 schema/Definition/Ruleset binding、WorldVersion、`ParentWorldVersion`、last instant/cause、commit kind，以及完整的 probe Game/Spatial state，但有意排除 lossy summary。
+
+probe 同时认识 e21 的稳定 `AteliaError.ErrorCode/Details` 协议：若 error code 为 `SJ.Repository.CommitFailed`，便解析并验证 expected/candidate address、failure phase 与 publication state；当前 main 返回 generic `SJ.Repository` error 时，这些结构化字段为空，resolver 使用兼容 fallback：
 
 ```text
 Repository.Commit 返回 failure/throw
 → 禁止重试 Player/backend
-→ dispose + reopen main
-→ HEAD ledger tail TransactionId == proposed ID
-     => committed
-→ HEAD 仍为 expected parent
+→ dispose + reopen branch
+→ HEAD == expected physical parent
+     且完整 authority == captured parent
      => not committed
+→ 若有 reported candidate，HEAD 必须等于 candidate
+→ HEAD parent == expected physical parent
+     且完整 authority == captured child
+     => committed
 → 其他
      => corruption / irreconcilable fault
 ```
 
-成功 resolve 后才可 publish Presentation；commit 以下不再观察 cancellation。
+当前裁决不再比较 ledger tail、canonical bytes、digest或summary。当前 main fallback仍会核对 immediate physical parent edge与完整 authority state；exact `e21fc61a`验证已证明同一代码还会强制 reopened HEAD 等于stable-details报告的candidate。无论publication state为何，structured metadata都不能替代reopen验证，也不得blind retry。
 
-### 5.4 被有意删除的旧 Kernel promises
+只有未来出现 delayed reconciliation 或 cross-process external-effect dedupe 的真实需求时，才考虑在 graph 中增加窄的 stable operation ID；这不要求恢复完整 semantic ledger。
 
-若采纳 direct mutable model，以下不是继续暗中保留的能力：
+### 5.4 保留与放弃的 promises
+
+若 production 采纳 direct mutable model，以下不是继续暗中保留的能力：
 
 - `Kernel.World` 不再是可永久持有的 immutable snapshot。
 - transaction 进行中没有 concurrent reader 能读取 Authority graph。
 - apply / validation failure 后不能继续使用同一个 Kernel/Revision。
-- 旧 wrapper 引用在成功 commit 或 failure poison 后都可能失效。
+- 旧 wrapper 引用在成功 commit 或 failure poison 后失效。
 - same-instance retry、speculation、nested transaction 与 partial rollback 不在 V1。
+- 状态不能由永久 event ledger 重建；旧 Presentation cues 不从 summary replay。
 
 以下继续保留：
 
@@ -260,10 +274,9 @@ Repository.Commit 返回 failure/throw
 - 一个 ordered complete batch 是唯一 Objective transition；
 - batch 中间态不可观察；
 - branch HEAD 只能是 parent 或完整 child；
-- Presentation 只收到已 resolve committed 的 exact batch；
-- normal restore 不调用 backend。
-
-若将来需要 nonfatal error、same-instance retry、concurrent state reader 或 speculative transactions，届时才以真实 failure trace引入 `BeginDraft / CommitDraft / AbortDraft`。
+- Presentation 只收到已 resolve committed 的 exact live batch；
+- normal restore 不调用 backend 或 event replay；
+- historical root 可以作为精确 fork/rewind 状态来源。
 
 ## 6. Player 与 Presentation
 
@@ -275,120 +288,114 @@ LlmPlayerDriver
   _backend = runtime-only service         # never persisted
 ```
 
-Durable state 只允许 Memory shard contents、previous-known-facts 与必要的 wrapper frontier。CharacterCard/material/schema 来自 Definition；backend/model/effort 等 non-secret config 属 closed composition；credential、client、Task、CancellationToken、trace 和 profiler 不进入 graph。
+凡是会影响下一次决策的 Memory shard contents、previous-known-facts 与必要 frontier，都必须与 Objective co-commit到 canonical graph。CharacterCard/material/schema 来自 Definition；backend/model/effort 等 non-secret config 属 closed composition；credential、client、Task、CancellationToken、trace 和 profiler 不进入 graph。
 
-首版候选是强制 Blocking / commit 前 flush，使 Player accepted state 与 Objective batch 同一 transaction commit。Pipelined maintenance 只有两个合法未来：
+Blocking/commit 前 flush 仍是首版候选。Pipelined maintenance 只能成为独立显式 Player transaction，或在下一 Objective transaction 前 join；不得让 background Task 在 commit 后继续 mutate 同一个 Revision。
 
-1. 成为独立、显式的 Player transaction；或
-2. 在下一 Objective transaction 前 join，并明确其 frontier。
-
-不得让 background Task 在 commit 后继续 mutate 同一个 Revision。
+当前 Phase 2 probe 没有实现或证明 Player durable closure。
 
 ### 6.2 Presentation
 
-Presentation 不持有 Authority durable wrapper。它只消费 committed transaction/batch channel，并维护自己的 projection/read model。旧 cue、P/C frontier、Human reveal barrier 仍以 committed batch 为输入。
+Presentation 不持有 Authority durable wrapper。live session 只在 Objective commit outcome 已确认后收到该次 exact in-memory batch，并继续依靠 batch boundary、facts order 与 pre/post evidence产生新 cues。
 
-若不想让 Presentation 重建完整 Objective World，transaction 可以增加足够的 pre/post presentation evidence；但不能只发送 latest graph 而丢失 batch boundary、facts order 或被覆盖的历史文本。
+resume/fork 不再 replay旧 semantic prefix。它必须从选中 historical root 的 durable current state 建立 baseline，然后只消费新 suffix batches。由此明确接受一个尚待专项验证的降级：若进程在 state commit 后、live cue publication 前崩溃，普通 reopen 不会从 summary 补播该 cue。若未来不能接受，应引入窄的 durable Presentation outbox，而不是恢复完整 Objective event-sourcing。
 
-## 7. Save / resume 候选形状
+## 7. Same-repository fork / rewind
 
-性能不是重点时，最小 immutable successor protocol 是：
+V1 的 fork/rewind protocol 是：
 
 ```text
-new run
-→ 在 unpublished working/staging directory 创建 StateJournal repo
-→ 每个 transaction 提交 root
-→ terminal clean + close
-→ self-verify
-→ manifest last / rename to Save-A
-
-resume Save-A
-→ 保持 A closed/immutable
-→ 完整复制 A repo 到 unpublished Save-B working directory
-→ 打开 B/main
-→ 首先提交 LineageCreated transaction，分配 fresh child business lineage
-→ 继续提交 suffix transactions
-→ terminal close / self-verify / publish B
+选择 exact historical CommitAddress
+→ CreateBranch(newBranch, fromCommit) in the same repository
+→ checkout new branch
+→ 立即 co-commit lineage-start root
+     fresh business lineageId
+     transitionCount = selected source transitionCount N
+     ParentWorldVersion = selected source WorldVersion
+     commitKind = lineage-start
+     one lossy summary
+→ 提交独立 suffix Objective transactions
 ```
 
-两次 resume 各复制 A，产生不同 child lineage；StateJournal branch/ref/CommitAddress 不替代业务 lineage。Save-B 自包含，source bytes 不修改。
+rewind 是从旧 commit 创建新 branch，不是破坏性地向后移动 source branch。两次从同一 historical state fork 必须分配不同 business lineage；branch name、`LocalId` 与 `CommitAddress` 都不冒充 `WorldVersion`。
 
-正式 reader 最终应有 strict `OpenReadOnlyExisting`。首个实验可在关闭 source 后先复制到 temp，再只对副本执行普通 `Repository.Open`，以性能换取 source 不变；这不是最终 public verifier contract。
+lineage-start只改变business lineage/provenance/commit metadata；它不增加Objective transition count，也不清空选中root的last instant、cause或domain graph。Phase 2既验证了Genesis `(L0,0) → (L1,0)` fork，也验证了从nonzero `(L0,1)` fork得到`(L1,1)`并保留完整状态。
 
-## 8. 专项实验：最小 vertical
+同一 repository 的双 sibling 测试中，main 先提交 deadline；两个 branch 都从精确 Genesis `CommitAddress` 创建，各自立即提交 lineage boundary 和独立 deadline suffix；main ref 不移动；每条 effective history 都是：
 
-### 8.1 范围
+```text
+Genesis → lineage-start → objective-transition
+```
 
-只实现一个真实、跨 Game + Spatial 的 automatic transaction，优先选择 deadline / passage-entry change，因为它能验证：
+这种方式共享已有 repository 历史，避免把“复制整个 repository”设为正常 fork/rewind primitive。本 probe 不声称 branch 创建严格 O(1)，也不以性能性质作为 correctness 结论。
 
-- 一个 batch 多个 ordered facts；
-- 两个领域子图同时变化；
-- batch-end cross-domain validation；
-- StateJournal commit 只有一个 publication frontier。
+portable/self-contained Save 是另一项需求。若将来需要把某条 branch 导出到独立介质，必须另行定义 ancestor retention、segment closure、GC/repack、manifest 与 strict verifier；不能从 same-repo branching 自动推出这些能力。
 
-首轮明确排除：
+## 8. 专项实验与 disposition
 
-- LLM / Player；
-- Presentation UI；
-- Content Pack / loader；
-- Composite Save manifest；
-- production Runner cutover；
-- generic serializer / reconciler；
-- StateJournal wire redesign；
-- merge、多 writer、query language、index framework；
-- 性能优化。
+### 8.1 Phase 1：rebuildable ledger（历史证据）
 
-### 8.2 建议步骤
+Phase 1 位于 commits `d543307` / `8f40a89`，其 ledger/codec/rebuild 代码后来被 Phase 2 refactor 删除，但实验结果不被改写：
 
-1. 建立 test-only `DurableFirstBoardRootV1`、Game/Spatial wrappers 和 schema constants。
-2. 从最小 Definition/Genesis 构造 root，提交 empty-ledger baseline HEAD；Genesis 不计 Objective transaction。
-3. 定义 `BoardTransactionV1` envelope 与 strict canonical codec。
-4. 通过 private projector 把 deadline batch 应用到 durable wrappers。
-5. Validate、append ledger、advance frontier、commit。
-6. close/reopen，直接 query HEAD graph 并与 expected exact 比较。
-7. 仅从 Genesis + ledger 在独立 repo/rebuilder 中重建，要求与 HEAD graph exact。
-8. 从 Genesis 或 deadline 前 commit 派生两个 suffix，证明 branch independence。
-9. 在第一个 fact 后、第二个 fact后、Validate、data write、primary ref replace、backup/reflog点注入 failure。
-10. 用 TransactionId + reopen 证明结果只为完整 parent 或完整 child，永不发布半批。
-
-Phase 1 的实际裁决、代码与证据见 [Build Log 0022](0022-statejournal-native-objective-probe-results.md)。首轮把随机 nonce进一步简化为 canonical envelope bytes + derived digest，并以 physical parent、exact tail与materialized post-state联合裁决 ambiguous outcome；若将来出现 delayed reconciliation、external-effect dedupe或多 writer，再引入独立 TransactionId。
-
-### 8.3 验收 disposition
-
-| ID | Phase 1 disposition | 证据或后续边界 |
+| ID | Phase 1 disposition | 历史证据 |
 |---|---|---|
-| SJ-V1 | **passed，机制简化** | raw Durable container不泄漏给rule/query consumer；private Session + facade epoch取代独立active lease类型。 |
-| SJ-V2 | **passed，frontier改为derived** | deadline只有一个canonical ledger envelope与一个StateJournal child commit；Objective frontier由strict-scanned ledger派生。 |
-| SJ-V3 | **passed** | Game + Spatial facts按exact顺序编码/apply；first-fact failure后reopen仍为parent。 |
-| SJ-V4 | **passed** | close/reopen直接query exact materialized state，不执行ledger replay。 |
-| SJ-V5 | **passed（one-tail范围）** | fresh repo从deterministic Genesis + canonical deadline tail重建，与source HEAD schema-aware state exact。 |
-| SJ-V6 | **passed，矩阵收窄** | first-fact failure与complete-graph batch-end validation failure都会poison Session；reopen HEAD为parent。 |
-| SJ-V7 | **passed，identity revised** | 不使用随机TransactionId；以expected physical parent + proposed canonical bytes + derived digest + exact post-state裁决parent/exact child，禁止blind retry。 |
-| SJ-V8 | **deferred** | historical sibling的物理能力已存在；fresh business lineage与ParentWorldVersion在紧邻Save/resume slice验证。 |
-| SJ-V9 | **partial** | noncanonical/unknown field与wrong Definition binding已fail-fast；full schema/tag/history/lineage与独立TransactionId matrix随相应slice再扩。 |
-| SJ-V10 | **passed** | 0022记录LOC、API friction、测试可读性与未解决边界；未做performance SLO。 |
+| SJ-V1 | **passed** | private Session + query-only facade 隐藏 raw Durable containers。 |
+| SJ-V2 | **passed，frontier derived** | 一个 canonical ledger envelope 与一个 StateJournal child commit。 |
+| SJ-V3 | **passed** | Game + Spatial facts exact order apply；prefix failure 后 reopen parent。 |
+| SJ-V4 | **passed** | close/reopen直接 query graph，不执行 replay。 |
+| SJ-V5 | **passed（one-tail）** | Genesis + canonical tail rebuild 与 source graph exact。 |
+| SJ-V6 | **passed** | working/validation failure poison Session；reopen exact parent。 |
+| SJ-V7 | **passed，旧 identity law** | physical parent + canonical bytes/digest + post-state裁决 ambiguous child。 |
+| SJ-V8 | **deferred** | historical sibling business lineage 未在 Phase 1 验证。 |
 
-## 9. 实验后的裁决问题
+Phase 1 证明“可以这样做”，没有证明“DramaBoard 必须这样做”。SJ-V2、SJ-V5 与 SJ-V7 的 ledger-specific law 已被 Phase 2 的 graph-authority model取代。
 
-vertical 完成后必须回答：
+### 8.2 Phase 2：graph authority（当前可执行证据）
 
-1. wrapper 是否真的隐藏了 Durable lifecycle，还是 Ruleset 到处出现 storage ceremony？
-2. imperative private projector 是否比 current pure reducer 更容易理解和测试？
-3. fail-stop/reopen 是否足够，还是具体失败证明需要 graph draft？
-4. ledger rebuild law 是否自然，还是 event 与 graph 容易漂移？
-5. StateJournal fault/result API 是否需要小改，具体改动能否保持局部？
-6. Spatial 作为跨游戏 Engine subsystem 是否愿意直接依赖 StateJournal，或需要更窄的 state wrapper boundary？
-7. 加入一个 deterministic Player effect 后，World + Player 同 transaction 是否仍然清晰？
-8. 若 production cutover，0004/0014–0020 能删掉多少 codec/checkpoint/package binding，而不是又保留两套 authority？
+当前 test-only refactor 验证：
 
-只有这些问题有实证答案后，才裁决：
+| ID | Phase 2 disposition | 当前证据 |
+|---|---|---|
+| SJ-G1 | **passed** | schema `/2` 同 commit保存 Objective graph、direct frontier、commit kind 与 summary；root 不含 ledger。 |
+| SJ-G2 | **passed** | exact `JournalBatch` 只存在于内存；代码中没有 envelope codec、digest、rebuild 或 replay path。 |
+| SJ-G3 | **passed** | close/reopen直接取得 exact graph/frontier/summary；test-only `metadata-only` commit移除summary后仍可reopen。 |
+| SJ-G4 | **passed** | first-fact 与 batch-end validation failure均 fail-stop；reopen exact parent。 |
+| SJ-G5 | **passed（双 API shape）** | Objective与lineage-start的reflog ambiguity都保存完整parent/child authority；当前main以physical parent edge + exact authority fallback裁决；exact e21 override也以9/9证明stable candidate/phase/publication details路径。lineage commit明确NotPublished时，既有branch可在重新核对exact parent后安全完成同一boundary。 |
+| SJ-G6 | **passed** | 同一 repo 从 exact Genesis commit创建两个 fresh-lineage branches；main不移动，siblings独立；从nonzero frontier fork也保留count、instant/cause与完整domain graph。 |
+| SJ-G7 | **partial** | effective history得到每个 historical root 的 summary，但当前 helper会 materialize root；meta-only fast path未证明。 |
+| SJ-G8 | **deferred** | Player durable closure、Presentation baseline、portable Save/export 与 production integration。 |
+
+当前main的focused StateJournalNative tests为 **9/9 passed**，完整`FirstBoard.Persistence.Tests`为 **19/19 passed**；exact `e21fc61a` override的focused tests也为 **9/9 passed**。最终`DramaBoard.Local.slnx`为 **481/481 passed**。
+
+## 9. 当前裁决与剩余问题
+
+当前裁决是：
 
 ```text
-keep current EventJournal plan
-| cut over to StateJournal-native model
-| evolve StateJournal API first
-| start a separate integrated store research project
+StateJournal-native graph authority
++ direct persisted frontier
++ same-repository branch/ref fork/rewind
++ optional lossy per-root summary
++ ephemeral exact live batches
+= leading test-only direction
 ```
+
+已经解决：
+
+- rebuildable ledger不是 DramaBoard 快速原型的 V1 requirement；
+- ledger codec、projector、derived frontier 与 rebuild proof 可以从当前 probe删除；
+- same-repo historical branch 是 fork/rewind 的 V1 物理原语；
+- Phase 1 的三个 StateJournal API friction 已在上游 `e21fc61a` 修复；Phase 2的stable commit-error details路径已用exact e21 override执行验证，剩余前置是正式dependency pin以及更宽typed API/lifetime integration。
+
+仍需实证回答：
+
+1. 完整 FirstBoard OOP wrapper 是否比 immutable POCO reducer更少 ceremony？
+2. order-sensitive、多实体引用的 batch是否仍清楚？
+3. Player Memory/previous-known-facts 与 Objective同 transaction是否易用？
+4. Presentation baseline与commit/cue crash gap采用何种最小契约？
+5. meta-only history enumeration是否值得成为 StateJournal public API？
+6. portable Save如何保留所需 ancestors而不复制无关 branches？
+7. production cutover时，0004/0014–0020 应如何整体重裁，避免两套 authority？
 
 ## 10. 长期新存储研究假说
 
@@ -403,58 +410,26 @@ OOP object database
 + branch/version management
 ```
 
-最小不可约 transaction node：
+其中 semantic event 与 mechanical write set可以属于同一个 immutable transaction authority；object graph、indexes 和 checkpoints 绑定 source transaction frontier，并允许删除重建。StateJournal 已积累 object identity、version chain、delta/rebase、root、branch、segment 与 recovery 经验；EventJournal 已积累 immutable payload、parent chain、read-only traversal、ref 与 forward-plan 经验。
 
-```text
-TransactionCommit
-  TransactionId
-  ParentTransaction
-  EventCodecId
-  accepted semantic event/outcome
-  canonical object write set
-  materialized graph root/frontier
-```
-
-例如不是只记录“B 对 A 施放火球”，而是记录已接受的完整 outcome：
-
-```text
-FireballResolved
-  caster = B
-  target = A
-  hpDelta = -10
-  mpDelta = -15
-  random/tool outcome provenance = ...
-```
-
-rebuild 应用 immutable transaction 中的 canonical effects，不重新调用随机数、LLM、Human 或历史版本业务代码。semantic event 与 mechanical write set 属同一个 transaction authority；object graph、indexes 和 checkpoints 都绑定 source transaction frontier，可删除重建。
-
-StateJournal 已积累 object identity、version chain、delta/rebase、root、branch、segment 与 recovery 经验；EventJournal 已积累 immutable payload、parent chain、read-only traversal、ref 与 forward-plan 经验。真正的研究难点主要是：
-
-- transaction workspace、snapshot isolation 与 outcome reconciliation；
-- semantic event completeness 与 external effects；
-- event codec / projector behavior / object schema 三种兼容 authority；
-- stable logical identity、reference/owned value、union 与 migration；
-- history retention、checkpoint/new Genesis、GC/repack 与 portable export；
-- index definition/frontier、异步 rebuild 与 fail-closed swap；
-- Player privacy、redaction 与 immutable history 的冲突。
-
-这条路线概念自洽，也不是遥不可及；但当前不以通用平台设计阻塞 DramaBoard vertical。先让一个真实 aggregate transaction 工作，再决定抽象。
+真正的研究难点仍包括 event completeness、external effects、codec/projector/object-schema compatibility、history retention、privacy/redaction、indexes 与 snapshot isolation。这条路线概念自洽，但它是独立存储研究项目，不是 DramaBoard V1 被删掉的 ledger 换个名字重新回来。
 
 ## 11. 上下文恢复索引
 
 压缩或新会话后，建议按以下顺序恢复：
 
-1. 本文件 §2–§5：用户决定、authority 与 failure law。
-2. 本文件 §8：专项实验边界和验收。
-3. [`StateJournal usage-guide`](../../../Atelia-org/atelia/docs/StateJournal/usage-guide.md)：现有 public API 与限制。
-4. `E:/repos/Atelia-org/atelia/src/StateJournal/Repository.cs`、`Revision.Commit.cs`、`Repository.BranchRefs.cs`：commit/ref outcome。
-5. `src/Kernel/Simulation/SimulationKernel.cs`、`src/FirstBoard/FirstBoardDomain.cs`、`src/Spatial/State/GraphSpatialState.cs`：当前 immutable model。
-6. [Build Log 0004](0004-game-content-and-composite-save.md) 与 0014–0020：尚未被本研究章程取代的 production plan。
+1. 本文件 §2、§4–§7：当前 authority、failure、Player/Presentation 与 fork/rewind law。
+2. 本文件 §8 与 [Build Log 0022](0022-statejournal-native-objective-probe-results.md)：两阶段实验结果。
+3. [`StateJournal usage-guide`](../../../Atelia-org/atelia/docs/StateJournal/usage-guide.md)：当前 public API。
+4. `tests/FirstBoard.Persistence.Tests/StateJournalNative/DeadlineProbeStore.cs` 与 `StateJournalNativeDeadlineProbeTests.cs`：Phase 2 executable evidence。
+5. `E:/repos/Atelia-org/atelia/src/StateJournal/Repository.cs`、`Revision.Commit.cs`、`Repository.BranchRefs.cs`：commit/ref/history outcome。
+6. [Build Log 0004](0004-game-content-and-composite-save.md) 与 0014–0020：尚未在本次任务中重写的 production plan。
 
 最近收敛的团队裁决：
 
-- direct StateJournal wrapper 在新假设下从 `defer` 上调为值得验证的 `keep` candidate；
-- `BeginDraft/CommitDraft` 不是 strict fail-stop V1 的硬 gate；
-- transaction ledger 必须是 semantic authority，graph 是同 commit materialized view；
-- Player completeness、TransactionId outcome resolution 与 immutable Save reader 是下一层真实边界；
-- 先做 Objective-only cross-domain vertical，不先开发通用 store。
+- direct StateJournal wrapper 是下一阶段 leading test-only direction，尚非 production cutover；
+- canonical graph/frontier是状态 authority，summary不是；
+- exact batch只保留为当前 transaction/live Presentation contract；
+- normal fork/rewind使用同一 repository 的 branch/ref，不复制整个 repository；
+- Player closure、Presentation baseline、portable Save与meta-only history仍是下一层边界；
+- 先 pin/integrate 已验证的 StateJournal API 修复，再让 DramaBoard 使用结构化 commit outcome。
