@@ -1,18 +1,20 @@
 # Build Log 0022：StateJournal-native Objective probe results
 
-> 状态：**Phase 1 ledger probe preserved；Phase 2 graph-authority probe executable；尚未裁决 production cutover**
+> 状态：**Phase 1/2 evidence preserved；Phase 3 capability probes executable；尚未裁决 production cutover**
 >
 > 首次记录：2026-08-24
 >
 > Phase 2 refactor：2026-08-25
 >
+> Phase 3 commits：`bd4a6e9`、`3cecbfb`、`605b179`、`94d49d5`
+>
 > 研究章程与当前裁决：[Build Log 0021](0021-statejournal-native-vertical-probe.md)
 >
 > Phase 1 实验基线：`8ff97cd docs(state): record StateJournal-native experiment charter`
 
-本文件记录 StateJournal-native deadline vertical 的两阶段可执行证据：Phase 1 测试 rebuildable semantic ledger + materialized graph；Phase 2 在产品需求复核后删除 ledger/codec/rebuild，把 durable graph、direct frontier 与 physical commit history提升为 authority。
+本文件记录StateJournal-native研究的三阶段可执行证据：Phase 1测试rebuildable semantic ledger + materialized graph；Phase 2删除ledger/codec/rebuild，把durable graph、direct frontier与physical commit history提升为authority；Phase 3验证正式Atelia API pin、order-sensitive Encounter、Player closure与Presentation nonzero baseline seam。
 
-两阶段都只是 default-Genesis deadline Objective 的 test-only probe，不把窄 schema 冒充完整 FirstBoard、Player、Presentation、portable Save 或 production Kernel migration。
+这些仍是test-only或consumer-seam证据，不把多个独立窄schema冒充统一FirstBoard root、production LLM turn、StateJournal/Runner接线、portable Save或production Kernel migration。
 
 ## 1. Phase 1：rebuildable ledger（历史实验）
 
@@ -61,7 +63,7 @@ Phase 1 当时定向项目 **16/16 passed**，Local solution **478/478 passed**�
 
 Phase 1 还纠正过一个假证明：实验曾为了捕获漏掉的 Spatial fact而发明 `CellarSealed == !gate.EnterableFromA` 永久 invariant，但产品没有这条 law。最终删除该 invariant，validation failure改用明确的测试注入。Phase 2 继续遵守这一边界。
 
-## 2. Phase 2：graph authority（当前实现）
+## 2. Phase 2：deadline graph authority（历史基础实现）
 
 当前实现位于：
 
@@ -147,7 +149,7 @@ same-repo branch共享已有 repository历史并避免正常 fork/rewind复制�
 
 lineage-start不增加Objective transition count；它保留选中root的last instant/cause与完整domain graph。除Genesis sibling history外，Phase 2还从main的nonzero deadline HEAD创建branch，证明`(L0,1) → (L1,1)`的count与状态都不被重置。
 
-## 3. Phase 2 可执行证据
+## 3. Phase 2 可执行证据（历史基础）
 
 | 当前证据 | 结果 |
 |---|---|
@@ -157,39 +159,39 @@ lineage-start不增加Objective transition count；它保留选中root的last in
 | Missing summary | test-only metadata-only commit移除`commitSummary`后仍可reopen；状态与frontier不依赖summary，也不伪装成新的domain commit。 |
 | Prefix failure | 第一个 Game fact已改working graph后注入异常；Session poison，reopen仍为exact parent。 |
 | Validation failure | 两个 facts都改完后在batch-end validator注入异常；仍不commit，reopen exact parent。 |
-| Ambiguous Objective child | commit前捕获完整authoritative parent/child；当前main generic failure后以physical parent edge + exact authority snapshot裁决，e21 stable error出现时还会强制匹配reported candidate。 |
+| Ambiguous Objective child | Phase 2 commit前捕获完整authoritative parent/child；当时generic API以physical parent edge + exact authority fallback裁决，exact e21 override再验证reported candidate。Phase 3 current pin已改为直接消费强类型error。 |
 | Ambiguous lineage boundary | lineage-start也使用同一恢复协议；reflog失败后确认fresh-lineage child；明确NotPublished时先确认exact parent，再在既有branch安全完成同一boundary；两条路径都保持main ref不变。 |
 | Historical fork | main deadline不被移动；两个branches从exact Genesis address创建，各自co-commit fresh lineage boundary和独立suffix。 |
 | Nonzero fork | 从`(L0,1)` historical HEAD建立`(L1,1)` lineage boundary，保留last instant/cause、Game和Spatial state。 |
 | Per-root summaries | 两个effective histories均按Genesis、lineage-start、objective-transition读取对应summary；当前读取会materialize historical root。 |
 
-当前Atelia main下，Focused StateJournalNative tests：**9/9 passed**；完整`FirstBoard.Persistence.Tests`：**19/19 passed**。同一focused tests还通过临时`AteliaRepositoryRoot`指向detached exact `e21fc61a` worktree执行，结果同为 **9/9 passed**；两个reflog faults都取得candidate并断言`AppendReflog / Published`。
+Phase 2结束时，deadline focused为 **9/9 passed**，完整Persistence为 **19/19 passed**；detached exact `e21fc61a` override也曾以9/9验证stable structured error details。
 
-最终`DramaBoard.Local.slnx`为 **481/481 passed**；这与Phase 1的历史 **478/478** 是两次不同代码基线的证据。
+当时`DramaBoard.Local.slnx`为 **481/481 passed**；这与Phase 1的历史 **478/478** 是两次不同代码基线的证据，不是Phase 3当前总数。
 
 ## 4. StateJournal API friction：历史与上游修复
 
-DramaBoard当前 local sibling是Atelia `main@7e56aa37`。以下三个friction在Phase 1确实存在；用户随后已在`origin/feature/derived-recap-grid-rewrite@e21fc61a`通过源码与StateJournal tests完成修复。DramaBoard尚未pin/integrate该commit chain，因此本节同时区分“upstream fixed”和“current probe available”。
+以下三个friction在Phase 1确实存在，后来由包含`e21fc61a`的Atelia commit chain修复。`bd4a6e9`已把CI secondary checkout精确pin到官方Atelia main `742fcd62e691b6b6acca4113a3ac3638bc7275ba`；current CI不再依赖旧generic fallback或临时detached override。
+
+`AteliaRepositoryRoot` MSBuild property仍允许开发者指向local sibling，这只是override便利；任意local checkout是否匹配CI pin仍由开发者负责。
 
 ### 4.1 Typed `ByteString` collections
 
 Phase 1：`ByteString`只注册在mixed value catalog，`Revision.CreateDeque<ByteString>()`不可用，ledger只能使用wrapper-hidden mixed `DurableDeque`。
 
-上游：`e21fc61a`所含改动已支持typed `ByteString` scalars/collections。当前Phase 2已经删除ledger与blob deque，所以即使dependency尚未pin，这项friction也不再影响当前probe。
+当前：[`StateJournalApiContractTests`](../../tests/FirstBoard.Persistence.Tests/StateJournalNative/StateJournalApiContractTests.cs)直接用typed `DurableDeque<ByteString>`完成commit/reopen。ledger虽然已删除，这项contract仍作为StateJournal API pin smoke proof保留。
 
 ### 4.2 Repository-owned object lifetime
 
 Phase 1：`Repository.Dispose`不会让已materialize的`DurableObject`自动失效，Session必须以epoch/poison guard阻止旧facade继续使用。
 
-上游：`e21fc61a`所含改动让Repository-owned Revision/DurableObject operational APIs在dispose后fail-fast。DramaBoard pin后应验证该保证；Session guard仍可保留为领域层fail-stop边界，不再承担底层对象生命周期correctness。
+当前：`StateJournalApiContractTests.RepositoryDispose_InvalidatesOwnedRevisionRootAndLiveView`验证Revision、root、live keys view与enumerator在Repository dispose后fail-fast。Session guard仍保留为领域层fail-stop边界，不再承担底层对象生命周期correctness。
 
 ### 4.3 Structured commit publication outcome
 
-Phase 1及当前DramaBoard默认local sibling：branch publication后reflog失败只表现为generic commit failure。Phase 2已经让Objective与lineage-start共享恢复协议：commit前捕获完整authoritative parent/child snapshot；generic fallback在reopen后核对expected parent address、immediate child parent edge和exact authority state，summary不参与。
+当前Deadline、Encounter与Player stores直接匹配强类型`RepositoryCommitError`。它提供expected/candidate address、failure phase、publication state与reopen requirement；Objective、lineage-start、Encounter与Player ambiguity tests都在`AppendReflog / Published`后reopen，要求HEAD等于exact candidate、candidate parent等于expected parent且full authority等于captured child。authority包含schema/binding、frontier及该vertical的完整nested domain/player state，明确排除summary。
 
-上游：`e21fc61a`所含`RepositoryCommitError`提供expected/candidate address、failure phase、publication state与reopen requirement。Phase 2不依赖尚未pin的强类型，而是识别stable error code `SJ.Repository.CommitFailed`并读取`AteliaError.Details`；当前main返回generic `SJ.Repository`，所以这些字段为null并走上述完整authority fallback。
-
-该双shape兼容已经被实际执行：同一focused suite通过临时project override在exact `e21fc61a` worktree运行 **9/9**，Objective与lineage-start两个reflog faults都报告candidate、`AppendReflog`与`Published`，resolver随后按exact candidate + authority snapshot确认child。若lineage commit明确`NotPublished`，recovery API只在branch仍为exact parent authority时重施同一个deterministic lineage boundary；这不是blind external-effect retry。临时worktree已删除，Atelia main未修改；正式dependency pin仍是后续集成任务。即使未来遇到`MayHavePublished`，也绝不能伪装成透明retry。
+Deadline还覆盖lineage publication前的已知failure：`NotPublished`时resolver先证明exact parent；resume只在同一branch仍为该parent authority时重施已捕获的deterministic lineage boundary。这不是blind external-effect retry。任何`MayHavePublished`都必须reopen分类，不能直接重试Player/backend。
 
 ### 4.4 Normal resume很方便；semantic history并不免费
 
@@ -215,9 +217,67 @@ exact batch = ephemeral live transition contract
 
 这保留normal resume、historical state load、fork与rewind，同时明确放弃event-level audit、旧cue replay、alternative-projector replay和从semantic events重建状态。StateJournal消除normal resume replay，但不会免费提供semantic history；DramaBoard当前选择不购买后半部分能力。
 
-## 5. 复杂度与可读性观察
+## 5. Phase 3专项实验
 
-### 5.1 Phase 1 historical LOC
+### 5.1 Order-sensitive Encounter
+
+`605b179`通过[`EncounterProbeStore.cs`](../../tests/FirstBoard.Persistence.Tests/StateJournalNative/EncounterProbeStore.cs)及其[tests](../../tests/FirstBoard.Persistence.Tests/StateJournalNative/StateJournalNativeEncounterProbeTests.cs)建立独立imported traveling baseline，而不是偷偷依赖deadline root或宣称production startup已经迁移。它从真实production rules取得exact transaction：
+
+```text
+Spatial PassageContactOccurredFact
+→ Game PassageEncounterOpenedEvent
+```
+
+contact以5-tuple `(passageId, entityA, generationA, entityB, generationB)`持久化；actor identity、两个current traversal segments、consumed contacts与Game pending encounter都进入full authority。reverse-order test触发真实Game guard，证明facts order不是summary decoration。
+
+pending encounter是独立Game state：open当下要求对应Spatial contact已经consumed，但complete-state validation故意不建立`pending => contact仍在consumed set`永久invariant，因为production允许traversal改变后清掉segment contacts而pending仍存在。不得为了方便测试重新发明这条law。
+
+该vertical覆盖direct reopen、working/validation fail-stop、same-repo fork、nested authority与strongly typed `RepositoryCommitError`的Published ambiguity，共 **6 tests**。
+
+### 5.2 Alice Observe Player closure
+
+`94d49d5`通过[`PlayerClosureProbeStore.cs`](../../tests/FirstBoard.Persistence.Tests/StateJournalNative/PlayerClosureProbeStore.cs)及其[tests](../../tests/FirstBoard.Persistence.Tests/StateJournalNative/StateJournalNativePlayerClosureProbeTests.cs)建立另一个独立root，沿真实production Objective Observe路径验证：
+
+```text
+pre DecisionRequest observation: 2 held facts
+→ ActorObserved Objective outcome
+→ post Objective actor facts: outcome + 2 visible = 3
+→ deterministic test cognition effect
+     Memory: 4 shards
+     previousKnownFacts: the pre-request 2 held facts
+     composition + slot binding + decision sequence
+→ next request observation: post 3 + held 2 = 5
+→ exact next prompt after reopen
+```
+
+Objective actor、四个Memory shards、previous-known-facts、Player composition/slot binding与decision sequence在一个commit中推进。prompt exact comparison和mutants证明previous-known-facts既不能丢失，也不能误写成post-current facts；fault injection、composition/binding/privacy rejection、Published ambiguity均比较完整nested Objective + Player authority。
+
+historical test在c1后fork，main与fork先exact继承相同nested closure，再分别提交不同c2 cognitive states；两个next prompts分别等于各自full-POCO oracle，main ref不移动。
+
+边界必须写准：Objective Observe事实与reducer是production exact；Memory replacement是deterministic test cognition effect；next `DecisionRequest`由完整POCO world oracle supplied。它不是production LLM turn、backend reconnect或完整FirstBoard world restore。该vertical共 **12 tests**。
+
+### 5.3 Presentation nonzero baseline consumer seam
+
+`3cecbfb`让`LiveSessionCoordination`从任意verified nonzero `WorldVersion N`初始化`Committed = Presented = N`。`FirstBoardPresentationLoop`接收closed baseline world与last instant，要求world seed一致、`C == P`、zero/nonzero instant shape正确、baseline world time等于last instant model time。
+
+测试证明旧prefix cue不会重播，commit/cue crash gap在resume后也不会合成旧cue；loop只fold/present exact suffix batch并推进到`N+1`。Presentation focused **18/18**，完整Demo **134/134**。
+
+这只是consumer seam：尚无StateJournal/Runner把durable root转换为closed full Objective baseline并接线进去。
+
+### 5.4 Phase 3 aggregate evidence
+
+| Suite | Result |
+|---|---:|
+| StateJournalNative（API 2 + Deadline 9 + Encounter 6 + Player 12） | **29/29** |
+| `FirstBoard.Persistence.Tests` | **39/39** |
+| Presentation baseline focused | **18/18** |
+| `FirstBoard.Demo.Tests` | **134/134** |
+| `DramaBoard.Local.slnx` | **505/505** |
+| CI-pinned Atelia StateJournal | **1961/1961** |
+
+## 6. 复杂度与可读性观察
+
+### 6.1 Phase 1 historical LOC
 
 | 文件 | 行数 | 主要成本 |
 |---|---:|---|
@@ -226,7 +286,9 @@ exact batch = ephemeral live transition contract
 | `StateJournalNativeDeadlineProbeTests.cs` | 279 | oracle、reopen、rebuild、fail-stop、ambiguous fault |
 | **合计** | **1,397** | test-only ledger vertical |
 
-### 5.2 Phase 2 current LOC
+### 6.2 Phase 2 deadline LOC
+
+以下是`06a5dad`附近Phase 2结束时的physical line baseline，不是Phase 3 current file count：
 
 | 文件 | 行数 | 主要成本 |
 |---|---:|---|
@@ -238,97 +300,86 @@ exact batch = ephemeral live transition contract
 
 真正得到简化的是authority surface：production候选不再需要完整event union/codec、ledger-derived frontier、projector compatibility或rebuild proof。object graph wiring、Session lifecycle、branch provenance、failure reconciliation与schema evolution仍然是实在成本。
 
-## 6. 当前裁决
+### 6.3 Phase 3 specialized vertical LOC
+
+| Vertical | Store | Tests | Gross total |
+|---|---:|---:|---:|
+| Encounter | 1,867 | 451 | **2,318** |
+| Player closure | 1,849 | 489 | **2,338** |
+
+两个vertical都包含独立schema、wrapper、full-authority freeze/compare、validation、failure、fork、oracle与negative tests。它们是research coverage，不能直接当production LOC；但也不能因此忽略一个清楚事实：删掉ledger降低了authority/runtime-path负担，却没有自动消除hand-written durable modeling ceremony。Phase 3不能支持“StateJournal路线已经更简单”的结论，只能支持“能力显著更充分，authoring ergonomics仍待决”。
+
+## 7. 当前裁决
 
 StateJournal-native direct wrapper当前为：
 
 ```text
-leading test-only direction under graph authority
+capability-credible leading test-only direction
++ unresolved authoring ergonomics
 ```
 
-Phase 1已证明：
+Phase 1/2已证明graph-authority模型的基本storage、resume、failure、summary与same-repo branch law。Phase 3新增证明：
 
-- StateJournal能够single-writer co-commit跨Game/Spatial graph；
-- strict fail-stop模型无需先建设deep draft/rollback；
-- normal reopen直接取得对象图；
-- ledger/materialized graph与one-tail rebuild在窄范围技术上可行。
+- CI exact Atelia pin常规提供typed ByteString、dispose lifetime与strongly typed commit outcomes；
+- order-sensitive Spatial→Game Encounter可用完整nested graph direct reopen/fork/recover；
+- 一个真实Objective Observe与deterministic cognition effect可co-commit足以恢复next prompt的Player closure；
+- Presentation可以从nonzero closed baseline开始且只消费exact suffix。
 
-Phase 2新增证明：
-
-- graph与direct frontier可以成为唯一恢复authority，不需要ledger/codec/rebuild；
-- summary可以与commit对齐且读取时可缺失，不进入状态correctness；
-- exact batch可以只保留为内存transaction contract；
-- historical `CommitAddress` + same-repo branch/ref足以构造两个fresh business lineages和独立suffix，并能从nonzero frontier保留完整状态；
-- Objective与lineage-start都能fail-stop/reopen；当前main走完整authority fallback，e21 stable details可被同一代码自动解析；明确NotPublished的lineage boundary可在既有branch上安全resume。
+这些证据显著提高“StateJournal能力是否足够”的置信度，但没有证明代码更简单。Encounter与Player两个独立vertical各约2.3K gross lines，清楚展示hand-written schema/wrapper/validation/failure/fork ceremony。research coverage不能冒充production LOC，也不能被用来抹掉真实authoring friction。
 
 尚未证明：
 
-- 完整FirstBoard OOP wrapper是否比immutable POCO reducer更少ceremony；
-- order-sensitive、多实体引用的batch是否仍清楚；
-- Player Memory/previous-known-facts的durable closure；
-- Presentation resume baseline、old-cue drop与crash gap；
+- Deadline、Encounter与Player合入一个canonical root/coordinator后的整体可读性；
+- production LLM/backend turn与完整FirstBoard world restore；
+- StateJournal/Runner生成closed full Objective baseline并接到Presentation seam；
 - meta-only history enumeration；
 - portable Save/export、ancestor retention与strict verifier；
-- repository-controlled dependency pin（stable error details的exact e21执行路径已经通过）；
 - production Runner、Content与0004/0014–0020的整体迁移。
 
-因此，Phase 2取代的是本probe内部的ledger authority，不是已经发布production cutover。既有production docs尚未在本次变更中重写；后续必须整体重裁，不能让EventJournal与StateJournal graph长期并列为双重state authority。
+因此，Phase 3仍不是production cutover。既有production docs尚未在本次变更中重写；后续必须整体重裁，不能让EventJournal与StateJournal graph长期并列为双重state authority。
 
-## 7. 下一组专项实验
+## 8. 最佳下一步
 
-### 7.1 Pin并集成StateJournal API修复
-
-将Atelia repository-controlled dependency pin到包含`e21fc61a`修复的已审定commit或后继版本。stable commit-error details路径已经通过detached exact e21 override验证；正式pin后仍应在常规build中覆盖：
-
-- typed `ByteString` collection API（即使当前probe不再需要ledger）；
-- dispose后Repository-owned object fail-fast；
-- `RepositoryCommitError`的publication state/candidate address；
-- DramaBoard ambiguity resolver先读structured outcome、再reopen核对HEAD。
-
-### 7.2 Objective schema pressure：order-sensitive encounter
-
-下一个Objective slice仍应选择真实order dependency，例如：
+不要继续堆第三个独立probe root，也不要立即cutover。下一项应是一个decisive test-only integration slice：
 
 ```text
-Spatial PassageContactOccurredFact
-then Game PassageEncounterOpenedEvent
+one canonical FirstBoard root
++ one transaction coordinator
+
+Player passage-encounter response
+  cognition update
+  + Game encounter resolution
+  + optional Spatial reverse
+→ one commit
+→ direct reopen
+→ historical fork with divergent suffix
+→ derive closed full Objective baseline
+→ feed existing Presentation exact-suffix seam
 ```
 
-它迫使wrapper处理actor/entity identity、traversal generation、consumed contacts与pending encounter，能回答deadline subset无法回答的“完整durable OOP model是否让storage ceremony泄漏”。它不需要重新引入永久event ledger。
+这个slice同时检验Objective + Player + optional Spatial是否能在一个authority/failure boundary中保持清楚，以及durable root能否成为Presentation的closed baseline source。若仍需大量复制freeze/compare/schema/validation代码，应先改善StateJournal API、生成器或wrapper authoring ergonomics，再扩大production迁移。
 
-### 7.3 Player durable closure
+portable export继续延期。当前缺少public `OpenReadOnlyExisting(strict)`与branch closure pack/export API；不得手拼segments，也不得复制整个repository并冒充“最小branch export”。meta-only summary traversal同样不是integration slice的阻塞项。
 
-把一个deterministic Player Memory/previous-known-facts effect放入同一canonical graph commit，验证resume/fork后下一次decision所需状态完整。目标是从graph直接恢复Player，而不是从summary或ledger rebuild。
-
-### 7.4 Presentation baseline与portable export
-
-Presentation专项实验应从historical root建立baseline，只消费新suffix exact batches，并明确commit成功但cue未发布时的V1语义。
-
-portable Save/export另行定义需要保留的ancestor closure、segment/manifest/verifier；不得回退为“每次normal fork复制整个repository”，也不得把same-repo branch自动等同于self-contained archive。
-
-meta-only summary traversal可以作为StateJournal API调研，但不是上述correctness slices的阻塞项。
-
-## 8. 验证命令
+## 9. 验证命令
 
 ```powershell
 dotnet test tests\FirstBoard.Persistence.Tests\FirstBoard.Persistence.Tests.csproj `
   --no-restore --configuration Release --verbosity minimal `
   --filter "FullyQualifiedName~StateJournalNative"
 
-# 临时验证exact e21 API shape；worktree在验证后删除
 dotnet test tests\FirstBoard.Persistence.Tests\FirstBoard.Persistence.Tests.csproj `
-  --configuration Release --verbosity minimal `
-  --filter "FullyQualifiedName~StateJournalNative" `
-  -p:AteliaRepositoryRoot=<detached-worktree-at-e21fc61a>
+  --no-restore --configuration Release --verbosity minimal
 
-# 删除临时worktree后，强制恢复默认Atelia main的generated restore graph
-dotnet restore DramaBoard.Local.slnx --force
+dotnet test tests\FirstBoard.Demo.Tests\FirstBoard.Demo.Tests.csproj `
+  --no-restore --configuration Release --verbosity minimal `
+  --filter "FullyQualifiedName~FirstBoardPresentationLoopTests|FullyQualifiedName~LiveSessionCoordinationTests"
 
-dotnet test tests\FirstBoard.Persistence.Tests\FirstBoard.Persistence.Tests.csproj `
+dotnet test tests\FirstBoard.Demo.Tests\FirstBoard.Demo.Tests.csproj `
   --no-restore --configuration Release --verbosity minimal
 
 dotnet test DramaBoard.Local.slnx `
   --no-restore --configuration Release --verbosity minimal
 ```
 
-Phase 2当前结果：Atelia main focused StateJournalNative **9/9 passed**；完整Persistence project **19/19 passed**；exact `e21fc61a` override focused **9/9 passed**；`DramaBoard.Local.slnx` **481/481 passed**。
+Phase 3当前结果：StateJournalNative **29/29**；Persistence **39/39**；Presentation focused **18/18**；Demo **134/134**；DramaBoard solution **505/505**；CI-pinned Atelia StateJournal **1961/1961**。
