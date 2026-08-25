@@ -1,12 +1,14 @@
 # Build Log 0021：StateJournal-native OOP vertical probe
 
-> 状态：**Phase 1/2 evidence preserved；Phase 3 capability probes complete；尚未裁决 production cutover**
+> 状态：**Phase 1–3 evidence preserved；Phase 4 unified integration complete；尚未裁决 production cutover**
 >
 > 首次记录：2026-08-24
 >
 > Phase 2 裁决：2026-08-25
 >
 > Phase 3 证据：`bd4a6e9`、`3cecbfb`、`605b179`、`94d49d5`
+>
+> Phase 4 证据：`50bd959`、`0c756ef`
 >
 > 初始代码与文档基线：`6433945 docs(content): reconcile content and save refactor plan`
 >
@@ -16,7 +18,7 @@
 >
 > Atelia 使用契约：[`StateJournal usage-guide`](../../../Atelia-org/atelia/docs/StateJournal/usage-guide.md)
 
-本文件保存 StateJournal-native 研究的时间顺序、当前裁决与实验边界。Phase 1 的 rebuildable ledger 与 Phase 2 的 deadline graph-authority probe 都是真实发生过的研究，不因 Phase 3 增加 API、Encounter、Player 与 Presentation evidence而被改写；但“ledger 是 semantic authority、graph 是 materialized view”的 Phase 1 结论已经被后续裁决取代。
+本文件保存 StateJournal-native 研究的时间顺序、当前裁决与实验边界。Phase 1 rebuildable ledger、Phase 2 deadline graph authority与Phase 3专用capability probes都是真实发生过的研究，不因Phase 4统一root而被改写；但“ledger是semantic authority、graph是materialized view”的Phase 1结论已经被后续裁决取代。
 
 本文件不授权通过字符串替换修改 0004/0014–0020，也不宣称 production `FirstBoard`、`Spatial`、Runner 或 Save 已经迁移到 StateJournal。
 
@@ -74,8 +76,8 @@ canonical durable graph + directly persisted frontier
 仍然延后：
 
 - production cutover，以及 0004/0014–0020 的整体重裁；
-- 一个统一 canonical FirstBoard root/transaction coordinator，而不是继续堆独立 probe roots；
-- StateJournal root 与 production Runner/Presentation baseline 的端到端接线；
+- arbitrary FirstBoard fact-union与真实LLM/backend transaction；
+- StateJournal unified root与production Runner/Save的端到端接线；
 - 沿 commit 父链只读取 meta info、而不 materialize historical roots 的 fast path；
 - portable/self-contained Save、branch closure export、ancestor retention、GC/repack 与 strict verifier；
 
@@ -87,7 +89,8 @@ canonical durable graph + directly persisted frontier
 - 当前 `SimulationKernel` 使用 immutable scratch fold：逐 fact 得到 scratch World、batch-end Validate、Journal publication 成功后才安装 World。
 - `Kernel.World` 当前是可公开持有的 immutable snapshot；StateJournal direct-wrapper 若 production cutover，会有意放弃这项 same-instance promise。
 - Presentation 不并发读取 Authority current World；它消费 committed batch channel，并维护自己的 projection/read model。
-- Presentation loop与coordination现已接受nonzero baseline：初始化时`Committed == Presented == N`，baseline world time与last instant一致，并只消费exact suffix；尚未从StateJournal/Runner自动构造该baseline。
+- Presentation loop与coordination现已接受nonzero baseline：初始化时`Committed == Presented == N`，baseline world time与last instant一致，并只消费exact suffix；Phase 4 test helper已从historical StateJournal root构造该baseline，production Runner/Save wiring仍不存在。
+- public `GraphSpatialState.Restore`可以从完整dynamic snapshot恢复并立即执行`GraphSpatialStateValidator.ValidateComplete`；它是closed Objective hydration seam，不是persistence adapter或Runner wiring。
 - LLM Player 会在 Objective publication 前改变 Memory 与 previous-known-facts；Pipelined maintenance 还能跨 decision return 继续运行。
 
 ### 3.2 StateJournal 与当前依赖边界
@@ -105,6 +108,8 @@ CI 已把 secondary checkout pin到官方 Atelia main `742fcd62e691b6b6acca4113a
 
 `StateJournalApiContractTests`直接证明typed `DurableDeque<ByteString>` commit/reopen与Repository dispose后Revision/root/live view失效；Deadline、Encounter、Player三个vertical都直接消费typed`RepositoryCommitError`，并在reopen后比较full authority。
 
+Phase 4 Persistence tests通过Demo `InternalsVisibleTo`调用现有Presentation loop；这是test-host seam，不是production assembly dependency方向。完整Persistence曾在并行执行时复现cross-repository binding mismatch；StateJournal upstream tests本身禁用xUnit并行，consumer assembly现镜像该harness contract。root cause与multi-repository thread-safety contract仍待上游澄清，不能据此宣称single-writer production runtime已证实有并发缺陷。
+
 ### 3.3 EventJournal 对照证据
 
 - EventJournal 与原 JournalBatch authority 同构，并已有 strict read-only、parent chain 与 ForwardPlan。
@@ -115,7 +120,7 @@ CI 已把 secondary checkout pin到官方 Atelia main `742fcd62e691b6b6acca4113a
 
 ### 4.1 Root
 
-Phase 2 probe 的 schema `/2` 形状是：
+Phase 4 unified schema `/1`形状是：
 
 ```text
 StateJournal GraphRoot
@@ -123,6 +128,7 @@ StateJournal GraphRoot
   definitionSha256
   rulesetId
   worldSeed
+  playerCompositionId
 
   lineageId
   transitionCount
@@ -131,19 +137,34 @@ StateJournal GraphRoot
     logicalInstant
     causeKey
 
-  commitKind                # genesis | lineage-start | objective-transition | metadata-only
   commitSummary?            # lossy；读取时允许缺失
 
   objectiveWorld
     game
+      nextPersistentId / now / cellarSealed / chestOpened
+      all actors + exact KnownFact text
+      all objects
+      pendingEncounter?
     spatial
+      all entities + complete locations
+      passage entry overrides
+      scheduled entry changes
+      consumed contacts
 
-  playerStatesByActor       # canonical目标；Phase 3已在独立Player root证明closure
+  playerStatesByActor
+    alice
+      private profileId
+      Memory by Definition shard key
+      ordered previousKnownFacts with exact text
 ```
 
-`lineageId + transitionCount + lastTransition` 直接存在 graph 中，不从摘要或 event history 派生。`parentWorldVersion` 是 business lineage provenance；它不等于 StateJournal commit parent。
+`lineageId + transitionCount + LastInstant + LastCause`是唯一business frontier，不从summary或event history派生。`parentWorldVersion`是business lineage provenance；它不等于StateJournal commit parent。
 
-每个 writer commit 写入描述“本次 commit”的 `commitKind` 与 summary。历史 StateJournal root 保留该时刻的字段值，所以遍历 physical commit parent chain并加载各 historical root，可以得到一条与 commit 对齐的摘要序列。当前 helper 会 materialize historical roots；“只反序列化 meta info”的优化尚未验证，也不是 correctness 前提。
+unified root没有durable `commitKind`或`metadata-only` commit概念。Opening/Response只是prepared transaction的内存operation kind；lineage-only boundary由独立physical commit表达。summary仍是一条optional diagnostic，排除在full authority与ambiguity裁决之外。
+
+root没有ledger、transaction/event codec或replay path；也没有把POCO修改后写回durable graph。每个领域wrapper稳定私有持有自己的`_data`并直接mutation；POCO只用于test baseline import、planning、production reducer oracle、deep freeze以及Presentation closed baseline。
+
+历史summary仍可通过physical parent chain加载各root得到；当前遍历会materialize root，meta-only fast path尚未证明。
 
 ### 4.2 唯一 authority 分工
 
@@ -179,17 +200,20 @@ summary 缺失时必须仍能 reopen 和继续运行。不能从 summary 推导�
 
 ```text
 Forecast / Plan against committed facade
-→ construct exact ordered JournalBatch in memory
-→ internal OOP wrapper mutators
-→ batch-end Validate complete graph
+→ capture canonical DecisionRequest + PlayerDecision when needed
+→ prepare deterministic request-bound cognition + exact ordered JournalBatch
+→ validate responder/entity/sequence and production candidate key/due/derived ordinal
+→ apply cognition, then exact Game/Spatial facts through private `_data` wrappers
+→ materialize POCO only for reducer-oracle/deep-freeze comparison
+→ Validate complete Objective + private Player graph
 → advance persisted frontier
-→ write commitKind + lossy summary
+→ write optional lossy summary
 → one Repository.Commit(root)
 → resolve physical outcome
 → publish the original in-memory batch to live Presentation
 ```
 
-OOP wrapper 对业务侧只暴露 query、command validation 或 transaction-draft generation；raw Durable containers 和 unrestricted setter 不出 Ruleset state assembly。
+OOP wrapper对业务侧只暴露query、command validation或prepared transaction generation；raw Durable containers和unrestricted setter不出state assembly。Phase 4只支持opening与passage-response所需的closed fact subset，不宣称arbitrary FirstBoard fact union。
 
 ### 4.4 Phase 1 模型为什么被取代
 
@@ -238,7 +262,7 @@ V1 不建设 deep draft/rollback：
 
 ### 5.3 Commit outcome unknown
 
-当前CI pin直接提供强类型`RepositoryCommitError`。Objective、lineage-start、Encounter与Player commit都在调用前freeze完整authoritative parent/child snapshot；它包含schema/Definition/Ruleset binding、WorldVersion、`ParentWorldVersion`、last instant/cause、commit kind与该vertical的完整domain/player state，但有意排除lossy summary。
+当前CI pin直接提供强类型`RepositoryCommitError`。unified business与lineage commit都在调用前freeze完整authoritative parent/child snapshot；它包含schema/Definition/Ruleset binding、WorldVersion、`ParentWorldVersion`、LastInstant/Cause、NextPersistentId、fact text、全部Game/Spatial collections与private Player state，但有意排除lossy summary。
 
 ```text
 Repository.Commit 返回 failure/throw
@@ -256,7 +280,9 @@ Repository.Commit 返回 failure/throw
      => corruption / irreconcilable fault
 ```
 
-当前裁决不再比较ledger tail、canonical bytes、digest或summary。`PublicationState`帮助分类，但不能替代reopen后的candidate address、physical parent edge与full authority验证，也不得把`MayHavePublished`变成blind retry。Deadline还证明：若lineage commit在publication前明确`NotPublished`，recovery API只在既有branch仍是exact parent authority时重新应用已捕获的deterministic lineage boundary；这不是重调Player/backend。
+当前裁决不再比较ledger tail、canonical bytes、digest或summary。`PublicationState`帮助分类，但不能替代reopen后的candidate address、physical parent edge与full authority验证；`Published + parent`、`NotPublished + child`等contradiction一律fail closed。
+
+Phase 4在main与child branch都覆盖AfterCognition、AfterGame、AfterSpatial、AtCompleteValidation四个prepublication faults，并覆盖business与lineage boundary的Published ambiguity。若branch已创建、但lineage commit在调用Repository前失败，或StateJournal只返回generic pre-candidate error，wrapper生成candidate-less `NotPublished` receipt；`ResumeForkBranch`只在同branch仍为exact captured parent时重施lineage boundary，不重新planning、调用Player/backend或提交business response。
 
 只有未来出现 delayed reconciliation 或 cross-process external-effect dedupe 的真实需求时，才考虑在 graph 中增加窄的 stable operation ID；这不要求恢复完整 semantic ledger。
 
@@ -309,13 +335,19 @@ Objective actor、Memory四shard、previous-known-facts、composition/slot bindi
 
 这个vertical使用production Objective Observe事实与reducer oracle，但cognition/memory replacement是deterministic test effect，next request由完整POCO world oracle supplied。它不是production LLM turn、backend reconnect或完整FirstBoard world restore。Blocking/commit前flush仍是当前候选；不得让background Task在commit后继续mutate同一个Revision。
 
+Phase 4把Player closure真正合入统一root。main response只调用一次test driver，捕获canonical encounter `DecisionRequest`与exact `PlayerDecision(ReverseTravel)`，再准备request-bound deterministic cognition；同一个business root commit依次应用private Memory/ordered previous facts、Game resolved与Spatial reversed。cross-intent、cross-actor、cross-entity、coordinated fake request、forged candidate key、wrong due/derived ordinal与sequence mutations都在durable mutation前被拒绝。
+
+cognition仍是deterministic test effect，不是真实LLM/backend transaction；private profile、Memory与previous facts不会进入summary或Presentation。
+
 ### 6.2 Presentation
 
 Presentation不持有Authority durable wrapper。`3cecbfb`已经提供nonzero baseline consumer seam：构造时要求`Committed == Presented == N`，nonzero baseline必须有last instant，且baseline world time必须等于该instant的model time；之后只接受同lineage的exact `N → N+1` suffix batch。
 
 测试明确证明old prefix cue不会重播，commit成功但cue publication前crash的baseline也不会合成旧cue；这正是当前graph-authority/summary-only模型接受的语义。live suffix仍依靠exact batch boundary、facts order与pre/post state产生新cues。Presentation focused **18/18**、完整Demo **134/134**。
 
-尚未证明的是StateJournal/Runner接线：当前没有从durable root生成closed full Objective POCO baseline并交给Presentation loop。若未来要求补播crash-gap cue，应增加窄durable Presentation outbox，而不是恢复完整Objective event-sourcing。
+Phase 4已经从historical StateJournal opening root导出closed full Objective baseline，直接喂给现有Presentation loop，再只发布main的exact reverse suffix；输出包含resolved/reversed，不包含opening prefix或private Memory。这通过Demo IVT与Persistence test完成，是test-host integration seam，仍不是production Runner/Save wiring。
+
+若未来要求补播crash-gap cue，应增加窄durable Presentation outbox，而不是恢复完整Objective event-sourcing。
 
 ## 7. Same-repository fork / rewind
 
@@ -325,24 +357,36 @@ V1 的 fork/rewind protocol 是：
 选择 exact historical CommitAddress
 → CreateBranch(newBranch, fromCommit) in the same repository
 → checkout new branch
-→ 立即 co-commit lineage-start root
+→ physical commit A：只提交 lineage boundary
      fresh business lineageId
      transitionCount = selected source transitionCount N
      ParentWorldVersion = selected source WorldVersion
-     commitKind = lineage-start
      one lossy summary
-→ 提交独立 suffix Objective transactions
+→ physical commit B：提交独立 suffix business transaction
 ```
 
 rewind 是从旧 commit 创建新 branch，不是破坏性地向后移动 source branch。两次从同一 historical state fork 必须分配不同 business lineage；branch name、`LocalId` 与 `CommitAddress` 都不冒充 `WorldVersion`。
 
-lineage-start只改变business lineage/provenance/commit metadata；它不增加Objective transition count，也不清空选中root的last instant、cause或domain graph。Phase 2既验证了Genesis `(L0,0) → (L1,0)` fork，也验证了从nonzero `(L0,1)` fork得到`(L1,1)`并保留完整状态。
+lineage boundary只改变business lineage/provenance与summary；它不增加Objective transition count，也不清空选中root的last instant、cause、Objective或private Player graph。它与第一个child business transaction是两个不同StateJournal commits，不能合写成“fork+response一次commit”。
 
 同一 repository 的双 sibling 测试中，main 先提交 deadline；两个 branch 都从精确 Genesis `CommitAddress` 创建，各自立即提交 lineage boundary 和独立 deadline suffix；main ref 不移动；每条 effective history 都是：
 
 ```text
 Genesis → lineage-start → objective-transition
 ```
+
+Phase 4统一root进一步验证：
+
+```text
+imported complete traveling baseline (L0,0)
+→ production exact opening business commit (L0,1)
+   ├─ main: production exact Reverse business commit (L0,2)
+   └─ child branch from exact opening address
+       → separate lineage-only commit (L1,1), ParentWorldVersion=(L0,1)
+       → Continue + prepared cognition business commit (L1,2)
+```
+
+child的lineage boundary完整继承opening Objective/Player/frontier；Continue只清pending并推进actor/Player，不产生Spatial reverse。main reverse state与private Memory保持不变。
 
 这种方式共享已有 repository 历史，避免把“复制整个 repository”设为正常 fork/rewind primitive。本 probe 不声称 branch 创建严格 O(1)，也不以性能性质作为 correctness 结论。
 
@@ -395,7 +439,27 @@ Phase 3位于`bd4a6e9`、`3cecbfb`、`605b179`、`94d49d5`，把Phase 2的“下
 | Player | Alice Observe真实Objective outcome与deterministic cognition effect co-commit；4-shard Memory、previous facts、composition/slot/sequence、exact prompt、mutants、fault/binding/privacy、c1后main/fork各自c2 nested isolation与Published ambiguity通过。 | 不是production LLM turn，也不是完整world restore；next request来自full-POCO oracle。 |
 | Presentation | nonzero baseline建立`C=P=N`、last instant/world-time binding；old cues drop、crash-gap no replay、only exact suffix通过。 | consumer seam已就绪，尚未StateJournal/Runner接线。 |
 
-当前验证计数：StateJournalNative **29/29**，Persistence **39/39**；Presentation focused **18/18**，Demo **134/134**；DramaBoard solution **505/505**；CI-pinned Atelia StateJournal **1961/1961**。
+Phase 3结束时验证计数：StateJournalNative **29/29**，Persistence **39/39**；Presentation focused **18/18**，Demo **134/134**；DramaBoard solution **505/505**；CI-pinned Atelia StateJournal **1961/1961**。
+
+### 8.4 Phase 4：unified FirstBoard integration
+
+Phase 4位于`50bd959`与`0c756ef`：
+
+| Slice | Phase 4 evidence | 边界 |
+|---|---|---|
+| Hydration | public validated `GraphSpatialState.Restore`恢复entities、overrides、schedules、contacts；unified root可导出closed `FirstBoardWorld`。 | Demo IVT + Persistence reference只是test-host seams，不是Runner wiring。 |
+| One canonical root | 一个root包含complete selected dynamic Game+Spatial Objective、private Alice Player profile/Memory/ordered previous facts，以及唯一LastInstant/LastCause frontier。 | 没有arbitrary fact union、ledger/event codec/replay、durable commitKind、metadata-only commit或POCO writeback。 |
+| Main response | `(L0,0)` imported traveling baseline → production exact opening `(L0,1)` → prepared request-bound cognition + Game Reversed + Spatial reverse同一business commit `(L0,2)`。 | cognition是deterministic test effect，不是真实LLM/backend。 |
+| Historical fork | exact opening address → separate lineage-only commit `(L1,1)` → Continue + cognition business commit `(L1,2)`；main不移动。 | lineage boundary与Continue是两个physical commits。 |
+| Deep authority | freeze包含NextPersistentId、exact fact text、每个Game/Spatial collection与private Player state；summary排除。 | full Objective POCO只用于test baseline import、planning/oracle/freeze/Presentation。 |
+| Failure/recovery | main与child各四个working faults；business/lineage Published ambiguity；publication contradiction fail closed；candidate-less/generic pre-candidate NotPublished receipt + exact-parent `ResumeForkBranch`。 | resume lineage不调用planning、Player或backend。 |
+| Presentation | historical opening root进入现有loop，只播放exact reverse suffix；无opening prefix、无private Memory。 | 仍是test-host接线。 |
+
+unified store **2,893 LOC** + tests **1,095 LOC** = **3,988 gross LOC**；Persistence assembly的xUnit parallelism contract另有1-line `AssemblyInfo.cs`，不混入store/test LOC。unified focused **27/27**。
+
+审查经历多轮reject/fix，已关闭staged fork、request/actor binding、publication contradiction、extreme ceiling overflow、noncanonical patch mask、fork branch leak/pre-candidate recovery以及candidate key/due/ordinal gates；final review无P1/P2。
+
+Phase 4当前计数：StateJournalNative **56/56**，Persistence **66/66**，Spatial **54/54**，Presentation focused **18/18**，Demo **134/134**，DramaBoard Local **534/534**。Phase 3对current pin运行的Atelia **1961/1961**本阶段未修改、未重跑，应视作current-pin的历史上游证据而非Phase 4新增结果。
 
 ## 9. 当前裁决与剩余问题
 
@@ -407,42 +471,34 @@ StateJournal-native graph authority
 + same-repository branch/ref fork/rewind
 + optional lossy per-root summary
 + ephemeral exact live batches
-= leading test-only direction
+= selected integrated capability proven test-only
 ```
 
-Phase 3显著增强了“能力够不够”的证据：
+Phase 4已经回答Phase 3的decisive integration问题：
 
 - rebuildable ledger不是 DramaBoard 快速原型的 V1 requirement；
 - ledger codec、projector、derived frontier 与 rebuild proof 可以从当前 probe删除；
-- same-repo historical branch 是 fork/rewind 的 V1 物理原语；
-- CI exact pin已常规验证typed ByteString、dispose lifetime与structured commit outcomes；
-- order-sensitive Encounter nested graph、Player durable closure与Presentation nonzero suffix seam都存在可执行proof。
+- one canonical root/coordinator能够co-commit prepared cognition、Game resolution与optional Spatial reverse；
+- direct reopen、same-repo historical fork、separate lineage boundary、deep authority recovery与Presentation suffix handoff都可执行。
 
-但“删掉ledger所以实现一定更简单”并未被证明。两个新的专用vertical各约2.3K gross lines：Encounter **2,318**，Player **2,338**。它们包含research oracle、fault、fork、privacy与negative tests，不能直接当production LOC；同时也真实展示了hand-written schema、wrapper、validation、full-authority snapshot、failure resolver与fork ceremony很重。能力充分性与authoring便利性必须分开评价。
+但capability sufficient不等于authoring easy。统一slice达到 **3,988 gross LOC**，比两个约2.3K-line专用vertical更强地暴露hand-written schema、wrapper、validation、deep freeze、failure与fork ceremony。它仍包含research oracle和大量negative coverage，不能冒充production LOC；同样不能被用来宣称当前authoring体验已经适合迁移。
 
-仍需实证回答：
+尚未证明：
 
-1. Encounter、Player与deadline合入同一个canonical root/coordinator时，cross-subsystem commit是否仍清楚？
-2. closed full Objective baseline能否从统一root干净导出并交给Presentation suffix seam？
-3. 重复schema/wrapper/freeze/validation/failure代码能否通过StateJournal API、生成器或authoring convention显著下降？
-4. meta-only history enumeration是否值得成为StateJournal public API？
-5. portable Save如何在缺少strict read-only open与branch closure export API时安全落地？
-6. production cutover时，0004/0014–0020应如何整体重裁，避免两套authority？
+1. arbitrary FirstBoard fact union；
+2. real LLM/backend transaction；
+3. production Runner/Save/cutover与portable export；
+4. meta-only history enumeration；
+5. authoring ceremony能否显著下降。
 
-最佳下一步不是继续建设第三个独立root，也不是立刻production cutover，而是一个decisive test-only integration slice：
+责任边界必须保持：
 
-```text
-one canonical FirstBoard root + one transaction coordinator
-→ Player passage-encounter response
-     cognition update
-     + Game encounter resolution
-     + optional Spatial reverse
-→ one commit + direct reopen + historical fork
-→ derive closed full Objective baseline
-→ feed the existing Presentation exact-suffix seam
-```
+- application-owned laws：canonical request/decision/occurrence binding、Game/Spatial mutation semantics、private Player state privacy；
+- StateJournal/API candidates：所有Commit failure统一返回typed outcome（允许`candidate? + NotPublished`）、atomic/abortable branch initialization或cleanup、明确的multi-repository parallelism contract/test，以及generator/typed durable record/schema-validation boilerplate reduction。
 
-若该slice仍需大量重复手写代码，应先改善StateJournal/生成器或wrapper authoring ergonomics，再扩大production migration。
+这些API candidates目前只记录，不立刻建设。
+
+最佳下一步是停止增加probe，针对unified slice做一次narrow、measured ergonomics/API reduction spike，要求完整保留27-case behavior。只有ceremony materially improves后，才重新裁决production 0004/0014–0020；否则不启动production migration。
 
 ## 10. 长期新存储研究假说
 
@@ -466,20 +522,20 @@ OOP object database
 压缩或新会话后，建议按以下顺序恢复：
 
 1. 本文件 §2、§4–§7：当前 authority、failure、Player/Presentation 与 fork/rewind law。
-2. 本文件 §8 与 [Build Log 0022](0022-statejournal-native-objective-probe-results.md)：三阶段实验结果。
+2. 本文件 §8 与 [Build Log 0022](0022-statejournal-native-objective-probe-results.md)：四阶段实验结果。
 3. [`StateJournal usage-guide`](../../../Atelia-org/atelia/docs/StateJournal/usage-guide.md)：当前 public API。
-4. `tests/FirstBoard.Persistence.Tests/StateJournalNative/`：Deadline、API contract、Encounter与Player executable evidence。
-5. `src/FirstBoard.Demo/Live/FirstBoardPresentationLoop.cs`、`LiveSessionCoordination.cs`及其tests：nonzero baseline consumer seam。
+4. `tests/FirstBoard.Persistence.Tests/StateJournalNative/UnifiedFirstBoardProbeStore.cs`与unified tests：Phase 4 canonical integration evidence。
+5. `src/Spatial/State/GraphSpatialState.cs`、`src/FirstBoard.Demo/Live/FirstBoardPresentationLoop.cs`及其tests：hydration与Presentation test-host seams。
 6. `E:/repos/Atelia-org/atelia/src/StateJournal/Repository.cs`、`RepositoryCommitError.cs`、`Repository.BranchRefs.cs`：commit/ref/history outcome。
 7. [Build Log 0004](0004-game-content-and-composite-save.md) 与 0014–0020：尚未在本次任务中重写的 production plan。
 
 最近收敛的团队裁决：
 
-- direct StateJournal wrapper的能力充分性证据显著增强，尚非production cutover；
+- selected unified StateJournal capability已经test-only证明，尚非production cutover；
 - canonical graph/frontier是状态 authority，summary不是；
 - exact batch只保留为当前 transaction/live Presentation contract；
 - normal fork/rewind使用同一 repository 的 branch/ref，不复制整个 repository；
-- Encounter、Player closure与Presentation baseline seam已分别证明，但尚未进入同一canonical root/Runner path；
-- 两个约2.3K-line专用vertical证明hand-written ceremony仍重，不能把删除ledger等同于代码简单；
-- 下一步是统一FirstBoard integration slice；portable export与meta-only history继续延期；
+- Encounter、Player closure与Presentation baseline已进入同一unified test path，但尚未Runner/Save wiring；
+- unified 3,988 LOC强化hand-written ceremony风险，不能把capability sufficient等同于authoring easy；
+- 下一步停止probe，做保留27-case behavior的measured ergonomics/API reduction spike；portable export与meta-only history继续延期；
 - CI已pin官方Atelia main并常规消费typed/lifetime/structured outcome API，local sibling property仅是override便利。
