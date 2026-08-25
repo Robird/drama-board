@@ -1,3 +1,4 @@
+using Atelia.StateJournal;
 using DramaBoard.FirstBoard;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
@@ -426,8 +427,13 @@ public sealed class StateJournalNativeDeadlineProbeTests
             });
         Assert.Equal(DeadlineProbeOperationKind.LineageStart, failure.OperationKind);
         Assert.Null(failure.CandidateAddress);
-        Assert.Equal("BeforeRepositoryCommit", failure.FailurePhase);
-        Assert.Equal("NotPublished", failure.PublicationState);
+        Assert.Null(failure.FailurePhase);
+        Assert.Equal(
+            RepositoryCommitPublicationState.NotPublished,
+            failure.PublicationState);
+        Assert.True(failure.RequiresRepositoryReopen);
+        Assert.False(failure.CanRetryTransparently);
+        Assert.False(failure.MayHavePublished);
 
         DeadlineProbeResolution notCommitted =
             DeadlineProbeSession.ResolveUnknownOutcome(
@@ -528,14 +534,16 @@ public sealed class StateJournalNativeDeadlineProbeTests
     private static void AssertStructuredCommitMetadata(
         DeadlineProbeCommitFailedException failure)
     {
-        bool hasCandidate = failure.CandidateAddress is not null;
-        Assert.Equal(hasCandidate, failure.FailurePhase is not null);
-        Assert.Equal(hasCandidate, failure.PublicationState is not null);
-        if (hasCandidate)
-        {
-            Assert.Equal("AppendReflog", failure.FailurePhase);
-            Assert.Equal("Published", failure.PublicationState);
-        }
+        Assert.NotNull(failure.CandidateAddress);
+        Assert.Equal(
+            RepositoryCommitFailurePhase.AppendReflog,
+            failure.FailurePhase);
+        Assert.Equal(
+            RepositoryCommitPublicationState.Published,
+            failure.PublicationState);
+        Assert.True(failure.RequiresRepositoryReopen);
+        Assert.False(failure.CanRetryTransparently);
+        Assert.True(failure.MayHavePublished);
     }
 
     private static string GetReflogPath(

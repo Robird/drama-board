@@ -109,10 +109,8 @@ internal sealed record DeadlineProbeAuthoritySnapshot(
 
 internal sealed class DeadlineProbeCommitFailedException : InvalidOperationException
 {
-    private const string StructuredCommitErrorCode = "SJ.Repository.CommitFailed";
-
     public DeadlineProbeCommitFailedException(
-        AteliaError error,
+        RepositoryCommitError error,
         string branchName,
         CommitAddress expectedParent,
         DeadlineProbeAuthoritySnapshot parentAuthority,
@@ -130,30 +128,26 @@ internal sealed class DeadlineProbeCommitFailedException : InvalidOperationExcep
         ChildAuthority = childAuthority;
         OperationKind = operationKind;
 
-        if (!string.Equals(
-                error.ErrorCode,
-                StructuredCommitErrorCode,
-                StringComparison.Ordinal))
+        if (!string.Equals(error.BranchName, branchName, StringComparison.Ordinal))
         {
-            return;
+            throw new InvalidDataException(
+                $"Structured StateJournal commit error reported branch " +
+                $"'{error.BranchName}', but caller captured '{branchName}'.");
         }
 
-        IReadOnlyDictionary<string, string> details = error.Details
-            ?? throw new InvalidDataException(
-                $"Structured StateJournal commit error '{StructuredCommitErrorCode}' has no Details.");
-        CommitAddress reportedExpected = ParseRequiredAddress(
-            details,
-            "ExpectedHeadAddress");
-        if (reportedExpected != expectedParent)
+        if (error.ExpectedHeadAddress != expectedParent)
         {
             throw new InvalidDataException(
                 $"Structured StateJournal commit error reported expected HEAD " +
-                $"'{reportedExpected}', but caller captured '{expectedParent}'.");
+                $"'{error.ExpectedHeadAddress}', but caller captured '{expectedParent}'.");
         }
 
-        CandidateAddress = ParseRequiredAddress(details, "CandidateAddress");
-        FailurePhase = ReadRequiredDetail(details, "FailurePhase");
-        PublicationState = ReadRequiredDetail(details, "PublicationState");
+        CandidateAddress = error.CandidateAddress;
+        FailurePhase = error.FailurePhase;
+        PublicationState = error.PublicationState;
+        RequiresRepositoryReopen = error.RequiresRepositoryReopen;
+        CanRetryTransparently = error.CanRetryTransparently;
+        MayHavePublished = error.MayHavePublished;
     }
 
     private DeadlineProbeCommitFailedException(
@@ -163,8 +157,7 @@ internal sealed class DeadlineProbeCommitFailedException : InvalidOperationExcep
         DeadlineProbeAuthoritySnapshot parentAuthority,
         DeadlineProbeAuthoritySnapshot childAuthority,
         DeadlineProbeOperationKind operationKind,
-        string failurePhase,
-        string publicationState)
+        RepositoryCommitPublicationState publicationState)
         : base(message)
     {
         BranchName = branchName;
@@ -172,8 +165,10 @@ internal sealed class DeadlineProbeCommitFailedException : InvalidOperationExcep
         ParentAuthority = parentAuthority;
         ChildAuthority = childAuthority;
         OperationKind = operationKind;
-        FailurePhase = failurePhase;
         PublicationState = publicationState;
+        RequiresRepositoryReopen = true;
+        CanRetryTransparently = false;
+        MayHavePublished = false;
     }
 
     public string BranchName { get; }
@@ -188,9 +183,15 @@ internal sealed class DeadlineProbeCommitFailedException : InvalidOperationExcep
 
     public CommitAddress? CandidateAddress { get; }
 
-    public string? FailurePhase { get; }
+    public RepositoryCommitFailurePhase? FailurePhase { get; }
 
-    public string? PublicationState { get; }
+    public RepositoryCommitPublicationState PublicationState { get; }
+
+    public bool RequiresRepositoryReopen { get; }
+
+    public bool CanRetryTransparently { get; }
+
+    public bool MayHavePublished { get; }
 
     public static DeadlineProbeCommitFailedException CreateKnownNotPublished(
         string branchName,
@@ -204,32 +205,7 @@ internal sealed class DeadlineProbeCommitFailedException : InvalidOperationExcep
             parentAuthority,
             childAuthority,
             operationKind,
-            failurePhase: "BeforeRepositoryCommit",
-            publicationState: "NotPublished");
-
-    private static CommitAddress ParseRequiredAddress(
-        IReadOnlyDictionary<string, string> details,
-        string key)
-    {
-        string text = ReadRequiredDetail(details, key);
-        CommitAddress? parsed = CommitAddress.TryParse(text);
-        return parsed ?? throw new InvalidDataException(
-            $"Structured StateJournal commit detail '{key}' is not a valid address: '{text}'.");
-    }
-
-    private static string ReadRequiredDetail(
-        IReadOnlyDictionary<string, string> details,
-        string key)
-    {
-        if (!details.TryGetValue(key, out string? value) ||
-            string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidDataException(
-                $"Structured StateJournal commit error is missing detail '{key}'.");
-        }
-
-        return value;
-    }
+            RepositoryCommitPublicationState.NotPublished);
 }
 
 /// <summary>
@@ -417,10 +393,8 @@ internal sealed class DeadlineProbeSession : IDisposable
                 nameof(failure));
         }
 
-        if (!string.Equals(
-                failure.PublicationState,
-                "NotPublished",
-                StringComparison.Ordinal))
+        if (failure.PublicationState !=
+            RepositoryCommitPublicationState.NotPublished)
         {
             throw new InvalidOperationException(
                 "Fork initialization can resume only from a receipt whose candidate is " +
@@ -715,8 +689,15 @@ internal sealed class DeadlineProbeSession : IDisposable
         AteliaResult<CommitAddress> commit = _repository.Commit(_root.GraphRoot);
         if (commit.IsFailure)
         {
-            AteliaError error = commit.Error!;
             Poison();
+            if (commit.Error is not RepositoryCommitError error)
+            {
+                throw new InvalidOperationException(
+                    "StateJournal commit failed before producing a structured candidate; " +
+                    "the Session is poisoned and must be reopened from HEAD.",
+                    new InvalidOperationException(commit.Error!.ToString()));
+            }
+
             throw new DeadlineProbeCommitFailedException(
                 error,
                 _branchName,
