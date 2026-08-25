@@ -149,6 +149,26 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
         return state;
     }
 
+    /// <summary>
+    /// Restores one complete dynamic state snapshot against immutable graph content.
+    /// </summary>
+    public static GraphSpatialState Restore(
+        GraphDefinition definition,
+        IEnumerable<SpatialEntity> entities,
+        IEnumerable<PassageEntryAccessOverride> passageEntryAccessOverrides,
+        IEnumerable<ScheduledPassageEntryChange> scheduledPassageEntryChanges,
+        IEnumerable<PassageContactKey> consumedContacts)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        var state = new GraphSpatialState(
+            entities,
+            passageEntryAccessOverrides,
+            scheduledPassageEntryChanges,
+            consumedContacts);
+        GraphSpatialStateValidator.ValidateComplete(definition, state);
+        return state;
+    }
+
     public bool TryGetEntity(EntityId entityId, out SpatialEntity? entity)
     {
         entity = Entities.SingleOrDefault(value => value.Id == entityId);
