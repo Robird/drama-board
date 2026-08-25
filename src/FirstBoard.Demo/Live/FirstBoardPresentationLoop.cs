@@ -16,13 +16,34 @@ internal sealed class FirstBoardPresentationLoop
     private readonly IPresentationPacer _pacer;
     private readonly PresentationMode _mode;
     private readonly string? _humanActorId;
-    private readonly ModelTime _genesisTime;
+    private readonly ModelTime _baselineTime;
     private FirstBoardWorld _replayWorld;
     private LogicalInstant? _lastPresentedInstant;
 
     public FirstBoardPresentationLoop(
         ScenarioInstance scenario,
-        FirstBoardWorld genesisWorld,
+        FirstBoardWorld baselineWorld,
+        LiveSessionCoordination coordination,
+        ITerminalUi terminal,
+        IPresentationPacer pacer,
+        PresentationMode mode,
+        string? humanActorId)
+        : this(
+            scenario,
+            baselineWorld,
+            baselineLastInstant: null,
+            coordination,
+            terminal,
+            pacer,
+            mode,
+            humanActorId)
+    {
+    }
+
+    public FirstBoardPresentationLoop(
+        ScenarioInstance scenario,
+        FirstBoardWorld baselineWorld,
+        LogicalInstant? baselineLastInstant,
         LiveSessionCoordination coordination,
         ITerminalUi terminal,
         IPresentationPacer pacer,
@@ -30,7 +51,7 @@ internal sealed class FirstBoardPresentationLoop
         string? humanActorId)
     {
         ArgumentNullException.ThrowIfNull(scenario);
-        ArgumentNullException.ThrowIfNull(genesisWorld);
+        ArgumentNullException.ThrowIfNull(baselineWorld);
         ArgumentNullException.ThrowIfNull(coordination);
         ArgumentNullException.ThrowIfNull(terminal);
         ArgumentNullException.ThrowIfNull(pacer);
@@ -41,23 +62,49 @@ internal sealed class FirstBoardPresentationLoop
                 nameof(humanActorId));
         }
 
-        if (genesisWorld.WorldSeed != scenario.WorldSeed)
+        if (baselineWorld.WorldSeed != scenario.WorldSeed)
         {
             throw new ArgumentException(
-                "Presentation genesis and scenario must use the same world seed.",
-                nameof(genesisWorld));
+                "Presentation baseline and scenario must use the same world seed.",
+                nameof(baselineWorld));
+        }
+
+        LiveFrontierSnapshot frontiers = coordination.Snapshot();
+        if (frontiers.Committed != frontiers.Presented)
+        {
+            throw new ArgumentException(
+                "Presentation baseline requires equal committed and presented frontiers.",
+                nameof(coordination));
+        }
+
+        bool emptyBaseline = frontiers.Committed.TransitionCount == 0;
+        if (emptyBaseline != (baselineLastInstant is null))
+        {
+            throw new ArgumentException(
+                "A zero-transition Presentation baseline requires no last instant, and a " +
+                "nonzero baseline requires one.",
+                nameof(baselineLastInstant));
+        }
+
+        if (baselineLastInstant is LogicalInstant last &&
+            baselineWorld.Now != last.ModelTime)
+        {
+            throw new ArgumentException(
+                "Presentation baseline world time must equal the last committed instant.",
+                nameof(baselineLastInstant));
         }
 
         _reducer = new FirstBoardReducer(scenario.Graph);
-        _reducer.Validate(genesisWorld);
+        _reducer.Validate(baselineWorld);
         _projector = new FirstBoardPresentationProjector(scenario, humanActorId);
         _coordination = coordination;
         _terminal = terminal;
         _pacer = pacer;
         _mode = mode;
         _humanActorId = humanActorId;
-        _genesisTime = genesisWorld.Now;
-        _replayWorld = genesisWorld;
+        _baselineTime = baselineWorld.Now;
+        _replayWorld = baselineWorld;
+        _lastPresentedInstant = baselineLastInstant;
     }
 
     internal FirstBoardWorld ReplayWorld => _replayWorld;
@@ -196,7 +243,7 @@ internal sealed class FirstBoardPresentationLoop
 
     private PresentationCue? CreateIntervalCue(LogicalInstant next)
     {
-        ModelTime previous = _lastPresentedInstant?.ModelTime ?? _genesisTime;
+        ModelTime previous = _lastPresentedInstant?.ModelTime ?? _baselineTime;
         if (next.ModelTime <= previous)
         {
             return null;

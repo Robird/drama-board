@@ -106,6 +106,157 @@ public sealed class FirstBoardPresentationLoopTests
     }
 
     [Fact]
+    public async Task NonzeroBaselineDropsPrefixCueAndPresentsOnlyExactSuffix()
+    {
+        const long sourceLineage = 81_001;
+        const long resumedLineage = 81_002;
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(Seed);
+        FirstBoardWorld genesis = instance.CreateInitialWorld();
+        CommittedTransition prefix = Transition(
+            transitionCount: 1,
+            new LogicalInstant(ModelTime.Zero, 0),
+            [new GameBoardFact(new ActorWaitStartedEvent(BoardIds.Alice, ModelTime.Zero))],
+            sourceLineage);
+        FirstBoardWorld baselineWorld = ApplyTransitions(instance, genesis, prefix);
+        PresentationHarness harness = CreateHarness(
+            PresentationMode.Player,
+            BoardIds.Alice,
+            instance,
+            baselineWorld,
+            new WorldVersion(resumedLineage, 1),
+            prefix.Batch.Instant);
+        FirstBoardPresentationLoop loop = harness.CreateLoop(
+            new FixedIntervalPresentationPacer(TimeSpan.Zero));
+        CommittedTransition suffix = Transition(
+            transitionCount: 2,
+            new LogicalInstant(ModelTime.Zero, 1),
+            [new GameBoardFact(new ActorWaitedEvent(BoardIds.Alice))],
+            resumedLineage);
+
+        Assert.Equal(
+            new LiveFrontierSnapshot(
+                new WorldVersion(resumedLineage, 1),
+                new WorldVersion(resumedLineage, 1)),
+            harness.Coordination.Snapshot());
+        Assert.Empty(harness.Terminal.Cues);
+
+        harness.Publish(suffix);
+        harness.Channel.Writer.TryComplete();
+        await loop.RunAsync(harness.Channel.Reader, CancellationToken.None);
+
+        Assert.Equal(
+            ["actor.waited"],
+            harness.Terminal.Cues.Select(cue => cue.Code));
+        Assert.DoesNotContain(
+            harness.Terminal.Cues,
+            cue => cue.Code == "actor.wait-started");
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(
+                ApplyTransitions(instance, baselineWorld, suffix)),
+            FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
+        Assert.Equal(suffix.Batch.Instant, loop.LastPresentedInstant);
+        Assert.Equal(
+            new LiveFrontierSnapshot(suffix.Version, suffix.Version),
+            harness.Coordination.Snapshot());
+    }
+
+    [Fact]
+    public async Task CommitCueCrashGapBaselineSynthesizesNoPrefixCue()
+    {
+        const long sourceLineage = 82_001;
+        const long resumedLineage = 82_002;
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(Seed);
+        FirstBoardWorld genesis = instance.CreateInitialWorld();
+        CommittedTransition committedBeforeCrash = Transition(
+            transitionCount: 1,
+            new LogicalInstant(ModelTime.Zero, 0),
+            [new GameBoardFact(new ActorWaitStartedEvent(BoardIds.Alice, ModelTime.Zero))],
+            sourceLineage);
+        FirstBoardWorld baselineWorld = ApplyTransitions(
+            instance,
+            genesis,
+            committedBeforeCrash);
+        var baselineVersion = new WorldVersion(resumedLineage, 1);
+        PresentationHarness harness = CreateHarness(
+            PresentationMode.Player,
+            BoardIds.Alice,
+            instance,
+            baselineWorld,
+            baselineVersion,
+            committedBeforeCrash.Batch.Instant);
+        FirstBoardPresentationLoop loop = harness.CreateLoop(
+            new FixedIntervalPresentationPacer(TimeSpan.Zero));
+        harness.Channel.Writer.TryComplete();
+
+        await loop.RunAsync(harness.Channel.Reader, CancellationToken.None);
+
+        Assert.Empty(harness.Terminal.Cues);
+        Assert.Equal(
+            FirstBoardScenario.WorldSnapshot(baselineWorld),
+            FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
+        Assert.Equal(committedBeforeCrash.Batch.Instant, loop.LastPresentedInstant);
+        Assert.Equal(
+            new LiveFrontierSnapshot(baselineVersion, baselineVersion),
+            harness.Coordination.Snapshot());
+    }
+
+    [Fact]
+    public void InvalidPresentationBaselinesAreRejected()
+    {
+        ScenarioInstance instance = ScenarioInstance.CreateDefault(Seed);
+        FirstBoardWorld genesis = instance.CreateInitialWorld();
+        var terminal = new FakeTerminalUi();
+        var pacer = new FixedIntervalPresentationPacer(TimeSpan.Zero);
+
+        Assert.Throws<ArgumentException>(() => new FirstBoardPresentationLoop(
+            instance,
+            genesis,
+            new LogicalInstant(ModelTime.Zero, 0),
+            new LiveSessionCoordination(new WorldVersion(83_001, 0)),
+            terminal,
+            pacer,
+            PresentationMode.Player,
+            BoardIds.Alice));
+
+        CommittedTransition prefix = Transition(
+            transitionCount: 1,
+            new LogicalInstant(ModelTime.Zero, 0),
+            [new GameBoardFact(new ActorWaitStartedEvent(BoardIds.Alice, ModelTime.Zero))],
+            lineageId: 83_001);
+        FirstBoardWorld baselineWorld = ApplyTransitions(instance, genesis, prefix);
+        var nonzero = new LiveSessionCoordination(new WorldVersion(83_002, 1));
+        Assert.Throws<ArgumentException>(() => new FirstBoardPresentationLoop(
+            instance,
+            baselineWorld,
+            nonzero,
+            terminal,
+            pacer,
+            PresentationMode.Player,
+            BoardIds.Alice));
+        Assert.Throws<ArgumentException>(() => new FirstBoardPresentationLoop(
+            instance,
+            baselineWorld,
+            new LogicalInstant(new ModelTime(1), 0),
+            new LiveSessionCoordination(new WorldVersion(83_002, 1)),
+            terminal,
+            pacer,
+            PresentationMode.Player,
+            BoardIds.Alice));
+
+        var unequal = new LiveSessionCoordination(new WorldVersion(83_002, 1));
+        unequal.PublishCommitted(new WorldVersion(83_002, 2));
+        Assert.Throws<ArgumentException>(() => new FirstBoardPresentationLoop(
+            instance,
+            baselineWorld,
+            prefix.Batch.Instant,
+            unequal,
+            terminal,
+            pacer,
+            PresentationMode.Player,
+            BoardIds.Alice));
+    }
+
+    [Fact]
     public async Task InvalidAtomicBatchPublishesNoCueWorldOrPresentedPrefix()
     {
         PresentationHarness harness = CreateHarness(PresentationMode.Player, BoardIds.Alice);
@@ -115,7 +266,7 @@ public sealed class FirstBoardPresentationLoopTests
             [new GameBoardFact(new ObjectTakenEvent(BoardIds.Alice, BoardIds.BrassKey))]);
         FirstBoardPresentationLoop loop = harness.CreateLoop(
             new FixedIntervalPresentationPacer(TimeSpan.Zero));
-        string genesis = FirstBoardScenario.WorldSnapshot(harness.Genesis);
+        string baseline = FirstBoardScenario.WorldSnapshot(harness.BaselineWorld);
         harness.Publish(invalid);
         harness.Channel.Writer.TryComplete();
 
@@ -124,7 +275,7 @@ public sealed class FirstBoardPresentationLoopTests
 
         Assert.Empty(harness.Terminal.Cues);
         Assert.Equal(0, harness.Coordination.Snapshot().Presented.TransitionCount);
-        Assert.Equal(genesis, FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
+        Assert.Equal(baseline, FirstBoardScenario.WorldSnapshot(loop.ReplayWorld));
     }
 
     [Fact]
@@ -236,18 +387,36 @@ public sealed class FirstBoardPresentationLoopTests
         string? humanActorId)
     {
         ScenarioInstance instance = ScenarioInstance.CreateDefault(Seed);
-        FirstBoardWorld genesis = instance.CreateInitialWorld();
-        var version = new WorldVersion(FirstBoardScenario.LineageId, 0);
+        FirstBoardWorld baselineWorld = instance.CreateInitialWorld();
+        var baselineVersion = new WorldVersion(FirstBoardScenario.LineageId, 0);
+        return CreateHarness(
+            mode,
+            humanActorId,
+            instance,
+            baselineWorld,
+            baselineVersion,
+            baselineLastInstant: null);
+    }
+
+    private static PresentationHarness CreateHarness(
+        PresentationMode mode,
+        string? humanActorId,
+        ScenarioInstance instance,
+        FirstBoardWorld baselineWorld,
+        WorldVersion baselineVersion,
+        LogicalInstant? baselineLastInstant)
+    {
         return new(
             instance,
-            genesis,
+            baselineWorld,
+            baselineLastInstant,
             Channel.CreateUnbounded<CommittedTransition>(new UnboundedChannelOptions
             {
                 SingleReader = true,
                 SingleWriter = true,
                 AllowSynchronousContinuations = false,
             }),
-            new LiveSessionCoordination(version),
+            new LiveSessionCoordination(baselineVersion),
             new FakeTerminalUi(),
             mode,
             humanActorId);
@@ -256,9 +425,10 @@ public sealed class FirstBoardPresentationLoopTests
     private static CommittedTransition Transition(
         long transitionCount,
         LogicalInstant instant,
-        IReadOnlyList<FirstBoardFact> facts) =>
+        IReadOnlyList<FirstBoardFact> facts,
+        long lineageId = FirstBoardScenario.LineageId) =>
         new(
-            new WorldVersion(FirstBoardScenario.LineageId, transitionCount),
+            new WorldVersion(lineageId, transitionCount),
             new JournalBatch<FirstBoardFact>(
                 instant,
                 CandidateKey.FromUtf8($"presentation/{transitionCount}"),
@@ -267,9 +437,16 @@ public sealed class FirstBoardPresentationLoopTests
     private static string ExpectedWorld(
         PresentationHarness harness,
         params CommittedTransition[] transitions)
+        => FirstBoardScenario.WorldSnapshot(
+            ApplyTransitions(harness.Instance, harness.BaselineWorld, transitions));
+
+    private static FirstBoardWorld ApplyTransitions(
+        ScenarioInstance instance,
+        FirstBoardWorld baselineWorld,
+        params CommittedTransition[] transitions)
     {
-        var reducer = new FirstBoardReducer(harness.Instance.Graph);
-        FirstBoardWorld world = harness.Genesis;
+        var reducer = new FirstBoardReducer(instance.Graph);
+        FirstBoardWorld world = baselineWorld;
         foreach (CommittedTransition transition in transitions)
         {
             foreach (FirstBoardFact fact in transition.Batch.Facts)
@@ -280,12 +457,13 @@ public sealed class FirstBoardPresentationLoopTests
             reducer.Validate(world);
         }
 
-        return FirstBoardScenario.WorldSnapshot(world);
+        return world;
     }
 
     private sealed record PresentationHarness(
         ScenarioInstance Instance,
-        FirstBoardWorld Genesis,
+        FirstBoardWorld BaselineWorld,
+        LogicalInstant? BaselineLastInstant,
         Channel<CommittedTransition> Channel,
         LiveSessionCoordination Coordination,
         FakeTerminalUi Terminal,
@@ -295,7 +473,8 @@ public sealed class FirstBoardPresentationLoopTests
         public FirstBoardPresentationLoop CreateLoop(IPresentationPacer pacer) =>
             new(
                 Instance,
-                Genesis,
+                BaselineWorld,
+                BaselineLastInstant,
                 Coordination,
                 Terminal,
                 pacer,

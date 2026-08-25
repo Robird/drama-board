@@ -19,17 +19,10 @@ internal sealed class LiveSessionCoordination
     private TaskCompletionSource _presentationChanged = NewSignal();
     private Exception? _failure;
 
-    public LiveSessionCoordination(WorldVersion genesisVersion)
+    public LiveSessionCoordination(WorldVersion baselineVersion)
     {
-        if (genesisVersion.TransitionCount != 0)
-        {
-            throw new ArgumentException(
-                "The first live-session slice must start at an empty lineage.",
-                nameof(genesisVersion));
-        }
-
-        _committed = genesisVersion;
-        _presented = genesisVersion;
+        _committed = baselineVersion;
+        _presented = baselineVersion;
     }
 
     public WorldVersion CaptureCommitted()

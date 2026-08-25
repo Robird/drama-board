@@ -3,6 +3,45 @@ namespace DramaBoard.FirstBoard.Demo.Tests;
 public sealed class LiveSessionCoordinationTests
 {
     [Fact]
+    public async Task NonzeroBaselineStartsCaughtUpAndAdvancesOneExactSuffix()
+    {
+        var baseline = new WorldVersion(17, 41);
+        var coordination = new LiveSessionCoordination(baseline);
+
+        LiveFrontierSnapshot initial = coordination.Snapshot();
+        Assert.Equal(baseline, initial.Committed);
+        Assert.Equal(baseline, initial.Presented);
+        Assert.Equal(0, initial.BacklogCount);
+        await coordination.WaitUntilPresentedAsync(baseline, CancellationToken.None);
+
+        Assert.Throws<ArgumentException>(() =>
+            coordination.PublishCommitted(new WorldVersion(18, 42)));
+        Assert.Throws<InvalidOperationException>(() =>
+            coordination.PublishCommitted(new WorldVersion(17, 43)));
+
+        var suffix = new WorldVersion(17, 42);
+        coordination.PublishCommitted(suffix);
+        Assert.Throws<InvalidOperationException>(() =>
+            coordination.AcknowledgePresented(baseline));
+
+        LiveFrontierSnapshot pending = coordination.Snapshot();
+        Assert.Equal(suffix, pending.Committed);
+        Assert.Equal(baseline, pending.Presented);
+        Assert.Equal(1, pending.BacklogCount);
+
+        ValueTask wait = coordination.WaitUntilPresentedAsync(suffix, CancellationToken.None);
+        coordination.AcknowledgePresented(suffix);
+        await wait;
+
+        LiveFrontierSnapshot completed = coordination.Snapshot();
+        Assert.Equal(suffix, completed.Committed);
+        Assert.Equal(suffix, completed.Presented);
+        Assert.Equal(0, completed.BacklogCount);
+        Assert.Throws<InvalidOperationException>(() =>
+            coordination.AcknowledgePresented(suffix));
+    }
+
+    [Fact]
     public async Task FrontiersAdvanceOneCompleteBatchAtATime()
     {
         var coordination = new LiveSessionCoordination(new WorldVersion(17, 0));
