@@ -2,7 +2,7 @@
 
 > 状态：**Planned implementation vertical slice**
 >
-> 依赖：[Build Log 0004](0004-game-content-and-composite-save.md)
+> 依赖：[Game content and Save boundary](../implementation/game-content-save-boundary.md)
 >
 > 吸收原 Build Log 0006 的 FirstBoard author-ID migration。
 >

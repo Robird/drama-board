@@ -4,7 +4,7 @@
 >
 > 记录日期：2026-08-26
 >
-> 前置证据：[Build Log 0022：StateJournal-native Objective probe results](0022-statejournal-native-objective-probe-results.md)
+> 前置证据：已归档的 [StateJournal-native experiments](../archive/statejournal-native.md)。
 
 本文记录一项独立研究方向：选择一个开源、可嵌入、适合 Coding Agent 编写应用代码的 Script VM，把 StateJournal 已验证的 stable object identity、dirty tracking、object-level delta、version chain、branch/ref、reopen 与 ambiguous-commit recovery 思路下沉到 VM 的对象模型中。
 

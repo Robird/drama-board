@@ -1,9 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <AteliaRepositoryRoot Condition="'$(AteliaRepositoryRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\Atelia-org\atelia</AteliaRepositoryRoot>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Kernel\Kernel.csproj" />
     <ProjectReference Include="$(AteliaRepositoryRoot)/src/EventJournal/EventJournal.csproj" />

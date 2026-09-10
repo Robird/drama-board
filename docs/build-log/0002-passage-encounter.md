@@ -4,7 +4,7 @@
 > 规划日期：2026-08-22
 > 实施日期：2026-08-23
 > 实现基线：`2b6761c docs(build-log): close TravelTo implementation`
-> 上位设计：[Design Note 008：Graph Spatial World](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
+> 上位设计：[Graph Spatial World](../design/graph-spatial-world.md)
 > 前置竖切：[Build Log 0001：TravelTo](./0001-travel-to.md)
 > 重开裁决：只重开 Design Note 008 的 Slice 2 MVP，并在同批交付可复用 Contact framework 与真实 FirstBoard / Player consumer；不把二者拆成孤立批次。
 > 架构澄清：Contact Forecast / Plan / fact / reducer 是 `Spatial` 的第一等可复用框架能力；FirstBoard 只包装该 occurrence 并原子追加 Game encounter 语义。
@@ -455,7 +455,7 @@ Player.Llm parser 的 JSON 管线已经能传递无 target intent；生产只需
 - FirstBoard world snapshot、fact name/payload summary 与 Demo writer 对新 location/facts 做 exhaustive 更新。
 - `ScenarioDefinition` schema、revision 与 ruleset 不因本次纯运行时能力自动升级；run manifest 的代码版本继续承担 build binding。
 
-> 后继说明（2026-08-23）：本条是 production Save 出现前的 current-build-only 历史决定。自 [Build Log 0004](0004-game-content-and-composite-save.md) 起，wire compatibility 与 Ruleset semantic compatibility 分开；会改变既有 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，software provenance 只供审计。
+> 后继说明（2026-08-23）：本条是 production Save 出现前的 current-build-only 历史决定。自 [Game content and Save boundary](../implementation/game-content-save-boundary.md) 起，wire compatibility 与 Ruleset semantic compatibility 分开；会改变既有 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，software provenance 只供审计。
 
 合法持久 prefix 至少包括：
 

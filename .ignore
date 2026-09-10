@@ -1,0 +1,4 @@
+# Historical records are available through docs/archive/README.md.
+# Search their content explicitly with: rg --no-ignore -n "keyword" docs/archive/legacy
+# List their files explicitly with: rg --files --no-ignore docs/archive/legacy
+docs/archive/legacy/

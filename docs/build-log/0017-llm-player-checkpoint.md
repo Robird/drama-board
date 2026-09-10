@@ -2,7 +2,7 @@
 
 > 状态：**Planned implementation slice**
 >
-> 依赖：[Build Log 0004](0004-game-content-and-composite-save.md) 的 Player continuation 边界；不依赖 0011 命名清理。
+> 依赖：[Game content and Save boundary](../implementation/game-content-save-boundary.md) 的 Player continuation 边界；不依赖 0011 命名清理。
 >
 > 可与 0012–0016 并行；0019 同时依赖两条线。
 >

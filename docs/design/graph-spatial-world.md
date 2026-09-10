@@ -5,9 +5,9 @@
 
 **本次修订：2026-08-23**
 
-**Kernel 权威基线：** [研发计划 006](./研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)、[Design Note 003](./开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md) 与当前 `src/Kernel`。
+**Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。
 
-**认知层边界：** Player HUD、战争迷雾、主观地图、Claims 与 LLM DecisionView 继续由 [Design Note 009](./开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md) 研究，不进入本子系统。
+**认知层边界：** Player HUD、战争迷雾、主观地图、Claims 与 LLM DecisionView 继续由 [Player spatial knowledge](../research/player-spatial-knowledge.md) 研究，不进入本子系统。
 
 ---
 
@@ -939,7 +939,7 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 
 ## 7.2 最小验收矩阵
 
-截至 2026-08-23，表中 Slice 1 与 Slice 2 条目均已有自动化测试；更细的 Slice 2 evidence map 见 [Build Log 0002](./build-log/0002-passage-encounter.md)。
+截至 2026-08-23，表中 Slice 1 与 Slice 2 条目均已有自动化测试；更细的 Slice 2 evidence map 见 [Build Log 0002](../build-log/0002-passage-encounter.md)。
 
 | ID | 必须证明 |
 |---|---|

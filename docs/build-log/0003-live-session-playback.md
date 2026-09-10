@@ -30,8 +30,8 @@ LLM Player 的一次决策可能消耗数秒到数分钟 wall-clock time。若 H
 ### 2.1 上位设计
 
 - [Design Note 002：整体软件架构与技术栈](../开放世界棋盘游戏设计_002_整体软件架构与技术栈.md) 已冻结 Authoritative Host、Player Ports 与可替换 Frontend 的基本分层，并明确 HumanPlayerDriver 与 Presentation Adapter 是正交维度。
-- [Design Note 003：Forecast, Collapse, Commit](../开放世界棋盘游戏设计_003_Forecast_Elapse_Decide_SimulationKernel.md) 已明确区分 Model Time、Causal Ordinal、Wall-Clock Time 与 Presentation Time；等待 Player 消耗零 ModelTime，Presentation 不得改变 winner。
-- [研发计划 006](../研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md) 是当前 Kernel 实现与验收边界。
+- [Simulation Kernel](../design/simulation-kernel.md) 已明确区分 Model Time、Causal Ordinal、Wall-Clock Time 与 Presentation Time；等待 Player 消耗零 ModelTime，Presentation 不得改变 winner。
+- [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 是当前 Kernel 实现与验收边界。
 - [Build Log 0001](0001-travel-to.md) 与 [Build Log 0002](0002-passage-encounter.md) 已建立自动导航、途中 encounter、完整 batch、Replay/Fork 等可供实时播放的真实历史内容。
 
 ### 2.2 当前实现证据

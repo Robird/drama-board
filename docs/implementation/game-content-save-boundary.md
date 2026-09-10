@@ -6,7 +6,7 @@
 >
 > 代码基线：`994eeb4 docs(content): define minimal content and save boundary`
 >
-> 上位设计：[Design Note 008：Graph Spatial World](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
+> 上位设计：[Graph Spatial World](../design/graph-spatial-world.md)
 >
 > 核心裁决：**C# Content 构造封闭 Game Definition；Ruleset 独占行为与因果；Runner 一次只加载一个 Content Module；Save 从终止并 join 的 Session 捕获 Definition、完整 Journal 与 closed Player composition。每次 new run 使用 fresh root lineage，每次 resume 使用 fresh child lineage。**
 
@@ -479,29 +479,29 @@ Pack B 复用完全相同的 FirstBoard Ruleset 能力骨架，但 Actor/Place/P
 
 ### Milestone A：Ruleset 真正 content-neutral
 
-1. [Build Log 0005：Game Definition、typed bindings 与 Ruleset 中立化](0005-game-definition-and-ruleset-bindings.md)
-2. [Build Log 0007：真实 Pack A 与 one-shot loader](0007-content-pack-contract-and-loader-probe.md)
-3. [Build Log 0009：Content-neutral Runner 与 Pack B](0009-content-neutral-runner.md)
+1. [Build Log 0005：Game Definition、typed bindings 与 Ruleset 中立化](../build-log/0005-game-definition-and-ruleset-bindings.md)
+2. [Build Log 0007：真实 Pack A 与 one-shot loader](../build-log/0007-content-pack-contract-and-loader-probe.md)
+3. [Build Log 0009：Content-neutral Runner 与 Pack B](../build-log/0009-content-neutral-runner.md)
 
 ### Milestone B：Objective Save component
 
-4. [Build Log 0012：Game Definition production codec](0012-game-definition-codec.md)
-5. [Build Log 0013：FirstBoard Fact production codec](0013-firstboard-fact-codec.md)
-6. [Build Log 0014：Journal-neutral immutable capture](0014-journal-neutral-capture.md)
-7. [Build Log 0015：Hermetic Atelia 与 sealed Journal export](0015-durable-atelia-journal.md)
-8. [Build Log 0016：Objective Save component 与 verifier](0016-objective-replay-package.md)
+4. [Build Log 0012：Game Definition production codec](../build-log/0012-game-definition-codec.md)
+5. [Build Log 0013：FirstBoard Fact production codec](../build-log/0013-firstboard-fact-codec.md)
+6. [Build Log 0014：Journal-neutral immutable capture](../build-log/0014-journal-neutral-capture.md)
+7. [Build Log 0015：Hermetic Atelia 与 sealed Journal export](../build-log/0015-durable-atelia-journal.md)
+8. [Build Log 0016：Objective Save component 与 verifier](../build-log/0016-objective-replay-package.md)
 
 ### Milestone C：Closed Player continuation
 
-9. [Build Log 0017：LLM Player checkpoint](0017-llm-player-checkpoint.md)
-10. [Build Log 0018：Runner Player composition checkpoint](0018-player-composition-checkpoint.md)
+9. [Build Log 0017：LLM Player checkpoint](../build-log/0017-llm-player-checkpoint.md)
+10. [Build Log 0018：Runner Player composition checkpoint](../build-log/0018-player-composition-checkpoint.md)
 
 ### Milestone D：Composite Save 与 successor
 
-11. [Build Log 0019：Composite Save fail-closed publication](0019-composite-save-package.md)
-12. [Build Log 0020：Runner resume 与 child-lineage successor](0020-runner-resume-successor.md)
+11. [Build Log 0019：Composite Save fail-closed publication](../build-log/0019-composite-save-package.md)
+12. [Build Log 0020：Runner resume 与 child-lineage successor](../build-log/0020-runner-resume-successor.md)
 
-[Build Log 0011：命名清理](0011-mechanical-naming-cleanup.md) 是 non-blocking leaf，不进入主 DAG。
+[Build Log 0011：命名清理](../build-log/0011-mechanical-naming-cleanup.md) 是 non-blocking leaf，不进入主 DAG。
 
 ```text
 0005 → 0007 → 0009 ───→ 0012 ──────────────────────┐

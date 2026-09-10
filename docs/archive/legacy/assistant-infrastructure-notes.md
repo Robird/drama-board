@@ -1,3 +1,7 @@
+# Historical assistant infrastructure notes
+
+> **Historical material, not current authority.** Start from [PROJECT-STATE](../../../PROJECT-STATE.md) and [the documentation index](../../README.md). The dialogue and technical proposals below remain unchanged as period evidence.
+
 有，而且我觉得现在正是一个挺好的窗口：**不要拿这几天额度去堆产品功能，而是拿 Opus 5 / Fable 5 去做那些“认知成本高、代码量不一定大、以后反复复用”的基础设施。**
 
 我顺手确认了下：GitHub 目前确实把 Claude Opus 5 和 Claude Fable 5 都列在 Copilot Max 可用模型里；GitHub 对 Fable 5 的定位尤其偏长程 autonomous coding，而 Opus 5 强调复杂、多步骤、工具协同的 coding workflow。([The GitHub Blog][1]) 有一个值得你知道的小坑：**Fable 5 是例外，会由 Anthropic 保留 prompt/output 最多约 30 天用于安全分类；其他 Claude 模型仍处于 GitHub 的现有数据保留协议下，Opus 5 也列在这组 Anthropic 模型中。**所以如果仓库里有你不愿这样处理的敏感内容，我会优先用 Opus 5。([GitHub Docs][2])

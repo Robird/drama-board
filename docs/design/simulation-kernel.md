@@ -6,9 +6,9 @@
 
 **本次修订：2026-08-21**
 
-**定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 `研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md` 为权威。**
+**定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 为权威。**
 
-**后继 package 边界（2026-08-23）：** 本文删除的是 Kernel 内的应用层 hash 链、旧格式兼容与跨-build scheduler conformance，并未禁止 Runner 在 Kernel 外建立 current-format Save。后继 [Build Log 0004](build-log/0004-game-content-and-composite-save.md) 只在明确支持的 Definition、fact、Ruleset 与 Player compatibility IDs 下 fail-fast reopen；不提供旧格式迁移，也不把 software/git provenance 当成兼容 authority。会改变既有 Save fold 或续局未来行为的 Ruleset 变更必须更换 `RulesetId`。
+**后继 package 边界（2026-08-23）：** 本文删除的是 Kernel 内的应用层 hash 链、旧格式兼容与跨-build scheduler conformance，并未禁止 Runner 在 Kernel 外建立 current-format Save。后继 [Game content and Save boundary](../implementation/game-content-save-boundary.md) 只在明确支持的 Definition、fact、Ruleset 与 Player compatibility IDs 下 fail-fast reopen；不提供旧格式迁移，也不把 software/git provenance 当成兼容 authority。会改变既有 Save fold 或续局未来行为的 Ruleset 变更必须更换 `RulesetId`。
 
 ---
 

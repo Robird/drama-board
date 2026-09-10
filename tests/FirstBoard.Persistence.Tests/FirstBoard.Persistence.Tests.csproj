@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <AteliaRepositoryRoot Condition="'$(AteliaRepositoryRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\Atelia-org\atelia</AteliaRepositoryRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,7 +22,6 @@
     <ProjectReference Include="..\..\src\Player\Player.csproj" />
     <ProjectReference Include="..\..\src\Player.Llm\Player.Llm.csproj" />
     <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
-    <ProjectReference Include="$(AteliaRepositoryRoot)/src/StateJournal/StateJournal.csproj" />
   </ItemGroup>
 
 </Project>

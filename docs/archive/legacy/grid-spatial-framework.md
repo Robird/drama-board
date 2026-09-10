@@ -1,3 +1,7 @@
+# Historical Grid Spatial Framework
+
+> **Historical material, superseded by [Graph Spatial World](../../design/graph-spatial-world.md).** The original Grid model and terminology below are retained unchanged as implementation evidence.
+
 # Design Note 007：Spatial Framework
 ## ——单向依赖 Kernel 的统一分层四向二维网格空间子系统
 

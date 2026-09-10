@@ -1,6 +1,6 @@
 # DramaBoard 工作交接文档(memory-notebook)
 
-> **历史交接快照，停止维护（2026-09-10）。** 当前唯一项目状态入口为 [PROJECT-STATE.md](../PROJECT-STATE.md)，维护约定见 [AGENTS.md](../AGENTS.md)。下文保留当时的工作状态；旧阅读顺序、任务提示、测试计数及“下一步”均不代表当前基线或执行要求。
+> **历史交接快照，停止维护（2026-09-10）。** 当前唯一项目状态入口为 [PROJECT-STATE.md](../../../PROJECT-STATE.md)，维护约定见 [AGENTS.md](../../../AGENTS.md)。下文保留当时的工作状态；旧阅读顺序、任务提示、测试计数及“下一步”均不代表当前基线或执行要求。
 
 **本版:2026-08-18,codex 完成 WP24。状态:第一阶段(WP0–WP11)+ 两轮攻击性评审修复(A1–A10、S1–S14)+ 第二阶段 WP12–WP24 完成;主 slnx 219 / Local.slnx 233 测试绿;下一步倾向 WP25(Passive Curator 轨迹诊断 MVP)。**
 

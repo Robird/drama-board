@@ -2,7 +2,7 @@
 
 **状态：WP24 已采纳。日期：2026-08-18。**
 
-**后继裁决（2026-08-23）：** 本文保留 WP24 的历史类型名和当时的 Pack-specific `RulesetId`。当前目标边界以 [Build Log 0004](build-log/0004-game-content-and-composite-save.md) 为 authority：keyed Definition collections 的输入排列不再属于语义；`game-definition.json`、content-neutral Ruleset compatibility、fresh root/child lineage 与 Resumable Save 均由后继路线实现。software/git provenance 只供审计，不能替代 Save compatibility gate。
+**后继裁决（2026-08-23）：** 本文保留 WP24 的历史类型名和当时的 Pack-specific `RulesetId`。当前目标边界以 [Game content and Save boundary](implementation/game-content-save-boundary.md) 为 authority：keyed Definition collections 的输入排列不再属于语义；`game-definition.json`、content-neutral Ruleset compatibility、fresh root/child lineage 与 Resumable Save 均由后继路线实现。software/git provenance 只供审计，不能替代 Save compatibility gate。
 
 ## 问题
 

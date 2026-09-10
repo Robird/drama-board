@@ -13,9 +13,9 @@
 
 权威上下文：
 
-- 总体空间设计：[Design Note 008](../开放世界棋盘游戏设计_008_Graph_Spatial_World.md)
-- 已部分激活的 Player Agency / 主观地图边界：[Design Note 009](../开放世界棋盘游戏设计_009_Player空间HUD与战争迷雾_备忘.md)
-- 当前 Kernel 语义背景：[研发计划 006](../研发计划_006_统一原子Occurrence与LogicalInstant_Kernel重构计划.md)
+- 总体空间设计：[Graph Spatial World](../design/graph-spatial-world.md)
+- 已部分激活的 Player Agency / 主观地图边界：[Player spatial knowledge](../research/player-spatial-knowledge.md)
+- 当前 Kernel 语义背景：[Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)
 
 本批约束：
 
@@ -353,7 +353,7 @@ Spatial location is AtPlace
 
 `ScenarioDefinition` 的 content revision/ruleset 不因新增运行时行为自动升级；run manifest 已记录代码版本。除非实际 content schema 改变，不为可审计性增加额外版本层。
 
-> 后继说明（2026-08-23）：本段记录的是 production Save 出现前的 current-build-only 决定。自 [Build Log 0004](0004-game-content-and-composite-save.md) 的 resumable contract 起，software provenance 不再承担 restore gate；会改变旧 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，仍不提供旧格式迁移。
+> 后继说明（2026-08-23）：本段记录的是 production Save 出现前的 current-build-only 决定。自 [Game content and Save boundary](../implementation/game-content-save-boundary.md) 的 resumable contract 起，software provenance 不再承担 restore gate；会改变旧 Save fold 或续局未来行为的 Ruleset 变化必须更换 `RulesetId`，仍不提供旧格式迁移。
 
 ## 10. 验收矩阵
 

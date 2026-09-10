@@ -6,6 +6,7 @@
 - 非简单任务先完整阅读根目录 [PROJECT-STATE.md](PROJECT-STATE.md)，再按当前问题读取相关源码、测试和设计章节；不要求顺读历史文档。
 - `PROJECT-STATE.md` 是跨会话导航与工作记忆。区分用户已定方向、源码实现事实、建议和待决问题；它不替代当前用户要求或适用的协作约定。
 - 设计文档描述意图，当前源码、测试和实际运行结果证明实现。历史文档中的任务提示、授权和“下一轮建议”保留其历史语境，不自动成为本轮任务。
+- 文档分类见 [docs/README.md](docs/README.md)。历史正文 `docs/archive/legacy/` 已从默认 rg 检索排除；仅在问题需要时按[历史索引](docs/archive/README.md)读取，或用 `rg --no-ignore -n "关键词" docs/archive/legacy` 显式查找。
 
 ## 自主维护项目记忆
 

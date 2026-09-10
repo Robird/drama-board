@@ -4,7 +4,7 @@
 
 **创建日期：2026-08-20；最近裁决：2026-08-22**
 
-**来源：** 从 [Design Note 008](./开放世界棋盘游戏设计_008_Graph_Spatial_World.md) 拆出；首个施工 consumer 见 [Build Log 0001](./build-log/0001-travel-to.md)。
+**来源：** 从 [Graph Spatial World](../design/graph-spatial-world.md) 拆出；首个施工 consumer 见 [Build Log 0001](../build-log/0001-travel-to.md)。
 
 ---
 
