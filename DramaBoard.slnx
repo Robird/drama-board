@@ -14,6 +14,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Decision.Validation.Tests/Decision.Validation.Tests.csproj" />
     <Project Path="tests/FirstBoard.Tests/FirstBoard.Tests.csproj" />
+    <Project Path="tests/FirstBoard.Persistence.Tests/FirstBoard.Persistence.Tests.csproj" />
     <Project Path="tests/FirstBoard.Demo.Tests/FirstBoard.Demo.Tests.csproj" />
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />

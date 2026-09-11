@@ -1,8 +1,8 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using DramaBoard.FirstBoard;
-using DramaBoard.Host;
-using DramaBoard.Journal.Atelia;
+using Atelia.DurableGraph;
+using Atelia.DurableGraph.StateStore;
+using DramaBoard.FirstBoard.Persistence;
+using DramaBoard.FirstBoard.Tests;
+using DramaBoard.Kernel;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -15,138 +15,207 @@ namespace DramaBoard.FirstBoard.Persistence.Tests;
 
 public sealed class FirstBoardPersistenceTests
 {
-    private const long LineageId = FirstBoardScenario.LineageId;
-    private const string PayloadCodec = "firstboard-host-fact-json/5";
-    private const long CellarDeadlineMs = 123;
-    private const long RunBoundaryMs = 300_001;
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static readonly FirstBoardDriverBinding DriversBinding = new([BoardIds.Alice], "encounter-response/v1");
+    private static SimulationRules Rules(ulong seed) => new(seed, 10_000);
 
-    [Fact]
-    public async Task Run_PersistsReopensAndFoldsCompleteHostBatches()
+    [Theory]
+    [InlineData(PassageEncounterResolution.Continued, 0)]
+    [InlineData(PassageEncounterResolution.Continued, 1)]
+    [InlineData(PassageEncounterResolution.Continued, 2)]
+    [InlineData(PassageEncounterResolution.Reversed, 0)]
+    [InlineData(PassageEncounterResolution.Reversed, 1)]
+    [InlineData(PassageEncounterResolution.Reversed, 2)]
+    public async Task CompleteWorld_ReopensAndContinuesWithoutHistoricalReplay(
+        PassageEncounterResolution response, int completedBeforeClose)
     {
         using var directory = new TemporaryJournalDirectory();
-        ScenarioInstance instance = DeadlineScenario(worldSeed: 42);
-        FirstBoardWorld initial = instance.CreateInitialWorld();
-        HostRunResult<FirstBoardWorld> runtime;
-        JournalBatch<FirstBoardFact>[] written;
-
-        using (var sink = CreateSink(directory.Path))
+        var expected = await EncounterPersistenceOracle.OpenEncounterAsync(response);
+        await EncounterPersistenceOracle.CompleteResponseAsync(expected);
+        var s0 = EncounterPersistenceOracle.CreateTravelingS0();
+        using (var history = Create(directory.Path, s0))
         {
-            runtime = await RunAsync(sink, instance, initial, new ModelTime(RunBoundaryMs));
-            written = [.. sink.Batches];
+            var kernel = FirstBoardScenario.CreateKernel(Drivers(response), s0.Instance, history);
+            for (int index = 0; index < completedBeforeClose; index++)
+            {
+                Assert.Equal(StepStatus.Committed, await kernel.StepAsync(EncounterPersistenceOracle.ContactDue));
+            }
         }
-
-        var replay = AteliaJournalSink<FirstBoardFact>.OpenAndReplay(
-            directory.Path,
-            "main",
-            LineageId,
-            PayloadCodec,
-            SerializePayload,
-            DeserializePayload);
-        using (replay.Sink)
+        using (var history = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding))
         {
-            FirstBoardWorld folded = Fold(instance, initial, replay.Batches);
-
-            Assert.Equal(StepStatus.BoundaryReached, runtime.Status);
-            Assert.Equal(
-                FirstBoardScenario.WorldSnapshot(runtime.World),
-                FirstBoardScenario.WorldSnapshot(folded));
-            AssertBatchesEqual(written, replay.Batches);
-            Assert.Equal(LineageId, replay.Sink.LineageId);
-
-            JournalBatch<FirstBoardFact> deadlineBatch = Assert.Single(
-                replay.Batches,
-                batch => batch.Facts.Any(fact =>
-                    fact is GameBoardFact { Value: CellarSealedEvent }));
-            Assert.Collection(
-                deadlineBatch.Facts,
-                fact => Assert.IsType<CellarSealedEvent>(
-                    Assert.IsType<GameBoardFact>(fact).Value),
-                fact =>
-                {
-                    PassageEntryAccessChangedFact changed = Assert.IsType<PassageEntryAccessChangedFact>(
-                        Assert.IsType<SpatialBoardFact>(fact).Value);
-                    Assert.Equal(new PassageId(BoardIds.CellarGatePassage), changed.PassageId);
-                    Assert.False(changed.ResultAccess.EnterableFromA);
-                });
-            Assert.Contains(
-                replay.Batches.SelectMany(batch => batch.Facts),
-                fact => fact is SpatialBoardFact { Value: TraversalStartedFact });
-            Assert.Contains(
-                replay.Batches.SelectMany(batch => batch.Facts),
-                fact => fact is SpatialBoardFact { Value: TraversalArrivedFact });
+            Assert.Equal(completedBeforeClose, history.Cursor.Version.TransitionCount);
+            var kernel = FirstBoardScenario.CreateKernel(Drivers(response), history.Scenario, history);
+            Assert.False(kernel.RecoverPending());
+            for (int index = completedBeforeClose; index < 2; index++)
+            {
+                Assert.Equal(StepStatus.Committed, await kernel.StepAsync(EncounterPersistenceOracle.ContactDue));
+            }
+            EncounterPersistenceOracle.AssertWorldEqual(expected.Kernel.World, kernel.World);
+            Assert.Equal(expected.Kernel.Cursor, kernel.Cursor);
+            Assert.Null(history.PendingEvent);
         }
+        using var reader = EventHistoryRepository.OpenReadOnlyExisting(directory.Path);
+        var frames = reader.ReadEvents("main");
+        Assert.Equal(2, frames.Count);
+        var models = EventModels();
+        for (int index = 0; index < frames.Count; index++)
+        {
+            AssertEventEqual(expected.History.CompletedEvents[index],
+                reader.ReadEvent<OccurrenceEvent<FirstBoardFact>>(frames[index], models));
+        }
+        Assert.Equal(5, reader.ReadFrames("main").Count); // S0 + two complete E/S pairs.
     }
 
     [Fact]
-    public async Task ReopenAndContinue_EqualsOneShotBatchForBatch()
+    public async Task PendingEvent_RecoversExactlyItsFactsWithoutForecastPlanOrPlayer()
     {
         using var directory = new TemporaryJournalDirectory();
-        string oneShotPath = Path.Combine(directory.Path, "one-shot");
-        string splitPath = Path.Combine(directory.Path, "split");
-        ScenarioInstance instance = DeadlineScenario(worldSeed: 43);
-        FirstBoardWorld initial = instance.CreateInitialWorld();
-        HostRunResult<FirstBoardWorld> expected;
-        JournalBatch<FirstBoardFact>[] expectedBatches;
-
-        using (var sink = CreateSink(oneShotPath))
+        var expected = await EncounterPersistenceOracle.OpenEncounterAsync(PassageEncounterResolution.Continued);
+        var occurrence = Assert.Single(expected.History.CompletedEvents);
+        var s0 = expected.S0;
+        using (var history = Create(directory.Path, s0)) { history.CommitEvent(occurrence); }
+        using (var history = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding))
         {
-            expected = await RunAsync(
-                sink,
-                instance,
-                initial,
-                new ModelTime(RunBoundaryMs));
-            expectedBatches = [.. sink.Batches];
+            EncounterPersistenceOracle.AssertWorldEqual(s0.World, history.State);
+            AssertEventEqual(occurrence, Assert.IsType<OccurrenceEvent<FirstBoardFact>>(history.PendingEvent));
+            var spy = new RecoverySpy(history);
+            Assert.True(spy.Kernel.RecoverPending());
+            Assert.Equal(occurrence.Facts.Count, spy.FoldCalls);
+            Assert.Equal(0, spy.RuleCalls);
+            Assert.Null(history.PendingEvent);
+            EncounterPersistenceOracle.AssertWorldEqual(expected.Kernel.World, history.State);
+            Assert.Equal(expected.Kernel.Cursor, history.Cursor);
+            Assert.False(spy.Kernel.RecoverPending());
+            Assert.Equal(occurrence.Facts.Count, spy.FoldCalls);
         }
+        using var saved = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding);
+        var again = new RecoverySpy(saved);
+        Assert.False(again.Kernel.RecoverPending());
+        Assert.Equal(0, again.FoldCalls);
+        Assert.Equal(0, again.RuleCalls);
+        Assert.Equal(1, saved.Cursor.Version.TransitionCount);
+    }
 
-        using (var firstSink = CreateSink(splitPath))
+    [Theory]
+    [InlineData(PublicationInterruption.BeforeEvent)]
+    [InlineData(PublicationInterruption.AfterEvent)]
+    [InlineData(PublicationInterruption.BeforeState)]
+    [InlineData(PublicationInterruption.AfterState)]
+    public async Task PublicationException_ReopenDeterminesOutcomeWithoutDuplicateOccurrence(PublicationInterruption point)
+    {
+        using var directory = new TemporaryJournalDirectory();
+        var expected = await EncounterPersistenceOracle.OpenEncounterAsync(PassageEncounterResolution.Continued);
+        var s0 = expected.S0;
+        using (var history = Create(directory.Path, s0))
         {
-            HostRunResult<FirstBoardWorld> first = await RunAsync(
-                firstSink,
-                instance,
-                initial,
-                new ModelTime(150_000));
-            Assert.Equal(StepStatus.BoundaryReached, first.Status);
-            Assert.Contains(
-                firstSink.Batches.SelectMany(batch => batch.Facts),
-                fact => fact is SpatialBoardFact { Value: TraversalStartedFact });
-            Assert.DoesNotContain(
-                firstSink.Batches.SelectMany(batch => batch.Facts),
-                fact => fact is SpatialBoardFact { Value: TraversalArrivedFact });
+            var interrupted = new InterruptingHistory(history, point);
+            var kernel = FirstBoardScenario.CreateKernel(Drivers(PassageEncounterResolution.Continued), s0.Instance, interrupted);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(EncounterPersistenceOracle.ContactDue).AsTask());
+            Assert.True(kernel.IsFaulted);
+            Assert.Equal(0, kernel.Version.TransitionCount);
+            Assert.Null(kernel.LastCompletion);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(EncounterPersistenceOracle.ContactDue).AsTask());
         }
-
-        HostRunResult<FirstBoardWorld> actual;
-        JournalBatch<FirstBoardFact>[] actualBatches;
-        using (var reopened = CreateSink(splitPath))
+        using (var history = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding))
         {
-            FirstBoardWorld replayedWorld = Fold(instance, initial, reopened.Batches);
-            LogicalInstant? last = reopened.Batches.Count == 0
-                ? null
-                : reopened.Batches[^1].Instant;
-            SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-                FirstBoardScenario.CreateKernel(
-                    Drivers(),
-                    instance,
-                    reopened,
-                    replayedWorld,
-                    new WorldVersion(LineageId, reopened.Batches.Count),
-                    last);
-            actual = await SimulationHost.RunUntilAsync(
-                kernel,
-                new ModelTime(RunBoundaryMs));
-            actualBatches = [.. reopened.Batches];
+            var spy = new RecoverySpy(history);
+            bool pending = point is PublicationInterruption.AfterEvent or PublicationInterruption.BeforeState;
+            Assert.Equal(pending, spy.Kernel.RecoverPending());
+            Assert.Equal(pending ? 2 : 0, spy.FoldCalls);
+            Assert.Equal(0, spy.RuleCalls);
+            Assert.Equal(point == PublicationInterruption.BeforeEvent ? 0 : 1, history.Cursor.Version.TransitionCount);
+            if (point == PublicationInterruption.BeforeEvent)
+            {
+                var kernel = FirstBoardScenario.CreateKernel(Drivers(PassageEncounterResolution.Continued), history.Scenario, history);
+                Assert.Equal(StepStatus.Committed, await kernel.StepAsync(EncounterPersistenceOracle.ContactDue));
+            }
+            EncounterPersistenceOracle.AssertWorldEqual(expected.Kernel.World, history.State);
+            Assert.Equal(expected.Kernel.Cursor, history.Cursor);
         }
-
-        Assert.Equal(StepStatus.BoundaryReached, actual.Status);
-        Assert.Equal(
-            FirstBoardScenario.WorldSnapshot(expected.World),
-            FirstBoardScenario.WorldSnapshot(actual.World));
-        Assert.Equal(expected.Version, actual.Version);
-        AssertBatchesEqual(expectedBatches, actualBatches);
+        using var reader = EventHistoryRepository.OpenReadOnlyExisting(directory.Path);
+        Assert.Single(reader.ReadEvents("main"));
+        Assert.Equal(3, reader.ReadFrames("main").Count);
     }
 
     [Fact]
-    public void PayloadCodec_RoundTripsEveryCurrentHostFactShape()
+    public void Reopen_RejectsDifferentDefinitionRulesSeedAndDriverPolicy_WithoutChangingHistory()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        var s0 = EncounterPersistenceOracle.CreateTravelingS0();
+        using (var history = Create(directory.Path, s0)) { }
+        var differentDefinition = new ScenarioInstance(s0.Instance.Definition with
+            { CellarDeadlineMs = s0.Instance.Definition.CellarDeadlineMs + 1 }, s0.Instance.WorldSeed);
+        Assert.Throws<InvalidDataException>(() => FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding, differentDefinition));
+        Assert.Throws<InvalidDataException>(() => FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding,
+            new ScenarioInstance(s0.Instance.Definition, s0.Instance.WorldSeed + 1)));
+        Assert.Throws<InvalidDataException>(() => FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding,
+            expectedRules: new SimulationRules(s0.Instance.WorldSeed, 9_999)));
+        Assert.Throws<InvalidDataException>(() => FirstBoardOccurrenceHistory.Open(directory.Path, "main",
+            new FirstBoardDriverBinding([BoardIds.Bob], DriversBinding.PolicyId)));
+        Assert.Throws<InvalidDataException>(() => FirstBoardOccurrenceHistory.Open(directory.Path, "main",
+            new FirstBoardDriverBinding([BoardIds.Alice], "different-policy")));
+        using var valid = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding, s0.Instance, Rules(s0.Instance.WorldSeed));
+        EncounterPersistenceOracle.AssertWorldEqual(s0.World, valid.State);
+        Assert.Equal(s0.History.Cursor, valid.Cursor);
+    }
+
+    [Fact]
+    public async Task SavedActiveTravelGoal_ContinuesControllerWithoutAskingPlayer()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        ScenarioInstance scenario = ScenarioInstance.CreateDefault(903);
+        FirstBoardWorld world = scenario.CreateInitialWorld();
+        var reducer = new FirstBoardReducer(scenario.Graph);
+        var instant = new LogicalInstant(world.Now, 0);
+        world = reducer.Apply(world, instant, new GameBoardFact(new ActorWaitStartedEvent(BoardIds.Bob, new ModelTime(1_000_000))));
+        world = reducer.Apply(world, instant, new GameBoardFact(new ActorTravelGoalSetEvent(BoardIds.Alice, new PlaceId(BoardIds.Cellar))));
+        var initialCursor = FirstBoardScenario.CreateMemoryHistory(world).Cursor;
+        using (var history = FirstBoardOccurrenceHistory.Create(directory.Path, "main", scenario, world,
+            initialCursor, Rules(scenario.WorldSeed), DriversBinding)) { }
+        var getter = new CountingFullMapGetter();
+        using var reopened = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding);
+        EncounterPersistenceOracle.AssertWorldEqual(world, reopened.State);
+        Assert.Equal(0, getter.CallCount);
+        var kernel = FirstBoardScenario.CreateKernel(new Dictionary<string, IPlayerDriver>
+            { [BoardIds.Alice] = new ThrowingPlayerDriver() }, reopened.Scenario, reopened, getter);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        Assert.Equal(1, getter.CallCount);
+        Assert.Equal(new PlaceId(BoardIds.Cellar), kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
+        Assert.IsType<TraversingLocation>(kernel.World.Spatial.Entities.Single(item => item.Id == new EntityId(BoardIds.Alice)).Location);
+        Assert.Equal(1, kernel.Version.TransitionCount);
+    }
+
+    [Fact]
+    public void CompleteState_PreservesKnowledgeTextIdentityCounterEntryOverridesAndScheduledChanges()
+    {
+        using var directory = new TemporaryJournalDirectory();
+        ScenarioInstance scenario = ScenarioInstance.CreateDefault(904);
+        FirstBoardWorld world = scenario.CreateInitialWorld();
+        var reducer = new FirstBoardReducer(scenario.Graph);
+        var instant = new LogicalInstant(world.Now, 0);
+        FirstBoardFact[] facts =
+        [
+            new GameBoardFact(new ActorObservedEvent(BoardIds.Alice,
+                [new BoardFact("test.saved-knowledge", BoardIds.Bob, "Full knowledge text: Unicode 世界 and detail.")], null)),
+            new GameBoardFact(new CellarSealedEvent()),
+            new SpatialBoardFact(new PassageEntryAccessChangedFact(new PassageId(BoardIds.CellarGatePassage), new PassageEntryAccess(false, true))),
+            new SpatialBoardFact(new PassageEntryChangeScheduledFact(new PassageId(BoardIds.MarketCellarApproach),
+                new ModelTime(500_000), new PassageEntryPatch(null, false))),
+        ];
+        foreach (var fact in facts) { world = reducer.Apply(world, instant, fact); }
+        world = world.With(game: world.Game.With(nextPersistentId: world.Game.NextPersistentId + 12));
+        var cursor = FirstBoardScenario.CreateMemoryHistory(world).Cursor;
+        using (var history = FirstBoardOccurrenceHistory.Create(directory.Path, "main", scenario, world,
+            cursor, Rules(scenario.WorldSeed), DriversBinding)) { }
+        using var restored = FirstBoardOccurrenceHistory.Open(directory.Path, "main", DriversBinding);
+        EncounterPersistenceOracle.AssertWorldEqual(world, restored.State);
+        Assert.True(restored.State.CellarSealed);
+        Assert.Single(restored.State.Spatial.ScheduledPassageEntryChanges);
+        Assert.NotEmpty(restored.State.Spatial.PassageEntryAccessOverrides);
+        Assert.Equal("Full knowledge text: Unicode 世界 and detail.", restored.State.Actor(BoardIds.Alice).KnownFacts.Single(fact => fact.Kind == "test.saved-knowledge").Text);
+    }
+
+    [Fact]
+    public void EventOnlyRegistry_RoundTripsEveryCurrentFactShape_WithoutWorldModels()
     {
         var headOnContact = new PassageContactKey(
             new PassageId("passage"),
@@ -245,727 +314,172 @@ public sealed class FirstBoardPersistenceTests
                 new ModelTime(12))),
         ];
 
-        foreach (FirstBoardFact expected in facts)
-        {
-            FirstBoardFact actual = DeserializePayload(SerializePayload(expected));
 
-            Assert.Equal(expected.GetType(), actual.GetType());
-            Assert.Equal(FirstBoardScenario.FactName(expected), FirstBoardScenario.FactName(actual));
-            Assert.Equal(SerializePayload(expected), SerializePayload(actual));
-        }
+        // These are serialization shapes, not one valid gameplay transition to be folded.
+        using var directory = new TemporaryJournalDirectory();
+        var s0 = EncounterPersistenceOracle.CreateTravelingS0();
+        var expected = new OccurrenceEvent<FirstBoardFact>(CandidateKey.FromUtf8("all-fact-shapes"),
+            new LogicalInstant(ModelTime.Zero, 0), facts);
+        using (var history = Create(directory.Path, s0)) { history.CommitEvent(expected); }
+        using var repository = EventHistoryRepository.OpenReadOnlyExisting(directory.Path);
+        var frame = Assert.Single(repository.ReadEvents("main"));
+        StateModelRegistry models = EventModels();
+        var actual = repository.ReadEvent<OccurrenceEvent<FirstBoardFact>>(frame, models);
+        AssertEventEqual(expected, actual);
+        Assert.Equal(facts.Select(fact => fact.GetType()), actual.Facts.Select(fact => fact.GetType()));
+        // A deliberately absent State root proves the read registry is not a full facade registry.
+        Assert.ThrowsAny<Exception>(() => repository.ReadState<FirstBoardCommittedState>(repository.GetPreviousState(frame), models));
     }
 
     [Fact]
-    public async Task ReopenActiveTravelGoalPrefix_ReplaysPurelyThenContinuesController()
+    public void HistoricalEvent_KeepsKnowledgeSnapshotAfterLaterStateChanges()
     {
         using var directory = new TemporaryJournalDirectory();
-        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 44);
-        FirstBoardWorld initial = WithWaitingActor(
-            instance.CreateInitialWorld(),
-            BoardIds.Bob,
-            new ModelTime(1_000_000));
-        var goalBatch = new JournalBatch<FirstBoardFact>(
-            new LogicalInstant(ModelTime.Zero, 0),
-            CandidateKey.FromUtf8("test/persisted-travel-goal-prefix"),
-            [
-                new GameBoardFact(new ActorTravelGoalSetEvent(
-                    BoardIds.Alice,
-                    new PlaceId(BoardIds.Cellar))),
-            ]);
-
-        using (var sink = CreateSink(directory.Path))
+        ScenarioInstance scenario = ScenarioInstance.CreateDefault(902);
+        FirstBoardWorld initial = scenario.CreateInitialWorld();
+        var cursor = FirstBoardScenario.CreateMemoryHistory(initial).Cursor;
+        var reducer = new FirstBoardReducer(scenario.Graph);
+        var oldFact = new BoardFact("snapshot.fact", BoardIds.Bob, "old event text");
+        var observed = new GameBoardFact(new ActorObservedEvent(BoardIds.Alice, [oldFact], null));
+        var instant = new LogicalInstant(initial.Now, 0);
+        var first = new OccurrenceEvent<FirstBoardFact>(CandidateKey.FromUtf8("snapshot/first"), instant, [observed]);
+        using (var history = FirstBoardOccurrenceHistory.Create(directory.Path, "main", scenario,
+            initial, cursor, Rules(scenario.WorldSeed), DriversBinding))
         {
-            sink.AppendBatch(goalBatch);
+            history.CommitEvent(first);
+            history.CommitState(reducer.Apply(initial, instant, observed), cursor.Advance(first.CauseKey, instant));
+            var secondFact = new GameBoardFact(new ActorObservedEvent(BoardIds.Alice,
+                [new BoardFact("snapshot.fact", BoardIds.Bob, "new world text")], null));
+            var secondInstant = new LogicalInstant(initial.Now, 1);
+            var second = new OccurrenceEvent<FirstBoardFact>(CandidateKey.FromUtf8("snapshot/second"), secondInstant, [secondFact]);
+            history.CommitEvent(second);
+            history.CommitState(reducer.Apply(history.State, secondInstant, secondFact), history.Cursor.Advance(second.CauseKey, secondInstant));
         }
-
-        var getter = new CountingFullMapGetter();
-        using var reopened = CreateSink(directory.Path);
-        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
-
-        Assert.Equal(new PlaceId(BoardIds.Cellar), replayed.Actor(BoardIds.Alice).TravelGoalPlaceId);
-        Assert.True(replayed.IsAtPlace(BoardIds.Alice, new PlaceId(BoardIds.Tavern)));
-        Assert.Equal(0, getter.CallCount);
-
-        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-        {
-            [BoardIds.Alice] = new ThrowingPlayerDriver(),
-            [BoardIds.Bob] = new ThrowingPlayerDriver(),
-        };
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(
-                drivers,
-                instance,
-                reopened,
-                replayed,
-                new WorldVersion(LineageId, reopened.Batches.Count),
-                reopened.Batches[^1].Instant,
-                getter);
-
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
-
-        Assert.Equal(1, getter.CallCount);
-        Assert.Equal(new PlaceId(BoardIds.Cellar), kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
-        Assert.IsType<TraversingLocation>(
-            kernel.World.Spatial.Entities.Single(entity =>
-                entity.Id == new EntityId(BoardIds.Alice)).Location);
-        Assert.Equal(2, reopened.Batches.Count);
+        using var repository = EventHistoryRepository.OpenReadOnlyExisting(directory.Path);
+        var events = repository.ReadEvents("main");
+        var oldEvent = repository.ReadEvent<OccurrenceEvent<FirstBoardFact>>(events[0], EventModels());
+        AssertEventEqual(first, oldEvent);
+        var newEvent = repository.ReadEvent<OccurrenceEvent<FirstBoardFact>>(events[1], EventModels());
+        Assert.NotEqual(oldEvent.Facts[0], newEvent.Facts[0]);
+        Assert.Equal("old event text", oldFact.Text);
     }
 
-    [Theory]
-    [InlineData(PersistedEncounterPrefix.Pending)]
-    [InlineData(PersistedEncounterPrefix.Continued)]
-    [InlineData(PersistedEncounterPrefix.Reversed)]
-    [InlineData(PersistedEncounterPrefix.ArrivalBeforeWorldChanged)]
-    public void EncounterPrefix_PersistsReopensReplaysAndForksWithoutPlayer(
-        PersistedEncounterPrefix prefix)
-    {
-        using var directory = new TemporaryJournalDirectory();
-        ScenarioInstance instance = EncounterScenario(prefix);
-        FirstBoardWorld initial = instance.CreateInitialWorld();
-        JournalBatch<FirstBoardFact>[] prefixBatches = EncounterPrefixBatches(prefix);
-        using (var sink = CreateSink(directory.Path))
-        {
-            foreach (JournalBatch<FirstBoardFact> batch in prefixBatches)
-            {
-                sink.AppendBatch(batch);
-            }
-        }
+    private static FirstBoardOccurrenceHistory Create(string path, EncounterPersistenceOracle.EncounterS0 s0) =>
+        FirstBoardOccurrenceHistory.Create(path, "main", s0.Instance, s0.World,
+            new KernelCursor(new WorldVersion(FirstBoardScenario.LineageId, 0), s0.World.Now, null, null),
+            Rules(s0.Instance.WorldSeed), DriversBinding);
 
-        using var reopened = CreateSink(directory.Path);
-        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
-        AssertBatchesEqual(prefixBatches, reopened.Batches);
-        AssertEncounterPrefix(replayed, prefix);
-
-        var source = new InMemoryJournal<FirstBoardFact>(LineageId);
-        foreach (JournalBatch<FirstBoardFact> batch in reopened.Batches)
-        {
-            source.AppendBatch(batch);
-        }
-
-        var reducer = new FirstBoardReducer(instance.Graph);
-        long forkLineageId = LineageId + 100 + (int)prefix;
-        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
-            initial,
-            ModelTime.Zero,
-            source,
-            prefixTransitionCount: source.Batches.Count,
-            forkLineageId,
-            new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
-            reducer.Apply,
-            reducer.Validate);
-
-        Assert.Equal(
-            FirstBoardScenario.WorldSnapshot(replayed),
-            FirstBoardScenario.WorldSnapshot(fork.Replay.World));
-        Assert.Equal(new WorldVersion(forkLineageId, source.Batches.Count), fork.Replay.Version);
-        Assert.Equal(reopened.Batches[^1].Instant, fork.Replay.LastCommittedInstant);
-        AssertEncounterPrefix(fork.Replay.World, prefix);
-    }
-
-    [Fact]
-    public async Task PendingEncounterFork_ContinuationCallsOnePlayerAndResolves()
-    {
-        PersistedEncounterFork persisted = PersistReopenAndForkEncounterPrefix(
-            PersistedEncounterPrefix.Pending,
-            forkLineageId: LineageId + 201);
-        var driver = new CountingIntentPlayerDriver(
-            new Intent(ActionKinds.ContinueTravel));
-        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-        {
-            [BoardIds.Alice] = driver,
-        };
-        int prefixCount = persisted.Fork.Journal.Batches.Count;
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(
-                drivers,
-                persisted.Instance,
-                persisted.Fork.Journal,
-                persisted.Fork.Replay.World,
-                persisted.Fork.Replay.Version,
-                persisted.Fork.Replay.LastCommittedInstant);
-
-        Assert.Equal(
-            StepStatus.Committed,
-            await kernel.StepAsync(persisted.Fork.Replay.CurrentModelTime));
-
-        Assert.Equal(1, driver.CallCount);
-        Assert.Null(kernel.World.Game.PendingEncounter);
-        Assert.Equal(prefixCount + 1, persisted.Fork.Journal.Batches.Count);
-        PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
-            Assert.IsType<GameBoardFact>(
-                Assert.Single(persisted.Fork.Journal.Batches[^1].Facts)).Value);
-        Assert.Equal(BoardIds.Alice, resolved.RespondingActorId);
-        Assert.Equal(PassageEncounterResolution.Continued, resolved.Resolution);
-    }
-
-    [Fact]
-    public async Task ArrivalBeforeCleanupFork_ContinuationSkipsPlayerAndCommitsWorldChanged()
-    {
-        PersistedEncounterFork persisted = PersistReopenAndForkEncounterPrefix(
-            PersistedEncounterPrefix.ArrivalBeforeWorldChanged,
-            forkLineageId: LineageId + 202);
-        var driver = new CountingIntentPlayerDriver(
-            new Intent(ActionKinds.ContinueTravel));
-        var drivers = new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-        {
-            [BoardIds.Alice] = driver,
-        };
-        int prefixCount = persisted.Fork.Journal.Batches.Count;
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(
-                drivers,
-                persisted.Instance,
-                persisted.Fork.Journal,
-                persisted.Fork.Replay.World,
-                persisted.Fork.Replay.Version,
-                persisted.Fork.Replay.LastCommittedInstant);
-
-        for (int step = 0; step < 3 && kernel.World.Game.PendingEncounter is not null; step++)
-        {
-            Assert.Equal(
-                StepStatus.Committed,
-                await kernel.StepAsync(persisted.Fork.Replay.CurrentModelTime));
-        }
-
-        Assert.Equal(0, driver.CallCount);
-        Assert.Null(kernel.World.Game.PendingEncounter);
-        PassageEncounterResolvedEvent cleanup = Assert.Single(
-            persisted.Fork.Journal.Batches
-                .Skip(prefixCount)
-                .SelectMany(batch => batch.Facts)
-                .OfType<GameBoardFact>()
-                .Select(fact => fact.Value)
-                .OfType<PassageEncounterResolvedEvent>());
-        Assert.Null(cleanup.RespondingActorId);
-        Assert.Equal(PassageEncounterResolution.WorldChanged, cleanup.Resolution);
-    }
-
-    private static ScenarioInstance DeadlineScenario(ulong worldSeed) =>
-        new(
-            ScenarioDefinition.Default with { CellarDeadlineMs = CellarDeadlineMs },
-            worldSeed);
-
-    private static ScenarioInstance EncounterScenario(PersistedEncounterPrefix prefix)
-    {
-        ScenarioDefinition definition = ScenarioDefinition.Default;
-        if (prefix == PersistedEncounterPrefix.ArrivalBeforeWorldChanged)
-        {
-            definition = definition with
-            {
-                Passages = Array.AsReadOnly(definition.Passages.Select(passage =>
-                    passage.Id == BoardIds.TavernMarketRoad
-                        ? passage with { Length = 1 }
-                        : passage).ToArray()),
-            };
-        }
-
-        return new ScenarioInstance(definition, worldSeed: 45);
-    }
-
-    private static PersistedEncounterFork PersistReopenAndForkEncounterPrefix(
-        PersistedEncounterPrefix prefix,
-        long forkLineageId)
-    {
-        using var directory = new TemporaryJournalDirectory();
-        ScenarioInstance instance = EncounterScenario(prefix);
-        FirstBoardWorld initial = instance.CreateInitialWorld();
-        JournalBatch<FirstBoardFact>[] batches = EncounterPrefixBatches(prefix);
-        using (var sink = CreateSink(directory.Path))
-        {
-            foreach (JournalBatch<FirstBoardFact> batch in batches)
-            {
-                sink.AppendBatch(batch);
-            }
-        }
-
-        using var reopened = CreateSink(directory.Path);
-        FirstBoardWorld replayed = Fold(instance, initial, reopened.Batches);
-        AssertBatchesEqual(batches, reopened.Batches);
-        AssertEncounterPrefix(replayed, prefix);
-        var source = new InMemoryJournal<FirstBoardFact>(LineageId);
-        foreach (JournalBatch<FirstBoardFact> batch in reopened.Batches)
-        {
-            source.AppendBatch(batch);
-        }
-
-        var reducer = new FirstBoardReducer(instance.Graph);
-        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
-            initial,
-            ModelTime.Zero,
-            source,
-            prefixTransitionCount: source.Batches.Count,
-            forkLineageId,
-            new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
-            reducer.Apply,
-            reducer.Validate);
-        Assert.Equal(
-            FirstBoardScenario.WorldSnapshot(replayed),
-            FirstBoardScenario.WorldSnapshot(fork.Replay.World));
-        return new PersistedEncounterFork(instance, fork);
-    }
-
-    private static JournalBatch<FirstBoardFact>[] EncounterPrefixBatches(
-        PersistedEncounterPrefix prefix)
-    {
-        ModelTime contactDue = prefix == PersistedEncounterPrefix.ArrivalBeforeWorldChanged
-            ? new ModelTime(1)
-            : new ModelTime(150_000);
-        var contactKey = new PassageContactKey(
-            new PassageId(BoardIds.TavernMarketRoad),
-            new EntityId(BoardIds.Alice),
-            movementGenerationA: 1,
-            new EntityId(BoardIds.Bob),
-            movementGenerationB: 1);
-        var start = new JournalBatch<FirstBoardFact>(
-            new LogicalInstant(ModelTime.Zero, 0),
-            CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/start"),
-            [
-                new GameBoardFact(new ActorTravelGoalSetEvent(
-                    BoardIds.Alice,
-                    new PlaceId(BoardIds.Cellar))),
-                new SpatialBoardFact(new TraversalStartedFact(
-                    new EntityId(BoardIds.Alice),
-                    new PassageId(BoardIds.TavernMarketRoad),
-                    new PlaceId(BoardIds.Tavern),
-                    BoardTiming.TravelSpeed)),
-                new SpatialBoardFact(new TraversalStartedFact(
-                    new EntityId(BoardIds.Bob),
-                    new PassageId(BoardIds.TavernMarketRoad),
-                    new PlaceId(BoardIds.Market),
-                    BoardTiming.TravelSpeed)),
-            ]);
-        var opened = new JournalBatch<FirstBoardFact>(
-            new LogicalInstant(contactDue, 0),
-            CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/opened"),
-            [
-                new SpatialBoardFact(new PassageContactOccurredFact(
-                    contactKey,
-                    PassageContactKind.HeadOnMeeting)),
-                new GameBoardFact(new PassageEncounterOpenedEvent(
-                    contactKey,
-                    PassageContactKind.HeadOnMeeting)),
-            ]);
-        if (prefix == PersistedEncounterPrefix.Pending)
-        {
-            return [start, opened];
-        }
-
-        JournalBatch<FirstBoardFact> outcome = prefix switch
-        {
-            PersistedEncounterPrefix.Continued => new(
-                new LogicalInstant(contactDue, 1),
-                CandidateKey.FromUtf8("test/persisted-encounter/continued"),
-                [new GameBoardFact(new PassageEncounterResolvedEvent(
-                    contactKey,
-                    BoardIds.Alice,
-                    PassageEncounterResolution.Continued))]),
-            PersistedEncounterPrefix.Reversed => new(
-                new LogicalInstant(contactDue, 1),
-                CandidateKey.FromUtf8("test/persisted-encounter/reversed"),
-                [
-                    new GameBoardFact(new PassageEncounterResolvedEvent(
-                        contactKey,
-                        BoardIds.Alice,
-                        PassageEncounterResolution.Reversed)),
-                    new SpatialBoardFact(new TraversalReversedFact(
-                        new EntityId(BoardIds.Alice),
-                        ExpectedMovementGeneration: 1)),
-                ]),
-            PersistedEncounterPrefix.ArrivalBeforeWorldChanged => new(
-                new LogicalInstant(contactDue, 1),
-                CandidateKey.FromUtf8("test/persisted-encounter/arrival-before-cleanup"),
-                [new SpatialBoardFact(new TraversalArrivedFact(
-                    new EntityId(BoardIds.Alice),
-                    ExpectedMovementGeneration: 1))]),
-            _ => throw new InvalidOperationException($"Unknown encounter prefix '{prefix}'."),
-        };
-        return [start, opened, outcome];
-    }
-
-    private static void AssertEncounterPrefix(
-        FirstBoardWorld world,
-        PersistedEncounterPrefix prefix)
-    {
-        BoardActor alice = world.Actor(BoardIds.Alice);
-        SpatialEntity aliceSpatial = world.Spatial.Entities.Single(entity =>
-            entity.Id == new EntityId(BoardIds.Alice));
-        switch (prefix)
-        {
-            case PersistedEncounterPrefix.Pending:
-                Assert.NotNull(world.Game.PendingEncounter);
-                Assert.Single(world.Spatial.ConsumedContacts);
-                Assert.IsType<TraversingLocation>(aliceSpatial.Location);
-                Assert.Equal(1, alice.DecisionSequence);
-                break;
-            case PersistedEncounterPrefix.Continued:
-                Assert.Null(world.Game.PendingEncounter);
-                Assert.Single(world.Spatial.ConsumedContacts);
-                Assert.IsType<TraversingLocation>(aliceSpatial.Location);
-                Assert.Equal(2, alice.DecisionSequence);
-                Assert.Equal(new PlaceId(BoardIds.Cellar), alice.TravelGoalPlaceId);
-                break;
-            case PersistedEncounterPrefix.Reversed:
-                Assert.Null(world.Game.PendingEncounter);
-                Assert.Empty(world.Spatial.ConsumedContacts);
-                TraversingLocation reversed = Assert.IsType<TraversingLocation>(aliceSpatial.Location);
-                Assert.Equal(new PlaceId(BoardIds.Tavern), reversed.TargetPlaceId);
-                Assert.Equal(2, aliceSpatial.MovementGeneration);
-                Assert.Equal(2, alice.DecisionSequence);
-                Assert.Null(alice.TravelGoalPlaceId);
-                break;
-            case PersistedEncounterPrefix.ArrivalBeforeWorldChanged:
-                Assert.NotNull(world.Game.PendingEncounter);
-                Assert.Empty(world.Spatial.ConsumedContacts);
-                Assert.Equal(
-                    new PlaceId(BoardIds.Market),
-                    Assert.IsType<AtPlaceLocation>(aliceSpatial.Location).PlaceId);
-                Assert.Equal(1, alice.DecisionSequence);
-                Assert.Equal(new PlaceId(BoardIds.Cellar), alice.TravelGoalPlaceId);
-                break;
-            default:
-                throw new InvalidOperationException($"Unknown encounter prefix '{prefix}'.");
-        }
-    }
-
-    private static FirstBoardWorld WithWaitingActor(
-        FirstBoardWorld world,
-        string actorId,
-        ModelTime due) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
-                    .Select(actor => actor.Key == actorId
-                        ? actor with { Activity = new BoardWaitActivity(due) }
-                        : actor)
-                    .ToArray()),
-            },
-        };
-
-    private static AteliaJournalSink<FirstBoardFact> CreateSink(string path) =>
-        new(path, LineageId, PayloadCodec, SerializePayload, DeserializePayload);
-
-    private static async Task<HostRunResult<FirstBoardWorld>> RunAsync(
-        IJournalSink<FirstBoardFact> journal,
-        ScenarioInstance instance,
-        FirstBoardWorld initialWorld,
-        ModelTime until)
-    {
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(Drivers(), instance, journal, initialWorld);
-        return await SimulationHost.RunUntilAsync(kernel, until, CancellationToken.None);
-    }
-
-    private static IReadOnlyDictionary<string, IPlayerDriver> Drivers() =>
+    private static IReadOnlyDictionary<string, IPlayerDriver> Drivers(PassageEncounterResolution response) =>
         new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
-        {
-            [BoardIds.Alice] = new TavernRoadThenWaitDriver(),
-            [BoardIds.Bob] = new NullPlayerDriver(),
-        };
+        { [BoardIds.Alice] = new ResponseDriver(response) };
 
-    private static FirstBoardWorld Fold(
-        ScenarioInstance instance,
-        FirstBoardWorld initial,
-        IReadOnlyList<JournalBatch<FirstBoardFact>> batches)
+    private static void AssertEventEqual(OccurrenceEvent<FirstBoardFact> expected, OccurrenceEvent<FirstBoardFact> actual)
     {
-        var reducer = new FirstBoardReducer(instance.Graph);
-        FirstBoardWorld world = initial;
-        foreach (JournalBatch<FirstBoardFact> batch in batches)
+        Assert.Equal(expected.CauseKey, actual.CauseKey);
+        Assert.Equal(expected.TargetInstant, actual.TargetInstant);
+        Assert.Equal(expected.Facts.ToArray(), actual.Facts.ToArray());
+    }
+
+    private static StateModelRegistry EventModels()
+    {
+        var registration = new EventOnlyRegistration();
+        KernelDurableModels.Register(registration);
+        SpatialDurableModels.Register(registration);
+        FirstBoardDurableModels.Register(registration);
+        Assert.DoesNotContain(typeof(FirstBoardWorld), registration.Types);
+        Assert.DoesNotContain(typeof(FirstBoardGameState), registration.Types);
+        Assert.DoesNotContain(typeof(GraphSpatialState), registration.Types);
+        Assert.DoesNotContain(typeof(FirstBoardCommittedState), registration.Types);
+        return registration.Models;
+    }
+
+    // Registration facades emit definitions into this allow-list sink. Excluded definitions
+    // are never passed to StateModelRegistry; no World or State models are registered lazily.
+    private sealed class EventOnlyRegistration : IStateModelRegistration
+    {
+        public StateModelRegistry Models { get; } = new();
+        public HashSet<Type> Types { get; } = [];
+        public void Register(StateDefinitionBinding definition)
         {
-            foreach (FirstBoardFact fact in batch.Facts)
-            {
-                world = reducer.Apply(world, batch.Instant, fact);
-            }
+            if (definition.DomainTypeDefinition is { } type && Allowed(type))
+            { Types.Add(type); Models.Register(definition); }
         }
-
-        reducer.Validate(world);
-        return world;
-    }
-
-    private static byte[] SerializePayload(FirstBoardFact fact)
-    {
-        object payload = fact switch
+        public void Register(StateModelBinding model)
         {
-            GameBoardFact game => game.Value,
-            SpatialBoardFact spatial => spatial.Value,
-            _ => throw new NotSupportedException(
-                $"FirstBoard Host fact '{fact.GetType().Name}' is not supported."),
-        };
-        return JsonSerializer.SerializeToUtf8Bytes(
-            new FactEnvelope(FirstBoardScenario.FactName(fact), payload),
-            JsonOptions);
-    }
-
-    private static FirstBoardFact DeserializePayload(byte[] payload)
-    {
-        using JsonDocument document = JsonDocument.Parse(payload);
-        JsonElement root = document.RootElement;
-        string kind = root.GetProperty("Kind").GetString()
-            ?? throw new JsonException("FirstBoard Host fact kind cannot be null.");
-        JsonElement fact = root.GetProperty("Payload");
-        return kind switch
-        {
-            "actor.travel-started" => Game<ActorTravelStartedEvent>(fact),
-            "actor.travel-goal-set" => Game<ActorTravelGoalSetEvent>(fact),
-            "actor.travel-goal-resolved" => Game<ActorTravelGoalResolvedEvent>(fact),
-            "passage-encounter.opened" => Game<PassageEncounterOpenedEvent>(fact),
-            "passage-encounter.resolved" => Game<PassageEncounterResolvedEvent>(fact),
-            "ticket.consumed" => Game<TicketConsumedEvent>(fact),
-            "actor.wait-started" => Game<ActorWaitStartedEvent>(fact),
-            "actor.waited" => Game<ActorWaitedEvent>(fact),
-            "actor.spoke" => Game<ActorSpokeEvent>(fact),
-            "actor.observed" => Game<ActorObservedEvent>(fact),
-            "object.taken" => Game<ObjectTakenEvent>(fact),
-            "object.placed" => Game<ObjectPlacedEvent>(fact),
-            "object.given" => Game<ObjectGivenEvent>(fact),
-            "object.shown" => Game<ObjectShownEvent>(fact),
-            "chest.opened" => Game<ChestOpenedEvent>(fact),
-            "action.rejected" => Game<ActionRejectedEvent>(fact),
-            "cellar.sealed" => Game<CellarSealedEvent>(fact),
-            "spatial.entity-placed" => Spatial<EntityPlacedFact>(fact),
-            "spatial.entity-removed" => Spatial<EntityRemovedFact>(fact),
-            "spatial.traversal-started" => Spatial<TraversalStartedFact>(fact),
-            "spatial.traversal-reversed" => Spatial<TraversalReversedFact>(fact),
-            "spatial.passage-contact-occurred" => Spatial<PassageContactOccurredFact>(fact),
-            "spatial.traversal-arrived" => Spatial<TraversalArrivedFact>(fact),
-            "spatial.passage-entry-access-changed" => Spatial<PassageEntryAccessChangedFact>(fact),
-            "spatial.passage-entry-change-scheduled" => Spatial<PassageEntryChangeScheduledFact>(fact),
-            "spatial.scheduled-passage-entry-change-applied" =>
-                Spatial<ScheduledPassageEntryChangeAppliedFact>(fact),
-            _ => throw new NotSupportedException(
-                $"FirstBoard Host fact kind '{kind}' is not supported."),
-        };
-    }
-
-    private static GameBoardFact Game<TPayload>(JsonElement payload)
-        where TPayload : BoardEventPayload =>
-        new(Deserialize<TPayload>(payload));
-
-    private static SpatialBoardFact Spatial<TPayload>(JsonElement payload)
-        where TPayload : GraphSpatialFact =>
-        new(Deserialize<TPayload>(payload));
-
-    private static TPayload Deserialize<TPayload>(JsonElement payload) =>
-        payload.Deserialize<TPayload>(JsonOptions)
-        ?? throw new JsonException(
-            $"FirstBoard Host fact '{typeof(TPayload).Name}' cannot be null.");
-
-    private static JsonSerializerOptions CreateJsonOptions()
-    {
-        var options = new JsonSerializerOptions();
-        options.Converters.Add(new ModelTimeJsonConverter());
-        options.Converters.Add(new PlaceIdJsonConverter());
-        options.Converters.Add(new PassageIdJsonConverter());
-        options.Converters.Add(new EntityIdJsonConverter());
-        options.Converters.Add(new PassageEntryPatchJsonConverter());
-        return options;
-    }
-
-    private static void AssertBatchesEqual(
-        IReadOnlyList<JournalBatch<FirstBoardFact>> expected,
-        IReadOnlyList<JournalBatch<FirstBoardFact>> actual)
-    {
-        Assert.Equal(expected.Count, actual.Count);
-        for (int batchIndex = 0; batchIndex < expected.Count; batchIndex++)
-        {
-            Assert.Equal(expected[batchIndex].Instant, actual[batchIndex].Instant);
-            Assert.Equal(expected[batchIndex].CauseKey, actual[batchIndex].CauseKey);
-            Assert.Equal(expected[batchIndex].Facts.Count, actual[batchIndex].Facts.Count);
-            for (int factIndex = 0; factIndex < expected[batchIndex].Facts.Count; factIndex++)
-            {
-                Assert.Equal(
-                    SerializePayload(expected[batchIndex].Facts[factIndex]),
-                    SerializePayload(actual[batchIndex].Facts[factIndex]));
-            }
+            if (Allowed(model.DomainType)) { Types.Add(model.DomainType); Models.Register(model); }
         }
+        private static bool Allowed(Type type) =>
+            typeof(FirstBoardFact).IsAssignableFrom(type) || typeof(BoardEventPayload).IsAssignableFrom(type) ||
+            typeof(GraphSpatialFact).IsAssignableFrom(type) || type == typeof(OccurrenceEvent<>) ||
+            type == typeof(BoardFact) || type == typeof(RejectedIntentSnapshot) ||
+            type == typeof(CandidateKey) || type == typeof(LogicalInstant) || type == typeof(ModelTime) ||
+            type == typeof(EntityId) || type == typeof(PlaceId) || type == typeof(PassageId) ||
+            type == typeof(PassageContactKey) || type == typeof(PassageContactKind) ||
+            type == typeof(PassageEntryAccess) || type == typeof(PassageEntryPatch) ||
+            type == typeof(TravelGoalResolution) || type == typeof(PassageEncounterResolution);
     }
 
-    private sealed record FactEnvelope(string Kind, object Payload);
-
-    private sealed record PersistedEncounterFork(
-        ScenarioInstance Instance,
-        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> Fork);
-
-    public enum PersistedEncounterPrefix
-    {
-        Pending = 0,
-        Continued = 1,
-        Reversed = 2,
-        ArrivalBeforeWorldChanged = 3,
-    }
-
-    private sealed class CountingFullMapGetter :
-        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>
+    private sealed class CountingFullMapGetter : IPlayerSpatialKnowledgeGetter<FirstBoardWorld>
     {
         public int CallCount { get; private set; }
-
-        public PlayerSpatialKnowledgeSnapshot GetKnownGraph(
-            FirstBoardWorld committedWorld,
-            string subjectId,
-            GraphDefinition objectiveGraph)
-        {
-            _ = committedWorld;
-            _ = subjectId;
-            CallCount++;
-            return PlayerSpatialKnowledgeSnapshot.FullMap(objectiveGraph);
-        }
+        public PlayerSpatialKnowledgeSnapshot GetKnownGraph(FirstBoardWorld world, string subjectId, GraphDefinition graph)
+        { CallCount++; return PlayerSpatialKnowledgeSnapshot.FullMap(graph); }
     }
 
     private sealed class ThrowingPlayerDriver : IPlayerDriver
     {
-        public ValueTask<PlayerDecision> DecideAsync(
-            DecisionRequest request,
-            CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("Replay continuation must not call a Player.");
+        public ValueTask<PlayerDecision> DecideAsync(DecisionRequest request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Restoring or continuing a delegated goal must not ask a Player.");
     }
 
-    private sealed class CountingIntentPlayerDriver(Intent intent) : IPlayerDriver
+    private sealed class ResponseDriver(PassageEncounterResolution response) : IPlayerDriver
     {
-        public int CallCount { get; private set; }
+        public ValueTask<PlayerDecision> DecideAsync(DecisionRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new PlayerDecision(request.DecisionId,
+                new Intent(response == PassageEncounterResolution.Continued ? ActionKinds.ContinueTravel : ActionKinds.ReverseTravel)));
+    }
 
-        public ValueTask<PlayerDecision> DecideAsync(
-            DecisionRequest request,
-            CancellationToken cancellationToken)
+    private sealed class RecoverySpy : IOccurrenceRule<FirstBoardWorld, BoardCandidate, FirstBoardFact>
+    {
+        public RecoverySpy(FirstBoardOccurrenceHistory history)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            CallCount++;
-            return ValueTask.FromResult(new PlayerDecision(request.DecisionId, intent));
+            var reducer = new FirstBoardReducer(history.Scenario.Graph);
+            Kernel = new(history, history.Rules, [this], (world, instant, fact) =>
+                { FoldCalls++; return reducer.Apply(world, instant, fact); }, reducer.Validate);
         }
+        public SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> Kernel { get; }
+        public int FoldCalls { get; private set; }
+        public int RuleCalls { get; private set; }
+        public IReadOnlyList<OccurrenceCandidate<BoardCandidate>> Forecast(FirstBoardWorld world, SimulationRules rules)
+        { RuleCalls++; throw new InvalidOperationException("Recovery must not Forecast."); }
+        public ValueTask<TransitionDraft<FirstBoardFact>> PlanSelectedAsync(FirstBoardWorld world,
+            OccurrenceCandidate<BoardCandidate> winner, CancellationToken cancellationToken)
+        { RuleCalls++; throw new InvalidOperationException("Recovery must not Plan or invoke a Player."); }
     }
 
-    private sealed class TavernRoadThenWaitDriver : IPlayerDriver
+    public enum PublicationInterruption { BeforeEvent, AfterEvent, BeforeState, AfterState }
+
+    // Consumer-side failure seam surrounds real commits. It does not forge storage bytes or
+    // claim power-loss durability: each interruption leaves the actually published head on disk.
+    private sealed class InterruptingHistory(FirstBoardOccurrenceHistory inner, PublicationInterruption point)
+        : IOccurrenceHistory<FirstBoardWorld, FirstBoardFact>
     {
-        public ValueTask<PlayerDecision> DecideAsync(
-            DecisionRequest request,
-            CancellationToken cancellationToken)
+        public FirstBoardWorld State => inner.State;
+        public KernelCursor Cursor => inner.Cursor;
+        public OccurrenceEvent<FirstBoardFact>? PendingEvent => inner.PendingEvent;
+        public void CommitEvent(OccurrenceEvent<FirstBoardFact> occurrence)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            Intent intent = request.Observation.LocationId == BoardIds.Tavern
-                ? new Intent(
-                    ActionKinds.Travel,
-                    ExitId: $"exit:{BoardIds.TavernMarketRoad}")
-                : new Intent(ActionKinds.Wait);
-            return ValueTask.FromResult(new PlayerDecision(request.DecisionId, intent));
+            FailAt(PublicationInterruption.BeforeEvent);
+            inner.CommitEvent(occurrence);
+            FailAt(PublicationInterruption.AfterEvent);
         }
-    }
-
-    private sealed class ModelTimeJsonConverter : JsonConverter<ModelTime>
-    {
-        public override ModelTime Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) =>
-            new(reader.GetInt64());
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            ModelTime value,
-            JsonSerializerOptions options) =>
-            writer.WriteNumberValue(value.Ticks);
-    }
-
-    private sealed class PlaceIdJsonConverter : JsonConverter<PlaceId>
-    {
-        public override PlaceId Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) =>
-            new(ReadRequiredString(ref reader, "PlaceId"));
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            PlaceId value,
-            JsonSerializerOptions options) =>
-            writer.WriteStringValue(value.Value);
-    }
-
-    private sealed class PassageIdJsonConverter : JsonConverter<PassageId>
-    {
-        public override PassageId Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) =>
-            new(ReadRequiredString(ref reader, "PassageId"));
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            PassageId value,
-            JsonSerializerOptions options) =>
-            writer.WriteStringValue(value.Value);
-    }
-
-    private sealed class EntityIdJsonConverter : JsonConverter<EntityId>
-    {
-        public override EntityId Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) =>
-            new(ReadRequiredString(ref reader, "EntityId"));
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            EntityId value,
-            JsonSerializerOptions options) =>
-            writer.WriteStringValue(value.Value);
-    }
-
-    private sealed class PassageEntryPatchJsonConverter : JsonConverter<PassageEntryPatch>
-    {
-        public override PassageEntryPatch Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        public void CommitState(FirstBoardWorld nextState, KernelCursor nextCursor)
         {
-            using JsonDocument document = JsonDocument.ParseValue(ref reader);
-            JsonElement root = document.RootElement;
-            return new PassageEntryPatch(
-                ReadNullableBoolean(root, nameof(PassageEntryPatch.EnterableFromA)),
-                ReadNullableBoolean(root, nameof(PassageEntryPatch.EnterableFromB)));
+            FailAt(PublicationInterruption.BeforeState);
+            inner.CommitState(nextState, nextCursor);
+            FailAt(PublicationInterruption.AfterState);
         }
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            PassageEntryPatch value,
-            JsonSerializerOptions options)
-        {
-            writer.WriteStartObject();
-            WriteNullableBoolean(
-                writer,
-                nameof(PassageEntryPatch.EnterableFromA),
-                value.EnterableFromA);
-            WriteNullableBoolean(
-                writer,
-                nameof(PassageEntryPatch.EnterableFromB),
-                value.EnterableFromB);
-            writer.WriteEndObject();
-        }
-
-        private static bool? ReadNullableBoolean(JsonElement root, string propertyName)
-        {
-            JsonElement property = root.GetProperty(propertyName);
-            return property.ValueKind == JsonValueKind.Null
-                ? null
-                : property.GetBoolean();
-        }
-
-        private static void WriteNullableBoolean(
-            Utf8JsonWriter writer,
-            string propertyName,
-            bool? value)
-        {
-            if (value is bool specified)
-            {
-                writer.WriteBoolean(propertyName, specified);
-            }
-            else
-            {
-                writer.WriteNull(propertyName);
-            }
-        }
+        private void FailAt(PublicationInterruption current)
+        { if (point == current) { throw new IOException($"Injected interruption at {current}."); } }
     }
-
-    private static string ReadRequiredString(ref Utf8JsonReader reader, string description) =>
-        reader.GetString()
-        ?? throw new JsonException($"FirstBoard Host fact {description} must be a string.");
 }

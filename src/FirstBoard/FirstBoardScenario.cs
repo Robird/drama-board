@@ -8,6 +8,7 @@ using DramaBoard.Player;
 using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
+using DramaBoard.FirstBoard.Persistence;
 
 namespace DramaBoard.FirstBoard;
 
@@ -19,16 +20,38 @@ public static class FirstBoardScenario
     public static SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> CreateKernel(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
         ScenarioInstance instance,
-        IJournalSink<FirstBoardFact> journal,
-        FirstBoardWorld world,
-        WorldVersion? version = null,
-        LogicalInstant? lastCommittedInstant = null,
-        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>? spatialKnowledgeGetter = null)
+        IOccurrenceHistory<FirstBoardWorld, FirstBoardFact> history,
+        IPlayerSpatialKnowledgeGetter<FirstBoardWorld>? spatialKnowledgeGetter = null,
+        SimulationRules? simulationRules = null)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(instance);
-        ArgumentNullException.ThrowIfNull(journal);
-        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(history);
+        FirstBoardWorld world = history.State;
+        SimulationRules rules = simulationRules ?? CreateRules(instance);
+        if (history is FirstBoardOccurrenceHistory persistent)
+        {
+            if (persistent.Scenario.InstanceSha256 != instance.InstanceSha256)
+            {
+                throw new ArgumentException("The supplied scenario must match the saved run.", nameof(instance));
+            }
+            if (!drivers.Keys.Order(StringComparer.Ordinal).SequenceEqual(
+                persistent.DriverBinding.ActorIds, StringComparer.Ordinal))
+            {
+                throw new ArgumentException("The supplied driver actors must exactly match the saved strategy binding.", nameof(drivers));
+            }
+            if (simulationRules is not null &&
+                (simulationRules.WorldSeed != persistent.Rules.WorldSeed ||
+                 simulationRules.MaxTransitionsPerModelTime != persistent.Rules.MaxTransitionsPerModelTime))
+            {
+                throw new ArgumentException("The supplied rules must match the saved scheduling rules.", nameof(simulationRules));
+            }
+            rules = persistent.Rules;
+        }
+        if (rules.WorldSeed != world.WorldSeed)
+        {
+            throw new ArgumentException("Scheduling rules and world must use the same seed.", nameof(simulationRules));
+        }
         instance.Definition.Validate();
         if (world.WorldSeed != instance.WorldSeed)
         {
@@ -43,11 +66,8 @@ public static class FirstBoardScenario
             spatialKnowledgeGetter ??
             FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance;
         return new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            world,
-            version ?? new WorldVersion(journal.LineageId, journal.Batches.Count),
-            world.Now,
-            lastCommittedInstant,
-            new SimulationRules(instance.WorldSeed, MaxTransitionsPerModelTime),
+            history,
+            rules,
             [
                 new CellarDeadlineRule(
                     instance.Graph,
@@ -59,10 +79,20 @@ public static class FirstBoardScenario
                 new TravelGoalRule(instance, knowledgeGetter),
                 new DecisionPointRule(drivers, instance, knowledgeGetter),
             ],
-            journal,
             reducer.Apply,
             reducer.Validate);
     }
+
+    public static InMemoryOccurrenceHistory<FirstBoardWorld, FirstBoardFact> CreateMemoryHistory(
+        FirstBoardWorld world,
+        long lineageId = LineageId)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        return new(world, new KernelCursor(new WorldVersion(lineageId, 0), world.Now, null, null));
+    }
+
+    public static SimulationRules CreateRules(ScenarioInstance instance) =>
+        new(instance.WorldSeed, MaxTransitionsPerModelTime);
 
     public static Task<BoardRunCapture> RunAsync(
         IReadOnlyDictionary<string, IPlayerDriver> drivers,
@@ -93,14 +123,15 @@ public static class FirstBoardScenario
                 nameof(initialWorld));
         }
 
-        var journal = new InMemoryJournal<FirstBoardFact>(LineageId);
+        var history = CreateMemoryHistory(world);
+        KernelCursor initialCursor = history.Cursor;
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            CreateKernel(drivers, instance, journal, world);
+            CreateKernel(drivers, instance, history);
         HostRunResult<FirstBoardWorld> result = await SimulationHost.RunUntilAsync(
             kernel,
             until,
             cancellationToken);
-        return new BoardRunCapture(world, result, journal);
+        return new BoardRunCapture(world, initialCursor, result, history.CompletedEvents);
     }
 
     public static DecisionRequest BuildRequest(
@@ -278,17 +309,17 @@ public static class FirstBoardScenario
             $"consumedContacts={consumedContacts};pendingEncounter={pending}";
     }
 
-    public static string[] EventSnapshots(InMemoryJournal<FirstBoardFact> journal) =>
+    public static string[] EventSnapshots(IReadOnlyList<OccurrenceEvent<FirstBoardFact>> events) =>
         [
-            .. journal.Batches.SelectMany(batch => batch.Facts.Select((fact, index) =>
-                $"{batch.Instant.ModelTime.Ticks}:{batch.Instant.CausalOrdinal} " +
+            .. events.SelectMany(batch => batch.Facts.Select((fact, index) =>
+                $"{batch.TargetInstant.ModelTime.Ticks}:{batch.TargetInstant.CausalOrdinal} " +
                 $"#{index} {FactName(fact)} {PayloadSummary(fact)}")),
         ];
 
-    public static string FormatJournal(InMemoryJournal<FirstBoardFact> journal)
+    public static string FormatJournal(IReadOnlyList<OccurrenceEvent<FirstBoardFact>> events)
     {
         var text = new StringBuilder();
-        foreach (string snapshot in EventSnapshots(journal))
+        foreach (string snapshot in EventSnapshots(events))
         {
             text.AppendLine(snapshot);
         }
@@ -549,7 +580,7 @@ public static class FirstBoardScenario
         ChestOpenedEvent opened =>
             $"actor={opened.ActorId} object={opened.ObjectId} key={opened.KeyObjectId}",
         ActionRejectedEvent rejected =>
-            $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKind.Id} " +
+            $"actor={rejected.ActorId} action={rejected.RejectedIntent.ActionKindId} " +
             $"reason={rejected.Reason}",
         CellarSealedEvent => "place=cellar",
         _ => throw new InvalidOperationException("Unknown FirstBoard Game payload."),
@@ -619,5 +650,6 @@ public static class FirstBoardScenario
 
 public sealed record BoardRunCapture(
     FirstBoardWorld InitialWorld,
+    KernelCursor InitialCursor,
     HostRunResult<FirstBoardWorld> Result,
-    InMemoryJournal<FirstBoardFact> Journal);
+    IReadOnlyList<OccurrenceEvent<FirstBoardFact>> CompletedEvents);

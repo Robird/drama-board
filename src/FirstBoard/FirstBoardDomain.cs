@@ -1,3 +1,4 @@
+using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
 using DramaBoard.Spatial;
@@ -54,38 +55,91 @@ public static class BoardTiming
     public const long RandomRunBoundaryTicks = 4_200_000;
 }
 
-public sealed record BoardFact(string Kind, string? RelatedId, string Text);
-
-public sealed record BoardWaitActivity(ModelTime Due);
-
-public sealed record BoardActor(
-    long Id,
-    string Key,
-    long Generation,
-    long DecisionSequence,
-    BoardWaitActivity? Activity,
-    PlaceId? TravelGoalPlaceId,
-    IReadOnlyList<BoardFact> KnownFacts);
-
-public sealed record BoardObject(
-    long Id,
-    string Key,
-    long? OwnerActorId);
-
-public sealed record PendingPassageEncounter(
-    PassageContactKey ContactKey,
-    PassageContactKind Kind);
-
-public sealed record FirstBoardGameState(
-    ulong WorldSeed,
-    long NextPersistentId,
-    ModelTime Now,
-    IReadOnlyList<BoardActor> Actors,
-    IReadOnlyList<BoardObject> Objects,
-    bool CellarSealed,
-    bool ChestOpened,
-    PendingPassageEncounter? PendingEncounter = null)
+[DurableType("DramaBoard.FirstBoard.BoardFact", 1)]
+public sealed partial class BoardFact : DurableBase, IEquatable<BoardFact>
 {
+    [DurableField(1)] public readonly string Kind;
+    [DurableField(2)] public readonly string? RelatedId;
+    [DurableField(3)] public readonly string Text;
+    public BoardFact(string Kind, string? RelatedId, string Text) => (this.Kind, this.RelatedId, this.Text) = (Kind, RelatedId, Text);
+    public bool Equals(BoardFact? other) => other is not null && Kind == other.Kind && RelatedId == other.RelatedId && Text == other.Text;
+    public override bool Equals(object? obj) => Equals(obj as BoardFact);
+    public override int GetHashCode() => HashCode.Combine(Kind, RelatedId, Text);
+}
+
+[DurableType("DramaBoard.FirstBoard.BoardWaitActivity", 1)]
+public sealed partial class BoardWaitActivity : DurableBase, IEquatable<BoardWaitActivity>
+{
+    [DurableField(1)] public readonly ModelTime Due;
+    public BoardWaitActivity(ModelTime Due) => this.Due = Due;
+    public bool Equals(BoardWaitActivity? other) => other is not null && Due == other.Due;
+    public override bool Equals(object? obj) => Equals(obj as BoardWaitActivity);
+    public override int GetHashCode() => Due.GetHashCode();
+}
+
+[DurableType("DramaBoard.FirstBoard.BoardActor", 1)]
+public sealed partial class BoardActor : DurableBase, IEquatable<BoardActor>
+{
+    [DurableField(1)] public readonly long Id;
+    [DurableField(2)] public readonly string Key;
+    [DurableField(3)] public readonly long Generation;
+    [DurableField(4)] public readonly long DecisionSequence;
+    [DurableField(5)] public readonly BoardWaitActivity? Activity;
+    [DurableField(6)] public readonly PlaceId? TravelGoalPlaceId;
+    [DurableField(7)] private readonly List<BoardFact> _knownFacts;
+    public IReadOnlyList<BoardFact> KnownFacts => _knownFacts.AsReadOnly();
+    public BoardActor(long Id, string Key, long Generation, long DecisionSequence, BoardWaitActivity? Activity, PlaceId? TravelGoalPlaceId, IEnumerable<BoardFact> KnownFacts) => (this.Id, this.Key, this.Generation, this.DecisionSequence, this.Activity, this.TravelGoalPlaceId, _knownFacts) = (Id, Key, Generation, DecisionSequence, Activity, TravelGoalPlaceId, [.. KnownFacts]);
+    public BoardActor With(long? generation = null, long? decisionSequence = null, IEnumerable<BoardFact>? knownFacts = null) => new(Id, Key, generation ?? Generation, decisionSequence ?? DecisionSequence, Activity, TravelGoalPlaceId, knownFacts ?? KnownFacts);
+    public BoardActor WithActivity(BoardWaitActivity? activity) => new(Id, Key, Generation, DecisionSequence, activity, TravelGoalPlaceId, KnownFacts);
+    public BoardActor WithTravelGoal(PlaceId? travelGoalPlaceId) => new(Id, Key, Generation, DecisionSequence, Activity, travelGoalPlaceId, KnownFacts);
+    public bool Equals(BoardActor? other) => other is not null && Id == other.Id && Key == other.Key && Generation == other.Generation && DecisionSequence == other.DecisionSequence && Equals(Activity, other.Activity) && TravelGoalPlaceId == other.TravelGoalPlaceId && KnownFacts.SequenceEqual(other.KnownFacts);
+    public override bool Equals(object? obj) => Equals(obj as BoardActor);
+    public override int GetHashCode() => HashCode.Combine(Id, Key, Generation, DecisionSequence, Activity, TravelGoalPlaceId);
+}
+
+[DurableType("DramaBoard.FirstBoard.BoardObject", 1)]
+public sealed partial class BoardObject : DurableBase, IEquatable<BoardObject>
+{
+    [DurableField(1)] public readonly long Id;
+    [DurableField(2)] public readonly string Key;
+    [DurableField(3)] public readonly long? OwnerActorId;
+    public BoardObject(long Id, string Key, long? OwnerActorId) => (this.Id, this.Key, this.OwnerActorId) = (Id, Key, OwnerActorId);
+    public BoardObject WithOwnerActorId(long? ownerActorId) => new(Id, Key, ownerActorId);
+    public bool Equals(BoardObject? other) => other is not null && Id == other.Id && Key == other.Key && OwnerActorId == other.OwnerActorId;
+    public override bool Equals(object? obj) => Equals(obj as BoardObject);
+    public override int GetHashCode() => HashCode.Combine(Id, Key, OwnerActorId);
+}
+
+[DurableType("DramaBoard.FirstBoard.PendingPassageEncounter", 1)]
+public sealed partial class PendingPassageEncounter : DurableBase, IEquatable<PendingPassageEncounter>
+{
+    [DurableField(1)] public readonly PassageContactKey ContactKey;
+    [DurableField(2)] public readonly PassageContactKind Kind;
+    public PendingPassageEncounter(PassageContactKey contactKey, PassageContactKind kind) => (ContactKey, Kind) = (contactKey, kind);
+    public bool Equals(PendingPassageEncounter? other) => other is not null && Equals(ContactKey, other.ContactKey) && Kind == other.Kind;
+    public override bool Equals(object? obj) => Equals(obj as PendingPassageEncounter);
+    public override int GetHashCode() => HashCode.Combine(ContactKey, Kind);
+}
+
+[DurableType("DramaBoard.FirstBoard.FirstBoardGameState", 1)]
+public sealed partial class FirstBoardGameState : DurableBase, IEquatable<FirstBoardGameState>
+{
+    [DurableField(1)] public readonly ulong WorldSeed;
+    [DurableField(2)] public readonly long NextPersistentId;
+    [DurableField(3)] public readonly ModelTime Now;
+    [DurableField(4)] private readonly List<BoardActor> _actors;
+    [DurableField(5)] private readonly List<BoardObject> _objects;
+    public IReadOnlyList<BoardActor> Actors => _actors.AsReadOnly();
+    public IReadOnlyList<BoardObject> Objects => _objects.AsReadOnly();
+    [DurableField(6)] public readonly bool CellarSealed;
+    [DurableField(7)] public readonly bool ChestOpened;
+    [DurableField(8)] public readonly PendingPassageEncounter? PendingEncounter;
+    public FirstBoardGameState(ulong WorldSeed, long NextPersistentId, ModelTime Now, IEnumerable<BoardActor> Actors, IEnumerable<BoardObject> Objects, bool CellarSealed, bool ChestOpened, PendingPassageEncounter? PendingEncounter = null) => (this.WorldSeed, this.NextPersistentId, this.Now, _actors, _objects, this.CellarSealed, this.ChestOpened, this.PendingEncounter) = (WorldSeed, NextPersistentId, Now, [.. Actors], [.. Objects], CellarSealed, ChestOpened, PendingEncounter);
+    public FirstBoardGameState With(ulong? worldSeed = null, long? nextPersistentId = null, ModelTime? now = null, IEnumerable<BoardActor>? actors = null, IEnumerable<BoardObject>? objects = null, bool? cellarSealed = null, bool? chestOpened = null) => new(worldSeed ?? WorldSeed, nextPersistentId ?? NextPersistentId, now ?? Now, actors ?? Actors, objects ?? Objects, cellarSealed ?? CellarSealed, chestOpened ?? ChestOpened, PendingEncounter);
+    public FirstBoardGameState WithPendingEncounter(PendingPassageEncounter? pendingEncounter) => new(WorldSeed, NextPersistentId, Now, Actors, Objects, CellarSealed, ChestOpened, pendingEncounter);
+    public bool Equals(FirstBoardGameState? other) => other is not null && WorldSeed == other.WorldSeed && NextPersistentId == other.NextPersistentId && Now == other.Now && Actors.SequenceEqual(other.Actors) && Objects.SequenceEqual(other.Objects) && CellarSealed == other.CellarSealed && ChestOpened == other.ChestOpened && Equals(PendingEncounter, other.PendingEncounter);
+    public override bool Equals(object? obj) => Equals(obj as FirstBoardGameState);
+    public override int GetHashCode() => HashCode.Combine(WorldSeed, NextPersistentId, Now, CellarSealed, ChestOpened, PendingEncounter);
     public BoardActor Actor(string actorId) =>
         Actors.Single(actor => actor.Key == actorId);
 
@@ -99,10 +153,16 @@ public sealed record FirstBoardGameState(
 }
 
 /// <summary>Owns the complete Game + objective Graph Spatial committed world.</summary>
-public sealed record FirstBoardWorld(
-    FirstBoardGameState Game,
-    GraphSpatialState Spatial)
+[DurableType("DramaBoard.FirstBoard.FirstBoardWorld", 1)]
+public sealed partial class FirstBoardWorld : DurableBase, IEquatable<FirstBoardWorld>
 {
+    [DurableField(1)] public readonly FirstBoardGameState Game;
+    [DurableField(2)] public readonly GraphSpatialState Spatial;
+    public FirstBoardWorld(FirstBoardGameState game, GraphSpatialState spatial) => (Game, Spatial) = (game, spatial);
+    public FirstBoardWorld With(FirstBoardGameState? game = null, GraphSpatialState? spatial = null) => new(game ?? Game, spatial ?? Spatial);
+    public bool Equals(FirstBoardWorld? other) => other is not null && Equals(Game, other.Game) && Equals(Spatial, other.Spatial);
+    public override bool Equals(object? obj) => Equals(obj as FirstBoardWorld);
+    public override int GetHashCode() => HashCode.Combine(Game, Spatial);
     public ulong WorldSeed => Game.WorldSeed;
     public ModelTime Now => Game.Now;
     public IReadOnlyList<BoardActor> Actors => Game.Actors;
@@ -161,33 +221,96 @@ public sealed record FirstBoardWorld(
         first == second;
 }
 
-public abstract record BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.BoardEventPayload", 1)]
+public abstract partial class BoardEventPayload : DurableBase
+{
+    protected virtual IEnumerable<object?> GetEqualityComponents() => this switch
+    {
+        ActorTravelGoalResolvedEvent x => [x.ActorId, x.DestinationPlaceId, x.Resolution],
+        PassageEncounterOpenedEvent x => [x.ContactKey, x.Kind],
+        PassageEncounterResolvedEvent x => [x.ContactKey, x.RespondingActorId, x.Resolution],
+        TicketConsumedEvent x => [x.ActorId, x.TicketObjectId],
+        ActorWaitStartedEvent x => [x.ActorId, x.CompleteAt],
+        ActorSpokeEvent x => [x.ActorId, x.TargetActorId, x.Text, x.SharedFactKind],
+        ObjectTakenEvent x => [x.ActorId, x.ObjectId],
+        ObjectPlacedEvent x => [x.ActorId, x.ObjectId, x.PlaceId],
+        ObjectGivenEvent x => [x.ActorId, x.TargetActorId, x.ObjectId],
+        ObjectShownEvent x => [x.ActorId, x.TargetActorId, x.ObjectId],
+        ChestOpenedEvent x => [x.ActorId, x.ObjectId, x.KeyObjectId],
+        ActionRejectedEvent x => [x.ActorId, x.RejectedIntent, x.Reason],
+        ActorObservedEvent x => [x.ActorId, x.TargetObjectId],
+        _ => [],
+    };
+    public sealed override bool Equals(object? obj)
+    {
+        if (obj is not BoardEventPayload other || other.GetType() != GetType()) return false;
+        if (this is ActorObservedEvent observed && other is ActorObservedEvent compared)
+            return observed.ActorId == compared.ActorId && observed.TargetObjectId == compared.TargetObjectId && observed.LearnedFacts.SequenceEqual(compared.LearnedFacts);
+        return GetEqualityComponents().SequenceEqual(other.GetEqualityComponents());
+    }
+    public sealed override int GetHashCode()
+    {
+        var hash = new HashCode(); hash.Add(GetType());
+        if (this is ActorObservedEvent observed) { hash.Add(observed.ActorId); hash.Add(observed.TargetObjectId); foreach (BoardFact fact in observed.LearnedFacts) hash.Add(fact); return hash.ToHashCode(); }
+        foreach (object? value in GetEqualityComponents()) hash.Add(value); return hash.ToHashCode();
+    }
+    public static bool operator ==(BoardEventPayload? left, BoardEventPayload? right) => ReferenceEquals(left, right) || left is not null && left.Equals(right);
+    public static bool operator !=(BoardEventPayload? left, BoardEventPayload? right) => !(left == right);
+}
 
 /// <summary>Records Game decision progress without owning location or arrival time.</summary>
-public sealed record ActorTravelStartedEvent(
-    string ActorId,
-    string ExitId,
-    string DestinationId) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorTravelStartedEvent", 1)]
+public sealed partial class ActorTravelStartedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string ExitId;
+    [DurableField(3)] public readonly string DestinationId;
 
-public sealed record ActorTravelGoalSetEvent(
-    string ActorId,
-    PlaceId DestinationPlaceId) : BoardEventPayload;
+    public ActorTravelStartedEvent(string actorId, string exitId, string destinationId) =>
+        (ActorId, ExitId, DestinationId) = (actorId, exitId, destinationId);
 
+    protected override IEnumerable<object?> GetEqualityComponents() => [ActorId, ExitId, DestinationId];
+}
+
+[DurableType("DramaBoard.FirstBoard.ActorTravelGoalSetEvent", 1)]
+public sealed partial class ActorTravelGoalSetEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly PlaceId DestinationPlaceId;
+
+    public ActorTravelGoalSetEvent(string actorId, PlaceId destinationPlaceId) =>
+        (ActorId, DestinationPlaceId) = (actorId, destinationPlaceId);
+
+    protected override IEnumerable<object?> GetEqualityComponents() => [ActorId, DestinationPlaceId];
+}
+
+[DurableType("DramaBoard.FirstBoard.TravelGoalResolution", 1)]
 public enum TravelGoalResolution
 {
     Completed = 0,
     Blocked = 1,
 }
 
-public sealed record ActorTravelGoalResolvedEvent(
-    string ActorId,
-    PlaceId DestinationPlaceId,
-    TravelGoalResolution Resolution) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorTravelGoalResolvedEvent", 1)]
+public sealed partial class ActorTravelGoalResolvedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly PlaceId DestinationPlaceId;
+    [DurableField(3)] public readonly TravelGoalResolution Resolution;
 
-public sealed record PassageEncounterOpenedEvent(
-    PassageContactKey ContactKey,
-    PassageContactKind Kind) : BoardEventPayload;
+    public ActorTravelGoalResolvedEvent(string actorId, PlaceId destinationPlaceId, TravelGoalResolution resolution) => (ActorId, DestinationPlaceId, Resolution) = (actorId, destinationPlaceId, resolution);
+}
 
+[DurableType("DramaBoard.FirstBoard.PassageEncounterOpenedEvent", 1)]
+public sealed partial class PassageEncounterOpenedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly PassageContactKey ContactKey;
+    [DurableField(2)] public readonly PassageContactKind Kind;
+
+    public PassageEncounterOpenedEvent(PassageContactKey contactKey, PassageContactKind kind) => (ContactKey, Kind) = (contactKey, kind);
+}
+
+[DurableType("DramaBoard.FirstBoard.PassageEncounterResolution", 1)]
 public enum PassageEncounterResolution
 {
     Continued = 0,
@@ -195,69 +318,184 @@ public enum PassageEncounterResolution
     WorldChanged = 2,
 }
 
-public sealed record PassageEncounterResolvedEvent(
-    PassageContactKey ContactKey,
-    string? RespondingActorId,
-    PassageEncounterResolution Resolution) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.PassageEncounterResolvedEvent", 1)]
+public sealed partial class PassageEncounterResolvedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly PassageContactKey ContactKey;
+    [DurableField(2)] public readonly string? RespondingActorId;
+    [DurableField(3)] public readonly PassageEncounterResolution Resolution;
 
-public sealed record TicketConsumedEvent(
-    string ActorId,
-    string TicketObjectId) : BoardEventPayload;
+    public PassageEncounterResolvedEvent(PassageContactKey ContactKey, string? RespondingActorId, PassageEncounterResolution Resolution) => (this.ContactKey, this.RespondingActorId, this.Resolution) = (ContactKey, RespondingActorId, Resolution);
+}
 
-public sealed record ActorWaitStartedEvent(
-    string ActorId,
-    ModelTime CompleteAt) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.TicketConsumedEvent", 1)]
+public sealed partial class TicketConsumedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string TicketObjectId;
 
-public sealed record ActorWaitedEvent(string ActorId) : BoardEventPayload;
+    public TicketConsumedEvent(string actorId, string ticketObjectId) => (ActorId, TicketObjectId) = (actorId, ticketObjectId);
+}
 
-public sealed record ActorSpokeEvent(
-    string ActorId,
-    string TargetActorId,
-    string Text,
-    string? SharedFactKind) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorWaitStartedEvent", 1)]
+public sealed partial class ActorWaitStartedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly ModelTime CompleteAt;
 
-public sealed record ActorObservedEvent(
-    string ActorId,
-    IReadOnlyList<BoardFact> LearnedFacts,
-    string? TargetObjectId = null) : BoardEventPayload;
+    public ActorWaitStartedEvent(string actorId, ModelTime completeAt) => (ActorId, CompleteAt) = (actorId, completeAt);
+}
 
-public sealed record ObjectTakenEvent(
-    string ActorId,
-    string ObjectId) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorWaitedEvent", 1)]
+public sealed partial class ActorWaitedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
 
-public sealed record ObjectPlacedEvent(
-    string ActorId,
-    string ObjectId,
-    string PlaceId) : BoardEventPayload;
+    public ActorWaitedEvent(string actorId) => ActorId = actorId;
 
-public sealed record ObjectGivenEvent(
-    string ActorId,
-    string TargetActorId,
-    string ObjectId) : BoardEventPayload;
+    protected override IEnumerable<object?> GetEqualityComponents() => [ActorId];
+}
 
-public sealed record ObjectShownEvent(
-    string ActorId,
-    string TargetActorId,
-    string ObjectId) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorSpokeEvent", 1)]
+public sealed partial class ActorSpokeEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string TargetActorId;
+    [DurableField(3)] public readonly string Text;
+    [DurableField(4)] public readonly string? SharedFactKind;
 
-public sealed record ChestOpenedEvent(
-    string ActorId,
-    string ObjectId,
-    string KeyObjectId) : BoardEventPayload;
+    public ActorSpokeEvent(string actorId, string targetActorId, string text, string? sharedFactKind) => (ActorId, TargetActorId, Text, SharedFactKind) = (actorId, targetActorId, text, sharedFactKind);
+}
 
-public sealed record ActionRejectedEvent(
-    string ActorId,
-    Intent RejectedIntent,
-    string Reason) : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ActorObservedEvent", 1)]
+public sealed partial class ActorObservedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] private readonly List<BoardFact> _learnedFacts;
+    [DurableField(3)] public readonly string? TargetObjectId;
+    public IReadOnlyList<BoardFact> LearnedFacts => _learnedFacts.AsReadOnly();
+    public ActorObservedEvent(string actorId, IEnumerable<BoardFact> learnedFacts, string? targetObjectId = null) => (ActorId, _learnedFacts, TargetObjectId) = (actorId, [.. learnedFacts], targetObjectId);
+}
 
-public sealed record CellarSealedEvent : BoardEventPayload;
+[DurableType("DramaBoard.FirstBoard.ObjectTakenEvent", 1)]
+public sealed partial class ObjectTakenEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string ObjectId;
+
+    public ObjectTakenEvent(string actorId, string objectId) => (ActorId, ObjectId) = (actorId, objectId);
+}
+
+[DurableType("DramaBoard.FirstBoard.ObjectPlacedEvent", 1)]
+public sealed partial class ObjectPlacedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string ObjectId;
+    [DurableField(3)] public readonly string PlaceId;
+
+    public ObjectPlacedEvent(string actorId, string objectId, string placeId) => (ActorId, ObjectId, PlaceId) = (actorId, objectId, placeId);
+}
+
+[DurableType("DramaBoard.FirstBoard.ObjectGivenEvent", 1)]
+public sealed partial class ObjectGivenEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string TargetActorId;
+    [DurableField(3)] public readonly string ObjectId;
+
+    public ObjectGivenEvent(string actorId, string targetActorId, string objectId) => (ActorId, TargetActorId, ObjectId) = (actorId, targetActorId, objectId);
+}
+
+[DurableType("DramaBoard.FirstBoard.ObjectShownEvent", 1)]
+public sealed partial class ObjectShownEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string TargetActorId;
+    [DurableField(3)] public readonly string ObjectId;
+
+    public ObjectShownEvent(string actorId, string targetActorId, string objectId) => (ActorId, TargetActorId, ObjectId) = (actorId, targetActorId, objectId);
+}
+
+[DurableType("DramaBoard.FirstBoard.ChestOpenedEvent", 1)]
+public sealed partial class ChestOpenedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly string ObjectId;
+    [DurableField(3)] public readonly string KeyObjectId;
+
+    public ChestOpenedEvent(string actorId, string objectId, string keyObjectId) => (ActorId, ObjectId, KeyObjectId) = (actorId, objectId, keyObjectId);
+}
+
+[DurableType("DramaBoard.FirstBoard.RejectedIntentSnapshot", 1)]
+public sealed partial class RejectedIntentSnapshot : DurableBase, IEquatable<RejectedIntentSnapshot>
+{
+    [DurableField(1)] public readonly string ActionKindId;
+    [DurableField(2)] public readonly string? TargetActorId;
+    [DurableField(3)] public readonly string? TargetObjectId;
+    [DurableField(4)] public readonly string? ExitId;
+    [DurableField(5)] public readonly string? DestinationId;
+    [DurableField(6)] public readonly string? FreeText;
+    [DurableField(7)] public readonly long? DurationMs;
+    [DurableField(8)] public readonly long? UntilModelTimeMs;
+    public RejectedIntentSnapshot(string actionKindId, string? targetActorId, string? targetObjectId, string? exitId, string? destinationId, string? freeText, long? durationMs, long? untilModelTimeMs) => (ActionKindId, TargetActorId, TargetObjectId, ExitId, DestinationId, FreeText, DurationMs, UntilModelTimeMs) = (actionKindId, targetActorId, targetObjectId, exitId, destinationId, freeText, durationMs, untilModelTimeMs);
+    public static RejectedIntentSnapshot FromIntent(Intent intent) => new(intent.ActionKind.Id, intent.TargetActorId, intent.TargetObjectId, intent.ExitId, intent.DestinationId, intent.FreeText, intent.DurationMs, intent.UntilModelTimeMs);
+    public Intent ToIntent() => new(new ActionKind(ActionKindId), TargetActorId, TargetObjectId, ExitId, DestinationId, FreeText, DurationMs, UntilModelTimeMs);
+    public bool Equals(RejectedIntentSnapshot? other) => other is not null && ActionKindId == other.ActionKindId && TargetActorId == other.TargetActorId && TargetObjectId == other.TargetObjectId && ExitId == other.ExitId && DestinationId == other.DestinationId && FreeText == other.FreeText && DurationMs == other.DurationMs && UntilModelTimeMs == other.UntilModelTimeMs;
+    public override bool Equals(object? obj) => Equals(obj as RejectedIntentSnapshot);
+    public override int GetHashCode() => HashCode.Combine(ActionKindId, TargetActorId, TargetObjectId, ExitId, DestinationId, FreeText, DurationMs, UntilModelTimeMs);
+}
+
+[DurableType("DramaBoard.FirstBoard.ActionRejectedEvent", 1)]
+public sealed partial class ActionRejectedEvent : BoardEventPayload
+{
+    [DurableField(1)] public readonly string ActorId;
+    [DurableField(2)] public readonly RejectedIntentSnapshot RejectedIntent;
+    [DurableField(3)] public readonly string Reason;
+
+    public ActionRejectedEvent(string actorId, RejectedIntentSnapshot rejectedIntent, string reason) => (ActorId, RejectedIntent, Reason) = (actorId, rejectedIntent, reason);
+
+    public ActionRejectedEvent(string actorId, Intent rejectedIntent, string reason) : this(actorId, RejectedIntentSnapshot.FromIntent(rejectedIntent), reason)
+{
+
+}
+}
+
+[DurableType("DramaBoard.FirstBoard.CellarSealedEvent", 1)]
+public sealed partial class CellarSealedEvent : BoardEventPayload
+{
+    protected override IEnumerable<object?> GetEqualityComponents() => [];
+}
 
 /// <summary>Exact Host fact union; every batch may combine Game and Spatial facts.</summary>
-public abstract record FirstBoardFact;
+[DurableType("DramaBoard.FirstBoard.FirstBoardFact", 1)]
+public abstract partial class FirstBoardFact : DurableBase
+{
+    protected abstract object? EqualityValue { get; }
+    public sealed override bool Equals(object? obj) => obj is FirstBoardFact other && other.GetType() == GetType() && Equals(EqualityValue, other.EqualityValue);
+    public sealed override int GetHashCode() => HashCode.Combine(GetType(), EqualityValue);
+    public static bool operator ==(FirstBoardFact? left, FirstBoardFact? right) => ReferenceEquals(left, right) || left is not null && left.Equals(right);
+    public static bool operator !=(FirstBoardFact? left, FirstBoardFact? right) => !(left == right);
+}
 
-public sealed record GameBoardFact(BoardEventPayload Value) : FirstBoardFact;
+[DurableType("DramaBoard.FirstBoard.GameBoardFact", 1)]
+public sealed partial class GameBoardFact : FirstBoardFact
+{
+    [DurableField(1)] public readonly BoardEventPayload Value;
 
-public sealed record SpatialBoardFact(GraphSpatialFact Value) : FirstBoardFact;
+    protected override object? EqualityValue => Value;
+
+    public GameBoardFact(BoardEventPayload value) => Value = value;
+}
+
+[DurableType("DramaBoard.FirstBoard.SpatialBoardFact", 1)]
+public sealed partial class SpatialBoardFact : FirstBoardFact
+{
+    [DurableField(1)] public readonly GraphSpatialFact Value;
+
+    protected override object? EqualityValue => Value;
+
+    public SpatialBoardFact(GraphSpatialFact value) => Value = value;
+}
 
 /// <summary>Folds the Host union while leaving cross-domain validation to the batch boundary.</summary>
 public sealed class FirstBoardReducer
@@ -282,22 +520,13 @@ public sealed class FirstBoardReducer
 
         FirstBoardWorld updated = fact switch
         {
-            GameBoardFact game => world with
-            {
-                Game = ApplyGame(world, instant, game.Value),
-            },
-            SpatialBoardFact spatial => world with
-            {
-                Spatial = _spatialReducer.Apply(world.Spatial, instant, spatial.Value),
-            },
+            GameBoardFact game => world.With(game: ApplyGame(world, instant, game.Value)),
+            SpatialBoardFact spatial => world.With(spatial: _spatialReducer.Apply(world.Spatial, instant, spatial.Value)),
             _ => throw new InvalidOperationException(
                 $"Unknown FirstBoard fact '{fact.GetType().Name}'."),
         };
 
-        return updated with
-        {
-            Game = updated.Game with { Now = instant.ModelTime },
-        };
+        return updated.With(game: updated.Game.With(now: instant.ModelTime));
     }
 
     public void Validate(FirstBoardWorld world)
@@ -399,10 +628,7 @@ public sealed class FirstBoardReducer
                 ConsumeTicket(game, consumed),
             ActorWaitStartedEvent waited =>
                 UpdateActor(game, waited.ActorId, actor =>
-                    AddFacts(CompleteDecision(actor) with
-                    {
-                        Activity = new BoardWaitActivity(waited.CompleteAt),
-                    }, [LastOutcome(
+                    AddFacts(CompleteDecision(actor).WithActivity(new BoardWaitActivity(waited.CompleteAt)), [LastOutcome(
                         $"Your wait was accepted until model time {waited.CompleteAt.Ticks}ms.")])),
             ActorWaitedEvent waited =>
                 UpdateActor(game, waited.ActorId, actor =>
@@ -468,10 +694,7 @@ public sealed class FirstBoardReducer
                 "A passage encounter requires two FirstBoard actors.");
         }
 
-        return game with
-        {
-            PendingEncounter = new PendingPassageEncounter(opened.ContactKey, opened.Kind),
-        };
+        return game.WithPendingEncounter(new PendingPassageEncounter(opened.ContactKey, opened.Kind));
     }
 
     private static FirstBoardGameState ApplyPassageEncounterResolved(
@@ -495,7 +718,7 @@ public sealed class FirstBoardReducer
                     "A WorldChanged encounter resolution cannot name a responding actor.");
             }
 
-            return game with { PendingEncounter = null };
+            return game.WithPendingEncounter(null);
         }
 
         if (resolved.Resolution is not (
@@ -521,7 +744,7 @@ public sealed class FirstBoardReducer
         }
 
         BoardActor responder = game.Actor(responderId);
-        FirstBoardGameState cleared = game with { PendingEncounter = null };
+        FirstBoardGameState cleared = game.WithPendingEncounter(null);
         return UpdateActor(cleared, responder.Id, actor =>
         {
             BoardActor completed = CompleteDecision(actor);
@@ -531,7 +754,7 @@ public sealed class FirstBoardReducer
             }
 
             return AddFacts(
-                completed with { TravelGoalPlaceId = null },
+                completed.WithTravelGoal(null),
                 [LastOutcome(
                     "Your delegated travel was interrupted when you reversed after a passage encounter.")]);
         });
@@ -569,10 +792,7 @@ public sealed class FirstBoardReducer
 
         return UpdateActor(game, actor.Id, current =>
             AddFacts(
-                CompleteDecision(current) with
-                {
-                    TravelGoalPlaceId = set.DestinationPlaceId,
-                },
+                CompleteDecision(current).WithTravelGoal(set.DestinationPlaceId),
                 [LastOutcome(
                     $"Your delegated travel toward {set.DestinationPlaceId} was accepted.")]));
     }
@@ -620,10 +840,10 @@ public sealed class FirstBoardReducer
         var learnedFacts = new List<BoardFact>
         {
             RejectedActionFact(rejected.RejectedIntent, rejected.Reason),
-            LastOutcome($"Your {rejected.RejectedIntent.ActionKind.Id} action was rejected: " +
+            LastOutcome($"Your {rejected.RejectedIntent.ActionKindId} action was rejected: " +
                 $"{rejected.Reason}."),
         };
-        if (rejected.RejectedIntent.ActionKind == ActionKinds.Travel &&
+        if (rejected.RejectedIntent.ActionKindId == ActionKinds.Travel.Id &&
             rejected.Reason == "cellar is sealed")
         {
             learnedFacts.Add(CellarSealedFact());
@@ -637,7 +857,7 @@ public sealed class FirstBoardReducer
         FirstBoardWorld world,
         FirstBoardGameState game)
     {
-        FirstBoardGameState updated = game with { CellarSealed = true };
+        FirstBoardGameState updated = game.With(cellarSealed: true);
         foreach (BoardActor witness in game.Actors.Where(actor =>
                      world.IsAtPlace(actor.Key, new PlaceId(BoardIds.Cellar))))
         {
@@ -689,10 +909,7 @@ public sealed class FirstBoardReducer
         ObjectTakenEvent taken)
     {
         BoardActor actor = game.Actor(taken.ActorId);
-        FirstBoardGameState updated = UpdateObject(game, taken.ObjectId, item => item with
-        {
-            OwnerActorId = actor.Id,
-        });
+        FirstBoardGameState updated = UpdateObject(game, taken.ObjectId, item => item.WithOwnerActorId(actor.Id));
         return UpdateActor(updated, taken.ActorId, current =>
             AddFacts(CompleteDecision(current),
             [
@@ -706,10 +923,7 @@ public sealed class FirstBoardReducer
         FirstBoardGameState game,
         ObjectPlacedEvent placed)
     {
-        FirstBoardGameState updated = UpdateObject(game, placed.ObjectId, item => item with
-        {
-            OwnerActorId = null,
-        });
+        FirstBoardGameState updated = UpdateObject(game, placed.ObjectId, item => item.WithOwnerActorId(null));
         updated = UpdateActor(updated, placed.ActorId, actor =>
         {
             var facts = new List<BoardFact>
@@ -762,10 +976,7 @@ public sealed class FirstBoardReducer
         ObjectGivenEvent given)
     {
         BoardActor target = game.Actor(given.TargetActorId);
-        FirstBoardGameState updated = UpdateObject(game, given.ObjectId, item => item with
-        {
-            OwnerActorId = target.Id,
-        });
+        FirstBoardGameState updated = UpdateObject(game, given.ObjectId, item => item.WithOwnerActorId(target.Id));
         updated = UpdateActor(updated, given.ActorId, actor =>
             AddFacts(CompleteDecision(actor), [LastOutcome(
                 $"You successfully gave {given.ObjectId} to {given.TargetActorId}.")]));
@@ -817,12 +1028,9 @@ public sealed class FirstBoardReducer
         ChestOpenedEvent opened)
     {
         FirstBoardGameState updated = UpdateObject(
-            game with { ChestOpened = true },
+            game.With(chestOpened: true),
             BoardIds.DuchessLetter,
-            letter => letter with
-            {
-                OwnerActorId = game.Actor(opened.ActorId).Id,
-            });
+            letter => letter.WithOwnerActorId(game.Actor(opened.ActorId).Id));
         return UpdateActor(updated, opened.ActorId, actor =>
             AddFacts(CompleteDecision(actor),
             [
@@ -848,34 +1056,17 @@ public sealed class FirstBoardReducer
                 $"Ticket '{ticket.Key}' is not owned by actor '{actor.Key}'.");
         }
 
-        return game with
-        {
-            Objects = Array.AsReadOnly(game.Objects
-                .Where(item => item.Id != ticket.Id)
-                .ToArray()),
-        };
+        return game.With(objects: game.Objects.Where(item => item.Id != ticket.Id));
     }
 
     private static BoardActor CompleteDecision(BoardActor actor) =>
-        actor with
-        {
-            Generation = checked(actor.Generation + 1),
-            DecisionSequence = checked(actor.DecisionSequence + 1),
-        };
+        actor.With(generation: checked(actor.Generation + 1), decisionSequence: checked(actor.DecisionSequence + 1));
 
     private static BoardActor CompleteActivity(BoardActor actor) =>
-        actor with
-        {
-            Activity = null,
-            Generation = checked(actor.Generation + 1),
-        };
+        actor.With(generation: checked(actor.Generation + 1)).WithActivity(null);
 
     private static BoardActor CompleteTravelGoal(BoardActor actor) =>
-        actor with
-        {
-            TravelGoalPlaceId = null,
-            Generation = checked(actor.Generation + 1),
-        };
+        actor.With(generation: checked(actor.Generation + 1)).WithTravelGoal(null);
 
     private static BoardActor AddFacts(BoardActor actor, IEnumerable<BoardFact> facts)
     {
@@ -888,14 +1079,14 @@ public sealed class FirstBoardReducer
                 .OrderBy(fact => fact.Kind, StringComparer.Ordinal)
                 .ThenBy(fact => fact.RelatedId, StringComparer.Ordinal),
         ];
-        return actor with { KnownFacts = Array.AsReadOnly(merged) };
+        return actor.With(knownFacts: merged);
     }
 
-    private static BoardFact RejectedActionFact(Intent intent, string reason) =>
+    private static BoardFact RejectedActionFact(RejectedIntentSnapshot intent, string reason) =>
         new(
             BoardIds.ActionRejected,
-            intent.ActionKind.Id,
-            $"Action {intent.ActionKind.Id} was rejected: {reason}; " +
+            intent.ActionKindId,
+            $"Action {intent.ActionKindId} was rejected: {reason}; " +
             $"targetActor={intent.TargetActorId}; targetObject={intent.TargetObjectId}; " +
             $"exit={intent.ExitId}; destination={intent.DestinationId}; durationMs={intent.DurationMs}; " +
             $"untilModelTimeMs={intent.UntilModelTimeMs}.");
@@ -925,37 +1116,25 @@ public sealed class FirstBoardReducer
         FirstBoardGameState game,
         string actorId,
         Func<BoardActor, BoardActor> update) =>
-        game with
-        {
-            Actors = Array.AsReadOnly(game.Actors
-                .Select(actor => actor.Key == actorId ? update(actor) : actor)
-                .OrderBy(actor => actor.Id)
-                .ToArray()),
-        };
+        game.With(actors: game.Actors
+            .Select(actor => actor.Key == actorId ? update(actor) : actor)
+            .OrderBy(actor => actor.Id));
 
     private static FirstBoardGameState UpdateActor(
         FirstBoardGameState game,
         long actorId,
         Func<BoardActor, BoardActor> update) =>
-        game with
-        {
-            Actors = Array.AsReadOnly(game.Actors
-                .Select(actor => actor.Id == actorId ? update(actor) : actor)
-                .OrderBy(actor => actor.Id)
-                .ToArray()),
-        };
+        game.With(actors: game.Actors
+            .Select(actor => actor.Id == actorId ? update(actor) : actor)
+            .OrderBy(actor => actor.Id));
 
     private static FirstBoardGameState UpdateObject(
         FirstBoardGameState game,
         string objectId,
         Func<BoardObject, BoardObject> update) =>
-        game with
-        {
-            Objects = Array.AsReadOnly(game.Objects
-                .Select(item => item.Key == objectId ? update(item) : item)
-                .OrderBy(item => item.Id)
-                .ToArray()),
-        };
+        game.With(objects: game.Objects
+            .Select(item => item.Key == objectId ? update(item) : item)
+            .OrderBy(item => item.Id));
 
     private static void EnsureUnique<T>(IEnumerable<T> values, string description)
     {

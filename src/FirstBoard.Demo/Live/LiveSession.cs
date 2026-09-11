@@ -5,14 +5,46 @@ using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
+using DramaBoard.FirstBoard.Persistence;
 
 namespace DramaBoard.FirstBoard.Demo.Live;
 
-/// <summary>Composes the app-local Authority and Presentation loops for one new lineage.</summary>
+/// <summary>Composes Authority and Presentation from one completed world boundary.</summary>
 internal static class LiveSession
 {
-    public static async Task<BoardRunCapture> RunAsync(
+    public static Task<BoardRunCapture> RunAsync(
         ScenarioInstance instance,
+        IReadOnlyDictionary<string, IPlayerDriver> aiDrivers,
+        string? humanActorId,
+        PresentationMode mode,
+        ITerminalUi terminal,
+        IPresentationPacer pacer,
+        ModelTime notAfter,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        return RunCoreAsync(instance, FirstBoardScenario.CreateMemoryHistory(instance.CreateInitialWorld()),
+            aiDrivers, humanActorId, mode, terminal, pacer, notAfter, cancellationToken);
+    }
+
+    public static Task<BoardRunCapture> RunAsync(
+        FirstBoardOccurrenceHistory history,
+        IReadOnlyDictionary<string, IPlayerDriver> aiDrivers,
+        string? humanActorId,
+        PresentationMode mode,
+        ITerminalUi terminal,
+        IPresentationPacer pacer,
+        ModelTime notAfter,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+        return RunCoreAsync(history.Scenario, history, aiDrivers, humanActorId, mode,
+            terminal, pacer, notAfter, cancellationToken);
+    }
+
+    private static async Task<BoardRunCapture> RunCoreAsync(
+        ScenarioInstance instance,
+        IOccurrenceHistory<FirstBoardWorld, FirstBoardFact> history,
         IReadOnlyDictionary<string, IPlayerDriver> aiDrivers,
         string? humanActorId,
         PresentationMode mode,
@@ -25,9 +57,10 @@ internal static class LiveSession
         ArgumentNullException.ThrowIfNull(aiDrivers);
         ArgumentNullException.ThrowIfNull(terminal);
         ArgumentNullException.ThrowIfNull(pacer);
-        FirstBoardWorld genesis = instance.CreateInitialWorld();
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
-        var genesisVersion = new WorldVersion(journal.LineageId, 0);
+        FirstBoardWorld genesis = history.State;
+        KernelCursor initialCursor = history.Cursor;
+        var completedEvents = new List<OccurrenceEvent<FirstBoardFact>>();
+        WorldVersion genesisVersion = initialCursor.Version;
         var coordination = new LiveSessionCoordination(genesisVersion);
         IReadOnlyDictionary<string, IPlayerDriver> drivers = ComposeDrivers(
             instance,
@@ -36,7 +69,7 @@ internal static class LiveSession
             coordination,
             terminal);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(drivers, instance, journal, genesis);
+            FirstBoardScenario.CreateKernel(drivers, instance, history);
         Channel<CommittedTransition> channel = Channel.CreateUnbounded<CommittedTransition>(
             new UnboundedChannelOptions
             {
@@ -47,6 +80,7 @@ internal static class LiveSession
         var presentation = new FirstBoardPresentationLoop(
             instance,
             genesis,
+            initialCursor.LastInstant,
             coordination,
             terminal,
             pacer,
@@ -55,11 +89,11 @@ internal static class LiveSession
         using var authorityStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task<HostRunResult<FirstBoardWorld>> authorityTask = LiveAuthorityLoop.RunAsync(
             kernel,
-            journal,
             notAfter,
             channel.Writer,
             coordination,
-            authorityStop.Token);
+            authorityStop.Token,
+            completedEvents.Add);
         // Presentation uses cancellation to stop effects/pacing, then silently drains the
         // already-published prefix so the replay frontier still catches Authority.
         Task presentationTask = presentation.RunAsync(channel.Reader, cancellationToken);
@@ -119,10 +153,11 @@ internal static class LiveSession
                 throw new LiveSessionCanceledException(
                     new LiveSessionCanceledCapture(
                         genesis,
+                        initialCursor,
                         kernel.World,
                         kernel.Version,
                         kernel.CurrentModelTime,
-                        journal),
+                        completedEvents.ToArray()),
                     canceled);
             }
 
@@ -148,7 +183,7 @@ internal static class LiveSession
                     $"{result.Version.LineageId}/{result.Version.TransitionCount}."),
                 CancellationToken.None)
             .ConfigureAwait(false);
-        return new BoardRunCapture(genesis, result, journal);
+        return new BoardRunCapture(genesis, initialCursor, result, completedEvents.ToArray());
     }
 
     private static IReadOnlyDictionary<string, IPlayerDriver> ComposeDrivers(
@@ -227,10 +262,11 @@ internal static class LiveSession
 
 internal sealed record LiveSessionCanceledCapture(
     FirstBoardWorld InitialWorld,
+    KernelCursor InitialCursor,
     FirstBoardWorld World,
     WorldVersion Version,
     ModelTime CurrentModelTime,
-    InMemoryJournal<FirstBoardFact> Journal);
+    IReadOnlyList<OccurrenceEvent<FirstBoardFact>> CompletedEvents);
 
 internal sealed class LiveSessionCanceledException : OperationCanceledException
 {

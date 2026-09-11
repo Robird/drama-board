@@ -1,14 +1,19 @@
+using Atelia.DurableGraph;
+
 namespace DramaBoard.Spatial;
 
 /// <summary>Identifies one semantic place in a graph spatial definition.</summary>
-public readonly record struct PlaceId : IComparable<PlaceId>
+[DurableType("DramaBoard.Spatial.PlaceId", 1)]
+public readonly partial record struct PlaceId : IComparable<PlaceId>
 {
+    [DurableField(1)] private readonly string _value;
+
     public PlaceId(string value)
     {
-        Value = SpatialIdentifier.Require(value, nameof(value), "Place identifier");
+        _value = SpatialIdentifier.Require(value, nameof(value), "Place identifier");
     }
 
-    public string Value { get; }
+    public string Value => _value;
 
     public int CompareTo(PlaceId other) => StringComparer.Ordinal.Compare(Value, other.Value);
 
@@ -16,14 +21,16 @@ public readonly record struct PlaceId : IComparable<PlaceId>
 }
 
 /// <summary>Identifies one distinguishable passage between two places.</summary>
-public readonly record struct PassageId : IComparable<PassageId>
+[DurableType("DramaBoard.Spatial.PassageId", 1)]
+public readonly partial record struct PassageId : IComparable<PassageId>
 {
+    [DurableField(1)] private readonly string _value;
     public PassageId(string value)
     {
-        Value = SpatialIdentifier.Require(value, nameof(value), "Passage identifier");
+        _value = SpatialIdentifier.Require(value, nameof(value), "Passage identifier");
     }
 
-    public string Value { get; }
+    public string Value => _value;
 
     public int CompareTo(PassageId other) => StringComparer.Ordinal.Compare(Value, other.Value);
 
@@ -31,14 +38,16 @@ public readonly record struct PassageId : IComparable<PassageId>
 }
 
 /// <summary>Identifies one objectively located entity.</summary>
-public readonly record struct EntityId : IComparable<EntityId>
+[DurableType("DramaBoard.Spatial.EntityId", 1)]
+public readonly partial record struct EntityId : IComparable<EntityId>
 {
+    [DurableField(1)] private readonly string _value;
     public EntityId(string value)
     {
-        Value = SpatialIdentifier.Require(value, nameof(value), "Entity identifier");
+        _value = SpatialIdentifier.Require(value, nameof(value), "Entity identifier");
     }
 
-    public string Value { get; }
+    public string Value => _value;
 
     public int CompareTo(EntityId other) => StringComparer.Ordinal.Compare(Value, other.Value);
 

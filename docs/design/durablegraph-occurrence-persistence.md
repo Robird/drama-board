@@ -1,6 +1,6 @@
 # DurableGraph 下的 Occurrence 提交与恢复
 
-> 状态：2026-09-12 用户授权实施，本批采用以下提交与恢复语义；**代码迁移进行中**。接口名为职责示意，具体签名随实现收敛。
+> 状态：2026-09-12 **已实施首轮接入并验收**；本文解释所采用的语义，具体 C# 接缝见 [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs)、[KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs)与 [FirstBoard adapter](../../src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs)。证据与范围见近期计划 §8。
 > 本文细化[独立 E/S 消费者合同](../research/event-journal-state-store-draft.md)在 DramaBoard 的映射；任务顺序只维护在[近期计划](../worksets/durablegraph-first-integration.md)。
 
 ## 1. 保留什么，改变什么
@@ -47,7 +47,7 @@ OccurrenceEvent
 | Kernel 游标 | WorldVersion(LineageId, TransitionCount)、GenesisTime、LastCommittedInstant、LastCauseKey；最后一项替代当前通过 Journal 尾部做的立即重复 cause 检测。 |
 | 运行绑定 | 精确 Definition 内容/身份、影响未来行为的 Ruleset 标识及配置，包括同刻预算；固定测试 driver 的主体集合与策略合同由测试绑定并校验。 |
 
-`LastCauseKey` 是明确的有限恢复游标，不嵌入上一整份 Event。初始化时 count=0、last instant/key 为空；完成一次 S 才共同更新它们。
+`LastCauseKey` 是明确的有限恢复游标，不嵌入上一整份 Event。初始化时 count=0、last instant/key 为空；完成一次 S 才共同更新它们。非空游标的 causal ordinal 必须小于已完成 transition count；拒绝只完成一次却声称第十个同刻事件的不可能边界，不需要读取整条历史。
 
 沿用 Game.Now 和 Game.WorldSeed 时，Kernel 的当前时间/规则种子必须与它们对齐；不另造第三份时钟或种子。恢复先校验完整边界，再交给查询与下一轮 Forecast。
 

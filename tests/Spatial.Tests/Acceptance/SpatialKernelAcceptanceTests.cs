@@ -13,7 +13,7 @@ public sealed class SpatialKernelAcceptanceTests
     {
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
         ulong seed = FindSeedSelectingScheduleFirst(context);
-        InMemoryJournal<GraphSpatialFact> journal = new(lineageId: 1);
+        var journal = CreateHistory(context.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> kernel =
             CreateKernel(context, seed, journal);
 
@@ -21,9 +21,9 @@ public sealed class SpatialKernelAcceptanceTests
 
         Assert.Equal(GraphTestWorld.Time(10), kernel.CurrentModelTime);
         Assert.Equal(new WorldVersion(1, 1), kernel.Version);
-        Assert.Single(journal.Batches);
-        Assert.Single(journal.Batches[0].Facts);
-        Assert.IsType<ScheduledPassageEntryChangeAppliedFact>(journal.Batches[0].Facts[0]);
+        Assert.Single(journal.CompletedEvents);
+        Assert.Single(journal.CompletedEvents[0].Facts);
+        Assert.IsType<ScheduledPassageEntryChangeAppliedFact>(journal.CompletedEvents[0].Facts[0]);
 
         SpatialEntity pendingArrival = kernel.World.Entities.First(entity =>
             entity.Location is TraversingLocation traversal && traversal.ArrivalDue == GraphTestWorld.Time(10));
@@ -44,7 +44,7 @@ public sealed class SpatialKernelAcceptanceTests
     public async Task SameTickCandidates_AreGloballyArbitratedThenFullyReforecastToExhaustion()
     {
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
-        InMemoryJournal<GraphSpatialFact> journal = new(lineageId: 1);
+        var journal = CreateHistory(context.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> kernel =
             CreateKernel(context, worldSeed: 987, journal);
 
@@ -52,14 +52,14 @@ public sealed class SpatialKernelAcceptanceTests
         {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(10)));
             Assert.Equal(expectedCount, kernel.Version.TransitionCount);
-            Assert.Equal(expectedCount, journal.Batches.Count);
+            Assert.Equal(expectedCount, journal.CompletedEvents.Count);
         }
 
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(10)));
-        Assert.Equal([0L, 1L, 2L, 3L], journal.Batches.Select(batch => batch.Instant.CausalOrdinal));
-        Assert.All(journal.Batches, batch =>
+        Assert.Equal([0L, 1L, 2L, 3L], journal.CompletedEvents.Select(batch => batch.TargetInstant.CausalOrdinal));
+        Assert.All(journal.CompletedEvents, batch =>
         {
-            Assert.Equal(GraphTestWorld.Time(10), batch.Instant.ModelTime);
+            Assert.Equal(GraphTestWorld.Time(10), batch.TargetInstant.ModelTime);
             Assert.Single(batch.Facts);
         });
         Assert.All(kernel.World.Entities, entity => Assert.IsType<AtPlaceLocation>(entity.Location));
@@ -72,8 +72,8 @@ public sealed class SpatialKernelAcceptanceTests
     {
         ContenderWorld first = CreateContenderWorld(reverseInputs: false);
         ContenderWorld second = CreateContenderWorld(reverseInputs: true);
-        InMemoryJournal<GraphSpatialFact> firstJournal = new(lineageId: 1);
-        InMemoryJournal<GraphSpatialFact> secondJournal = new(lineageId: 1);
+        var firstJournal = CreateHistory(first.Genesis, lineageId: 1);
+        var secondJournal = CreateHistory(second.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> firstKernel =
             CreateKernel(first, worldSeed: 71, firstJournal);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> secondKernel =
@@ -86,11 +86,11 @@ public sealed class SpatialKernelAcceptanceTests
         }
 
         Assert.Equal(
-            firstJournal.Batches.Select(batch => batch.CauseKey),
-            secondJournal.Batches.Select(batch => batch.CauseKey));
+            firstJournal.CompletedEvents.Select(batch => batch.CauseKey),
+            secondJournal.CompletedEvents.Select(batch => batch.CauseKey));
         Assert.Equal(
-            firstJournal.Batches.Select(batch => batch.Facts.Single()),
-            secondJournal.Batches.Select(batch => batch.Facts.Single()));
+            firstJournal.CompletedEvents.Select(batch => batch.Facts.Single()),
+            secondJournal.CompletedEvents.Select(batch => batch.Facts.Single()));
         Assert.Equal(firstKernel.World, secondKernel.World);
     }
 
@@ -100,7 +100,7 @@ public sealed class SpatialKernelAcceptanceTests
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
         const ulong Seed = 41;
         var simulationRules = new SimulationRules(Seed, 100);
-        InMemoryJournal<GraphSpatialFact> sourceJournal = new(lineageId: 1);
+        var sourceJournal = CreateHistory(context.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> source =
             CreateKernel(context, Seed, sourceJournal);
         for (int index = 0; index < 4; index++)
@@ -112,7 +112,7 @@ public sealed class SpatialKernelAcceptanceTests
             context.Genesis,
             lineageId: 1,
             genesisTime: ModelTime.Zero,
-            sourceJournal.Batches,
+            Batches(sourceJournal),
             context.Reducer.Apply,
             state => GraphSpatialStateValidator.ValidateComplete(context.Definition, state));
 
@@ -121,33 +121,35 @@ public sealed class SpatialKernelAcceptanceTests
         Assert.Equal(source.LastCommittedInstant, replay.LastCommittedInstant);
         Assert.Equal(source.CurrentModelTime, replay.CurrentModelTime);
 
+        var legacySourceJournal = new InMemoryJournal<GraphSpatialFact>(lineageId: 1);
+        foreach (JournalBatch<GraphSpatialFact> batch in Batches(sourceJournal)) { legacySourceJournal.AppendBatch(batch); }
         InMemoryForkResult<GraphSpatialState, GraphSpatialFact> fork = SimulationFork.Create(
             context.Genesis,
             ModelTime.Zero,
-            sourceJournal,
+            legacySourceJournal,
             prefixTransitionCount: 2,
             newLineageId: 99,
             simulationRules,
             context.Reducer.Apply,
             state => GraphSpatialStateValidator.ValidateComplete(context.Definition, state));
+        var forkHistory = new InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact>(fork.Replay.World,
+                new KernelCursor(fork.Replay.Version, ModelTime.Zero, fork.Replay.LastCommittedInstant,
+                    fork.Replay.LastCommittedInstant is null ? null : fork.Journal.Batches[^1].CauseKey));
         var forkKernel = new SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact>(
-            fork.Replay.World,
-            fork.Replay.Version,
-            ModelTime.Zero,
-            fork.Replay.LastCommittedInstant,
+            forkHistory,
             fork.SimulationRules,
             [context.Rule],
-            fork.Journal,
             context.Reducer.Apply,
             state => GraphSpatialStateValidator.ValidateComplete(context.Definition, state));
         Assert.Equal(StepStatus.Committed, await forkKernel.StepAsync(GraphTestWorld.Time(10)));
         Assert.Equal(StepStatus.Committed, await forkKernel.StepAsync(GraphTestWorld.Time(10)));
+        foreach (JournalBatch<GraphSpatialFact> batch in Batches(forkHistory)) { fork.Journal.AppendBatch(batch); }
         Assert.Equal(StepStatus.Exhausted, await forkKernel.StepAsync(GraphTestWorld.Time(10)));
 
         Assert.Equal(source.World, forkKernel.World);
-        Assert.Equal(4, sourceJournal.Batches.Count);
+        Assert.Equal(4, sourceJournal.CompletedEvents.Count);
         Assert.Equal(4, fork.Journal.Batches.Count);
-        Assert.Equal(1, sourceJournal.LineageId);
+        Assert.Equal(1, sourceJournal.Cursor.Version.LineageId);
         Assert.Equal(99, fork.Journal.LineageId);
         Assert.NotSame(sourceJournal, fork.Journal);
     }
@@ -155,17 +157,22 @@ public sealed class SpatialKernelAcceptanceTests
     private static SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> CreateKernel(
         ContenderWorld context,
         ulong worldSeed,
-        InMemoryJournal<GraphSpatialFact> journal) =>
+        InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact> journal) =>
         new(
-            context.Genesis,
-            new WorldVersion(journal.LineageId, 0),
-            ModelTime.Zero,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(worldSeed, maxTransitionsPerModelTime: 100),
             [context.Rule],
-            journal,
             context.Reducer.Apply,
             state => GraphSpatialStateValidator.ValidateComplete(context.Definition, state));
+
+    private static InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact> CreateHistory(
+        GraphSpatialState genesis, long lineageId) => new(genesis,
+            new KernelCursor(new WorldVersion(lineageId, 0), ModelTime.Zero, null, null));
+
+    private static IReadOnlyList<JournalBatch<GraphSpatialFact>> Batches(
+        InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact> history) =>
+        history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
+            value.TargetInstant, value.CauseKey, value.Facts)).ToArray();
 
     private static ulong FindSeedSelectingScheduleFirst(ContenderWorld context)
     {

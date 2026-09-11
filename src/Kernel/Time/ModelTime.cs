@@ -3,8 +3,10 @@ using System.Globalization;
 namespace DramaBoard.Kernel.Time;
 
 /// <summary>Represents world logical time as one-millisecond ticks, allowing physical event timing without introducing calendar semantics.</summary>
-public readonly struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
+[Atelia.DurableGraph.DurableType("DramaBoard.Kernel.ModelTime", 1)]
+public readonly partial struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
 {
+    [Atelia.DurableGraph.DurableField(1)] private readonly long _ticks;
     private const long TicksPerSecond = 1_000;
     private const long TicksPerMinute = 60 * TicksPerSecond;
     private const long TicksPerHour = 60 * TicksPerMinute;
@@ -13,11 +15,11 @@ public readonly struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
     /// <summary>Initializes a logical time from a number of one-millisecond ticks.</summary>
     public ModelTime(long ticks)
     {
-        Ticks = ticks;
+        _ticks = ticks;
     }
 
     /// <summary>Gets the number of one-millisecond ticks from the model epoch.</summary>
-    public long Ticks { get; }
+    public long Ticks => _ticks;
 
     /// <summary>Gets the model epoch.</summary>
     public static ModelTime Zero => new(0);

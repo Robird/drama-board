@@ -4,274 +4,214 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Simulation;
 
-/// <summary>Forecasts, selects, plans, validates, and atomically commits one occurrence per step.</summary>
+/// <summary>Plans one occurrence, records its validated Event, then publishes its complete State.</summary>
 public sealed class SimulationKernel<TWorld, TCandidateData, TFact>
 {
-    private readonly ModelTime _genesisTime;
     private readonly SimulationRules _simulationRules;
     private readonly IReadOnlyList<IOccurrenceRule<TWorld, TCandidateData, TFact>> _rules;
-    private readonly IJournalSink<TFact> _journal;
+    private readonly IOccurrenceHistory<TWorld, TFact> _history;
     private readonly Func<TWorld, LogicalInstant, TFact, TWorld> _fold;
     private readonly Action<TWorld> _validate;
-
     private TWorld _world;
-    private WorldVersion _version;
-    private LogicalInstant? _lastCommittedInstant;
+    private KernelCursor _cursor;
     private int _stepInFlight;
-    private bool _requiresReplay;
 
-    /// <summary>Initializes a kernel at an already committed journal boundary.</summary>
-    public SimulationKernel(
-        TWorld committedWorld,
-        WorldVersion worldVersion,
-        ModelTime genesisTime,
-        LogicalInstant? lastCommittedInstant,
-        SimulationRules simulationRules,
+    /// <summary>Loads a completed boundary. Complete pending work explicitly with RecoverPending.</summary>
+    public SimulationKernel(IOccurrenceHistory<TWorld, TFact> history, SimulationRules simulationRules,
         IEnumerable<IOccurrenceRule<TWorld, TCandidateData, TFact>> rules,
-        IJournalSink<TFact> journal,
-        Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate)
+        Func<TWorld, LogicalInstant, TFact, TWorld> fold, Action<TWorld> validate)
     {
-        if (committedWorld is null)
-        {
-            throw new ArgumentNullException(nameof(committedWorld));
-        }
-
+        ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(simulationRules);
         ArgumentNullException.ThrowIfNull(rules);
-        ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(fold);
         ArgumentNullException.ThrowIfNull(validate);
-
+        ArgumentNullException.ThrowIfNull(history.State);
         IOccurrenceRule<TWorld, TCandidateData, TFact>[] ruleArray = [.. rules];
         if (ruleArray.Any(rule => rule is null))
         {
             throw new ArgumentException("Occurrence rules cannot contain null entries.", nameof(rules));
         }
-
-        ValidateCommittedBoundary(worldVersion, genesisTime, lastCommittedInstant, journal);
-        validate(committedWorld);
-
-        _world = committedWorld;
-        _version = worldVersion;
-        _genesisTime = genesisTime;
-        _lastCommittedInstant = lastCommittedInstant;
+        history.Cursor.Validate();
+        validate(history.State);
+        _world = history.State;
+        _cursor = history.Cursor;
         _simulationRules = simulationRules;
         _rules = Array.AsReadOnly(ruleArray);
-        _journal = journal;
+        _history = history;
         _fold = fold;
         _validate = validate;
     }
 
-    /// <summary>Gets the currently installed committed world.</summary>
     public TWorld World => _world;
+    public KernelCursor Cursor => _cursor;
+    public WorldVersion Version => _cursor.Version;
+    public LogicalInstant? LastCommittedInstant => _cursor.LastInstant;
+    public ModelTime CurrentModelTime => _cursor.CurrentModelTime;
+    public bool IsFaulted { get; private set; }
+    public OccurrenceCompletion<TFact>? LastCompletion { get; private set; }
 
-    /// <summary>Gets the currently installed committed transition version.</summary>
-    public WorldVersion Version => _version;
-
-    /// <summary>Gets the last committed occurrence instant, or null for an empty lineage.</summary>
-    public LogicalInstant? LastCommittedInstant => _lastCommittedInstant;
-
-    /// <summary>Gets the current committed model time without fabricating boundary advances.</summary>
-    public ModelTime CurrentModelTime => _lastCommittedInstant?.ModelTime ?? _genesisTime;
-
-    /// <summary>Advances by at most one complete occurrence transition.</summary>
-    public ValueTask<StepStatus> StepAsync(
-        ModelTime notAfter,
-        CancellationToken cancellationToken = default)
+    /// <summary>Advances by one complete occurrence at most; pending work requires RecoverPending.</summary>
+    public ValueTask<StepStatus> StepAsync(ModelTime notAfter, CancellationToken cancellationToken = default)
     {
-        if (Interlocked.CompareExchange(ref _stepInFlight, 1, 0) != 0)
-        {
-            throw new InvalidOperationException(
-                "Another simulation Step is already in flight for this lineage.");
-        }
-
-        if (_requiresReplay)
-        {
-            Volatile.Write(ref _stepInFlight, 0);
-            throw ReplayRequiredException();
-        }
-
+        BeginOperation();
         return StepCoreAsync(notAfter, cancellationToken);
     }
 
-    private async ValueTask<StepStatus> StepCoreAsync(
-        ModelTime notAfter,
-        CancellationToken cancellationToken)
+    /// <summary>Completes only the published pending Event without Forecast, Plan or Player calls.
+    /// Returns false if none exists. Cancellation is checked before recovery begins.</summary>
+    public bool RecoverPending(CancellationToken cancellationToken = default)
+    {
+        BeginOperation();
+        try
+        {
+            EnsureHistoryAligned();
+            cancellationToken.ThrowIfCancellationRequested();
+            OccurrenceEvent<TFact>? occurrence = _history.PendingEvent;
+            if (occurrence is null) { return false; }
+            try
+            {
+                occurrence.Validate();
+                RequireProgress(occurrence.CauseKey);
+                LogicalInstant expectedInstant = LogicalInstantRules.Propose(
+                    new CandidateDue(occurrence.TargetInstant.ModelTime), _cursor.GenesisTime,
+                    _cursor.LastInstant, _simulationRules.MaxTransitionsPerModelTime);
+                if (occurrence.TargetInstant != expectedInstant)
+                {
+                    throw new InvalidOperationException("Pending Event target instant does not continue the completed cursor.");
+                }
+                KernelCursor nextCursor = _cursor.Advance(occurrence.CauseKey, occurrence.TargetInstant);
+                TWorld scratch = FoldAndValidate(occurrence.TargetInstant, occurrence.Facts);
+                PublishStateAndInstall(occurrence, scratch, nextCursor);
+                return true;
+            }
+            catch
+            {
+                IsFaulted = true;
+                throw;
+            }
+        }
+        finally { EndOperation(); }
+    }
+
+    private async ValueTask<StepStatus> StepCoreAsync(ModelTime notAfter, CancellationToken cancellationToken)
     {
         try
         {
-            EnsureJournalAligned();
+            EnsureHistoryAligned();
+            if (_history.PendingEvent is not null)
+            {
+                throw new InvalidOperationException("Call RecoverPending before requesting a new Step.");
+            }
             if (notAfter < CurrentModelTime)
             {
-                throw new ArgumentOutOfRangeException(
-                    nameof(notAfter),
-                    "The Step boundary cannot precede the current committed model time.");
+                throw new ArgumentOutOfRangeException(nameof(notAfter), "The Step boundary cannot precede the current committed model time.");
             }
-
             cancellationToken.ThrowIfCancellationRequested();
-
-            TWorld frozenWorld = _world;
-            WorldVersion expectedVersion = _version;
-            LogicalInstant? expectedLastInstant = _lastCommittedInstant;
             ForecastWinner<TWorld, TCandidateData, TFact>? selection =
-                ForecastRound.SelectWinner(frozenWorld, CurrentModelTime, _simulationRules, _rules);
-            if (selection is null)
-            {
-                return StepStatus.Exhausted;
-            }
-
+                ForecastRound.SelectWinner(_world, CurrentModelTime, _simulationRules, _rules);
+            if (selection is null) { return StepStatus.Exhausted; }
             OccurrenceCandidate<TCandidateData> winner = selection.Candidate;
-            if (_journal.Batches.Count > 0 && _journal.Batches[^1].CauseKey == winner.Key)
-            {
-                throw new InvalidOperationException(
-                    $"Candidate '{winner.Key}' repeated immediately after it was committed; " +
-                    "the owning rule made no key-visible authoritative progress.");
-            }
-
-            if (winner.Due.ModelTime > notAfter)
-            {
-                return StepStatus.BoundaryReached;
-            }
-
+            RequireProgress(winner.Key);
+            if (winner.Due.ModelTime > notAfter) { return StepStatus.BoundaryReached; }
             LogicalInstant nextInstant = LogicalInstantRules.Propose(
-                winner.Due,
-                _genesisTime,
-                expectedLastInstant,
-                _simulationRules.MaxTransitionsPerModelTime);
-            var nextVersion = new WorldVersion(
-                expectedVersion.LineageId,
-                checked(expectedVersion.TransitionCount + 1));
-
+                winner.Due, _cursor.GenesisTime, _cursor.LastInstant, _simulationRules.MaxTransitionsPerModelTime);
+            KernelCursor nextCursor = _cursor.Advance(winner.Key, nextInstant);
             TransitionDraft<TFact> draft = await selection.Owner
-                .PlanSelectedAsync(frozenWorld, winner, cancellationToken)
-                .ConfigureAwait(false)
+                .PlanSelectedAsync(_world, winner, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The selected occurrence rule returned a null draft.");
-
-            TWorld scratchWorld = frozenWorld;
-            foreach (TFact fact in draft.Facts)
-            {
-                scratchWorld = _fold(scratchWorld, nextInstant, fact);
-                if (scratchWorld is null)
-                {
-                    throw new InvalidOperationException("The fact fold returned a null HostWorld.");
-                }
-            }
-
-            _validate(scratchWorld);
-
-            var batch = new JournalBatch<TFact>(nextInstant, winner.Key, draft.Facts);
+            TWorld scratch = FoldAndValidate(nextInstant, draft.Facts);
+            var occurrence = new OccurrenceEvent<TFact>(winner.Key, nextInstant, draft.Facts);
             cancellationToken.ThrowIfCancellationRequested();
-
-            int batchCountBeforePublish = _journal.Batches.Count;
             try
             {
-                _journal.AppendBatch(batch);
+                _history.CommitEvent(occurrence);
+                if (!SameOccurrence(_history.PendingEvent, occurrence))
+                {
+                    throw new InvalidOperationException("History did not expose exactly the proposed pending Event.");
+                }
             }
-            catch (Exception publicationFailure)
-            {
-                _requiresReplay = true;
-                throw new InvalidOperationException(
-                    "Journal publication threw, so its outcome cannot be safely determined; " +
-                    "the Kernel is stopped and must be rebuilt by Replay.",
-                    publicationFailure);
-            }
-
-            JournalBatch<TFact>? publishedBatch = _journal.Batches.Count == checked(batchCountBeforePublish + 1)
-                ? _journal.Batches[^1]
-                : null;
-            if (publishedBatch is null ||
-                publishedBatch.Instant != nextInstant ||
-                publishedBatch.CauseKey != winner.Key ||
-                !publishedBatch.Facts.SequenceEqual(draft.Facts))
-            {
-                _requiresReplay = true;
-                throw new InvalidOperationException(
-                    "Journal publication returned without exposing exactly the proposed batch; " +
-                    "the Kernel is stopped and must be rebuilt by Replay.");
-            }
-
-            // Publication is the irreversible commit point. Do not observe cancellation below it.
-            _world = scratchWorld;
-            _version = nextVersion;
-            _lastCommittedInstant = nextInstant;
+            catch (Exception error) { throw PublicationFailure(error); }
+            // E is durable work: ordinary cancellation cannot interrupt its completion.
+            PublishStateAndInstall(occurrence, scratch, nextCursor);
             return StepStatus.Committed;
         }
-        finally
-        {
-            Volatile.Write(ref _stepInFlight, 0);
-        }
+        finally { EndOperation(); }
     }
 
-    private void EnsureJournalAligned()
+    private TWorld FoldAndValidate(LogicalInstant instant, IReadOnlyList<TFact> facts)
     {
-        bool countMatches = (long)_journal.Batches.Count == _version.TransitionCount;
-        bool headMatches = _journal.Batches.Count == 0
-            ? _lastCommittedInstant is null
-            : _lastCommittedInstant == _journal.Batches[^1].Instant;
-        if (countMatches && headMatches)
+        TWorld scratch = _world;
+        foreach (TFact fact in facts)
         {
-            return;
+            scratch = _fold(scratch, instant, fact);
+            if (scratch is null) { throw new InvalidOperationException("The fact fold returned a null HostWorld."); }
         }
-
-        _requiresReplay = true;
-        throw ReplayRequiredException();
+        _validate(scratch);
+        return scratch;
     }
 
-    private static void ValidateCommittedBoundary(
-        WorldVersion worldVersion,
-        ModelTime genesisTime,
-        LogicalInstant? lastCommittedInstant,
-        IJournalSink<TFact> journal)
+    private void PublishStateAndInstall(OccurrenceEvent<TFact> occurrence, TWorld scratch, KernelCursor nextCursor)
     {
-        if (journal.LineageId != worldVersion.LineageId)
+        try
         {
-            throw new ArgumentException(
-                "The Journal LineageId must equal WorldVersion.LineageId.",
-                nameof(journal));
-        }
-
-        if ((long)journal.Batches.Count != worldVersion.TransitionCount)
-        {
-            throw new ArgumentException(
-                "WorldVersion.TransitionCount must equal the committed journal batch count.",
-                nameof(worldVersion));
-        }
-
-        if (worldVersion.TransitionCount == 0 && lastCommittedInstant is not null)
-        {
-            throw new ArgumentException(
-                "An empty lineage cannot have a last committed instant.",
-                nameof(lastCommittedInstant));
-        }
-
-        if (worldVersion.TransitionCount > 0 && lastCommittedInstant is null)
-        {
-            throw new ArgumentException(
-                "A non-empty lineage requires its last committed instant.",
-                nameof(lastCommittedInstant));
-        }
-
-        if (lastCommittedInstant is LogicalInstant last)
-        {
-            if (last.ModelTime < genesisTime)
+            _history.CommitState(scratch, nextCursor);
+            if (_history.Cursor != nextCursor || _history.PendingEvent is not null ||
+                !SameWorld(_history.State, scratch))
             {
-                throw new ArgumentException(
-                    "The last committed instant cannot precede Genesis.",
-                    nameof(lastCommittedInstant));
-            }
-
-            if (journal.Batches.Count == 0 || journal.Batches[^1].Instant != last)
-            {
-                throw new ArgumentException(
-                    "The last committed instant must equal the Journal batch head.",
-                    nameof(lastCommittedInstant));
+                throw new InvalidOperationException("History did not expose the completed State cursor.");
             }
         }
+        catch (Exception error) { throw PublicationFailure(error); }
+        _world = scratch;
+        _cursor = nextCursor;
+        LastCompletion = new OccurrenceCompletion<TFact>(nextCursor, occurrence);
     }
 
-    private static InvalidOperationException ReplayRequiredException() =>
-        new(
-            "The Kernel's in-memory state is no longer aligned with authoritative Journal history; " +
-            "this instance permanently requires Replay.");
+    private static bool SameOccurrence(OccurrenceEvent<TFact>? actual, OccurrenceEvent<TFact> expected) =>
+        actual is not null && actual.TargetInstant == expected.TargetInstant &&
+        actual.CauseKey == expected.CauseKey && actual.Facts.SequenceEqual(expected.Facts);
+
+    private void RequireProgress(CandidateKey key)
+    {
+        if (_cursor.LastCauseKey == key)
+        {
+            throw new InvalidOperationException($"Candidate '{key}' repeated immediately after it was committed; the owning rule made no key-visible authoritative progress.");
+        }
+    }
+
+    private static bool SameWorld(TWorld actual, TWorld expected) => typeof(TWorld).IsValueType
+        ? EqualityComparer<TWorld>.Default.Equals(actual, expected)
+        : ReferenceEquals(actual, expected);
+
+    private void EnsureHistoryAligned()
+    {
+        if (_history.Cursor != _cursor || !SameWorld(_history.State, _world))
+        {
+            IsFaulted = true;
+            throw new InvalidOperationException("History moved outside this Kernel; stop and reopen the session.");
+        }
+    }
+
+    private InvalidOperationException PublicationFailure(Exception error)
+    {
+        IsFaulted = true;
+        return new InvalidOperationException("History publication failed; its outcome cannot be safely determined. Stop and reopen the session.", error);
+    }
+
+    private void BeginOperation()
+    {
+        if (Interlocked.CompareExchange(ref _stepInFlight, 1, 0) != 0)
+        {
+            throw new InvalidOperationException("Another simulation operation is already in flight for this lineage.");
+        }
+        if (IsFaulted)
+        {
+            EndOperation();
+            throw new InvalidOperationException("This Kernel is faulted; stop and reopen the session.");
+        }
+        LastCompletion = null;
+    }
+
+    private void EndOperation() => Volatile.Write(ref _stepInFlight, 0);
 }

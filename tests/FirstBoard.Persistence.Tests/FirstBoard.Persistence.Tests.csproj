@@ -18,10 +18,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FirstBoard.Demo\FirstBoard.Demo.csproj" />
     <ProjectReference Include="..\..\src\FirstBoard\FirstBoard.csproj" />
-    <ProjectReference Include="..\..\src\Journal.Atelia\Journal.Atelia.csproj" />
+    <ProjectReference Include="..\FirstBoard.Persistence.Process\FirstBoard.Persistence.Process.csproj" />
     <ProjectReference Include="..\..\src\Player\Player.csproj" />
     <ProjectReference Include="..\..\src\Player.Llm\Player.Llm.csproj" />
     <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\FirstBoard.Tests\EncounterPersistenceOracle.cs" Link="EncounterPersistenceOracle.cs" />
   </ItemGroup>
 
 </Project>

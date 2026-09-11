@@ -50,9 +50,11 @@ internal sealed class DemoRunManifestWriter
             new RunResultManifest(
                 capture.Result.Status.ToString(),
                 capture.Result.CurrentModelTime.Ticks,
-                capture.Journal.Batches.Count,
+                capture.Result.Version.TransitionCount,
                 llmTurnCount,
-                forcedSceneEndCount),
+                forcedSceneEndCount,
+                capture.InitialCursor.Version.TransitionCount,
+                capture.CompletedEvents.Count),
             errorType: null);
 
     public void Fail(Exception exception)
@@ -72,9 +74,11 @@ internal sealed class DemoRunManifestWriter
             new RunResultManifest(
                 "Canceled",
                 capture.CurrentModelTime.Ticks,
-                capture.Journal.Batches.Count,
+                capture.Version.TransitionCount,
                 llmTurnCount,
-                forcedSceneEndCount),
+                forcedSceneEndCount,
+                capture.InitialCursor.Version.TransitionCount,
+                capture.CompletedEvents.Count),
             errorType: null);
 
     public void Cancel(
@@ -86,9 +90,11 @@ internal sealed class DemoRunManifestWriter
             new RunResultManifest(
                 $"CanceledAfter{capture.Result.Status}",
                 capture.Result.CurrentModelTime.Ticks,
-                capture.Journal.Batches.Count,
+                capture.Result.Version.TransitionCount,
                 llmTurnCount,
-                forcedSceneEndCount),
+                forcedSceneEndCount,
+                capture.InitialCursor.Version.TransitionCount,
+                capture.CompletedEvents.Count),
             errorType: null);
 
     private void Write(string status, RunResultManifest? result, string? errorType)
@@ -370,9 +376,11 @@ internal sealed class DemoRunManifestWriter
     private sealed record RunResultManifest(
         string Status,
         long FinalModelTimeMs,
-        int WorldTransitionCount,
+        long WorldTransitionCount,
         int LlmTurnCount,
-        int ForcedSceneEndCount);
+        int ForcedSceneEndCount,
+        long InitialTransitionCount,
+        int SessionTransitionCount);
 
     private sealed record PlayerManifest(
         string ActorId,

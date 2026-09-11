@@ -1,6 +1,9 @@
+using Atelia.DurableGraph;
+
 namespace DramaBoard.Spatial;
 
 /// <summary>Classifies one exact intersection between two active passage segments.</summary>
+[DurableType("DramaBoard.Spatial.PassageContactKind", 1)]
 public enum PassageContactKind
 {
     HeadOnMeeting = 0,
@@ -8,8 +11,14 @@ public enum PassageContactKind
 }
 
 /// <summary>Identifies one unordered pair of current movement segments on a passage.</summary>
-public sealed record PassageContactKey : IComparable<PassageContactKey>
+[DurableType("DramaBoard.Spatial.PassageContactKey", 1)]
+public sealed partial class PassageContactKey : DurableBase, IComparable<PassageContactKey>, IEquatable<PassageContactKey>
 {
+    [DurableField(1)] private PassageId _passageId;
+    [DurableField(2)] private EntityId _entityA;
+    [DurableField(3)] private long _movementGenerationA;
+    [DurableField(4)] private EntityId _entityB;
+    [DurableField(5)] private long _movementGenerationB;
     public PassageContactKey(
         PassageId passageId,
         EntityId entityA,
@@ -39,32 +48,37 @@ public sealed record PassageContactKey : IComparable<PassageContactKey>
             throw new ArgumentException("A passage contact requires two different entities.", nameof(entityB));
         }
 
-        PassageId = passageId;
+        _passageId = passageId;
         if (entityA.CompareTo(entityB) < 0)
         {
-            EntityA = entityA;
-            MovementGenerationA = movementGenerationA;
-            EntityB = entityB;
-            MovementGenerationB = movementGenerationB;
+            _entityA = entityA; _movementGenerationA = movementGenerationA;
+            _entityB = entityB; _movementGenerationB = movementGenerationB;
         }
         else
         {
-            EntityA = entityB;
-            MovementGenerationA = movementGenerationB;
-            EntityB = entityA;
-            MovementGenerationB = movementGenerationA;
+            _entityA = entityB; _movementGenerationA = movementGenerationB;
+            _entityB = entityA; _movementGenerationB = movementGenerationA;
         }
     }
 
-    public PassageId PassageId { get; }
+    public PassageId PassageId => _passageId;
 
-    public EntityId EntityA { get; }
+    public EntityId EntityA => _entityA;
 
-    public long MovementGenerationA { get; }
+    public long MovementGenerationA => _movementGenerationA;
 
-    public EntityId EntityB { get; }
+    public EntityId EntityB => _entityB;
 
-    public long MovementGenerationB { get; }
+    public long MovementGenerationB => _movementGenerationB;
+
+    public bool Equals(PassageContactKey? other) => other is not null &&
+        PassageId == other.PassageId && EntityA == other.EntityA &&
+        MovementGenerationA == other.MovementGenerationA && EntityB == other.EntityB &&
+        MovementGenerationB == other.MovementGenerationB;
+    public override bool Equals(object? obj) => Equals(obj as PassageContactKey);
+    public override int GetHashCode() => HashCode.Combine(PassageId, EntityA, MovementGenerationA, EntityB, MovementGenerationB);
+    public static bool operator ==(PassageContactKey? left, PassageContactKey? right) => Equals(left, right);
+    public static bool operator !=(PassageContactKey? left, PassageContactKey? right) => !Equals(left, right);
 
     public int CompareTo(PassageContactKey? other)
     {

@@ -1,7 +1,8 @@
 namespace DramaBoard.Kernel.Time;
 
 /// <summary>Identifies one committed occurrence by model time and its causal order at that time.</summary>
-public readonly record struct LogicalInstant : IComparable<LogicalInstant>
+[Atelia.DurableGraph.DurableType("DramaBoard.Kernel.LogicalInstant", 1)]
+public readonly partial record struct LogicalInstant : IComparable<LogicalInstant>
 {
     /// <summary>Initializes a committed logical instant.</summary>
     public LogicalInstant(ModelTime modelTime, long causalOrdinal)
@@ -18,10 +19,10 @@ public readonly record struct LogicalInstant : IComparable<LogicalInstant>
     }
 
     /// <summary>Gets the occurrence's integer-millisecond model time.</summary>
-    public ModelTime ModelTime { get; }
+    [field: Atelia.DurableGraph.DurableField(1)] public ModelTime ModelTime { get; }
 
     /// <summary>Gets the committed causal order within <see cref="ModelTime"/>.</summary>
-    public long CausalOrdinal { get; }
+    [field: Atelia.DurableGraph.DurableField(2)] public long CausalOrdinal { get; }
 
     /// <inheritdoc />
     public int CompareTo(LogicalInstant other)

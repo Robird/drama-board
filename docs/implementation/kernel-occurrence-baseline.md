@@ -1,6 +1,8 @@
 # 研发计划 006：统一原子 Occurrence 与 LogicalInstant Kernel 重构
 
-**状态：已实施；作为当前 Kernel 调度与提交语义基准**
+**状态：已实施的上一版基线；调度法则保留，持久化接缝已演进**
+
+> 2026-09-12：当前 Kernel 的有限游标、独立 E/S 发布与仅完成 pending 的恢复见[DurableGraph 提交方案](../design/durablegraph-occurrence-persistence.md)。本文 AppendBatch / Journal 对齐 / 普通 Replay 条款保留历史语境，不再描述当前持久化实现。
 
 **日期：2026-08-21**
 

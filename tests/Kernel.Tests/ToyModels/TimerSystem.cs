@@ -95,21 +95,13 @@ internal static class TimerModel
     }
 
     public static SimulationKernel<TimerWorld, string, TimerFact> CreateKernel(
-        TimerWorld world,
         TimerRule rule,
-        InMemoryJournal<TimerFact> journal,
-        SimulationRules? simulationRules = null,
-        WorldVersion? version = null,
-        LogicalInstant? lastCommittedInstant = null,
-        long lineageId = 1) =>
+        IOccurrenceHistory<TimerWorld, TimerFact> history,
+        SimulationRules? simulationRules = null) =>
         new(
-            world,
-            version ?? new WorldVersion(lineageId, journal.Batches.Count),
-            ModelTime.Zero,
-            lastCommittedInstant,
+            history,
             simulationRules ?? new SimulationRules(worldSeed: 42, maxTransitionsPerModelTime: 100),
             [rule],
-            journal,
             Fold,
             Validate);
 }

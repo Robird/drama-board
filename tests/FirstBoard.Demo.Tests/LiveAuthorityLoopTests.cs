@@ -15,7 +15,7 @@ public sealed class LiveAuthorityLoopTests
 
         HostRunResult<FirstBoardWorld> result = await LiveAuthorityLoop.RunAsync(
             authority.Kernel,
-            authority.Journal,
+
             new ModelTime(1),
             authority.Channel.Writer,
             authority.Coordination,
@@ -39,7 +39,7 @@ public sealed class LiveAuthorityLoopTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             LiveAuthorityLoop.RunAsync(
                 authority.Kernel,
-                authority.Journal,
+
                 new ModelTime(1),
                 authority.Channel.Writer,
                 authority.Coordination,
@@ -61,7 +61,7 @@ public sealed class LiveAuthorityLoopTests
         ArithmeticException actual = await Assert.ThrowsAsync<ArithmeticException>(() =>
             LiveAuthorityLoop.RunAsync(
                 authority.Kernel,
-                authority.Journal,
+
                 new ModelTime(1),
                 authority.Channel.Writer,
                 authority.Coordination,
@@ -83,14 +83,14 @@ public sealed class LiveAuthorityLoopTests
         InvalidOperationException actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             LiveAuthorityLoop.RunAsync(
                 authority.Kernel,
-                authority.Journal,
+
                 new ModelTime(1),
                 authority.Channel.Writer,
                 authority.Coordination,
                 CancellationToken.None));
 
         Assert.Same(expected, actual.InnerException);
-        Assert.Single(authority.Journal.Batches);
+        Assert.Single(authority.History.CompletedEvents);
         Assert.Equal(0, authority.Kernel.Version.TransitionCount);
         Assert.Equal(0, authority.Coordination.Snapshot().Committed.TransitionCount);
         Assert.False(authority.Channel.Reader.TryRead(out _));
@@ -102,7 +102,7 @@ public sealed class LiveAuthorityLoopTests
         TestAuthority boundary = CreateAuthority();
         HostRunResult<FirstBoardWorld> boundaryResult = await LiveAuthorityLoop.RunAsync(
             boundary.Kernel,
-            boundary.Journal,
+
             new ModelTime(0),
             boundary.Channel.Writer,
             boundary.Coordination,
@@ -113,7 +113,7 @@ public sealed class LiveAuthorityLoopTests
         TestAuthority exhausted = CreateAuthority(noCandidates: true);
         HostRunResult<FirstBoardWorld> exhaustedResult = await LiveAuthorityLoop.RunAsync(
             exhausted.Kernel,
-            exhausted.Journal,
+
             new ModelTime(1),
             exhausted.Channel.Writer,
             exhausted.Coordination,
@@ -130,20 +130,16 @@ public sealed class LiveAuthorityLoopTests
     {
         ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 71);
         FirstBoardWorld world = instance.CreateInitialWorld();
-        var journal = new HookedJournal<FirstBoardFact>(
-            FirstBoardScenario.LineageId,
+        var journal = new HookedHistory(
+            world,
             afterAppend,
             throwAfterAppend);
         var reducer = new FirstBoardReducer(instance.Graph);
-        var version = new WorldVersion(journal.LineageId, 0);
+        var version = journal.Cursor.Version;
         var kernel = new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            world,
-            version,
-            world.Now,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(world.WorldSeed, maxTransitionsPerModelTime: 100),
             noCandidates ? [] : [new TwoStepWaitRule(planFailure)],
-            journal,
             reducer.Apply,
             reducer.Validate);
         Channel<CommittedTransition> channel = Channel.CreateUnbounded<CommittedTransition>(
@@ -232,29 +228,27 @@ public sealed class LiveAuthorityLoopTests
             new(new CandidateKey(key), new CandidateDue(due), data);
     }
 
-    private sealed class HookedJournal<TFact> : IJournalSink<TFact>
+    private sealed class HookedHistory : IOccurrenceHistory<FirstBoardWorld, FirstBoardFact>
     {
-        private readonly List<JournalBatch<TFact>> _batches = [];
+        private readonly InMemoryOccurrenceHistory<FirstBoardWorld, FirstBoardFact> _inner;
         private readonly Action? _afterAppend;
         private readonly Exception? _throwAfterAppend;
 
-        public HookedJournal(
-            long lineageId,
-            Action? afterAppend,
-            Exception? throwAfterAppend)
+        public HookedHistory(FirstBoardWorld state, Action? afterAppend, Exception? throwAfterAppend)
         {
-            LineageId = lineageId;
+            _inner = FirstBoardScenario.CreateMemoryHistory(state);
             _afterAppend = afterAppend;
             _throwAfterAppend = throwAfterAppend;
         }
 
-        public long LineageId { get; }
-
-        public IReadOnlyList<JournalBatch<TFact>> Batches => _batches.AsReadOnly();
-
-        public void AppendBatch(JournalBatch<TFact> batch)
+        public FirstBoardWorld State => _inner.State;
+        public KernelCursor Cursor => _inner.Cursor;
+        public OccurrenceEvent<FirstBoardFact>? PendingEvent => _inner.PendingEvent;
+        public IReadOnlyList<OccurrenceEvent<FirstBoardFact>> CompletedEvents => _inner.CompletedEvents;
+        public void CommitEvent(OccurrenceEvent<FirstBoardFact> occurrence) => _inner.CommitEvent(occurrence);
+        public void CommitState(FirstBoardWorld nextState, KernelCursor nextCursor)
         {
-            _batches.Add(batch);
+            _inner.CommitState(nextState, nextCursor);
             _afterAppend?.Invoke();
             if (_throwAfterAppend is not null)
             {
@@ -265,7 +259,7 @@ public sealed class LiveAuthorityLoopTests
 
     private sealed record TestAuthority(
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> Kernel,
-        IJournalSink<FirstBoardFact> Journal,
+        HookedHistory History,
         Channel<CommittedTransition> Channel,
         LiveSessionCoordination Coordination);
 }

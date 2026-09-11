@@ -85,13 +85,14 @@ public sealed class DramaRecordWriterTests
         DemoOptions options = DemoOptions.Parse(["--output", output.Path]);
         ScenarioInstance scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
         FirstBoardWorld initial = scenario.CreateInitialWorld();
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var history = FirstBoardScenario.CreateMemoryHistory(initial);
         var capture = new LiveSessionCanceledCapture(
             initial,
+            FirstBoardScenario.CreateMemoryHistory(initial).Cursor,
             initial,
             new WorldVersion(FirstBoardScenario.LineageId, 0),
             ModelTime.Zero,
-            journal);
+            history.CompletedEvents);
 
         string recordPath = DramaRecordWriter.WriteCanceled(
             options,
@@ -108,14 +109,14 @@ public sealed class DramaRecordWriterTests
     private static BoardRunCapture EmptyCapture(ScenarioInstance scenario)
     {
         FirstBoardWorld initial = scenario.CreateInitialWorld();
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var history = FirstBoardScenario.CreateMemoryHistory(initial);
         var result = new HostRunResult<FirstBoardWorld>(
             initial,
             new WorldVersion(FirstBoardScenario.LineageId, 0),
             initial.Now,
             StepStatus.Exhausted,
             CommittedTransitionCount: 0);
-        return new BoardRunCapture(initial, result, journal);
+        return new BoardRunCapture(initial, history.Cursor, result, history.CompletedEvents);
     }
 
     private sealed class TempOutputDirectory : IDisposable

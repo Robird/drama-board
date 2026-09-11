@@ -5,7 +5,7 @@
 
 **本次修订：2026-08-23**
 
-> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成，不是待重做任务。新的[DurableGraph 接入提案](durablegraph-occurrence-persistence.md)只建议适配持久模型与提交边界，尚待采纳；本文旧 AppendBatch/Replay 条款届时定向修订。
+> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成。当前动态模型与事实已原地适配 DurableGraph，算法保留；存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
 
 **Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。
 
@@ -24,7 +24,7 @@ committed HostWorld
 → 所有 IOccurrenceRule 全量 Forecast
 → Kernel 选择一个全局 winner
 → owning rule 生成一个完整 TransitionDraft
-→ 一个 AppendBatch 原子提交
+→ 发布一个完整 E，再发布其 Game + Spatial 结果 S
 → 全量 re-Forecast
 ```
 

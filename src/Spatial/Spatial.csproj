@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <DurableGraphGenerateDefinitions>true</DurableGraphGenerateDefinitions>
+  </PropertyGroup>
+
   <ItemGroup>
+    <PackageReference Include="Atelia.DurableGraph" Version="$(DurableGraphPackageVersion)" />
     <ProjectReference Include="..\Kernel\Kernel.csproj" />
   </ItemGroup>
 

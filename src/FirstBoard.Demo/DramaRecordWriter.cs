@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using DramaBoard.FirstBoard;
 using DramaBoard.FirstBoard.Demo.Live;
+using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player.Llm;
@@ -27,7 +28,9 @@ internal static class DramaRecordWriter
             capture.Result.Status.ToString(),
             capture.Result.CurrentModelTime,
             capture.Result.World,
-            capture.Journal,
+            capture.InitialCursor,
+            capture.Result.Version,
+            capture.CompletedEvents,
             traces,
             budgetForcedCount);
 
@@ -43,7 +46,9 @@ internal static class DramaRecordWriter
             "Canceled",
             capture.CurrentModelTime,
             capture.World,
-            capture.Journal,
+            capture.InitialCursor,
+            capture.Version,
+            capture.CompletedEvents,
             traces,
             budgetForcedCount);
 
@@ -53,7 +58,9 @@ internal static class DramaRecordWriter
         string status,
         ModelTime currentModelTime,
         FirstBoardWorld world,
-        InMemoryJournal<FirstBoardFact> journal,
+        KernelCursor initialCursor,
+        WorldVersion finalVersion,
+        IReadOnlyList<OccurrenceEvent<FirstBoardFact>> events,
         IReadOnlyList<LlmTurnTrace> traces,
         int budgetForcedCount)
     {
@@ -82,13 +89,17 @@ internal static class DramaRecordWriter
             .Append("- Definition SHA-256：").AppendLine(scenarioInstance.DefinitionSha256)
             .Append("- Instance SHA-256：").AppendLine(scenarioInstance.InstanceSha256)
             .Append("- 世界种子：").AppendLine(
-                options.WorldSeed.ToString(CultureInfo.InvariantCulture))
+                scenarioInstance.WorldSeed.ToString(CultureInfo.InvariantCulture))
             .Append("- 结束：").Append(status)
             .Append(" @ ").Append(
                 currentModelTime.Ticks.ToString(CultureInfo.InvariantCulture))
             .AppendLine("ms")
             .Append("- 世界 transition：").AppendLine(
-                journal.Batches.Count.ToString(CultureInfo.InvariantCulture))
+                finalVersion.TransitionCount.ToString(CultureInfo.InvariantCulture))
+            .Append("- 本次起点 transition：").AppendLine(
+                initialCursor.Version.TransitionCount.ToString(CultureInfo.InvariantCulture))
+            .Append("- 本次完成 transition：").AppendLine(
+                events.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- 成功解析的 LLM turn：").AppendLine(
                 traces.Count.ToString(CultureInfo.InvariantCulture))
             .Append("- turn 预算触发的收场等待：").AppendLine(
@@ -115,13 +126,13 @@ internal static class DramaRecordWriter
             .AppendLine("## 世界事件叙事 dump")
             .AppendLine();
 
-        foreach (JournalBatch<FirstBoardFact> batch in journal.Batches)
+        foreach (OccurrenceEvent<FirstBoardFact> batch in events)
         {
             foreach (FirstBoardFact fact in batch.Facts)
             {
-                text.Append("- **").Append(FormatTime(batch.Instant.ModelTime.Ticks))
+                text.Append("- **").Append(FormatTime(batch.TargetInstant.ModelTime.Ticks))
                     .Append(" / #").Append(
-                        batch.Instant.CausalOrdinal.ToString(CultureInfo.InvariantCulture))
+                        batch.TargetInstant.CausalOrdinal.ToString(CultureInfo.InvariantCulture))
                     .Append("** ").Append(RenderEvent(fact))
                     .Append("  `").Append(FirstBoardScenario.FactName(fact)).AppendLine("`");
             }

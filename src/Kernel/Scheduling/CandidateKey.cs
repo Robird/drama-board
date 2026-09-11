@@ -5,9 +5,10 @@ namespace DramaBoard.Kernel.Scheduling;
 /// <summary>
 /// Owns the canonical bytes that completely and deterministically identify one occurrence candidate.
 /// </summary>
-public sealed class CandidateKey : IComparable<CandidateKey>, IEquatable<CandidateKey>
+[Atelia.DurableGraph.DurableType("DramaBoard.Kernel.CandidateKey", 1)]
+public sealed partial class CandidateKey : Atelia.DurableGraph.DurableBase, IComparable<CandidateKey>, IEquatable<CandidateKey>
 {
-    private readonly byte[] _canonicalBytes;
+    [Atelia.DurableGraph.DurableField(1)] private readonly byte[] _canonicalBytes;
 
     /// <summary>Initializes a key by copying canonical bytes supplied by the caller.</summary>
     public CandidateKey(byte[] canonicalBytes)

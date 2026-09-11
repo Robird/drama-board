@@ -17,14 +17,13 @@ public sealed class TravelGoalAtomicityAndReplayTests
         FirstBoardWorld initial = WithWaitingActor(
             instance.CreateInitialWorld(),
             BoardIds.Bob);
-        var journal = new ThrowBeforePublishJournal(FirstBoardScenario.LineageId);
+        var journal = new ThrowBeforePublishHistory(initial);
         var alice = new OneIntentPlayerDriver(ActionKinds.TravelTo, BoardIds.Cellar);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice),
                 instance,
-                journal,
-                initial);
+                journal);
         WorldVersion initialVersion = kernel.Version;
         string initialSnapshot = FirstBoardScenario.WorldSnapshot(initial);
 
@@ -32,7 +31,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
             async () => await kernel.StepAsync(ModelTime.Zero));
 
         Assert.IsType<TestJournalFailure>(failure.InnerException);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
         Assert.Equal(initialVersion, kernel.Version);
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Null(kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
@@ -51,7 +50,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
         FirstBoardWorld initial = WithWaitingActor(
             instance.CreateInitialWorld(),
             BoardIds.Bob);
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         var reducer = new FirstBoardReducer(instance.Graph);
         var alice = new OneIntentPlayerDriver(ActionKinds.TravelTo, BoardIds.Cellar);
         int foldCount = 0;
@@ -71,10 +70,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
 
         var getter = FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance;
         var kernel = new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            initial,
-            new WorldVersion(FirstBoardScenario.LineageId, 0),
-            ModelTime.Zero,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(instance.WorldSeed, 10_000),
             [
                 new CellarDeadlineRule(
@@ -85,7 +81,6 @@ public sealed class TravelGoalAtomicityAndReplayTests
                 new TravelGoalRule(instance, getter),
                 new DecisionPointRule(Drivers(alice), instance, getter),
             ],
-            journal,
             FailingFold,
             reducer.Validate);
         WorldVersion initialVersion = kernel.Version;
@@ -95,7 +90,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
             await kernel.StepAsync(ModelTime.Zero));
 
         Assert.Equal(failAtFact, foldCount);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
         Assert.Equal(initialVersion, kernel.Version);
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Null(kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
@@ -115,20 +110,19 @@ public sealed class TravelGoalAtomicityAndReplayTests
         initial = CloseCellarGate(instance, initial);
         initial = WithWaitingActor(initial, BoardIds.Bob);
         var alice = new OneIntentPlayerDriver(ActionKinds.TravelTo, BoardIds.Cellar);
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice),
                 instance,
-                journal,
-                initial);
+                journal);
         WorldVersion initialVersion = kernel.Version;
         string initialSnapshot = FirstBoardScenario.WorldSnapshot(initial);
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await kernel.StepAsync(ModelTime.Zero));
 
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
         Assert.Equal(initialVersion, kernel.Version);
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Null(kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
@@ -156,7 +150,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
             request => new PlayerDecision(
                 request.DecisionId,
                 new Intent(ActionKinds.Wait, DurationMs: 1)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal)
@@ -165,8 +159,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
                     [BoardIds.Bob] = new ThrowingPlayerDriver(),
                 },
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
         TraversingLocation travel = Assert.IsType<TraversingLocation>(
@@ -188,42 +181,39 @@ public sealed class TravelGoalAtomicityAndReplayTests
         FirstBoardWorld genesis = WithWaitingActor(
             instance.CreateInitialWorld(),
             BoardIds.Bob);
-        var source = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var source = FirstBoardScenario.CreateMemoryHistory(genesis);
         var alice = new OneIntentPlayerDriver(ActionKinds.TravelTo, BoardIds.Cellar);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> sourceKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice),
                 instance,
-                source,
-                genesis);
+                source);
         Assert.Equal(StepStatus.Committed, await sourceKernel.StepAsync(ModelTime.Zero));
         TraversingLocation firstLeg = Assert.IsType<TraversingLocation>(
             sourceKernel.World.Spatial.Entities.Single(entity =>
                 entity.Id == new EntityId(BoardIds.Alice)).Location);
         Assert.Equal(StepStatus.Committed, await sourceKernel.StepAsync(firstLeg.ArrivalDue));
-        Assert.Equal(2, source.Batches.Count);
+        Assert.Equal(2, source.CompletedEvents.Count);
         Assert.IsType<TraversalStartedFact>(
-            Assert.IsType<SpatialBoardFact>(source.Batches[0].Facts[^1]).Value);
+            Assert.IsType<SpatialBoardFact>(source.CompletedEvents[0].Facts[^1]).Value);
         Assert.IsType<TraversalArrivedFact>(
-            Assert.IsType<SpatialBoardFact>(Assert.Single(source.Batches[1].Facts)).Value);
+            Assert.IsType<SpatialBoardFact>(Assert.Single(source.CompletedEvents[1].Facts)).Value);
         var reducer = new FirstBoardReducer(instance.Graph);
         var getter = new CountingFullMapGetter();
 
-        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
-            genesis,
-            ModelTime.Zero,
-            source,
-            prefixTransitionCount: 2,
-            newLineageId: 99_001,
-            new SimulationRules(instance.WorldSeed, 10_000),
-            reducer.Apply,
-            reducer.Validate);
+        var fork = new InMemoryOccurrenceHistory<FirstBoardWorld, FirstBoardFact>(
+            source.State,
+            new KernelCursor(
+                new WorldVersion(FirstBoardScenario.LineageId + 1, source.Cursor.Version.TransitionCount),
+                source.Cursor.GenesisTime,
+                source.Cursor.LastInstant,
+                source.Cursor.LastCauseKey));
 
         Assert.Equal(0, getter.CallCount);
         Assert.Equal(
             new PlaceId(BoardIds.Cellar),
-            fork.Replay.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
-        Assert.True(fork.Replay.World.IsAtPlace(
+            fork.State.Actor(BoardIds.Alice).TravelGoalPlaceId);
+        Assert.True(fork.State.IsAtPlace(
             BoardIds.Alice,
             new PlaceId(BoardIds.Market)));
 
@@ -231,14 +221,11 @@ public sealed class TravelGoalAtomicityAndReplayTests
             FirstBoardScenario.CreateKernel(
                 Drivers(new ThrowingPlayerDriver()),
                 instance,
-                fork.Journal,
-                fork.Replay.World,
-                fork.Replay.Version,
-                fork.Replay.LastCommittedInstant,
+                fork,
                 getter);
         Assert.Equal(
             StepStatus.Committed,
-            await kernel.StepAsync(fork.Replay.CurrentModelTime));
+            await kernel.StepAsync(fork.Cursor.CurrentModelTime));
 
         Assert.Equal(1, getter.CallCount);
         Assert.Equal(
@@ -259,10 +246,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
             BoardIds.Bob);
         prefix = ReplaceActor(
             prefix,
-            prefix.Actor(BoardIds.Alice) with
-            {
-                TravelGoalPlaceId = new PlaceId(BoardIds.Cellar),
-            });
+            prefix.Actor(BoardIds.Alice).WithTravelGoal(new PlaceId(BoardIds.Cellar)));
         var getter = new CountingFullMapGetter();
         var rule = new TravelGoalRule(instance, getter);
         OccurrenceCandidate<BoardCandidate> valid = Assert.Single(
@@ -301,30 +285,18 @@ public sealed class TravelGoalAtomicityAndReplayTests
     private static FirstBoardWorld ReplaceActor(
         FirstBoardWorld world,
         BoardActor replacement) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Id == replacement.Id ? replacement : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld WithWaitingActor(
         FirstBoardWorld world,
         string actorId) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Key == actorId
-                        ? actor with { Activity = new BoardWaitActivity(new ModelTime(10_000_000)) }
+                        ? actor.WithActivity(new BoardWaitActivity(new ModelTime(10_000_000)))
                         : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld MoveInitialEntity(
         ScenarioInstance instance,
@@ -340,10 +312,7 @@ public sealed class TravelGoalAtomicityAndReplayTests
                     ? new PlaceId(placeId)
                     : Assert.IsType<AtPlaceLocation>(entity.Location).PlaceId)),
         ];
-        return world with
-        {
-            Spatial = GraphSpatialState.Create(instance.Graph, placements),
-        };
+        return world.With(spatial: GraphSpatialState.Create(instance.Graph, placements));
     }
 
     private static FirstBoardWorld CloseCellarGate(
@@ -430,14 +399,17 @@ public sealed class TravelGoalAtomicityAndReplayTests
         }
     }
 
-    private sealed class ThrowBeforePublishJournal(long lineageId) : IJournalSink<FirstBoardFact>
+    private sealed class ThrowBeforePublishHistory(FirstBoardWorld state) :
+        IOccurrenceHistory<FirstBoardWorld, FirstBoardFact>
     {
-        public long LineageId { get; } = lineageId;
-
-        public IReadOnlyList<JournalBatch<FirstBoardFact>> Batches { get; } =
-            Array.Empty<JournalBatch<FirstBoardFact>>();
-
-        public void AppendBatch(JournalBatch<FirstBoardFact> batch) =>
+        public FirstBoardWorld State => state;
+        public KernelCursor Cursor { get; } = FirstBoardScenario.CreateMemoryHistory(state).Cursor;
+        public OccurrenceEvent<FirstBoardFact>? PendingEvent => null;
+        public IReadOnlyList<OccurrenceEvent<FirstBoardFact>> CompletedEvents { get; } =
+            Array.Empty<OccurrenceEvent<FirstBoardFact>>();
+        public void CommitEvent(OccurrenceEvent<FirstBoardFact> occurrence) =>
+            throw new TestJournalFailure();
+        public void CommitState(FirstBoardWorld nextState, KernelCursor nextCursor) =>
             throw new TestJournalFailure();
     }
 

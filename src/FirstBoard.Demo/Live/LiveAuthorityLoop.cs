@@ -11,29 +11,35 @@ internal static class LiveAuthorityLoop
 {
     public static async Task<HostRunResult<FirstBoardWorld>> RunAsync(
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel,
-        IJournalSink<FirstBoardFact> journal,
         ModelTime notAfter,
         ChannelWriter<CommittedTransition> writer,
         LiveSessionCoordination coordination,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<OccurrenceEvent<FirstBoardFact>>? onCompleted = null)
     {
         ArgumentNullException.ThrowIfNull(kernel);
-        ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(coordination);
 
         int committedTransitionCount = 0;
         try
         {
+            if (kernel.RecoverPending(cancellationToken))
+            {
+                committedTransitionCount++;
+                PublishInstalledCommit(kernel, writer, coordination, onCompleted);
+            }
             while (true)
             {
-                StepStatus status = await kernel
+                StepStatus status = notAfter < kernel.CurrentModelTime
+                    ? StepStatus.BoundaryReached
+                    : await kernel
                     .StepAsync(notAfter, cancellationToken)
                     .ConfigureAwait(false);
                 if (status == StepStatus.Committed)
                 {
                     committedTransitionCount = checked(committedTransitionCount + 1);
-                    PublishInstalledCommit(kernel, journal, writer, coordination);
+                    PublishInstalledCommit(kernel, writer, coordination, onCompleted);
                     continue;
                 }
 
@@ -69,20 +75,23 @@ internal static class LiveAuthorityLoop
 
     private static void PublishInstalledCommit(
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel,
-        IJournalSink<FirstBoardFact> journal,
         ChannelWriter<CommittedTransition> writer,
-        LiveSessionCoordination coordination)
+        LiveSessionCoordination coordination,
+        Action<OccurrenceEvent<FirstBoardFact>>? onCompleted)
     {
-        WorldVersion version = kernel.Version;
-        if (journal.LineageId != version.LineageId ||
-            (long)journal.Batches.Count != version.TransitionCount ||
-            journal.Batches.Count == 0)
+        OccurrenceCompletion<FirstBoardFact> completion = kernel.LastCompletion
+            ?? throw new InvalidOperationException("A completed Step must provide its completion material.");
+        WorldVersion version = completion.Cursor.Version;
+        if (version != kernel.Version)
         {
             throw new InvalidOperationException(
-                "Authority cannot publish a commit that is not aligned with Journal history.");
+                "Authority cannot present a completion that is not the installed Kernel boundary.");
         }
 
-        JournalBatch<FirstBoardFact> batch = journal.Batches[^1];
+        OccurrenceEvent<FirstBoardFact> occurrence = completion.Event;
+        var batch = new JournalBatch<FirstBoardFact>(
+            occurrence.TargetInstant, occurrence.CauseKey, occurrence.Facts);
+        onCompleted?.Invoke(occurrence);
         coordination.PublishCommitted(version);
         if (!writer.TryWrite(new CommittedTransition(version, batch)))
         {

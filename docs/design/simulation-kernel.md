@@ -6,7 +6,7 @@
 
 **本次修订：2026-08-21**
 
-> 存储演进提案（2026-09-12）：[DurableGraph Occurrence 提交与恢复](durablegraph-occurrence-persistence.md)建议替换本文 AppendBatch/普通 Replay 接缝，保留调度与时间法则；尚待采纳、未实施。当前源码仍是下述 Journal 路径，不应把提案或历史施工描述混作实现事实。
+> 存储接缝更新（2026-09-12）：当前源码已采用[DurableGraph Occurrence 提交与恢复](durablegraph-occurrence-persistence.md)的独立 E/S 与有限游标。本文时间、全量 Forecast、单 winner 和领域完整提交法则保留；后文旧 `AppendBatch`、expected Journal head、普通 Replay 恢复条款作为上一版设计语境，由该后继方案替代。显式 Replay/Fork 工具仅保留作内存算法对照，不是存档恢复入口。
 
 **定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 为权威。**
 
@@ -19,12 +19,12 @@
 Kernel 只有一条路径：
 
 ```text
-冻结 committed HostWorld + WorldVersion + Journal expected head
+冻结 committed HostWorld + KernelCursor
 → 所有 IOccurrenceRule 全量 Forecast
 → 按 CandidateDue、确定性 keyed hash、CandidateKey 选唯一 winner
 → winner 所属 rule 在同一未完成 Step 中生成完整 TransitionDraft
 → scratch-fold 全部 facts + 验证最终 HostWorld
-→ AppendBatch 单帧原子发布
+→ 先发布完整 Occurrence Event，再发布结果 State
 → 安装新 World、WorldVersion 与 LogicalInstant
 → 丢弃旧 candidates；下一 Step 全量 re-Forecast
 ```

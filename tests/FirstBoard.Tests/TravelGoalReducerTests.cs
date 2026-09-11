@@ -156,32 +156,20 @@ public sealed class TravelGoalReducerTests
 
         FirstBoardWorld overlap = ReplaceActor(
             initial,
-            initial.Actor(BoardIds.Alice) with
-            {
-                Activity = new BoardWaitActivity(new ModelTime(10)),
-                TravelGoalPlaceId = new PlaceId(BoardIds.Cellar),
-            });
+            initial.Actor(BoardIds.Alice)
+                .WithActivity(new BoardWaitActivity(new ModelTime(10)))
+                .WithTravelGoal(new PlaceId(BoardIds.Cellar)));
         Assert.Throws<InvalidOperationException>(() => reducer.Validate(overlap));
 
         FirstBoardWorld unknown = ReplaceActor(
             initial,
-            initial.Actor(BoardIds.Alice) with
-            {
-                TravelGoalPlaceId = new PlaceId("unknown"),
-            });
+            initial.Actor(BoardIds.Alice).WithTravelGoal(new PlaceId("unknown")));
         Assert.Throws<InvalidOperationException>(() => reducer.Validate(unknown));
     }
 
     private static FirstBoardWorld ReplaceActor(FirstBoardWorld world, BoardActor replacement) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
-                    .Select(actor => actor.Id == replacement.Id ? replacement : actor)
-                    .ToArray()),
-            },
-        };
+        world.With(game: world.Game.With(actors: world.Actors
+            .Select(actor => actor.Id == replacement.Id ? replacement : actor)));
 
     private static FirstBoardWorld MoveAtPlace(
         ScenarioInstance instance,
@@ -197,9 +185,6 @@ public sealed class TravelGoalReducerTests
                     ? new PlaceId(placeId)
                     : Assert.IsType<AtPlaceLocation>(entity.Location).PlaceId)),
         ];
-        return world with
-        {
-            Spatial = GraphSpatialState.Create(instance.Graph, placements),
-        };
+        return world.With(spatial: GraphSpatialState.Create(instance.Graph, placements));
     }
 }

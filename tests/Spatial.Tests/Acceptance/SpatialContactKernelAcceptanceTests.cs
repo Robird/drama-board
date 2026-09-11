@@ -39,32 +39,29 @@ public sealed class SpatialContactKernelAcceptanceTests
                 GraphTestWorld.Bridge,
                 speedSnapshot: 3,
                 GraphTestWorld.Time(0)));
-        var journal = new InMemoryJournal<GraphSpatialFact>(lineageId: 1);
+        var history = new InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact>(
+            genesis, new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         var kernel = new SimulationKernel<
             GraphSpatialState,
             PassageContactOccurrenceData,
             GraphSpatialFact>(
-                genesis,
-                new WorldVersion(lineageId: 1, transitionCount: 0),
-                ModelTime.Zero,
-                lastCommittedInstant: null,
+                history,
                 new SimulationRules(worldSeed: 17, maxTransitionsPerModelTime: 100),
                 [new SpatialContactOccurrenceRule(definition)],
-                journal,
                 reducer.Apply,
                 state => GraphSpatialStateValidator.ValidateComplete(definition, state));
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(2)));
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(2)));
         Assert.Single(kernel.World.ConsumedContacts);
-        Assert.Single(journal.Batches);
-        Assert.IsType<PassageContactOccurredFact>(Assert.Single(journal.Batches[0].Facts));
+        Assert.Single(history.CompletedEvents);
+        Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts));
 
         ReplayResult<GraphSpatialState> replay = SimulationReplay.Replay(
             genesis,
             lineageId: 1,
             genesisTime: ModelTime.Zero,
-            journal.Batches,
+            Batches(history),
             reducer.Apply,
             state => GraphSpatialStateValidator.ValidateComplete(definition, state));
 
@@ -72,4 +69,9 @@ public sealed class SpatialContactKernelAcceptanceTests
         Assert.Equal(kernel.Version, replay.Version);
         Assert.Equal(kernel.LastCommittedInstant, replay.LastCommittedInstant);
     }
+
+    private static IReadOnlyList<JournalBatch<GraphSpatialFact>> Batches(
+        InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact> history) =>
+        history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
+            value.TargetInstant, value.CauseKey, value.Facts)).ToArray();
 }

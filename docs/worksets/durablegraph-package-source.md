@@ -4,7 +4,7 @@
 
 | 来源 | 完整提交 |
 |---|---|
-| [Atelia-org/durable-graph](https://github.com/Atelia-org/durable-graph/tree/f68388f88ba09354e9fa90420dc2cf22b146b6cf) | `f68388f88ba09354e9fa90420dc2cf22b146b6cf` |
+| [Robird/durable-graph](https://github.com/Robird/durable-graph/tree/f68388f88ba09354e9fa90420dc2cf22b146b6cf) | `f68388f88ba09354e9fa90420dc2cf22b146b6cf` |
 | [Atelia-org/atelia](https://github.com/Atelia-org/atelia/tree/742fcd62e691b6b6acca4113a3ac3638bc7275ba) | `742fcd62e691b6b6acca4113a3ac3638bc7275ba` |
 
 默认版本为 `0.0.0-dramaboard.20260912.f68388f.1`，九个项目全部使用相同 `PackageVersion`。按固定上游 `experiments/PackageConsumerProbe/Run-EventHistoryRecoveryProbe.ps1` 的顺序串行打包：Data、Primitives、Rbf、RbfSegmentStore、EventJournal、DurableGraph.StateStore.Serialization、DurableGraph、DurableGraph.StateStore.Storage、DurableGraph.StateStore。包 ID 均以 `Atelia.` 开头；Generator 与 Build 工具按上游 DurableGraph 包的既有规则随包分发，不另造消费者手工接线。

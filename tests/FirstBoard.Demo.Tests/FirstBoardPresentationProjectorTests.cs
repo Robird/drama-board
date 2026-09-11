@@ -63,7 +63,7 @@ public sealed class FirstBoardPresentationProjectorTests
                 BoardIds.Alice,
                 BoardIds.Bob,
                 "hello",
-                SharedFactKind: null)),
+                sharedFactKind: null)),
             new GameBoardFact(new ActorObservedEvent(
                 BoardIds.Bob,
                 [new BoardFact("secret.kind", "secret.id", secret)])),
@@ -530,7 +530,7 @@ public sealed class FirstBoardPresentationProjectorTests
             new EntityId(entityB),
             1);
 
-    private sealed record UnknownGamePayload : BoardEventPayload;
+    private sealed class UnknownGamePayload : BoardEventPayload;
 
     private sealed record EncounterWorld(
         ScenarioInstance Instance,

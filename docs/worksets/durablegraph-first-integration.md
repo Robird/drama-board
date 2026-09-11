@@ -1,9 +1,9 @@
 # DurableGraph 真实接入近期计划
 
-> 状态：**2026-09-12 用户授权自主实施，正在推进 A。** 实际完成范围与验证证据见本文施工记录；设计不等于实现。
-> 2026-09-12 静态核对：DramaBoard `063e3e7`、DurableGraph `f68388f`。上游另有 DB-067 研究文档未提交，本计划不依赖它；没有重跑构建、测试或包实验。
+> 状态：**2026-09-12 首轮 A/B/C 已实施并通过本机验收。** B 交付世界续局，Player 记忆/预算重新建立；完整 Player closure 与可玩持久 fork 延期。实际证据见 §8。
+> 固定消费 DurableGraph `f68388f` 与 Atelia `742fcd62`，使用真实 NuGet 包；源码、版本及准备命令见[包来源](durablegraph-package-source.md)。后续模型升版与长轨迹研究不混作本次已交付能力。
 
-## 1. 推荐路线
+## 1. 本次选择
 
 **原地适配真实领域模型，局部改写 Kernel 的提交/恢复边界，保留调度与 Graph Spatial 算法。**
 把真实 PackageReference 验证嵌入这次产品纵切，不继续扩建一套独立实验世界，也不创建长期并存的新 Kernel/Spatial。
@@ -92,7 +92,7 @@ DG `79be2c2` / `f68388f` 已落地上手、恢复、XML 与 ReadPair 反馈；�
 
 - 完成通知来自已完成 S，presentation 从该边界开始；展示用 facts fold 可继续存在，不充当权威恢复。
 - 保留现有新局、Human/AI、取消与呈现行为的验收。若恢复 driver 自带记忆/预算影响未来，必须显式决定保存或重新绑定规则，不能宣称加载世界已恢复全部 Player。
-- **B 的交付范围需在 A 后裁决**：可先交付纯策略 driver 的可用存档，再扩到完整 LLM/Player closure；不让这一未决项阻止客观世界 A，也不把它隐藏在“Demo 已支持续局”中。
+- **本次 B 的交付范围**：实际 Demo 支持 `--world-store` / `--resume-world`，恢复客观世界与 pending，随后重新建立 Human/LLM driver、记忆与 turn 预算，并明确提示。完整 Player closure 留待真实续局交互需求，不宣称透明恢复 LLM 会话。
 
 ## 6. C：旧路径退出与后续反馈
 
@@ -129,3 +129,27 @@ C 是退出条件，不是必须拖到最后的清理批次；在 A/B 中已经�
 每包产出可审查 diff 和行为证据，集成提交保持可构建，不把各代理编译成功当作最终验收。不为每个包建立临时产品程序集；必要时用短期分支/worktree 隔离未完成施工。
 
 如发现必须复制整套领域模型、必须重新调用 Player 才能完成 E、必须放弃现有空间/因果法则才能保存，先提交最小复现并回到本方案裁决。一般声明或 API 摩擦在切片内解决，不自动升级为全库重写或上游平台需求。
+
+## 8. 本次交付与证据
+
+| 要求 | 实现与证据 |
+|---|---|
+| 真实领域闭包 | 原 Kernel / Spatial / FirstBoard，64 份 `.dgschema`；各库 Runtime PackageReference 与登记 facade。完整 fact union 可在排除 World 的登记中独立读取。 |
+| E/S 与 pending | [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[FirstBoardOccurrenceHistory](../../src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs)；[Kernel 失败窗口测试](../../tests/Kernel.Tests/Simulation/SimulationKernelTests.cs)与[真实存储测试](../../tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)。 |
+| 跨进程等价 | [ColdProcessTests](../../tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)的 10 个场景：Continue/Reverse、三个 S 分割点、两个 pending E 中断点；完整字段/游标/下一 request，S-head 零历史 fold，E-head 不调用 Forecast/Plan。 |
+| 真实运行入口 | [WorldStoreLiveTests](../../tests/FirstBoard.Demo.Tests/WorldStoreLiveTests.cs)：新建/续局、不重播旧呈现、Human/AI 同步调度、saved rules/driver roster、pending 不受新运行上界阻挡。 |
+| 旧路径退出 | Journal.Atelia 及其专属 wire tests 已退出源码/solution；原 encounter 分支资产由 [OccurrenceBranchSemanticsTests](../../tests/FirstBoard.Tests/OccurrenceBranchSemanticsTests.cs)保留。恢复旧实现用 Git `3b77450`。 |
+| 使用成本与反馈 | [消费者反馈 003](../feedback/durablegraph/003-real-model-integration.md)记录真实声明成本、Base/Delta/Remove、文件字节、提交耗时和分配；主要易用性建议是不可变 record class，无当前功能阻塞。 |
+
+2026-09-12 本机 Windows 验收：九个固定包准备及重复校验成功；Publish 后 Clean → Verify 构建成功，**0 警告、0 错误，64 份历史内容未变**。完整 Local solution 的 **11 个测试程序集、515 项测试全部通过，0 跳过**；Demo `--help` 命令成功并显示存档选项。独立审阅发现的 cursor ordinal/count 不变量、pending 上界绕行均已修复并有回归。CI 已接同一包准备与 Verify 路径，本轮未运行远程 CI、真实 LLM 服务或非 Windows 验收。
+
+集成 diff 与文档检查通过：受影响文档的 130 个本地链接、3 个锚点均有效；`git diff --check` 干净。源码仅消费固定包，兄弟工作树未提交开发不在本次交付中。
+
+```powershell
+pwsh -File scripts/Prepare-DurableGraph.ps1
+dotnet clean DramaBoard.Local.slnx -m:1 -nr:false
+dotnet build DramaBoard.Local.slnx -m:1 -nr:false -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
+dotnet test DramaBoard.Local.slnx --no-build --no-restore -m:1 -nr:false
+```
+
+下一步从真实玩法需求选择业务字段，完成两代模型升级/续写；再按交互需求推进 Player 记忆对齐、按长轨迹证据判断 mutable 与读取优化。首轮接入不再作为常驻实验工程扩建。

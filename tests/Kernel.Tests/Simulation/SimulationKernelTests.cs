@@ -8,619 +8,454 @@ namespace DramaBoard.Kernel.Tests.Simulation;
 public sealed class SimulationKernelTests
 {
     [Fact]
-    public async Task StepAsync_EmptyForecastReturnsExhaustedWithoutChangingCommittedState()
+    public async Task EmptyForecastAndBoundaryDoNotCreateEvents()
     {
-        var rule = Rule<int, string, int>(forecast: (_, _) => []);
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> kernel = Kernel(7, [rule], journal);
-
-        StepStatus status = await kernel.StepAsync(new ModelTime(100));
-
-        Assert.Equal(StepStatus.Exhausted, status);
+        var history = History(7);
+        var rule = new TestRule(_ => []);
+        var kernel = Kernel(history, [rule]);
+        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Time(100)));
         Assert.Equal(7, kernel.World);
-        Assert.Equal(new WorldVersion(1, 0), kernel.Version);
-        Assert.Null(kernel.LastCommittedInstant);
-        Assert.Equal(ModelTime.Zero, kernel.CurrentModelTime);
-        Assert.Empty(journal.Batches);
-        Assert.Equal(0, rule.PlanCallCount);
+        Assert.Null(kernel.LastCompletion);
+        Assert.Null(history.PendingEvent);
+        Assert.Empty(history.CompletedEvents);
+        rule.Forecast = _ => [Candidate("future", 101)];
+        Assert.Equal(StepStatus.BoundaryReached, await kernel.StepAsync(Time(100)));
+        Assert.Equal(0, rule.PlanCalls);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Time(101)));
+        Assert.Equal(Time(101), kernel.CurrentModelTime);
     }
 
     [Fact]
-    public async Task StepAsync_WinnerAfterBoundaryDoesNotPlanAndEqualBoundaryCanCommit()
+    public async Task OneOccurrencePerStepAndFullReforecast()
     {
-        OccurrenceCandidate<string> candidate = Candidate("future", due: 10, "fact");
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [candidate],
-            plan: (_, _, _) => Planned(1));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
-
-        StepStatus before = await kernel.StepAsync(new ModelTime(9));
-
-        Assert.Equal(StepStatus.BoundaryReached, before);
-        Assert.Equal(0, rule.PlanCallCount);
-        Assert.Equal(ModelTime.Zero, kernel.CurrentModelTime);
-        Assert.Empty(journal.Batches);
-
-        StepStatus atBoundary = await kernel.StepAsync(new ModelTime(10));
-
-        Assert.Equal(StepStatus.Committed, atBoundary);
-        Assert.Equal(1, rule.PlanCallCount);
-        Assert.Equal(1, kernel.World);
-        Assert.Single(journal.Batches);
-    }
-
-    [Fact]
-    public async Task StepAsync_CommitsAtMostOneAndFullReforecastsNextStep()
-    {
-        var rule = Rule<int, int, int>(
-            forecast: (world, _) => world < 2
-                ? [Candidate($"count:{world}", due: 5, world)]
-                : [],
-            plan: (_, winner, _) => Planned(winner.Data + 1));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, int, int> kernel = Kernel(0, [rule], journal, fold: (_, _, fact) => fact);
-
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(5)));
-        Assert.Equal(1, kernel.World);
-        Assert.Single(journal.Batches);
-        Assert.Equal(1, rule.ForecastCallCount);
-
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(5)));
+        var history = History();
+        var rule = new TestRule(world => world < 2 ? [Candidate($"next:{world}", 5)] : []);
+        var kernel = Kernel(history, [rule]);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Time(5)));
+        Assert.Single(history.CompletedEvents);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Time(5)));
+        Assert.Equal(2, rule.ForecastCalls);
+        Assert.Equal(2, rule.PlanCalls);
         Assert.Equal(2, kernel.World);
-        Assert.Equal(2, journal.Batches.Count);
-        Assert.Equal(2, rule.ForecastCallCount);
+        Assert.Equal([0L, 1L], history.CompletedEvents.Select(e => e.TargetInstant.CausalOrdinal));
+        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Time(5)));
+        Assert.Null(kernel.LastCompletion);
     }
 
     [Fact]
-    public async Task StepAsync_GlobalWinnerInvokesOnlyItsOwningRule()
+    public async Task GlobalWinnerAndRegistrationOrderChooseTheSameOwner()
     {
-        OccurrenceCandidate<string> firstCandidate = Candidate("first", due: 10, "first");
-        OccurrenceCandidate<string> secondCandidate = Candidate("second", due: 10, "second");
-        var first = Rule<int, string, string>(
-            forecast: (_, _) => [firstCandidate],
-            plan: (_, winner, _) => Planned(winner.Data));
-        var second = Rule<int, string, string>(
-            forecast: (_, _) => [secondCandidate],
-            plan: (_, winner, _) => Planned(winner.Data));
-        var journal = new InMemoryJournal<string>(lineageId: 1);
-        var rules = new SimulationRules(worldSeed: 42, maxTransitionsPerModelTime: 10);
-        CandidateKey expectedWinner = OccurrenceScheduler.SelectWinner(
-            [firstCandidate, secondCandidate], rules.WorldSeed).Key;
-        SimulationKernel<int, string, string> kernel = Kernel(
-            0,
-            [second, first],
-            journal,
-            simulationRules: rules,
-            fold: (world, _, _) => world + 1);
-
-        await kernel.StepAsync(new ModelTime(10));
-
-        Assert.Equal(expectedWinner, journal.Batches[0].CauseKey);
-        Assert.Equal(expectedWinner == firstCandidate.Key ? 1 : 0, first.PlanCallCount);
-        Assert.Equal(expectedWinner == secondCandidate.Key ? 1 : 0, second.PlanCallCount);
-    }
-
-    [Fact]
-    public async Task StepAsync_RuleRegistrationOrderProducesIdenticalOwnerFactAndBatch()
-    {
-        async Task<(string World, CandidateKey Cause, string Fact, LogicalInstant Instant, int APlans, int BPlans)>
-            RunAsync(bool reverse)
+        async Task<(int World, CandidateKey Cause)> Run(bool reverse)
         {
-            OccurrenceCandidate<string> candidateA = Candidate("rule:a", due: 10, "fact-a");
-            OccurrenceCandidate<string> candidateB = Candidate("rule:b", due: 10, "fact-b");
-            var ruleA = Rule<string, string, string>(
-                forecast: (_, _) => [candidateA],
-                plan: (_, winner, _) => Planned(winner.Data));
-            var ruleB = Rule<string, string, string>(
-                forecast: (_, _) => [candidateB],
-                plan: (_, winner, _) => Planned(winner.Data));
-            IOccurrenceRule<string, string, string>[] registered = reverse
-                ? [ruleB, ruleA]
-                : [ruleA, ruleB];
-            var journal = new InMemoryJournal<string>(lineageId: 1);
-            SimulationKernel<string, string, string> kernel = Kernel(
-                string.Empty,
-                registered,
-                journal,
-                fold: (world, _, fact) => world + fact,
-                simulationRules: new SimulationRules(123, 10));
-
-            await kernel.StepAsync(new ModelTime(10));
-            JournalBatch<string> batch = Assert.Single(journal.Batches);
-            return (
-                kernel.World,
-                batch.CauseKey,
-                Assert.Single(batch.Facts),
-                batch.Instant,
-                ruleA.PlanCallCount,
-                ruleB.PlanCallCount);
+            var a = new TestRule(_ => [Candidate("a", 10)], (_, _, _) => Planned(11));
+            var b = new TestRule(_ => [Candidate("b", 10)], (_, _, _) => Planned(22));
+            var history = History();
+            var kernel = Kernel(history, reverse ? [b, a] : [a, b]);
+            CandidateKey expected = OccurrenceScheduler.SelectWinner(
+                [Candidate("a", 10), Candidate("b", 10)], 42).Key;
+            await kernel.StepAsync(Time(10));
+            Assert.Equal(expected == Key("a") ? 1 : 0, a.PlanCalls);
+            Assert.Equal(expected == Key("b") ? 1 : 0, b.PlanCalls);
+            return (kernel.World, Assert.Single(history.CompletedEvents).CauseKey);
         }
-
-        Assert.Equal(await RunAsync(reverse: false), await RunAsync(reverse: true));
+        Assert.Equal(await Run(false), await Run(true));
     }
 
     [Fact]
-    public async Task StepAsync_DuplicateKeyOrPastDueCandidateFailsBeforePlan()
+    public async Task DuplicateOrPastCandidateFailsBeforePlan()
     {
-        var duplicateOne = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("duplicate", due: 10, "a")]);
-        var duplicateTwo = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("duplicate", due: 11, "b")]);
-        var duplicateJournal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> duplicateKernel = Kernel(
-            0,
-            [duplicateOne, duplicateTwo],
-            duplicateJournal);
-
-        InvalidOperationException duplicateError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await duplicateKernel.StepAsync(new ModelTime(20)));
-        Assert.Contains("Duplicate candidate key", duplicateError.Message);
-        Assert.Equal(0, duplicateOne.PlanCallCount + duplicateTwo.PlanCallCount);
-        Assert.Empty(duplicateJournal.Batches);
-
-        var prefixJournal = new InMemoryJournal<int>(lineageId: 1);
-        prefixJournal.AppendBatch(new JournalBatch<int>(
-            new LogicalInstant(new ModelTime(10), 0),
-            CandidateKey.FromUtf8("prefix"),
-            [1]));
-        var pastRule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("past", due: 9, "past")]);
-        SimulationKernel<int, string, int> pastKernel = Kernel(
-            1,
-            [pastRule],
-            prefixJournal,
-            version: new WorldVersion(1, 1),
-            lastCommittedInstant: new LogicalInstant(new ModelTime(10), 0));
-
-        InvalidOperationException pastError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await pastKernel.StepAsync(new ModelTime(20)));
-        Assert.Contains("before current model time", pastError.Message);
-        Assert.Equal(0, pastRule.PlanCallCount);
-        Assert.Single(prefixJournal.Batches);
+        var duplicate = new TestRule(_ => [Candidate("same", 10), Candidate("same", 11)]);
+        var kernel = Kernel(History(), [duplicate]);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(20)));
+        Assert.Equal(0, duplicate.PlanCalls);
+        var past = new TestRule(_ => [Candidate("past", 9)]);
+        var resumed = Kernel(History(1, Cursor(4, 10, 0, "previous")), [past]);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resumed.StepAsync(Time(20)));
+        Assert.Equal(0, past.PlanCalls);
     }
 
     [Fact]
-    public async Task StepAsync_PlanInFlightRejectsSecondStepImmediately()
+    public async Task InFlightPlanRejectsConcurrentStepAndRecovery()
     {
-        var completion = new TaskCompletionSource<TransitionDraft<int>>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("blocked", due: 1, "blocked")],
-            plan: (_, _, _) => new ValueTask<TransitionDraft<int>>(completion.Task));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
-
-        ValueTask<StepStatus> firstStep = kernel.StepAsync(new ModelTime(1));
-
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
-            kernel.StepAsync(new ModelTime(1)));
-        Assert.Contains("already in flight", error.Message);
-        completion.SetResult(Draft(1));
-        Assert.Equal(StepStatus.Committed, await firstStep);
+        var completion = new TaskCompletionSource<TransitionDraft<int>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rule = new TestRule(_ => [Candidate("blocked", 1)], (_, _, _) => new(completion.Task));
+        var kernel = Kernel(History(), [rule]);
+        ValueTask<StepStatus> first = kernel.StepAsync(Time(1));
+        Assert.Throws<InvalidOperationException>(() => kernel.StepAsync(Time(1)));
+        Assert.Throws<InvalidOperationException>(() => kernel.RecoverPending());
+        completion.SetResult(new TransitionDraft<int>([1]));
+        Assert.Equal(StepStatus.Committed, await first);
     }
 
     [Fact]
-    public async Task StepAsync_MultipleFactsShareOneInstantAndAdvanceVersionOnceInArrayOrder()
+    public async Task OrderedFactsShareOneInstantAndHotPathDoesNotFoldTwice()
     {
-        var observed = new List<(LogicalInstant Instant, string Fact)>();
-        var validatedWorlds = new List<string>();
-        var rule = Rule<string, string, string>(
-            forecast: (_, _) => [Candidate("multi", due: 5, "multi")],
-            plan: (_, _, _) => Planned("A", "B", "C"));
-        var journal = new InMemoryJournal<string>(lineageId: 1);
-        SimulationKernel<string, string, string> kernel = Kernel(
-            string.Empty,
-            [rule],
-            journal,
-            fold: (world, instant, fact) =>
-            {
-                observed.Add((instant, fact));
-                return world + fact;
-            },
-            validate: world =>
-            {
-                Assert.True(world.Length is 0 or 3);
-                validatedWorlds.Add(world);
-            });
-
-        await kernel.StepAsync(new ModelTime(5));
-
-        JournalBatch<string> batch = Assert.Single(journal.Batches);
-        Assert.Equal("ABC", kernel.World);
-        Assert.Equal(["A", "B", "C"], batch.Facts);
-        Assert.All(observed, item => Assert.Equal(batch.Instant, item.Instant));
-        Assert.Equal([string.Empty, "ABC"], validatedWorlds);
-        Assert.Equal(new WorldVersion(1, 1), kernel.Version);
-        Assert.Equal(new LogicalInstant(new ModelTime(5), 0), kernel.LastCommittedInstant);
-    }
-
-    [Fact]
-    public async Task StepAsync_FoldOrValidationFailureLeavesEveryCommittedAuthorityUnchanged()
-    {
-        var foldRule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("fold", due: 1, "fold")],
-            plan: (_, _, _) => Planned(1, 2));
-        var foldJournal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> foldKernel = Kernel(
-            0,
-            [foldRule],
-            foldJournal,
-            fold: (world, _, fact) => fact == 2
-                ? throw new InvalidOperationException("fold failed")
-                : world + fact);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await foldKernel.StepAsync(new ModelTime(1)));
-        AssertUnchanged(foldKernel, foldJournal, expectedWorld: 0);
-
-        var validateRule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("validate", due: 1, "validate")],
-            plan: (_, _, _) => Planned(1));
-        var validateJournal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> validateKernel = Kernel(
-            0,
-            [validateRule],
-            validateJournal,
-            fold: (world, _, fact) => world + fact,
-            validate: world =>
-            {
-                if (world != 0)
-                {
-                    throw new InvalidOperationException("invalid world");
-                }
-            });
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await validateKernel.StepAsync(new ModelTime(1)));
-        AssertUnchanged(validateKernel, validateJournal, expectedWorld: 0);
-    }
-
-    [Fact]
-    public async Task StepAsync_CancellationAfterPlanButBeforePublishLeavesCommittedStateUnchanged()
-    {
-        var completion = new TaskCompletionSource<TransitionDraft<int>>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("cancel", due: 1, "cancel")],
-            plan: (_, _, _) => new ValueTask<TransitionDraft<int>>(completion.Task));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
-        using var cancellation = new CancellationTokenSource();
-
-        ValueTask<StepStatus> step = kernel.StepAsync(new ModelTime(1), cancellation.Token);
-        cancellation.Cancel();
-        completion.SetResult(Draft(1));
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await step);
-        AssertUnchanged(kernel, journal, expectedWorld: 0);
-    }
-
-    [Fact]
-    public async Task StepAsync_AnyAppendExceptionLeavesMemoryUninstalledAndPermanentlyRequiresReplay()
-    {
-        var journal = new ControllableJournal<int> { ThrowBeforePublish = true };
-        var rule = Rule<int, string, int>(
-            forecast: (world, _) => world == 0 ? [Candidate("append", 1, "append")] : [],
-            plan: (_, _, _) => Planned(1));
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
-
-        InvalidOperationException publicationError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(new ModelTime(1)));
-        Assert.Contains("outcome cannot be safely determined", publicationError.Message);
-        Assert.IsType<IOException>(publicationError.InnerException);
-        AssertUnchanged(kernel, journal, expectedWorld: 0);
-
-        journal.ThrowBeforePublish = false;
-        InvalidOperationException stopped = Assert.Throws<InvalidOperationException>(() =>
-            kernel.StepAsync(new ModelTime(1)));
-        Assert.Contains("permanently requires Replay", stopped.Message);
-    }
-
-    [Fact]
-    public async Task StepAsync_SinkThatPublishesThenThrowsPermanentlyRequiresReplay()
-    {
-        var journal = new ControllableJournal<int> { ThrowAfterPublish = true };
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("uncertain", 1, "uncertain")],
-            plan: (_, _, _) => Planned(1));
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
-
-        InvalidOperationException publicationError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(new ModelTime(1)));
-
-        Assert.Contains("must be rebuilt by Replay", publicationError.Message);
-        Assert.Single(journal.Batches);
-        Assert.Equal(0, kernel.World);
-        Assert.Equal(new WorldVersion(1, 0), kernel.Version);
-        Assert.Null(kernel.LastCommittedInstant);
-
-        InvalidOperationException stopped = Assert.Throws<InvalidOperationException>(() =>
-            kernel.StepAsync(new ModelTime(1)));
-        Assert.Contains("permanently requires Replay", stopped.Message);
-    }
-
-    [Fact]
-    public async Task StepAsync_SinkThatReturnsWithDifferentFactsPermanentlyRequiresReplay()
-    {
-        var journal = new ControllableJournal<int>
+        var history = History();
+        var rule = new TestRule(_ => [Candidate("many", 5)], (_, _, _) => Planned(1, 2, 3));
+        var calls = new List<LogicalInstant>();
+        var kernel = Kernel(history, [rule], (world, instant, fact) =>
         {
-            BatchTransform = batch => new JournalBatch<int>(
-                batch.Instant,
-                batch.CauseKey,
-                [99]),
-        };
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("substituted", 1, "substituted")],
-            plan: (_, _, _) => Planned(1));
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
+            calls.Add(instant);
+            return world * 10 + fact;
+        });
+        await kernel.StepAsync(Time(5));
+        Assert.Equal(123, kernel.World);
+        Assert.Equal(3, calls.Count);
+        Assert.All(calls, instant => Assert.Equal(new LogicalInstant(Time(5), 0), instant));
+        Assert.Equal(new WorldVersion(1, 1), kernel.Version);
+        Assert.Same(Assert.Single(history.CompletedEvents), kernel.LastCompletion!.Event);
+        Assert.Equal(kernel.Cursor, kernel.LastCompletion.Cursor);
+    }
 
-        InvalidOperationException publicationError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(new ModelTime(1)));
-
-        Assert.Contains("must be rebuilt by Replay", publicationError.Message);
-        Assert.Equal([99], Assert.Single(journal.Batches).Facts);
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryFactFailureLeavesOldStateAndNoEvent(int failAt)
+    {
+        var history = History();
+        var rule = new TestRule(_ => [Candidate("many", 5)], (_, _, _) => Planned(1, 2, 3));
+        var kernel = Kernel(history, [rule], (world, _, fact) =>
+            fact == failAt ? throw new TestFailure() : world + fact);
+        await Assert.ThrowsAsync<TestFailure>(async () => await kernel.StepAsync(Time(5)));
         Assert.Equal(0, kernel.World);
-        Assert.Equal(new WorldVersion(1, 0), kernel.Version);
-        Assert.Throws<InvalidOperationException>(() => kernel.StepAsync(new ModelTime(1)));
+        Assert.Equal(0, history.State);
+        Assert.Null(history.PendingEvent);
+        Assert.Empty(history.CompletedEvents);
+        Assert.False(kernel.IsFaulted);
     }
 
     [Fact]
-    public async Task StepAsync_DoesNotObserveCancellationAfterAppendPublishes()
+    public async Task ValidationFailureDoesNotPublishEvent()
+    {
+        var history = History();
+        var kernel = Kernel(history, [new(_ => [Candidate("bad", 0)])], validate: world =>
+        {
+            if (world != 0) { throw new TestFailure(); }
+        });
+        await Assert.ThrowsAsync<TestFailure>(async () => await kernel.StepAsync(Time(0)));
+        Assert.Null(history.PendingEvent);
+        Assert.Empty(history.CompletedEvents);
+        Assert.Equal(0, kernel.World);
+    }
+
+    [Fact]
+    public async Task CancellationAfterPlanBeforeEventLeavesCompletedBoundaryUnchanged()
     {
         using var cancellation = new CancellationTokenSource();
-        var journal = new ControllableJournal<int> { AfterPublish = cancellation.Cancel };
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("commit", 1, "commit")],
-            plan: (_, _, _) => Planned(1));
-        SimulationKernel<int, string, int> kernel = Kernel(
-            0, [rule], journal, fold: (world, _, fact) => world + fact);
+        var history = History();
+        var rule = new TestRule(_ => [Candidate("cancel", 0)], (_, _, _) =>
+        {
+            cancellation.Cancel();
+            return Planned(1);
+        });
+        var kernel = Kernel(history, [rule]);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await kernel.StepAsync(Time(0), cancellation.Token));
+        Assert.Equal(0, history.State);
+        Assert.Null(history.PendingEvent);
+        Assert.Null(kernel.LastCompletion);
+    }
 
-        StepStatus status = await kernel.StepAsync(new ModelTime(1), cancellation.Token);
+    [Theory]
+    [InlineData("before-e", false, false)]
+    [InlineData("after-e", true, false)]
+    [InlineData("before-s", true, false)]
+    [InlineData("after-s", false, true)]
+    public async Task PublicationFailureStopsKernelAndResumeUsesActualBoundary(string failAt, bool hasPending, bool completed)
+    {
+        var history = new ControlledHistory { FailAt = failAt };
+        var rule = new TestRule(_ => [Candidate("write", 1)]);
+        var kernel = Kernel(history, [rule]);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.IsType<IOException>(error.InnerException);
+        Assert.True(kernel.IsFaulted);
+        Assert.Equal(0, kernel.World);
+        Assert.Null(kernel.LastCompletion);
+        Assert.Equal(hasPending, history.PendingEvent is not null);
+        Assert.Equal(completed ? 1 : 0, history.State);
+        Assert.Throws<InvalidOperationException>(() => kernel.StepAsync(Time(1)));
+        Assert.Throws<InvalidOperationException>(() => kernel.RecoverPending());
 
+        // A fresh history view simulates reopening at the persisted S/E boundary.
+        var reopened = History(history.State, history.Cursor);
+        if (history.PendingEvent is { } pending) { reopened.CommitEvent(pending); }
+        var resumedRule = new TestRule(_ => throw new TestFailure());
+        int folds = 0;
+        var resumed = Kernel(reopened, [resumedRule], (world, _, fact) => { folds++; return world + fact; });
+        Assert.Equal(hasPending, resumed.RecoverPending());
+        Assert.Equal(hasPending ? 1 : 0, folds);
+        Assert.Equal(0, resumedRule.ForecastCalls);
+        Assert.Equal(0, resumedRule.PlanCalls);
+        Assert.Equal(hasPending || completed ? 1 : 0, resumed.World);
+        Assert.Null(reopened.PendingEvent);
+    }
+
+    [Fact]
+    public async Task EventPublicationBeginsNonCancelableCompletion()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var history = new ControlledHistory { AfterEvent = cancellation.Cancel };
+        var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Time(1), cancellation.Token));
         Assert.True(cancellation.IsCancellationRequested);
-        Assert.Equal(StepStatus.Committed, status);
         Assert.Equal(1, kernel.World);
-        Assert.Equal(1, kernel.Version.TransitionCount);
+        Assert.NotNull(kernel.LastCompletion);
     }
 
     [Fact]
-    public async Task StepAsync_FirstNoOpCanCommitButRepeatedHeadKeyFailsBeforePlan()
+    public async Task SubstitutedEventStopsBeforeStatePublication()
     {
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("noop", 0, "noop")],
-            plan: (_, _, _) => Planned(0));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, string, int> kernel = Kernel(
-            7,
-            [rule],
-            journal,
-            fold: (world, _, _) => world);
+        var history = new ControlledHistory { SubstituteEvent = true };
+        var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.True(kernel.IsFaulted);
+        Assert.Equal([99], history.PendingEvent!.Facts);
+        Assert.Equal(0, history.StateCalls);
+    }
 
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+    [Fact]
+    public async Task StateCommitThatDoesNotInstallItsWorldIsRejected()
+    {
+        var history = new ControlledHistory { IgnoreState = true };
+        var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.True(kernel.IsFaulted);
+        Assert.Equal(0, kernel.World);
+        Assert.Null(kernel.LastCompletion);
+    }
+
+    [Fact]
+    public async Task HistoryStateMovedWithoutCursorIsRejectedBeforeForecast()
+    {
+        var history = new ControlledHistory();
+        var rule = new TestRule(_ => []);
+        var kernel = Kernel(history, [rule]);
+        history.State = 99;
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.True(kernel.IsFaulted);
+        Assert.Equal(0, rule.ForecastCalls);
+    }
+
+    [Fact]
+    public async Task EqualButDifferentReferenceStateCannotReplaceInstalledWorld()
+    {
+        var state = new ValueWorld(7);
+        var history = new ReferenceHistory(state);
+        var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, _ => { });
+        history.State = new ValueWorld(7);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.Same(state, kernel.World);
+        Assert.True(kernel.IsFaulted);
+    }
+
+    [Fact]
+    public async Task ThrowingPendingGetterReleasesOperationGuard()
+    {
+        var history = new ControlledHistory();
+        var kernel = Kernel(history, [new(_ => [])]);
+        history.ThrowPendingGetter = true;
+        await Assert.ThrowsAsync<TestFailure>(async () => await kernel.StepAsync(Time(1)));
+        history.ThrowPendingGetter = false;
+        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Time(1)));
+        Assert.False(kernel.RecoverPending());
+    }
+
+    [Fact]
+    public async Task PendingMustBeRecoveredExplicitlyAndOnlyOnce()
+    {
+        var history = History(7, Cursor(12, 10, 2, "old"));
+        history.CommitEvent(Event("pending", 10, 3, 1, 2));
+        var rule = new TestRule(_ => throw new TestFailure());
+        int folds = 0;
+        var kernel = Kernel(history, [rule], (world, _, fact) => { folds++; return world + fact; });
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
+        Assert.True(kernel.RecoverPending());
+        Assert.Equal(10, kernel.World);
+        Assert.Equal(13, kernel.Version.TransitionCount);
+        Assert.Equal(new LogicalInstant(Time(10), 3), kernel.LastCommittedInstant);
+        Assert.Equal(2, folds);
+        Assert.Equal(0, rule.ForecastCalls);
+        Assert.Equal(0, rule.PlanCalls);
+        Assert.False(kernel.RecoverPending());
+        Assert.Equal(2, folds);
+        Assert.Null(kernel.LastCompletion);
+    }
+
+    [Fact]
+    public void CompletedHeadRestoresWithoutAnyHistoricalFold()
+    {
+        var history = History(123, Cursor(80, 500, 6, "last"));
+        var kernel = Kernel(history, [new(_ => throw new TestFailure())], (_, _, _) => throw new TestFailure());
+        Assert.Empty(history.CompletedEvents); // No journal count is needed to restore cursor 80.
+        Assert.False(kernel.RecoverPending());
+        Assert.Equal(123, kernel.World);
+        Assert.Equal(80, kernel.Version.TransitionCount);
+    }
+
+    [Theory]
+    [InlineData("old", 10, 3)]
+    [InlineData("new", 9, 0)]
+    [InlineData("new", 10, 4)]
+    [InlineData("new", 11, 1)]
+    public void InvalidPendingCauseOrInstantDoesNotFoldOrPublish(string cause, long time, long ordinal)
+    {
+        var history = History(7, Cursor(12, 10, 2, "old"));
+        history.CommitEvent(Event(cause, time, ordinal, 1));
+        var kernel = Kernel(history, [], (_, _, _) => throw new TestFailure());
+        Assert.Throws<InvalidOperationException>(() => kernel.RecoverPending());
+        Assert.Equal(7, history.State);
+        Assert.NotNull(history.PendingEvent);
+        Assert.True(kernel.IsFaulted);
+    }
+
+    [Fact]
+    public void PendingFoldFailureStopsWithoutPublishingPartialState()
+    {
+        var history = History(7);
+        history.CommitEvent(Event("pending", 1, 0, 1, 2));
+        var kernel = Kernel(history, [], (world, _, fact) => fact == 2 ? throw new TestFailure() : world + fact);
+        Assert.Throws<TestFailure>(() => kernel.RecoverPending());
         Assert.Equal(7, kernel.World);
-        Assert.Equal(new WorldVersion(1, 1), kernel.Version);
-        Assert.Single(journal.Batches);
-        Assert.Equal(1, rule.PlanCallCount);
-
-        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(ModelTime.Zero));
-
-        Assert.Contains("repeated immediately", error.Message);
-        Assert.Equal(1, rule.PlanCallCount);
-        Assert.Single(journal.Batches);
-        Assert.Equal(new WorldVersion(1, 1), kernel.Version);
+        Assert.Equal(7, history.State);
+        Assert.True(kernel.IsFaulted);
+        Assert.NotNull(history.PendingEvent);
     }
 
     [Fact]
-    public async Task StepAsync_SameTimeBudgetAllowsConfiguredCountThenStopsDeterministically()
+    public void PendingRecoveryCanBeCanceledBeforeItBegins()
     {
-        var rule = Rule<int, int, int>(
-            forecast: (world, _) => [Candidate($"same:{world}", 0, world)],
-            plan: (_, _, _) => Planned(1));
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        SimulationKernel<int, int, int> kernel = Kernel(
-            0,
-            [rule],
-            journal,
-            simulationRules: new SimulationRules(42, maxTransitionsPerModelTime: 2),
-            fold: (world, _, fact) => world + fact);
-
-        await kernel.StepAsync(ModelTime.Zero);
-        await kernel.StepAsync(ModelTime.Zero);
-        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(ModelTime.Zero));
-
-        Assert.Contains("Transition budget of 2 exhausted", error.Message);
-        Assert.Equal([0L, 1L], journal.Batches.Select(batch => batch.Instant.CausalOrdinal));
-        Assert.Equal(2, kernel.World);
-        Assert.Equal(2, kernel.Version.TransitionCount);
-        Assert.Equal(2, rule.PlanCallCount);
+        var history = History();
+        history.CommitEvent(Event("pending", 1, 0, 1));
+        var kernel = Kernel(history, []);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => kernel.RecoverPending(cancellation.Token));
+        Assert.False(kernel.IsFaulted);
+        Assert.True(kernel.RecoverPending());
     }
 
     [Fact]
-    public async Task StepAsync_CausalOrdinalOverflowFailsBeforePlanOrPublish()
+    public async Task SameCauseNoProgressAndSameTimeBudgetStillApply()
     {
-        LogicalInstant priorInstant = new(ModelTime.Zero, long.MaxValue);
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        journal.AppendBatch(new JournalBatch<int>(
-            priorInstant,
-            CandidateKey.FromUtf8("prior"),
-            [1]));
-        var rule = Rule<int, string, int>(
-            forecast: (_, _) => [Candidate("next", 0, "next")],
-            plan: (_, _, _) => Planned(1));
-        SimulationKernel<int, string, int> kernel = Kernel(
-            1,
-            [rule],
-            journal,
-            version: new WorldVersion(1, 1),
-            lastCommittedInstant: priorInstant,
-            simulationRules: new SimulationRules(42, int.MaxValue));
-
-        await Assert.ThrowsAsync<OverflowException>(
-            async () => await kernel.StepAsync(ModelTime.Zero));
-
-        Assert.Equal(0, rule.PlanCallCount);
-        Assert.Single(journal.Batches);
-        Assert.Equal(new WorldVersion(1, 1), kernel.Version);
+        var noop = new TestRule(_ => [Candidate("same", 0)], (_, _, _) => Planned(0));
+        var history = History(7);
+        var kernel = Kernel(history, [noop]);
+        await kernel.StepAsync(Time(0));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(0)));
+        Assert.Equal(1, noop.PlanCalls);
+        Assert.Equal(7, kernel.World);
+        var advancing = new TestRule(world => [Candidate($"next:{world}", 0)]);
+        var budget = Kernel(History(), [advancing], rules: new(42, 2));
+        await budget.StepAsync(Time(0));
+        await budget.StepAsync(Time(0));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await budget.StepAsync(Time(0)));
+        Assert.Equal(2, advancing.PlanCalls);
     }
 
     [Fact]
-    public void Constructor_RequiresAConsistentCommittedBatchBoundary()
+    public async Task VersionOverflowFailsBeforePlan()
     {
-        var journal = new InMemoryJournal<int>(lineageId: 1);
-        var rule = Rule<int, string, int>(forecast: (_, _) => []);
-
-        Assert.Throws<ArgumentException>(() => Kernel(
-            0,
-            [rule],
-            journal,
-            version: new WorldVersion(1, 1)));
-        Assert.Throws<ArgumentException>(() => Kernel(
-            0,
-            [rule],
-            journal,
-            lastCommittedInstant: new LogicalInstant(ModelTime.Zero, 0)));
-        var otherLineageJournal = new InMemoryJournal<int>(lineageId: 2);
-        Assert.Throws<ArgumentException>(() => Kernel(
-            0,
-            [rule],
-            otherLineageJournal,
-            version: new WorldVersion(1, 0)));
-        Assert.Throws<InvalidOperationException>(() => Kernel(
-            0,
-            [rule],
-            journal,
-            validate: _ => throw new InvalidOperationException("invalid committed world")));
+        var rule = new TestRule(_ => [Candidate("new", 0)]);
+        var kernel = Kernel(History(1, Cursor(long.MaxValue, 0, 0, "old")), [rule]);
+        await Assert.ThrowsAsync<OverflowException>(async () => await kernel.StepAsync(Time(0)));
+        Assert.Equal(0, rule.PlanCalls);
     }
 
-    private static void AssertUnchanged<TData>(
-        SimulationKernel<int, TData, int> kernel,
-        IJournalSink<int> journal,
-        int expectedWorld)
+    [Theory]
+    [InlineData(1L, 1L)]
+    [InlineData(1L, 9L)]
+    [InlineData(long.MaxValue, long.MaxValue)]
+    public void CursorRejectsCausalOrdinalImpossibleForCompletedCount(long count, long ordinal)
     {
-        Assert.Equal(expectedWorld, kernel.World);
-        Assert.Equal(new WorldVersion(1, 0), kernel.Version);
-        Assert.Null(kernel.LastCommittedInstant);
-        Assert.Equal(ModelTime.Zero, kernel.CurrentModelTime);
-        Assert.Empty(journal.Batches);
+        Assert.Throws<ArgumentException>(() => Cursor(count, 10, ordinal, "old"));
     }
 
-    private static SimulationKernel<TWorld, TData, TFact> Kernel<TWorld, TData, TFact>(
-        TWorld world,
-        IEnumerable<IOccurrenceRule<TWorld, TData, TFact>> rules,
-        IJournalSink<TFact> journal,
-        Func<TWorld, LogicalInstant, TFact, TWorld>? fold = null,
-        Action<TWorld>? validate = null,
-        SimulationRules? simulationRules = null,
-        WorldVersion? version = null,
-        LogicalInstant? lastCommittedInstant = null) =>
-        new(
-            world,
-            version ?? new WorldVersion(1, journal.Batches.Count),
-            ModelTime.Zero,
-            lastCommittedInstant,
-            simulationRules ?? new SimulationRules(42, 100),
-            rules,
-            journal,
-            fold ?? ((current, _, _) => current),
-            validate ?? (_ => { }));
-
-    private static DelegateRule<TWorld, TData, TFact> Rule<TWorld, TData, TFact>(
-        Func<TWorld, SimulationRules, IReadOnlyList<OccurrenceCandidate<TData>>> forecast,
-        Func<TWorld, OccurrenceCandidate<TData>, CancellationToken, ValueTask<TransitionDraft<TFact>>>? plan = null) =>
-        new(forecast, plan ?? ((_, _, _) => throw new InvalidOperationException("Plan was not expected.")));
-
-    private static OccurrenceCandidate<TData> Candidate<TData>(
-        string key,
-        long due,
-        TData data) =>
-        new(CandidateKey.FromUtf8(key), new CandidateDue(new ModelTime(due)), data);
-
-    private static TransitionDraft<TFact> Draft<TFact>(params TFact[] facts) => new(facts);
-
-    private static ValueTask<TransitionDraft<TFact>> Planned<TFact>(params TFact[] facts) =>
-        ValueTask.FromResult(Draft(facts));
-
-    private sealed class DelegateRule<TWorld, TData, TFact> :
-        IOccurrenceRule<TWorld, TData, TFact>
+    [Fact]
+    public void CursorAcceptsLastOrdinalOfACompletedSameTimePrefix()
     {
-        private readonly Func<
-            TWorld,
-            SimulationRules,
-            IReadOnlyList<OccurrenceCandidate<TData>>> _forecast;
-        private readonly Func<
-            TWorld,
-            OccurrenceCandidate<TData>,
-            CancellationToken,
-            ValueTask<TransitionDraft<TFact>>> _plan;
+        KernelCursor cursor = Cursor(10, 50, 9, "last");
+        cursor.Validate();
+        Assert.Equal(9, cursor.LastInstant!.Value.CausalOrdinal);
+    }
 
-        public DelegateRule(
-            Func<TWorld, SimulationRules, IReadOnlyList<OccurrenceCandidate<TData>>> forecast,
-            Func<TWorld, OccurrenceCandidate<TData>, CancellationToken, ValueTask<TransitionDraft<TFact>>> plan)
+    [Fact]
+    public void CursorAndInitialWorldAreValidatedWithoutHistoryCounts()
+    {
+        Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(0), null, null));
+        Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 0), Time(0), new(Time(0), 0), Key("bad")));
+        Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(2), new(Time(1), 0), Key("bad")));
+        Assert.Throws<TestFailure>(() => Kernel(History(), [], validate: _ => throw new TestFailure()));
+    }
+
+    private static ModelTime Time(long ticks) => new(ticks);
+    private static CandidateKey Key(string value) => CandidateKey.FromUtf8(value);
+    private static KernelCursor Cursor(long count = 0, long time = 0, long ordinal = 0, string? cause = null) =>
+        new(new(1, count), Time(0), count == 0 ? null : new LogicalInstant(Time(time), ordinal), cause is null ? null : Key(cause));
+    private static InMemoryOccurrenceHistory<int, int> History(int state = 0, KernelCursor? cursor = null) => new(state, cursor ?? Cursor());
+    private static OccurrenceCandidate<int> Candidate(string key, long time) => new(Key(key), new(Time(time)), 0);
+    private static OccurrenceEvent<int> Event(string key, long time, long ordinal, params int[] facts) => new(Key(key), new(Time(time), ordinal), facts);
+    private static ValueTask<TransitionDraft<int>> Planned(params int[] facts) => ValueTask.FromResult(new TransitionDraft<int>(facts));
+    private static SimulationKernel<int, int, int> Kernel(IOccurrenceHistory<int, int> history, IEnumerable<TestRule> occurrenceRules,
+        Func<int, LogicalInstant, int, int>? fold = null, Action<int>? validate = null, SimulationRules? rules = null) =>
+        new(history, rules ?? new(42, 100), occurrenceRules, fold ?? ((world, _, fact) => world + fact), validate ?? (_ => { }));
+
+    private sealed class TestRule : IOccurrenceRule<int, int, int>
+    {
+        public TestRule(Func<int, IReadOnlyList<OccurrenceCandidate<int>>> forecast,
+            Func<int, OccurrenceCandidate<int>, CancellationToken, ValueTask<TransitionDraft<int>>>? plan = null)
         {
-            _forecast = forecast;
-            _plan = plan;
+            Forecast = forecast;
+            _plan = plan ?? ((_, _, _) => Planned(1));
         }
+        public Func<int, IReadOnlyList<OccurrenceCandidate<int>>> Forecast { get; set; }
+        private readonly Func<int, OccurrenceCandidate<int>, CancellationToken, ValueTask<TransitionDraft<int>>> _plan;
+        public int ForecastCalls { get; private set; }
+        public int PlanCalls { get; private set; }
+        IReadOnlyList<OccurrenceCandidate<int>> IOccurrenceRule<int, int, int>.Forecast(int world, SimulationRules rules)
+        { ForecastCalls++; return Forecast(world); }
+        public ValueTask<TransitionDraft<int>> PlanSelectedAsync(int world, OccurrenceCandidate<int> winner, CancellationToken cancellationToken)
+        { PlanCalls++; return _plan(world, winner, cancellationToken); }
+    }
 
-        public int ForecastCallCount { get; private set; }
-
-        public int PlanCallCount { get; private set; }
-
-        public IReadOnlyList<OccurrenceCandidate<TData>> Forecast(
-            TWorld world,
-            SimulationRules rules)
+    private sealed class ControlledHistory : IOccurrenceHistory<int, int>
+    {
+        private OccurrenceEvent<int>? _pending;
+        public int State { get; set; }
+        public KernelCursor Cursor { get; private set; } = SimulationKernelTests.Cursor();
+        public OccurrenceEvent<int>? PendingEvent => ThrowPendingGetter ? throw new TestFailure() : _pending;
+        public string? FailAt { get; init; }
+        public bool SubstituteEvent { get; init; }
+        public bool IgnoreState { get; init; }
+        public bool ThrowPendingGetter { get; set; }
+        public Action? AfterEvent { get; init; }
+        public int StateCalls { get; private set; }
+        public void CommitEvent(OccurrenceEvent<int> occurrence)
         {
-            ForecastCallCount++;
-            return _forecast(world, rules);
+            if (FailAt == "before-e") { throw new IOException(); }
+            _pending = SubstituteEvent ? new(occurrence.CauseKey, occurrence.TargetInstant, [99]) : occurrence;
+            AfterEvent?.Invoke();
+            if (FailAt == "after-e") { throw new IOException(); }
         }
-
-        public ValueTask<TransitionDraft<TFact>> PlanSelectedAsync(
-            TWorld world,
-            OccurrenceCandidate<TData> winner,
-            CancellationToken cancellationToken)
+        public void CommitState(int nextState, KernelCursor nextCursor)
         {
-            PlanCallCount++;
-            return _plan(world, winner, cancellationToken);
+            StateCalls++;
+            if (FailAt == "before-s") { throw new IOException(); }
+            if (!IgnoreState) { State = nextState; }
+            Cursor = nextCursor;
+            _pending = null;
+            if (FailAt == "after-s") { throw new IOException(); }
         }
     }
 
-    private sealed class ControllableJournal<TFact> : IJournalSink<TFact>
+    private sealed record ValueWorld(int Value);
+    private sealed class ReferenceHistory(ValueWorld state) : IOccurrenceHistory<ValueWorld, int>
     {
-        private readonly List<JournalBatch<TFact>> _batches = [];
-
-        public long LineageId { get; init; } = 1;
-
-        public IReadOnlyList<JournalBatch<TFact>> Batches => _batches;
-
-        public bool ThrowBeforePublish { get; set; }
-
-        public bool ThrowAfterPublish { get; set; }
-
-        public Action? AfterPublish { get; set; }
-
-        public Func<JournalBatch<TFact>, JournalBatch<TFact>>? BatchTransform { get; set; }
-
-        public void AppendBatch(JournalBatch<TFact> batch)
-        {
-            if (ThrowBeforePublish)
-            {
-                throw new IOException("pre-publication failure");
-            }
-
-            _batches.Add(BatchTransform?.Invoke(batch) ?? batch);
-            AfterPublish?.Invoke();
-            if (ThrowAfterPublish)
-            {
-                throw new IOException("post-publication failure");
-            }
-        }
+        public ValueWorld State { get; set; } = state;
+        public KernelCursor Cursor => SimulationKernelTests.Cursor();
+        public OccurrenceEvent<int>? PendingEvent => null;
+        public void CommitEvent(OccurrenceEvent<int> occurrence) => throw new TestFailure();
+        public void CommitState(ValueWorld nextState, KernelCursor nextCursor) => throw new TestFailure();
     }
+    private sealed class TestFailure : Exception;
 }

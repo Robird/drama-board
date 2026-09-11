@@ -130,10 +130,11 @@ public sealed class DemoRunManifestWriterTests
         FirstBoardWorld initial = scenario.CreateInitialWorld();
         var canceled = new LiveSessionCanceledCapture(
             initial,
+            FirstBoardScenario.CreateMemoryHistory(initial).Cursor,
             initial,
             new WorldVersion(FirstBoardScenario.LineageId, 0),
             ModelTime.Zero,
-            new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId));
+            []);
         manifest.Cancel(canceled, llmTurnCount: 2, forcedSceneEndCount: 1);
 
         using JsonDocument document = output.ReadManifest();
@@ -157,7 +158,7 @@ public sealed class DemoRunManifestWriterTests
         var scenario = ScenarioInstance.CreateDefault(options.WorldSeed);
         var manifest = new DemoRunManifestWriter(output.Path, options, scenario);
         FirstBoardWorld initial = scenario.CreateInitialWorld();
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var history = FirstBoardScenario.CreateMemoryHistory(initial);
         var result = new DramaBoard.Host.HostRunResult<FirstBoardWorld>(
             initial,
             new WorldVersion(FirstBoardScenario.LineageId, 0),
@@ -166,7 +167,7 @@ public sealed class DemoRunManifestWriterTests
             CommittedTransitionCount: 0);
 
         manifest.Cancel(
-            new BoardRunCapture(initial, result, journal),
+            new BoardRunCapture(initial, history.Cursor, result, history.CompletedEvents),
             llmTurnCount: 1,
             forcedSceneEndCount: 0);
 

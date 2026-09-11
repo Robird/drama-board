@@ -19,7 +19,8 @@ public sealed class DependencyGuardTests
         ];
 
         Assert.Equal(["..\\Kernel\\Kernel.csproj"], projectReferences);
-        Assert.Empty(project.Descendants("PackageReference"));
+        Assert.Equal(["Atelia.DurableGraph"], project.Descendants("PackageReference")
+            .Select(element => element.Attribute("Include")!.Value).ToArray());
         Assert.Empty(project.Descendants("Reference"));
     }
 

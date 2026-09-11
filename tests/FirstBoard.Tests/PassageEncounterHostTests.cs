@@ -65,18 +65,17 @@ public sealed class PassageEncounterHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.ContinueTravel, FreeText: "Keep going.")));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
                 journal,
-                initial,
                 spatialKnowledgeGetter: new ThrowingKnowledgeGetter());
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
         Assert.Empty(alice.Requests);
-        AssertOpeningBatch(journal.Batches[0]);
+        AssertOpeningBatch(journal.CompletedEvents[0]);
         Assert.NotNull(kernel.World.Game.PendingEncounter);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
@@ -91,7 +90,7 @@ public sealed class PassageEncounterHostTests
             expectedGoal: BoardIds.Cellar,
             reverseAdvertised: true);
         PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
-            Assert.IsType<GameBoardFact>(Assert.Single(journal.Batches[1].Facts)).Value);
+            Assert.IsType<GameBoardFact>(Assert.Single(journal.CompletedEvents[1].Facts)).Value);
         Assert.Equal(PassageEncounterResolution.Continued, resolved.Resolution);
         Assert.Equal(BoardIds.Alice, resolved.RespondingActorId);
         Assert.Null(kernel.World.Game.PendingEncounter);
@@ -111,19 +110,18 @@ public sealed class PassageEncounterHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.ReverseTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
 
         Assert.Collection(
-            journal.Batches[1].Facts,
+            journal.CompletedEvents[1].Facts,
             fact =>
             {
                 PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
@@ -163,13 +161,12 @@ public sealed class PassageEncounterHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.ReverseTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
         string openedSnapshot = FirstBoardScenario.WorldSnapshot(kernel.World);
@@ -189,7 +186,7 @@ public sealed class PassageEncounterHostTests
             reverseAdvertised: false);
         Assert.Equal(openedSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Equal(openedVersion, kernel.Version);
-        Assert.Single(journal.Batches);
+        Assert.Single(journal.CompletedEvents);
         Assert.NotNull(kernel.World.Game.PendingEncounter);
     }
 
@@ -209,13 +206,12 @@ public sealed class PassageEncounterHostTests
                 aliceSpatial.MovementGeneration)));
         BoardActor aliceBeforeCleanup = stale.Actor(BoardIds.Alice);
         var alice = new RecordingPlayerDriver();
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(stale);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
-                journal,
-                stale);
+                journal);
 
         for (int step = 0; step < 2 && kernel.World.Game.PendingEncounter is not null; step++)
         {
@@ -224,7 +220,7 @@ public sealed class PassageEncounterHostTests
 
         Assert.Null(kernel.World.Game.PendingEncounter);
         Assert.Empty(alice.Requests);
-        PassageEncounterResolvedEvent cleanup = journal.Batches
+        PassageEncounterResolvedEvent cleanup = journal.CompletedEvents
             .SelectMany(batch => batch.Facts)
             .Select(fact => fact is GameBoardFact game ? game.Value : null)
             .OfType<PassageEncounterResolvedEvent>()
@@ -252,18 +248,17 @@ public sealed class PassageEncounterHostTests
     {
         ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 406);
         FirstBoardWorld initial = CreateTravelingPrefix(instance);
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 new Dictionary<string, IPlayerDriver>(StringComparer.Ordinal),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.BoundaryReached, await kernel.StepAsync(ContactDue));
         Assert.Null(kernel.World.Game.PendingEncounter);
         Assert.Empty(kernel.World.Spatial.ConsumedContacts);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
     }
 
     [Fact]
@@ -319,16 +314,10 @@ public sealed class PassageEncounterHostTests
                 await rule.PlanSelectedAsync(opened, invalid, CancellationToken.None));
         }
 
-        FirstBoardWorld changedActor = opened with
-        {
-            Game = opened.Game with
-            {
-                Actors = Array.AsReadOnly(opened.Actors.Select(actor =>
+        FirstBoardWorld changedActor = opened.With(game: opened.Game.With(actors: Array.AsReadOnly(opened.Actors.Select(actor =>
                     actor.Key == BoardIds.Alice
-                        ? actor with { Generation = actor.Generation + 1 }
-                        : actor).ToArray()),
-            },
-        };
+                        ? actor.With(generation: actor.Generation + 1)
+                        : actor).ToArray())));
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await rule.PlanSelectedAsync(changedActor, candidate, CancellationToken.None));
         Assert.Empty(alice.Requests);
@@ -342,13 +331,12 @@ public sealed class PassageEncounterHostTests
         var bob = new RecordingPlayerDriver(
             request => new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ContinueTravel)),
             request => new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ContinueTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Bob, bob)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         for (int step = 0; step < 4; step++)
         {
@@ -358,14 +346,14 @@ public sealed class PassageEncounterHostTests
         Assert.Null(kernel.World.Game.PendingEncounter);
         Assert.Equal(2, kernel.World.Spatial.ConsumedContacts.Count);
         Assert.Equal(2, bob.Requests.Count);
-        Assert.Equal(4, journal.Batches.Count);
+        Assert.Equal(4, journal.CompletedEvents.Count);
         Assert.Equal(
             2,
-            journal.Batches.SelectMany(batch => batch.Facts)
+            journal.CompletedEvents.SelectMany(batch => batch.Facts)
                 .Count(fact => fact is SpatialBoardFact { Value: PassageContactOccurredFact }));
         Assert.Equal(
             2,
-            journal.Batches.SelectMany(batch => batch.Facts)
+            journal.CompletedEvents.SelectMany(batch => batch.Facts)
                 .Count(fact => fact is GameBoardFact
                     { Value: PassageEncounterResolvedEvent
                     { Resolution: PassageEncounterResolution.Continued } }));
@@ -448,19 +436,15 @@ public sealed class PassageEncounterHostTests
         ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 408);
         FirstBoardWorld initial = CreateTravelingPrefix(instance);
         string initialSnapshot = FirstBoardScenario.WorldSnapshot(initial);
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         var reducer = new FirstBoardReducer(instance.Graph);
         int foldCount = 0;
         var kernel = new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            initial,
-            new WorldVersion(FirstBoardScenario.LineageId, 0),
-            initial.Now,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
             [new FirstBoardPassageEncounterRule(
                 instance.Graph,
                 Drivers((BoardIds.Alice, new RecordingPlayerDriver())))],
-            journal,
             (world, instant, fact) =>
             {
                 foldCount++;
@@ -478,7 +462,7 @@ public sealed class PassageEncounterHostTests
 
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Equal(new WorldVersion(FirstBoardScenario.LineageId, 0), kernel.Version);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
     }
 
     [Theory]
@@ -493,17 +477,13 @@ public sealed class PassageEncounterHostTests
             request.DecisionId,
             new Intent(ActionKinds.ReverseTravel)));
         var drivers = Drivers((BoardIds.Alice, alice));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         var reducer = new FirstBoardReducer(instance.Graph);
         int foldCount = 0;
         var kernel = new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            initial,
-            new WorldVersion(FirstBoardScenario.LineageId, 0),
-            initial.Now,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100),
             [new FirstBoardPassageEncounterResponseRule(instance.Graph, drivers)],
-            journal,
             (world, instant, fact) =>
             {
                 foldCount++;
@@ -522,7 +502,7 @@ public sealed class PassageEncounterHostTests
         Assert.Single(alice.Requests);
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Equal(new WorldVersion(FirstBoardScenario.LineageId, 0), kernel.Version);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
     }
 
     private static async Task AssertOnlyExpectedResponderAsync(ulong seed, string expectedActorId)
@@ -535,13 +515,12 @@ public sealed class PassageEncounterHostTests
         var bob = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.ContinueTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice), (BoardIds.Bob, bob)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
@@ -558,17 +537,16 @@ public sealed class PassageEncounterHostTests
     {
         ScenarioInstance instance = CreateShortRoadInstance(seed);
         FirstBoardWorld initial = CreateTravelingPrefix(instance);
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, new RecordingPlayerDriver())),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(1)));
 
-        JournalBatch<FirstBoardFact> first = Assert.Single(journal.Batches);
+        OccurrenceEvent<FirstBoardFact> first = Assert.Single(journal.CompletedEvents);
         if (contactFirst)
         {
             AssertOpeningBatch(first);
@@ -593,17 +571,16 @@ public sealed class PassageEncounterHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.ContinueTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(1)));
 
-        JournalBatch<FirstBoardFact> first = Assert.Single(journal.Batches);
+        OccurrenceEvent<FirstBoardFact> first = Assert.Single(journal.CompletedEvents);
         if (responseFirst)
         {
             PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
@@ -634,20 +611,19 @@ public sealed class PassageEncounterHostTests
             request.AvailableActions.Any(action => action.ActionKind == ActionKinds.ReverseTravel)
                 ? new Intent(ActionKinds.ReverseTravel)
                 : new Intent(ActionKinds.ContinueTravel)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers((BoardIds.Alice, alice)),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
 
         if (responseFirst)
         {
             Assert.Collection(
-                Assert.Single(journal.Batches).Facts,
+                Assert.Single(journal.CompletedEvents).Facts,
                 fact => Assert.Equal(
                     PassageEncounterResolution.Reversed,
                     Assert.IsType<PassageEncounterResolvedEvent>(
@@ -667,7 +643,7 @@ public sealed class PassageEncounterHostTests
         {
             Assert.IsType<ScheduledPassageEntryChangeAppliedFact>(
                 Assert.IsType<SpatialBoardFact>(
-                    Assert.Single(Assert.Single(journal.Batches).Facts)).Value);
+                    Assert.Single(Assert.Single(journal.CompletedEvents).Facts)).Value);
             Assert.Empty(alice.Requests);
             Assert.NotNull(kernel.World.Game.PendingEncounter);
 
@@ -679,7 +655,7 @@ public sealed class PassageEncounterHostTests
                 action => action.ActionKind == ActionKinds.ReverseTravel);
             PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
                 Assert.IsType<GameBoardFact>(
-                    Assert.Single(journal.Batches[1].Facts)).Value);
+                    Assert.Single(journal.CompletedEvents[1].Facts)).Value);
             Assert.Equal(PassageEncounterResolution.Continued, resolved.Resolution);
             Assert.Null(kernel.World.Game.PendingEncounter);
             Assert.Equal(
@@ -835,7 +811,7 @@ public sealed class PassageEncounterHostTests
         Assert.DoesNotContain("from", visibleText, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AssertOpeningBatch(JournalBatch<FirstBoardFact> batch)
+    private static void AssertOpeningBatch(OccurrenceEvent<FirstBoardFact> batch)
     {
         Assert.Collection(
             batch.Facts,
@@ -978,11 +954,8 @@ public sealed class PassageEncounterHostTests
             new(new EntityId(charlieId), new PlaceId(BoardIds.Tavern)),
         ];
         FirstBoardWorld world = new(
-            genesis.Game with
-            {
-                NextPersistentId = 100,
-                Actors = Array.AsReadOnly(actors.OrderBy(actor => actor.Id).ToArray()),
-            },
+            genesis.Game.With(nextPersistentId: 100,
+            actors: Array.AsReadOnly(actors.OrderBy(actor => actor.Id).ToArray())),
             GraphSpatialState.Create(instance.Graph, placements));
         var reducer = new FirstBoardReducer(instance.Graph);
         var instant = new LogicalInstant(ModelTime.Zero, 0);

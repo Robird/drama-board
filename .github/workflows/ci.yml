@@ -6,8 +6,6 @@ on:
 
 jobs:
   build-and-test:
-    env:
-      AteliaRepositoryRoot: ${{ github.workspace }}/external/atelia
     strategy:
       fail-fast: false
       matrix:
@@ -21,10 +19,19 @@ jobs:
           repository: Atelia-org/atelia
           ref: 742fcd62e691b6b6acca4113a3ac3638bc7275ba
           path: external/atelia
+      - name: Check out pinned DurableGraph source
+        uses: actions/checkout@v4
+        with:
+          repository: Robird/durable-graph
+          ref: f68388f88ba09354e9fa90420dc2cf22b146b6cf
+          path: external/durable-graph
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Prepare pinned DurableGraph packages
+        shell: pwsh
+        run: ./scripts/Prepare-DurableGraph.ps1 -DurableGraphSource ./external/durable-graph -AteliaSource ./external/atelia
       - name: Build
-        run: dotnet build DramaBoard.Local.slnx -warnaserror
+        run: dotnet build DramaBoard.Local.slnx -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
       - name: Test
-        run: dotnet test DramaBoard.Local.slnx
+        run: dotnet test DramaBoard.Local.slnx --no-build --no-restore

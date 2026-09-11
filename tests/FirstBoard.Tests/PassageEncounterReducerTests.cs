@@ -183,18 +183,9 @@ public sealed class PassageEncounterReducerTests
             Assert.Single(pendingDecisionRule.Forecast(withCharlie, rules)).Data);
         Assert.Equal(withCharlie.Actor("charlie").Id, onlyCharlie.ActorId);
 
-        FirstBoardWorld withGoals = withCharlie with
-        {
-            Game = withCharlie.Game with
-            {
-                Actors = Array.AsReadOnly(withCharlie.Actors.Select(actor => actor with
-                {
-                    TravelGoalPlaceId = actor.Key is BoardIds.Alice or "charlie"
-                        ? new PlaceId(BoardIds.Market)
-                        : null,
-                }).ToArray()),
-            },
-        };
+        FirstBoardWorld withGoals = withCharlie.With(game: withCharlie.Game.With(
+            actors: withCharlie.Actors.Select(actor => actor.WithTravelGoal(
+                actor.Key is BoardIds.Alice or "charlie" ? new PlaceId(BoardIds.Market) : null))));
         var travelGoalRule = new TravelGoalRule(
             instance,
             FullMapPlayerSpatialKnowledgeGetter<FirstBoardWorld>.Instance);
@@ -216,15 +207,8 @@ public sealed class PassageEncounterReducerTests
             movementGenerationA: 42,
             new EntityId(BoardIds.Bob),
             movementGenerationB: 91);
-        FirstBoardWorld legalStale = genesis with
-        {
-            Game = genesis.Game with
-            {
-                PendingEncounter = new PendingPassageEncounter(
-                    staleKey,
-                    PassageContactKind.HeadOnMeeting),
-            },
-        };
+        FirstBoardWorld legalStale = genesis.With(game: genesis.Game.WithPendingEncounter(
+            new PendingPassageEncounter(staleKey, PassageContactKind.HeadOnMeeting)));
         reducer.Validate(legalStale);
 
         var nonActorKey = new PassageContactKey(
@@ -233,15 +217,8 @@ public sealed class PassageEncounterReducerTests
             movementGenerationA: 0,
             new EntityId(BoardIds.BrassKey),
             movementGenerationB: 0);
-        FirstBoardWorld invalid = genesis with
-        {
-            Game = genesis.Game with
-            {
-                PendingEncounter = new PendingPassageEncounter(
-                    nonActorKey,
-                    PassageContactKind.HeadOnMeeting),
-            },
-        };
+        FirstBoardWorld invalid = genesis.With(game: genesis.Game.WithPendingEncounter(
+            new PendingPassageEncounter(nonActorKey, PassageContactKind.HeadOnMeeting)));
         Assert.Throws<InvalidOperationException>(() => reducer.Validate(invalid));
     }
 
@@ -390,14 +367,8 @@ public sealed class PassageEncounterReducerTests
             new(new EntityId(charlie), new PlaceId(BoardIds.Tavern)),
         ];
         return new FirstBoardWorld(
-            genesis.Game with
-            {
-                NextPersistentId = 100,
-                Actors = Array.AsReadOnly(actors.OrderBy(actor => actor.Id).ToArray()),
-                PendingEncounter = new PendingPassageEncounter(
-                    key,
-                    PassageContactKind.HeadOnMeeting),
-            },
+            genesis.Game.With(nextPersistentId: 100, actors: actors.OrderBy(actor => actor.Id))
+                .WithPendingEncounter(new PendingPassageEncounter(key, PassageContactKind.HeadOnMeeting)),
             GraphSpatialState.Create(instance.Graph, placements));
     }
 

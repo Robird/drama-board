@@ -1,11 +1,23 @@
+using Atelia.DurableGraph;
+
 namespace DramaBoard.Spatial;
 
 /// <summary>Stores the two independent directions in which new passage segments may be created.</summary>
-public readonly record struct PassageEntryAccess(bool EnterableFromA, bool EnterableFromB);
+[DurableType("DramaBoard.Spatial.PassageEntryAccess", 1)]
+public readonly partial record struct PassageEntryAccess
+{
+    [field: DurableField(1)] public bool EnterableFromA { get; init; }
+    [field: DurableField(2)] public bool EnterableFromB { get; init; }
+    public PassageEntryAccess(bool EnterableFromA, bool EnterableFromB) =>
+        (this.EnterableFromA, this.EnterableFromB) = (EnterableFromA, EnterableFromB);
+}
 
 /// <summary>Describes a non-empty partial replacement of passage entry access.</summary>
-public readonly record struct PassageEntryPatch
+[DurableType("DramaBoard.Spatial.PassageEntryPatch", 1)]
+public readonly partial record struct PassageEntryPatch
 {
+    [DurableField(1)] private readonly bool? _enterableFromA;
+    [DurableField(2)] private readonly bool? _enterableFromB;
     public PassageEntryPatch(bool? enterableFromA, bool? enterableFromB)
     {
         if (enterableFromA is null && enterableFromB is null)
@@ -13,13 +25,13 @@ public readonly record struct PassageEntryPatch
             throw new ArgumentException("A passage entry patch must specify at least one direction.");
         }
 
-        EnterableFromA = enterableFromA;
-        EnterableFromB = enterableFromB;
+        _enterableFromA = enterableFromA;
+        _enterableFromB = enterableFromB;
     }
 
-    public bool? EnterableFromA { get; }
+    public bool? EnterableFromA => _enterableFromA;
 
-    public bool? EnterableFromB { get; }
+    public bool? EnterableFromB => _enterableFromB;
 
     internal PassageEntryAccess Apply(PassageEntryAccess current) => new(
         EnterableFromA ?? current.EnterableFromA,

@@ -1,4 +1,5 @@
 using DramaBoard.Kernel.Scheduling;
+using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
@@ -31,7 +32,7 @@ public sealed class LiveSessionTests
         Assert.Equal(2, capture.Result.Version.TransitionCount);
         Assert.Equal(
             capture.Result.Version.TransitionCount,
-            capture.Journal.Batches.Count);
+            capture.CompletedEvents.Count);
         Assert.Equal(
             FirstBoardScenario.WorldSnapshot(capture.Result.World),
             ReplaySnapshot(instance, capture));
@@ -65,7 +66,7 @@ public sealed class LiveSessionTests
 
         BoardRunCapture capture = await run;
         Assert.Contains(
-            capture.Journal.Batches.SelectMany(batch => batch.Facts),
+            capture.CompletedEvents.SelectMany(batch => batch.Facts),
             fact => fact is GameBoardFact
             {
                 Value: ActorWaitStartedEvent
@@ -77,7 +78,7 @@ public sealed class LiveSessionTests
         Assert.Contains(terminal.Cues, cue => cue.Code == "actor.wait-started");
         Assert.Equal(
             capture.Result.Version.TransitionCount,
-            capture.Journal.Batches.Count);
+            capture.CompletedEvents.Count);
         Assert.Equal(TerminalStatusKind.Completed, terminal.Statuses[^1].Kind);
     }
 
@@ -124,7 +125,7 @@ public sealed class LiveSessionTests
         Assert.True(terminal.TrySubmit(encounterPrompt.DecisionId, command));
 
         BoardRunCapture capture = await run;
-        PassageEncounterResolvedEvent resolved = capture.Journal.Batches
+        PassageEncounterResolvedEvent resolved = capture.CompletedEvents
             .SelectMany(batch => batch.Facts)
             .OfType<GameBoardFact>()
             .Select(fact => fact.Value)
@@ -259,7 +260,7 @@ public sealed class LiveSessionTests
         Assert.False(terminal.TrySubmit(prompt.DecisionId, "wait"));
         Assert.Equal(TerminalStatusKind.Canceled, terminal.Statuses[^1].Kind);
         Assert.Single(terminal.Prompts);
-        Assert.Equal(canceled.Capture.Version.TransitionCount, canceled.Capture.Journal.Batches.Count);
+        Assert.Equal(canceled.Capture.Version.TransitionCount, canceled.Capture.CompletedEvents.Count);
         Assert.Equal(
             FirstBoardScenario.WorldSnapshot(canceled.Capture.World),
             ReplayCanceledSnapshot(instance, canceled.Capture));
@@ -287,7 +288,7 @@ public sealed class LiveSessionTests
 
         LiveSessionCanceledException canceled =
             await Assert.ThrowsAsync<LiveSessionCanceledException>(async () => await run);
-        Assert.Empty(canceled.Capture.Journal.Batches);
+        Assert.Empty(canceled.Capture.CompletedEvents);
         Assert.Equal(TerminalStatusKind.Canceled, terminal.Statuses[^1].Kind);
     }
 
@@ -324,9 +325,10 @@ public sealed class LiveSessionTests
         var reducer = new FirstBoardReducer(instance.Graph);
         ReplayResult<FirstBoardWorld> replay = SimulationReplay.Replay(
             capture.InitialWorld,
-            capture.Journal.LineageId,
+            capture.InitialCursor.Version.LineageId,
             capture.InitialWorld.Now,
-            capture.Journal.Batches,
+            capture.CompletedEvents.Select(occurrence => new JournalBatch<FirstBoardFact>(
+                occurrence.TargetInstant, occurrence.CauseKey, occurrence.Facts)).ToArray(),
             reducer.Apply,
             reducer.Validate);
         return FirstBoardScenario.WorldSnapshot(replay.World);
@@ -339,9 +341,10 @@ public sealed class LiveSessionTests
         var reducer = new FirstBoardReducer(instance.Graph);
         ReplayResult<FirstBoardWorld> replay = SimulationReplay.Replay(
             capture.InitialWorld,
-            capture.Journal.LineageId,
+            capture.InitialCursor.Version.LineageId,
             capture.InitialWorld.Now,
-            capture.Journal.Batches,
+            capture.CompletedEvents.Select(occurrence => new JournalBatch<FirstBoardFact>(
+                occurrence.TargetInstant, occurrence.CauseKey, occurrence.Facts)).ToArray(),
             reducer.Apply,
             reducer.Validate);
         return FirstBoardScenario.WorldSnapshot(replay.World);

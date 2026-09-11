@@ -1,4 +1,5 @@
 using DramaBoard.Kernel.Time;
+using Atelia.DurableGraph;
 
 namespace DramaBoard.Spatial;
 
@@ -19,8 +20,12 @@ public sealed record EntityPlacement
 }
 
 /// <summary>Stores one entity and its current exclusive location.</summary>
-public sealed record SpatialEntity
+[DurableType("DramaBoard.Spatial.SpatialEntity", 1)]
+public sealed partial class SpatialEntity : DurableBase, IEquatable<SpatialEntity>
 {
+    [DurableField(1)] private EntityId _id;
+    [DurableField(2)] private long _movementGeneration;
+    [DurableField(3)] private SpatialLocation _location = null!;
     public SpatialEntity(EntityId id, long movementGeneration, SpatialLocation location)
     {
         SpatialIdentifier.Require(id, nameof(id));
@@ -32,55 +37,79 @@ public sealed record SpatialEntity
         }
 
         ArgumentNullException.ThrowIfNull(location);
-        Id = id;
-        MovementGeneration = movementGeneration;
-        Location = location;
+        _id = id; _movementGeneration = movementGeneration; _location = location;
     }
 
-    public EntityId Id { get; }
+    public EntityId Id => _id;
 
-    public long MovementGeneration { get; }
+    public long MovementGeneration => _movementGeneration;
 
-    public SpatialLocation Location { get; }
+    public SpatialLocation Location => _location;
+
+    public bool Equals(SpatialEntity? other) => other is not null &&
+        Id == other.Id && MovementGeneration == other.MovementGeneration && Equals(Location, other.Location);
+    public override bool Equals(object? obj) => Equals(obj as SpatialEntity);
+    public override int GetHashCode() => HashCode.Combine(Id, MovementGeneration, Location);
+    public static bool operator ==(SpatialEntity? left, SpatialEntity? right) => Equals(left, right);
+    public static bool operator !=(SpatialEntity? left, SpatialEntity? right) => !Equals(left, right);
 }
 
 /// <summary>Stores a sparse complete replacement of one passage's two entry bits.</summary>
-public sealed record PassageEntryAccessOverride
+[DurableType("DramaBoard.Spatial.PassageEntryAccessOverride", 1)]
+public sealed partial class PassageEntryAccessOverride : DurableBase, IEquatable<PassageEntryAccessOverride>
 {
+    [DurableField(1)] private PassageId _passageId;
+    [DurableField(2)] private PassageEntryAccess _access;
     public PassageEntryAccessOverride(PassageId passageId, PassageEntryAccess access)
     {
         SpatialIdentifier.Require(passageId, nameof(passageId));
-        PassageId = passageId;
-        Access = access;
+        _passageId = passageId; _access = access;
     }
 
-    public PassageId PassageId { get; }
+    public PassageId PassageId => _passageId;
 
-    public PassageEntryAccess Access { get; }
+    public PassageEntryAccess Access => _access;
+    public bool Equals(PassageEntryAccessOverride? other) => other is not null && PassageId == other.PassageId && Access == other.Access;
+    public override bool Equals(object? obj) => Equals(obj as PassageEntryAccessOverride);
+    public override int GetHashCode() => HashCode.Combine(PassageId, Access);
+    public static bool operator ==(PassageEntryAccessOverride? left, PassageEntryAccessOverride? right) => Equals(left, right);
+    public static bool operator !=(PassageEntryAccessOverride? left, PassageEntryAccessOverride? right) => !Equals(left, right);
 }
 
 /// <summary>Stores one future entry-access patch, uniquely addressed by passage and due time.</summary>
-public sealed record ScheduledPassageEntryChange
+[DurableType("DramaBoard.Spatial.ScheduledPassageEntryChange", 1)]
+public sealed partial class ScheduledPassageEntryChange : DurableBase, IEquatable<ScheduledPassageEntryChange>
 {
+    [DurableField(1)] private PassageId _passageId;
+    [DurableField(2)] private ModelTime _due;
+    [DurableField(3)] private PassageEntryPatch _patch;
     public ScheduledPassageEntryChange(PassageId passageId, ModelTime due, PassageEntryPatch patch)
     {
         SpatialIdentifier.Require(passageId, nameof(passageId));
         PassageEntryPatch.Validate(patch, nameof(patch));
-        PassageId = passageId;
-        Due = due;
-        Patch = patch;
+        _passageId = passageId; _due = due; _patch = patch;
     }
 
-    public PassageId PassageId { get; }
+    public PassageId PassageId => _passageId;
 
-    public ModelTime Due { get; }
+    public ModelTime Due => _due;
 
-    public PassageEntryPatch Patch { get; }
+    public PassageEntryPatch Patch => _patch;
+    public bool Equals(ScheduledPassageEntryChange? other) => other is not null && PassageId == other.PassageId && Due == other.Due && Patch == other.Patch;
+    public override bool Equals(object? obj) => Equals(obj as ScheduledPassageEntryChange);
+    public override int GetHashCode() => HashCode.Combine(PassageId, Due, Patch);
+    public static bool operator ==(ScheduledPassageEntryChange? left, ScheduledPassageEntryChange? right) => Equals(left, right);
+    public static bool operator !=(ScheduledPassageEntryChange? left, ScheduledPassageEntryChange? right) => !Equals(left, right);
 }
 
 /// <summary>Owns canonical immutable dynamic state for one Graph Spatial world.</summary>
-public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
+[DurableType("DramaBoard.Spatial.GraphSpatialState", 1)]
+public sealed partial class GraphSpatialState : DurableBase, IEquatable<GraphSpatialState>
 {
+    [DurableField(1)] private List<SpatialEntity> _entities = [];
+    [DurableField(2)] private List<PassageEntryAccessOverride> _passageEntryAccessOverrides = [];
+    [DurableField(3)] private List<ScheduledPassageEntryChange> _scheduledPassageEntryChanges = [];
+    [DurableField(4)] private List<PassageContactKey> _consumedContacts = [];
     private GraphSpatialState(
         IEnumerable<SpatialEntity> entities,
         IEnumerable<PassageEntryAccessOverride> passageEntryAccessOverrides,
@@ -101,19 +130,19 @@ public sealed class GraphSpatialState : IEquatable<GraphSpatialState>
             value => value,
             "consumed contact");
 
-        Entities = Array.AsReadOnly(entityArray);
-        PassageEntryAccessOverrides = Array.AsReadOnly(overrideArray);
-        ScheduledPassageEntryChanges = Array.AsReadOnly(scheduleArray);
-        ConsumedContacts = Array.AsReadOnly(contactArray);
+        _entities = [.. entityArray];
+        _passageEntryAccessOverrides = [.. overrideArray];
+        _scheduledPassageEntryChanges = [.. scheduleArray];
+        _consumedContacts = [.. contactArray];
     }
 
-    public IReadOnlyList<SpatialEntity> Entities { get; }
+    public IReadOnlyList<SpatialEntity> Entities => _entities.AsReadOnly();
 
-    public IReadOnlyList<PassageEntryAccessOverride> PassageEntryAccessOverrides { get; }
+    public IReadOnlyList<PassageEntryAccessOverride> PassageEntryAccessOverrides => _passageEntryAccessOverrides.AsReadOnly();
 
-    public IReadOnlyList<ScheduledPassageEntryChange> ScheduledPassageEntryChanges { get; }
+    public IReadOnlyList<ScheduledPassageEntryChange> ScheduledPassageEntryChanges => _scheduledPassageEntryChanges.AsReadOnly();
 
-    public IReadOnlyList<PassageContactKey> ConsumedContacts { get; }
+    public IReadOnlyList<PassageContactKey> ConsumedContacts => _consumedContacts.AsReadOnly();
 
     public static GraphSpatialState Create(
         GraphDefinition definition,

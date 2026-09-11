@@ -2,6 +2,7 @@ using DramaBoard.FirstBoard;
 using DramaBoard.FirstBoard.Demo;
 using DramaBoard.FirstBoard.Demo.Live;
 using DramaBoard.Kernel.Time;
+using DramaBoard.FirstBoard.Persistence;
 
 try
 {
@@ -21,7 +22,15 @@ try
         overallTimeout.Cancel();
     };
     Console.CancelKeyPress += cancelHandler;
-    ScenarioInstance scenarioInstance = ScenarioInstance.CreateDefault(options.WorldSeed);
+    using FirstBoardOccurrenceHistory? worldHistory = DemoWorldStore.Open(options);
+    ScenarioInstance scenarioInstance = worldHistory?.Scenario ?? ScenarioInstance.CreateDefault(options.WorldSeed);
+    if (worldHistory is not null)
+    {
+        Console.WriteLine($"World store: {options.WorldStore}");
+        Console.WriteLine(options.ResumeWorld
+            ? "恢复世界；Player 记忆与 turn 预算在本次运行重新建立。"
+            : "创建持久世界；存档保存客观世界，Player 记忆与 turn 预算属于本次运行。");
+    }
     var traceSink = new DemoTraceSink(options.OutputDirectory);
     var profiler = new DemoLlmProfiler(options.OutputDirectory);
     var manifest = new DemoRunManifestWriter(
@@ -41,15 +50,25 @@ try
         try
         {
             var terminal = new TerminalUi();
-            completedCapture = await LiveSession.RunAsync(
-                scenarioInstance,
-                llmComposition.AiDrivers,
-                options.HumanActorId,
-                options.PresentationMode,
-                terminal,
-                new FixedIntervalPresentationPacer(options.PresentationInterval),
-                new ModelTime(options.UntilModelTimeMs),
-                overallTimeout.Token);
+            completedCapture = worldHistory is null
+                ? await LiveSession.RunAsync(
+                    scenarioInstance,
+                    llmComposition.AiDrivers,
+                    options.HumanActorId,
+                    options.PresentationMode,
+                    terminal,
+                    new FixedIntervalPresentationPacer(options.PresentationInterval),
+                    new ModelTime(options.UntilModelTimeMs),
+                    overallTimeout.Token)
+                : await LiveSession.RunAsync(
+                    worldHistory,
+                    llmComposition.AiDrivers,
+                    options.HumanActorId,
+                    options.PresentationMode,
+                    terminal,
+                    new FixedIntervalPresentationPacer(options.PresentationInterval),
+                    new ModelTime(options.UntilModelTimeMs),
+                    overallTimeout.Token);
             await llmComposition.FlushMemoryAsync(overallTimeout.Token);
             string recordPath = DramaRecordWriter.Write(
                 options,
@@ -64,7 +83,7 @@ try
 
             Console.WriteLine(
                 $"Completed: {completedCapture.Result.Status}; " +
-                $"transitions={completedCapture.Journal.Batches.Count}; " +
+                $"transitions={completedCapture.CompletedEvents.Count}; " +
                 $"llmTurns={traceSink.Traces.Count}");
             Console.WriteLine($"Drama record: {recordPath}");
         }
@@ -82,7 +101,7 @@ try
                 llmComposition.ForcedSceneEndCount);
             Console.WriteLine(
                 $"Live session canceled cleanly after " +
-                $"{exception.Capture.Journal.Batches.Count} committed transitions.");
+                $"{exception.Capture.CompletedEvents.Count} committed transitions.");
             Console.WriteLine($"Partial drama record: {recordPath}");
         }
         catch (OperationCanceledException)

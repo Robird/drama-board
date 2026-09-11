@@ -38,7 +38,7 @@ LLM Player 的一次决策可能消耗数秒到数分钟 wall-clock time。若 H
 
 - [`SimulationKernel.StepAsync`](../../src/Kernel/Simulation/SimulationKernel.cs) 已保证一个 lineage 同时至多一个 in-flight Step。它从 frozen committed world Forecast winner，在 `PlanSelectedAsync` 中等待 Player，scratch-fold 完整 draft，发布一个 `JournalBatch` 后才安装新 World / WorldVersion。
 - [`DecisionPointRule`](../../src/FirstBoard/FirstBoardSystems.cs) 与 passage encounter response rule 当前直接在 selected Plan 中 `await driver.DecideAsync(...)`。所以 AI/Human 等待已经自然冻结 Authority，但不会占用 ModelTime。
-- [`IJournalSink`](../../src/Kernel/Journal/IJournalSink.cs) 明确按 serial drive 使用；[`InMemoryJournal`](../../src/Kernel/Journal/InMemoryJournal.cs) 和 [`AteliaJournalSink`](../../src/Journal.Atelia/AteliaJournalSink.cs) 暴露的 `Batches` 都不是 live concurrent collection。Presentation 不得从另一个 task 并发枚举它们。
+- [`IJournalSink`](../../src/Kernel/Journal/IJournalSink.cs) 明确按 serial drive 使用；[`InMemoryJournal`](../../src/Kernel/Journal/InMemoryJournal.cs) 和[当时的 AteliaJournalSink](https://github.com/Robird/drama-board/blob/3b77450fee639a362aa1d0630cc872bcfb02dd14/src/Journal.Atelia/AteliaJournalSink.cs) 暴露的 `Batches` 都不是 live concurrent collection。Presentation 不得从另一个 task 并发枚举它们。
 - [`SimulationHost.RunUntilAsync`](../../src/Host/SimulationHost.cs) 目前只支持循环 Step 直到 `Exhausted` / `BoundaryReached` 后整体返回，没有 live committed-history notification、Presentation cursor 或 Human reveal barrier。
 - [`FirstBoardScenario.CreateKernel`](../../src/FirstBoard/FirstBoardScenario.cs) 已公开完整 composition seam；实时 App 可以直接创建 Kernel 并自行串行 Step，无需修改 Kernel。
 - [`FirstBoardScenario.RunAsync`](../../src/FirstBoard/FirstBoardScenario.cs) 当前创建 `InMemoryJournal` 后调用 `SimulationHost.RunUntilAsync`，适合 headless / batch run，但不能在每次 commit 后驱动实时播放。

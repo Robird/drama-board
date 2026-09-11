@@ -26,14 +26,17 @@ public sealed class TravelGoalHostTests
             new Intent(ActionKinds.TravelTo, DestinationId: BoardIds.Cellar)));
         IReadOnlyDictionary<string, IPlayerDriver> drivers =
             Drivers(alice, new NullPlayerDriver());
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(drivers, instance, journal, initial);
+            FirstBoardScenario.CreateKernel(
+                drivers,
+                instance,
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
         Assert.Collection(
-            journal.Batches[0].Facts,
+            journal.CompletedEvents[0].Facts,
             fact =>
             {
                 ActorTravelGoalSetEvent set = Assert.IsType<ActorTravelGoalSetEvent>(
@@ -75,11 +78,11 @@ public sealed class TravelGoalHostTests
         Assert.Equal(initialDecisionSequence + 1, completed.DecisionSequence);
         AssertAtPlace(kernel.World, BoardIds.Alice, BoardIds.Cellar);
         ActorTravelGoalResolvedEvent resolved = Assert.IsType<ActorTravelGoalResolvedEvent>(
-            Assert.IsType<GameBoardFact>(Assert.Single(journal.Batches[^1].Facts)).Value);
+            Assert.IsType<GameBoardFact>(Assert.Single(journal.CompletedEvents[^1].Facts)).Value);
         Assert.Equal(TravelGoalResolution.Completed, resolved.Resolution);
-        Assert.Equal(7, journal.Batches.Count);
+        Assert.Equal(7, journal.CompletedEvents.Count);
         Assert.DoesNotContain(
-            journal.Batches.SelectMany(batch => batch.Facts),
+            journal.CompletedEvents.SelectMany(batch => batch.Facts),
             fact => fact is GameBoardFact { Value: ActorTravelStartedEvent });
         Assert.Single(alice.Requests);
         new FirstBoardReducer(instance.Graph).Validate(kernel.World);
@@ -96,18 +99,17 @@ public sealed class TravelGoalHostTests
         var bob = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.TravelTo, DestinationId: BoardIds.Tavern)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), bob),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
         Assert.Collection(
-            Assert.Single(journal.Batches).Facts,
+            Assert.Single(journal.CompletedEvents).Facts,
             fact => Assert.IsType<ActorTravelGoalSetEvent>(
                 Assert.IsType<GameBoardFact>(fact).Value),
             fact => AssertStartedPassage(fact, BoardIds.MarketTavernCart));
@@ -115,7 +117,7 @@ public sealed class TravelGoalHostTests
             new PassageId(BoardIds.MarketTavernCart),
             AssertTraversing(kernel.World, BoardIds.Bob).PassageId);
         Assert.DoesNotContain(
-            journal.Batches.SelectMany(batch => batch.Facts),
+            journal.CompletedEvents.SelectMany(batch => batch.Facts),
             fact => fact is GameBoardFact { Value: TicketConsumedEvent });
         Assert.Equal(2, kernel.World.Objects.Count(item =>
             item.Key is BoardIds.SilverCoinOne or BoardIds.SilverCoinTwo));
@@ -137,13 +139,12 @@ public sealed class TravelGoalHostTests
                 request.DecisionId,
                 new Intent(ActionKinds.TravelTo, DestinationId: BoardIds.Cellar));
         });
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice, new NullPlayerDriver()),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
         Assert.Equal(
@@ -165,10 +166,10 @@ public sealed class TravelGoalHostTests
         AssertAtPlace(kernel.World, BoardIds.Alice, BoardIds.CellarGate);
         Assert.Null(kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
         ActorTravelGoalResolvedEvent resolved = Assert.IsType<ActorTravelGoalResolvedEvent>(
-            Assert.IsType<GameBoardFact>(Assert.Single(journal.Batches[^1].Facts)).Value);
+            Assert.IsType<GameBoardFact>(Assert.Single(journal.CompletedEvents[^1].Facts)).Value);
         Assert.Equal(TravelGoalResolution.Blocked, resolved.Resolution);
         Assert.DoesNotContain(
-            journal.Batches.SelectMany(batch => batch.Facts),
+            journal.CompletedEvents.SelectMany(batch => batch.Facts),
             fact => fact is SpatialBoardFact
             {
                 Value: TraversalStartedFact
@@ -210,13 +211,12 @@ public sealed class TravelGoalHostTests
         Assert.Equal(0, getter.CallCount);
         Assert.IsType<TravelGoalCandidate>(candidate.Data);
 
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(prefix);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
                 instance,
                 journal,
-                prefix,
                 spatialKnowledgeGetter: getter);
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
@@ -224,7 +224,7 @@ public sealed class TravelGoalHostTests
         AssertAtPlace(kernel.World, BoardIds.Alice, BoardIds.CellarGate);
         Assert.Null(kernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
         ActorTravelGoalResolvedEvent resolved = Assert.IsType<ActorTravelGoalResolvedEvent>(
-            Assert.IsType<GameBoardFact>(Assert.Single(Assert.Single(journal.Batches).Facts)).Value);
+            Assert.IsType<GameBoardFact>(Assert.Single(Assert.Single(journal.CompletedEvents).Facts)).Value);
         Assert.Equal(TravelGoalResolution.Blocked, resolved.Resolution);
     }
 
@@ -260,13 +260,12 @@ public sealed class TravelGoalHostTests
             new SimulationRules(instance.WorldSeed, 10_000)));
         Assert.Equal(0, getter.CallCount);
 
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 drivers,
                 instance,
                 journal,
-                initial,
                 spatialKnowledgeGetter: getter);
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
@@ -276,10 +275,10 @@ public sealed class TravelGoalHostTests
             new PassageId(BoardIds.TavernMarketRoad),
             AssertTraversing(kernel.World, BoardIds.Alice).PassageId);
         Assert.DoesNotContain(
-            journal.Batches[0].Facts,
+            journal.CompletedEvents[0].Facts,
             fact => fact is GameBoardFact { Value: TicketConsumedEvent });
         Assert.Collection(
-            journal.Batches[0].Facts,
+            journal.CompletedEvents[0].Facts,
             fact => Assert.IsType<ActorTravelGoalSetEvent>(
                 Assert.IsType<GameBoardFact>(fact).Value),
             fact => AssertStartedPassage(fact, BoardIds.TavernMarketRoad));
@@ -308,13 +307,12 @@ public sealed class TravelGoalHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.TravelTo, DestinationId: BoardIds.Market)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice, new NullPlayerDriver()),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
@@ -322,7 +320,7 @@ public sealed class TravelGoalHostTests
             new PassageId(BoardIds.TavernMarketFerry),
             AssertTraversing(kernel.World, BoardIds.Alice).PassageId);
         Assert.IsType<TicketConsumedEvent>(
-            Assert.IsType<GameBoardFact>(journal.Batches[0].Facts[1]).Value);
+            Assert.IsType<GameBoardFact>(journal.CompletedEvents[0].Facts[1]).Value);
     }
 
     [Fact]
@@ -333,18 +331,17 @@ public sealed class TravelGoalHostTests
 
         ScenarioInstance goalFirstInstance = ScenarioInstance.CreateDefault(goalFirstSeed);
         FirstBoardWorld goalFirstWorld = GateGoalContestWorld(goalFirstInstance);
-        var goalFirstJournal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var goalFirstJournal = FirstBoardScenario.CreateMemoryHistory(goalFirstWorld);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> goalFirstKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
                 goalFirstInstance,
-                goalFirstJournal,
-                goalFirstWorld);
+                goalFirstJournal);
 
         ModelTime deadline = new(BoardTiming.DeadlineTicks);
         Assert.Equal(StepStatus.Committed, await goalFirstKernel.StepAsync(deadline));
         AssertStartedPassage(
-            Assert.Single(goalFirstJournal.Batches[0].Facts),
+            Assert.Single(goalFirstJournal.CompletedEvents[0].Facts),
             BoardIds.CellarGatePassage);
         TraversingLocation committed = AssertTraversing(goalFirstKernel.World, BoardIds.Alice);
         Assert.Equal(StepStatus.Committed, await goalFirstKernel.StepAsync(deadline));
@@ -356,22 +353,21 @@ public sealed class TravelGoalHostTests
 
         ScenarioInstance closeFirstInstance = ScenarioInstance.CreateDefault(closeFirstSeed);
         FirstBoardWorld closeFirstWorld = GateGoalContestWorld(closeFirstInstance);
-        var closeFirstJournal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var closeFirstJournal = FirstBoardScenario.CreateMemoryHistory(closeFirstWorld);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> closeFirstKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
                 closeFirstInstance,
-                closeFirstJournal,
-                closeFirstWorld);
+                closeFirstJournal);
 
         Assert.Equal(StepStatus.Committed, await closeFirstKernel.StepAsync(deadline));
         Assert.IsType<CellarSealedEvent>(
-            Assert.IsType<GameBoardFact>(closeFirstJournal.Batches[0].Facts[0]).Value);
+            Assert.IsType<GameBoardFact>(closeFirstJournal.CompletedEvents[0].Facts[0]).Value);
         Assert.Equal(StepStatus.Committed, await closeFirstKernel.StepAsync(deadline));
         AssertAtPlace(closeFirstKernel.World, BoardIds.Alice, BoardIds.CellarGate);
         Assert.Null(closeFirstKernel.World.Actor(BoardIds.Alice).TravelGoalPlaceId);
         ActorTravelGoalResolvedEvent blocked = Assert.IsType<ActorTravelGoalResolvedEvent>(
-            Assert.IsType<GameBoardFact>(Assert.Single(closeFirstJournal.Batches[1].Facts)).Value);
+            Assert.IsType<GameBoardFact>(Assert.Single(closeFirstJournal.CompletedEvents[1].Facts)).Value);
         Assert.Equal(TravelGoalResolution.Blocked, blocked.Resolution);
     }
 
@@ -418,37 +414,21 @@ public sealed class TravelGoalHostTests
         FirstBoardWorld world,
         string actorId,
         ModelTime due) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Key == actorId
-                        ? actor with { Activity = new BoardWaitActivity(due) }
+                        ? actor.WithActivity(new BoardWaitActivity(due))
                         : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld WithTravelGoal(
         FirstBoardWorld world,
         string actorId,
         string destinationId) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Key == actorId
-                        ? actor with
-                        {
-                            Activity = null,
-                            TravelGoalPlaceId = new PlaceId(destinationId),
-                        }
+                        ? actor.WithActivity(null).WithTravelGoal(new PlaceId(destinationId))
                         : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld CloseCellarGate(
         ScenarioInstance instance,
@@ -489,7 +469,7 @@ public sealed class TravelGoalHostTests
                     ? new PlaceId(placeId)
                     : Assert.IsType<AtPlaceLocation>(entity.Location).PlaceId)),
         ];
-        return world with { Spatial = GraphSpatialState.Create(instance.Graph, placements) };
+        return world.With(spatial: GraphSpatialState.Create(instance.Graph, placements));
     }
 
     private static FirstBoardWorld GateGoalContestWorld(ScenarioInstance instance)
@@ -499,10 +479,7 @@ public sealed class TravelGoalHostTests
             instance.CreateInitialWorld(),
             BoardIds.Alice,
             BoardIds.CellarGate);
-        world = world with
-        {
-            Game = world.Game with { Now = new ModelTime(BoardTiming.DeadlineTicks) },
-        };
+        world = world.With(game: world.Game.With(now: new ModelTime(BoardTiming.DeadlineTicks)));
         world = WithTravelGoal(world, BoardIds.Alice, BoardIds.Cellar);
         world = WithWaitingActor(
             world,

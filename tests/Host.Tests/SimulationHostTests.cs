@@ -40,15 +40,12 @@ public sealed class SimulationHostTests
         int limit,
         long firstDue = 0)
     {
-        var journal = new InMemoryJournal<int>(lineageId: 1);
+        var history = new InMemoryOccurrenceHistory<CounterWorld, int>(new CounterWorld(0),
+            new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         return new SimulationKernel<CounterWorld, int, int>(
-            new CounterWorld(0),
-            new WorldVersion(1, 0),
-            ModelTime.Zero,
-            lastCommittedInstant: null,
+            history,
             new SimulationRules(42, 100),
             [new CounterRule(limit, firstDue)],
-            journal,
             (world, _, fact) => new CounterWorld(checked(world.Count + fact)),
             _ => { });
     }

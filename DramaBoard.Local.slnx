@@ -4,7 +4,6 @@
     <Project Path="src/FirstBoard/FirstBoard.csproj" />
     <Project Path="src/FirstBoard.Demo/FirstBoard.Demo.csproj" />
     <Project Path="src/Host/Host.csproj" />
-    <Project Path="src/Journal.Atelia/Journal.Atelia.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/Player/Player.csproj" />
     <Project Path="src/Player.Agency/Player.Agency.csproj" />
@@ -18,7 +17,6 @@
     <Project Path="tests/FirstBoard.Demo.Tests/FirstBoard.Demo.Tests.csproj" />
     <Project Path="tests/FirstBoard.Tests/FirstBoard.Tests.csproj" />
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
-    <Project Path="tests/Journal.Atelia.Tests/Journal.Atelia.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/Player.Tests/Player.Tests.csproj" />
     <Project Path="tests/Player.Agency.Tests/Player.Agency.Tests.csproj" />

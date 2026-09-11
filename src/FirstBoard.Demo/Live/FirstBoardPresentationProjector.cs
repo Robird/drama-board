@@ -278,7 +278,7 @@ internal sealed class FirstBoardPresentationProjector
             case ActionRejectedEvent value when IsHuman(value.ActorId):
                 cues.Add(new PresentationCue(
                     "action.rejected",
-                    $"Your {value.RejectedIntent.ActionKind.Id} action was rejected: {value.Reason}."));
+                    $"Your {value.RejectedIntent.ActionKindId} action was rejected: {value.Reason}."));
                 break;
             case CellarSealedEvent when
                 IsAtPassageEndpoint(preWorld, new PassageId(BoardIds.CellarGatePassage)) ||
@@ -565,7 +565,7 @@ internal sealed class FirstBoardPresentationProjector
         ChestOpenedEvent value =>
             $"actor={value.ActorId} object={value.ObjectId} key={value.KeyObjectId}",
         ActionRejectedEvent value =>
-            $"actor={value.ActorId} action={value.RejectedIntent.ActionKind.Id} " +
+            $"actor={value.ActorId} action={value.RejectedIntent.ActionKindId} " +
             $"reason={value.Reason}",
         CellarSealedEvent => "place=cellar",
         _ => $"type={payload.GetType().FullName}",

@@ -84,17 +84,16 @@ public sealed class CompositeGraphHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.TavernMarketFerry))));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice, new NullPlayerDriver()),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
-        JournalBatch<FirstBoardFact> batch = Assert.Single(journal.Batches);
+        OccurrenceEvent<FirstBoardFact> batch = Assert.Single(journal.CompletedEvents);
         Assert.Collection(
             batch.Facts,
             fact => Assert.IsType<TicketConsumedEvent>(Assert.IsType<GameBoardFact>(fact).Value),
@@ -133,13 +132,12 @@ public sealed class CompositeGraphHostTests
         var bob = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.TavernMarketFerry))));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), bob),
                 instance,
-                journal,
-                initial);
+                journal);
         WorldVersion initialVersion = kernel.Version;
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -152,7 +150,7 @@ public sealed class CompositeGraphHostTests
             TravelAction(request).CandidateExitIds!);
         Assert.Equal(initialSnapshot, FirstBoardScenario.WorldSnapshot(kernel.World));
         Assert.Equal(initialVersion, kernel.Version);
-        Assert.Empty(journal.Batches);
+        Assert.Empty(journal.CompletedEvents);
         Assert.Equal(initialSequence, kernel.World.Actor(BoardIds.Bob).DecisionSequence);
     }
 
@@ -170,9 +168,12 @@ public sealed class CompositeGraphHostTests
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.TavernMarketRoad))));
         IReadOnlyDictionary<string, IPlayerDriver> drivers = Drivers(alice, new NullPlayerDriver());
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(drivers, instance, journal, initial);
+            FirstBoardScenario.CreateKernel(
+                drivers,
+                instance,
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
         TraversingLocation traversal = AssertTraversing(kernel.World, BoardIds.Alice);
@@ -222,7 +223,7 @@ public sealed class CompositeGraphHostTests
 
         AssertAtPlace(kernel.World, BoardIds.Alice, BoardIds.Market);
         Assert.Null(kernel.World.Actor(BoardIds.Alice).Activity);
-        JournalBatch<FirstBoardFact> arrivalBatch = journal.Batches[^1];
+        OccurrenceEvent<FirstBoardFact> arrivalBatch = journal.CompletedEvents[^1];
         SpatialBoardFact arrivalHostFact = Assert.IsType<SpatialBoardFact>(
             Assert.Single(arrivalBatch.Facts));
         Assert.IsType<TraversalArrivedFact>(arrivalHostFact.Value);
@@ -245,18 +246,17 @@ public sealed class CompositeGraphHostTests
             request => new PlayerDecision(
                 request.DecisionId,
                 new Intent(ActionKinds.Put, TargetObjectId: BoardIds.BrassKey)));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), bob),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
         Assert.Collection(
-            journal.Batches[0].Facts,
+            journal.CompletedEvents[0].Facts,
             fact => Assert.IsType<ObjectTakenEvent>(Assert.IsType<GameBoardFact>(fact).Value),
             fact => Assert.IsType<EntityRemovedFact>(Assert.IsType<SpatialBoardFact>(fact).Value));
         Assert.Equal(kernel.World.Actor(BoardIds.Bob).Id, kernel.World.Object(BoardIds.BrassKey).OwnerActorId);
@@ -266,7 +266,7 @@ public sealed class CompositeGraphHostTests
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
         Assert.Collection(
-            journal.Batches[1].Facts,
+            journal.CompletedEvents[1].Facts,
             fact => Assert.IsType<ObjectPlacedEvent>(Assert.IsType<GameBoardFact>(fact).Value),
             fact => Assert.IsType<EntityPlacedFact>(Assert.IsType<SpatialBoardFact>(fact).Value));
         Assert.Null(kernel.World.Object(BoardIds.BrassKey).OwnerActorId);
@@ -285,10 +285,7 @@ public sealed class CompositeGraphHostTests
             instance.CreateInitialWorld(),
             BoardIds.Alice,
             BoardIds.CellarGate);
-        initial = initial with
-        {
-            Game = initial.Game with { Now = startAt },
-        };
+        initial = initial.With(game: initial.Game.With(now: startAt));
         initial = WithWaitingActor(
             initial,
             BoardIds.Bob,
@@ -296,19 +293,18 @@ public sealed class CompositeGraphHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.CellarGatePassage))));
-        var journal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice, new NullPlayerDriver()),
                 instance,
-                journal,
-                initial);
+                journal);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(startAt));
         TraversingLocation committedTraversal = AssertTraversing(kernel.World, BoardIds.Alice);
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(BoardTiming.DeadlineTicks)));
 
-        JournalBatch<FirstBoardFact> deadlineBatch = journal.Batches[1];
+        OccurrenceEvent<FirstBoardFact> deadlineBatch = journal.CompletedEvents[1];
         Assert.Collection(
             deadlineBatch.Facts,
             fact => Assert.IsType<CellarSealedEvent>(Assert.IsType<GameBoardFact>(fact).Value),
@@ -331,7 +327,7 @@ public sealed class CompositeGraphHostTests
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(committedTraversal.ArrivalDue));
         AssertAtPlace(kernel.World, BoardIds.Alice, BoardIds.Cellar);
         Assert.IsType<TraversalArrivedFact>(
-            Assert.IsType<SpatialBoardFact>(Assert.Single(journal.Batches[^1].Facts)).Value);
+            Assert.IsType<SpatialBoardFact>(Assert.Single(journal.CompletedEvents[^1].Facts)).Value);
     }
 
     [Fact]
@@ -345,19 +341,18 @@ public sealed class CompositeGraphHostTests
         var startFirstPlayer = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.CellarGatePassage))));
-        var startFirstJournal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var startFirstJournal = FirstBoardScenario.CreateMemoryHistory(startFirstWorld);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> startFirstKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(startFirstPlayer, new NullPlayerDriver()),
                 startFirstInstance,
-                startFirstJournal,
-                startFirstWorld);
+                startFirstJournal);
 
         Assert.Equal(
             StepStatus.Committed,
             await startFirstKernel.StepAsync(new ModelTime(BoardTiming.DeadlineTicks)));
         Assert.Contains(
-            startFirstJournal.Batches[0].Facts,
+            startFirstJournal.CompletedEvents[0].Facts,
             fact => fact is SpatialBoardFact { Value: TraversalStartedFact });
         Assert.False(startFirstKernel.World.CellarSealed);
         TraversingLocation committedSegment = AssertTraversing(
@@ -379,19 +374,18 @@ public sealed class CompositeGraphHostTests
         var closeFirstPlayer = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.CellarGatePassage))));
-        var closeFirstJournal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var closeFirstJournal = FirstBoardScenario.CreateMemoryHistory(closeFirstWorld);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> closeFirstKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(closeFirstPlayer, new NullPlayerDriver()),
                 closeFirstInstance,
-                closeFirstJournal,
-                closeFirstWorld);
+                closeFirstJournal);
 
         Assert.Equal(
             StepStatus.Committed,
             await closeFirstKernel.StepAsync(new ModelTime(BoardTiming.DeadlineTicks)));
         Assert.Contains(
-            closeFirstJournal.Batches[0].Facts,
+            closeFirstJournal.CompletedEvents[0].Facts,
             fact => fact is GameBoardFact { Value: CellarSealedEvent });
         Assert.Empty(closeFirstPlayer.Requests);
         DecisionRequest afterClose = FirstBoardScenario.BuildRequest(
@@ -421,22 +415,18 @@ public sealed class CompositeGraphHostTests
         var secret = new PassageId(BoardIds.MarketTavernCart);
         var queries = new SpatialQueries(instance.Graph);
         PassageEntryAccess secretBefore = queries.GetPassageEntryAccess(initial.Spatial, secret);
-        var journal = new InMemoryJournal<FirstBoardFact>(lineageId);
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial, lineageId);
         var reducer = new FirstBoardReducer(instance.Graph);
         var kernel = new SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact>(
-            initial,
-            new WorldVersion(lineageId, 0),
-            initial.Now,
-            lastCommittedInstant: null,
+            journal,
             new SimulationRules(instance.WorldSeed, 10_000),
             [new ClosePublicPassagesRule(instance.Graph, [road, ferry])],
-            journal,
             reducer.Apply,
             reducer.Validate);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
 
-        JournalBatch<FirstBoardFact> batch = Assert.Single(journal.Batches);
+        OccurrenceEvent<FirstBoardFact> batch = Assert.Single(journal.CompletedEvents);
         Assert.Equal(2, batch.Facts.Count);
         Assert.All(batch.Facts, fact => Assert.IsType<SpatialBoardFact>(fact));
         Assert.Equal(
@@ -468,54 +458,48 @@ public sealed class CompositeGraphHostTests
         var alice = new RecordingPlayerDriver(request => new PlayerDecision(
             request.DecisionId,
             new Intent(ActionKinds.Travel, ExitId: ExitId(BoardIds.TavernMarketFerry))));
-        var sourceJournal = new InMemoryJournal<FirstBoardFact>(FirstBoardScenario.LineageId);
+        var sourceJournal = FirstBoardScenario.CreateMemoryHistory(genesis);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> sourceKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(alice, new NullPlayerDriver()),
                 instance,
-                sourceJournal,
-                genesis);
+                sourceJournal);
         Assert.Equal(StepStatus.Committed, await sourceKernel.StepAsync(ModelTime.Zero));
         Assert.Contains(
-            sourceJournal.Batches[0].Facts,
+            sourceJournal.CompletedEvents[0].Facts,
             fact => fact is GameBoardFact);
         Assert.Contains(
-            sourceJournal.Batches[0].Facts,
+            sourceJournal.CompletedEvents[0].Facts,
             fact => fact is SpatialBoardFact);
         string sourceSnapshot = FirstBoardScenario.WorldSnapshot(sourceKernel.World);
         WorldVersion sourceVersion = sourceKernel.Version;
-        int sourceBatchCount = sourceJournal.Batches.Count;
+        int sourceBatchCount = sourceJournal.CompletedEvents.Count;
         TraversingLocation sourceTraversal = AssertTraversing(sourceKernel.World, BoardIds.Alice);
         var reducer = new FirstBoardReducer(instance.Graph);
 
-        InMemoryForkResult<FirstBoardWorld, FirstBoardFact> fork = SimulationFork.Create(
-            genesis,
-            genesis.Now,
-            sourceJournal,
-            prefixTransitionCount: 1,
-            forkLineageId,
-            new SimulationRules(instance.WorldSeed, 10_000),
-            reducer.Apply,
-            reducer.Validate);
-        Assert.Equal(sourceSnapshot, FirstBoardScenario.WorldSnapshot(fork.Replay.World));
-        Assert.Equal(new WorldVersion(forkLineageId, 1), fork.Replay.Version);
+        var fork = new InMemoryOccurrenceHistory<FirstBoardWorld, FirstBoardFact>(
+            sourceJournal.State,
+            new KernelCursor(
+                new WorldVersion(forkLineageId, sourceJournal.Cursor.Version.TransitionCount),
+                sourceJournal.Cursor.GenesisTime,
+                sourceJournal.Cursor.LastInstant,
+                sourceJournal.Cursor.LastCauseKey));
+        Assert.Equal(sourceSnapshot, FirstBoardScenario.WorldSnapshot(fork.State));
+        Assert.Equal(new WorldVersion(forkLineageId, 1), fork.Cursor.Version);
         SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> forkKernel =
             FirstBoardScenario.CreateKernel(
                 Drivers(new NullPlayerDriver(), new NullPlayerDriver()),
                 instance,
-                fork.Journal,
-                fork.Replay.World,
-                fork.Replay.Version,
-                fork.Replay.LastCommittedInstant);
+                fork);
 
         Assert.Equal(StepStatus.Committed, await forkKernel.StepAsync(sourceTraversal.ArrivalDue));
 
         AssertAtPlace(forkKernel.World, BoardIds.Alice, BoardIds.Market);
         Assert.Equal(new WorldVersion(forkLineageId, 2), forkKernel.Version);
-        Assert.Equal(2, fork.Journal.Batches.Count);
+        Assert.Single(fork.CompletedEvents);
         Assert.Equal(sourceSnapshot, FirstBoardScenario.WorldSnapshot(sourceKernel.World));
         Assert.Equal(sourceVersion, sourceKernel.Version);
-        Assert.Equal(sourceBatchCount, sourceJournal.Batches.Count);
+        Assert.Equal(sourceBatchCount, sourceJournal.CompletedEvents.Count);
         Assert.Equal(sourceTraversal, AssertTraversing(sourceKernel.World, BoardIds.Alice));
     }
 
@@ -545,15 +529,16 @@ public sealed class CompositeGraphHostTests
 
         ReplayResult<FirstBoardWorld> replay = SimulationReplay.Replay(
             capture.InitialWorld,
-            capture.Journal.LineageId,
+            capture.InitialCursor.Version.LineageId,
             capture.InitialWorld.Now,
-            capture.Journal.Batches,
+            capture.CompletedEvents.Select(occurrence => new JournalBatch<FirstBoardFact>(
+                occurrence.TargetInstant, occurrence.CauseKey, occurrence.Facts)).ToArray(),
             reducer.Apply,
             reducer.Validate);
 
-        Assert.NotEmpty(capture.Journal.Batches);
+        Assert.NotEmpty(capture.CompletedEvents);
         Assert.Contains(
-            capture.Journal.Batches,
+            capture.CompletedEvents,
             batch => batch.Facts.Any(fact => fact is GameBoardFact) &&
                 batch.Facts.Any(fact => fact is SpatialBoardFact));
         Assert.Equal(callsBeforeReplay, alice.Requests.Count + bob.Requests.Count);
@@ -562,7 +547,7 @@ public sealed class CompositeGraphHostTests
             FirstBoardScenario.WorldSnapshot(replay.World));
         Assert.Equal(capture.Result.Version, replay.Version);
         Assert.Equal(capture.Result.CurrentModelTime, replay.CurrentModelTime);
-        Assert.Equal(capture.Journal.Batches[^1].Instant, replay.LastCommittedInstant);
+        Assert.Equal(capture.CompletedEvents[^1].TargetInstant, replay.LastCommittedInstant);
     }
 
     private static ObservedExit Exit(DecisionRequest request, string passageId) =>
@@ -635,10 +620,7 @@ public sealed class CompositeGraphHostTests
             instance.CreateInitialWorld(),
             BoardIds.Alice,
             BoardIds.CellarGate);
-        world = world with
-        {
-            Game = world.Game with { Now = new ModelTime(BoardTiming.DeadlineTicks) },
-        };
+        world = world.With(game: world.Game.With(now: new ModelTime(BoardTiming.DeadlineTicks)));
         return WithWaitingActor(
             world,
             BoardIds.Bob,
@@ -649,46 +631,28 @@ public sealed class CompositeGraphHostTests
         FirstBoardWorld world,
         string actorId,
         ModelTime due) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Key == actorId
-                        ? actor with { Activity = new BoardWaitActivity(due) }
+                        ? actor.WithActivity(new BoardWaitActivity(due))
                         : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld WithIdleActor(FirstBoardWorld world, string actorId) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Actors = Array.AsReadOnly(world.Actors
+        world.With(game: world.Game.With(actors: Array.AsReadOnly(world.Actors
                     .Select(actor => actor.Key == actorId
-                        ? actor with { Activity = null }
+                        ? actor.WithActivity(null)
                         : actor)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld WithObjectOwner(
         FirstBoardWorld world,
         string objectId,
         long ownerActorId) =>
-        world with
-        {
-            Game = world.Game with
-            {
-                Objects = Array.AsReadOnly(world.Objects
+        world.With(game: world.Game.With(objects: Array.AsReadOnly(world.Objects
                     .Select(item => item.Key == objectId
-                        ? item with { OwnerActorId = ownerActorId }
+                        ? item.WithOwnerActorId(ownerActorId)
                         : item)
-                    .ToArray()),
-            },
-        };
+                    .ToArray())));
 
     private static FirstBoardWorld MoveInitialEntity(
         ScenarioInstance instance,
@@ -704,7 +668,7 @@ public sealed class CompositeGraphHostTests
                     ? new PlaceId(placeId)
                     : Assert.IsType<AtPlaceLocation>(entity.Location).PlaceId)),
         ];
-        return world with { Spatial = GraphSpatialState.Create(instance.Graph, placements) };
+        return world.With(spatial: GraphSpatialState.Create(instance.Graph, placements));
     }
 
     private static TraversingLocation AssertTraversing(FirstBoardWorld world, string entityId)

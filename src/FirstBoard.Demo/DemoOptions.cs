@@ -25,6 +25,9 @@ internal sealed record DemoOptions(
     string? ReasoningEffort,
     MemoryMaintenanceMode MemoryMaintenanceMode)
 {
+    public string? WorldStore { get; init; }
+    public bool ResumeWorld { get; init; }
+
     private static readonly HashSet<string> AllowedOptionNames = new(
         [
             "backend",
@@ -49,6 +52,8 @@ internal sealed record DemoOptions(
             "codex-command",
             "reasoning",
             "memory-maintenance",
+            "world-store",
+            "resume-world",
         ],
         StringComparer.OrdinalIgnoreCase);
 
@@ -62,6 +67,12 @@ internal sealed record DemoOptions(
             if (argument.Equals("--help", StringComparison.OrdinalIgnoreCase) || argument == "-h")
             {
                 throw new DemoHelpRequestedException();
+            }
+
+            if (argument.Equals("--resume-world", StringComparison.OrdinalIgnoreCase))
+            {
+                values["resume-world"] = "true";
+                continue;
             }
 
             if (!argument.StartsWith("--", StringComparison.Ordinal) || index + 1 >= args.Length)
@@ -122,6 +133,21 @@ internal sealed record DemoOptions(
                 $"presentation-{presentationMode.ToString().ToLowerInvariant()}-" +
                 $"alice-{aliceBackend}-{aliceModel}-bob-{bobBackend}-{bobModel}"));
 
+        string? worldStore = values.GetValueOrDefault("world-store");
+        bool resumeWorld = values.ContainsKey("resume-world");
+        if (worldStore is not null && string.IsNullOrWhiteSpace(worldStore))
+        {
+            throw new ArgumentException("--world-store requires a directory path.");
+        }
+        if (resumeWorld && worldStore is null)
+        {
+            throw new ArgumentException("--resume-world requires --world-store PATH.");
+        }
+        if (resumeWorld && values.ContainsKey("seed"))
+        {
+            throw new ArgumentException("--seed selects a new world; --resume-world uses the saved seed.");
+        }
+
         return new DemoOptions(
             new DemoBackendOptions(aliceBackend, aliceModel),
             new DemoBackendOptions(bobBackend, bobModel),
@@ -143,7 +169,11 @@ internal sealed record DemoOptions(
             values.GetValueOrDefault("reasoning") ??
                 Environment.GetEnvironmentVariable("CODEX_REASONING_EFFORT") ??
                 "low",
-            ReadMemoryMaintenanceMode(values));
+            ReadMemoryMaintenanceMode(values))
+        {
+            WorldStore = worldStore is null ? null : Path.GetFullPath(worldStore),
+            ResumeWorld = resumeWorld,
+        };
     }
 
     public static string HelpText =>
@@ -172,6 +202,9 @@ internal sealed record DemoOptions(
                                            DEEPSEEK_BASE_URL, then BASE_URL
           --api-key-env NAME               Credential env name; default: DEEPSEEK_API_KEY
           --output DIRECTORY               Drama record and memory snapshots
+          --world-store DIRECTORY          Create a durable world in a new directory
+          --resume-world                   Open --world-store instead; restore the world,
+                                           rebuild Player memory and turn budgets for this run
           --seed NUMBER                    Default: 20260817
           --until-ms NUMBER                Default: 4200000
           --max-turns-per-actor NUMBER     Default: 8, then a long wait ends the scene
