@@ -6,6 +6,8 @@
 
 **本次修订：2026-08-21**
 
+> 存储演进提案（2026-09-12）：[DurableGraph Occurrence 提交与恢复](durablegraph-occurrence-persistence.md)建议替换本文 AppendBatch/普通 Replay 接缝，保留调度与时间法则；尚待采纳、未实施。当前源码仍是下述 Journal 路径，不应把提案或历史施工描述混作实现事实。
+
 **定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 为权威。**
 
 **后继 package 边界（2026-08-23）：** 本文删除的是 Kernel 内的应用层 hash 链、旧格式兼容与跨-build scheduler conformance，并未禁止 Runner 在 Kernel 外建立 current-format Save。后继 [Game content and Save boundary](../implementation/game-content-save-boundary.md) 只在明确支持的 Definition、fact、Ruleset 与 Player compatibility IDs 下 fail-fast reopen；不提供旧格式迁移，也不把 software/git provenance 当成兼容 authority。会改变既有 Save fold 或续局未来行为的 Ruleset 变更必须更换 `RulesetId`。

@@ -2,6 +2,7 @@
 
 > 状态：用户明确要求独立浏览事件；当前方向为 Event/State 独立图、交错提交与快照语义，撤销强制 PairRoot/联合加载。
 > 本文是可编辑消费者合同，API 与底层实现尚未冻结。DurableGraph `1cace42` 已交付 EventHistory，当前能力核对见 §6；DramaBoard 尚未接入。按结论替换正文，不追加讨论日志。入口：[项目状态](../../PROJECT-STATE.md)。
+> DramaBoard 的具体 E 时点、State 游标及实施建议现见[Occurrence 持久化提案](../design/durablegraph-occurrence-persistence.md)与[近期计划](../worksets/durablegraph-first-integration.md)，待用户采纳；§6 保留原日期的验证证据，不代表本轮重跑。
 
 ## 1. 消费者合同与来源
 

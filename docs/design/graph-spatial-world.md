@@ -5,6 +5,8 @@
 
 **本次修订：2026-08-23**
 
+> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成，不是待重做任务。新的[DurableGraph 接入提案](durablegraph-occurrence-persistence.md)只建议适配持久模型与提交边界，尚待采纳；本文旧 AppendBatch/Replay 条款届时定向修订。
+
 **Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。
 
 **认知层边界：** Player HUD、战争迷雾、主观地图、Claims 与 LLM DecisionView 继续由 [Player spatial knowledge](../research/player-spatial-knowledge.md) 研究，不进入本子系统。

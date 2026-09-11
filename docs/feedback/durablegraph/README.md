@@ -1,13 +1,13 @@
 # DramaBoard → DurableGraph 使用反馈
 
-这里保存 DramaBoard 作为 DurableGraph 消费者的反馈，供两个项目持续讨论。产品能力与接入总判断见[消费者合同 §6](../../research/event-journal-state-store-draft.md#6-接入边界与最小验证)；本目录只维护具体使用问题、证据、建议和处理结果。
+这里保存 DramaBoard 作为 DurableGraph 消费者的反馈，供两个项目持续讨论。接入总判断见[近期计划](../../worksets/durablegraph-first-integration.md)，原消费验证见[消费者合同 §6](../../research/event-journal-state-store-draft.md#6-接入边界与最小验证)；本目录只维护具体问题及处理结果。
 
 ## 反馈索引
 
 | 文档 | 涉及版本 | 当前状态 |
 |---|---|---|
-| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | 原反馈 `1cace42`；方案 DB-065 / `613f759` | 上游已回应，消费者认可本片方案；待实施验收，历史定位/局部浏览 API 继续按真实需求触发。 |
-| [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | 共享实现 `1f5c9d0`；重载 `297619b` | 静态审查未发现错版本共享；编码回调依赖与 Transient 用法待上游评估，未运行新复现。 |
+| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DB-065 / `79be2c2` | A/B/C 与枚举文档已落地并静态复核；历史定位/局部浏览 API 按真实需求触发，游戏消费随接入验证。 |
+| [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | DB-066 / `f68388f` | 编码依赖已移除、Transient 合同已明确；已静态复核，本轮未重跑测试。 |
 
 ## 持续维护
 

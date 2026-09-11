@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-11；接入前准备批次从 `bd73e64` 开始，验证证据与范围见[批次记录](docs/worksets/pre-integration-cleanup.md)。兄弟库能力在接入前重新核对。
+> 最近整理：2026-09-12；当前进入真实接入路线评审。此前准备证据见[批次记录](docs/worksets/pre-integration-cleanup.md)，不作为本轮新测试结果。
 
 ## 最终目标
 
@@ -14,15 +14,15 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 - **Kernel**：统一 Occurrence 仲裁；facts 经 scratch-fold 和验证后 `AppendBatch`，再安装世界。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs)、[Kernel 设计](docs/design/simulation-kernel.md)与[已实施基线](docs/implementation/kernel-occurrence-baseline.md)。
 - **Spatial**：Graph Slice 1/2 已实现，FirstBoard 已组合 Game + Spatial；未发现旧 Grid API 消费者。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[FirstBoardWorld / FirstBoardReducer](src/FirstBoard/FirstBoardDomain.cs)、[Graph Spatial 设计](docs/design/graph-spatial-world.md)。Spatial 只依赖 Kernel；客观位置与运动归 Spatial，玩法回应和认知归消费者。
 - **运行与存储**：[LiveSession](src/FirstBoard.Demo/Live/LiveSession.cs) 使用内存 Journal；[Journal.Atelia](src/Journal.Atelia/AteliaJournalSink.cs) 与 [FirstBoardPersistenceTests](tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs) 保有 EventJournal 路径。StateJournalNative 已退出默认源码与依赖，原实验见[归档索引](docs/archive/statejournal-native.md)。
-- **DurableGraph**：`1cace42` 的 EventHistory 已提供独立 E/S 提交与读取、PendingEvent 恢复、命名分支/Move、同类型 State 根替换和显式升级；DramaBoard 尚未接入。单 writer/单活动 session；record class、接口集合等模型形状仍需适配。入口见兄弟库 [README](../durable-graph/README.md)，本次消费契约核对见[草稿 §6](docs/research/event-journal-state-store-draft.md#6-接入边界与最小验证)。
+- **DurableGraph**：静态核对至 `f68388f`，EventHistory 的独立 E/S、PendingEvent、分支、同类型根替换已具备，上手/恢复及 ReadPair 反馈已落地；DramaBoard 尚未接入。单 writer/单活动 session；record class、接口集合仍需适配。入口见兄弟库 [README](../durable-graph/README.md)，反馈状态见[消费者反馈](docs/feedback/durablegraph/README.md)。
 
 ## 当前焦点与建议下一步
 
-用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。DurableGraph 的 EventHistory 已落地[独立 E/S 草稿](docs/research/event-journal-state-store-draft.md)所需的主要基础能力，包括只读打开后不反序列化无关世界的事件浏览；未发现阻止首个真实接入切片的上游功能缺口。当前从存储方案讨论转向消费者适配评估；本轮未实施 DramaBoard 接入。
+用户本轮要求调研与近期计划；推荐路线已写成[真实接入计划](docs/worksets/durablegraph-first-integration.md)与[Occurrence 持久化方案](docs/design/durablegraph-occurrence-persistence.md)，**待采纳，尚未实施**。没有发现阻断首片的上游功能缺口。
 
-1. 下一设计落点：按草稿 §7 定向对齐 Occurrence 与 E/S、完整 State、时间/版本；明确 E 相对 Plan/校验的位置和 E-head 的恢复流程。两份目标设计的旧 AppendBatch/replay 描述尚未修订。
-2. 建议首片从 PassageEncounterHostTests 提取前缀/纯 driver，建立受支持的真实领域模型并以 PackageReference 接入；在 encounter open 保存、冷重开后 Continue/Reverse，对照完整 Game+Spatial+Kernel（含 NextPersistentId、KnownFacts.Text），另测 E-head 与事件独立读取。
-3. 接入后验证一次模型升版，汇总声明、快照构造及实际写入成本；完整 Player closure 与倒带 UI 继续分别裁决。
+推荐原地适配领域模型、局部替换 Kernel 发布/恢复接缝，保留调度与 Graph Spatial 算法；首片继续纯 fold。E 在 Plan 与 scratch 验证后记录完整变化，热路径复用 scratch，冷 E-head 只完成 pending，不重问 Player；S 包含完整世界与 Kernel 游标（含 LastCauseKey）。这些是本轮建议，不写成已有产品行为。
+
+采纳后的顺序：真实 encounter 的完整 oracle/包消费/冷恢复 → 实际运行入口与明确的 Player 恢复边界 → 迁移行为测试并退出旧持久路径 → 真实升版与成本反馈。详细任务及验收只维护在计划中。旧 preflight 已转为后继导航，两份目标设计的 AppendBatch/replay 条款在采纳后定向修订。
 
 ## 长期 roadmap
 
@@ -30,7 +30,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 |---|---|
 | 归档 StateJournalNative | 已完成；只保留[经验与恢复入口](docs/archive/statejournal-native.md)，旧实验不再日常维护。 |
 | 用 DurableGraph 持久化 DramaBoard | 待首个切片；验证领域模型与提交边界后，逐步扩展到运行入口和完整续局状态。 |
-| 向 DurableGraph 提供反馈 | 持续入口为[消费者反馈](docs/feedback/durablegraph/README.md)；首轮反馈的上游 DB-065 方案已回评，待实施验收。与接入同步补最小复现，区分领域建模问题、API 摩擦和功能缺口。 |
+| 向 DurableGraph 提供反馈 | 持续入口为[消费者反馈](docs/feedback/durablegraph/README.md)；DB-065/066 已落地并静态复核，真实游戏消费随接入验证。区分领域建模问题、API 摩擦和功能缺口。 |
 | 完成 Graph Spatial 方向 | 库及 FirstBoard 已实质切换；下一步由具体玩法选择缺失能力，按 008 的重开条件推进。 |
 | 整理 docs 与文件名 | 活跃 Kernel/Spatial/Save/研究主题已分类改名，历史正文退出默认检索；剩余早期混合设计随真实任务按需提炼。 |
 
@@ -39,7 +39,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 - **分支与续局**：上游 branch/ref、E/S head 恢复已有验证；DramaBoard 的可玩 fork 仍须选完整 S 并落实新 lineage 的持久化语义。完整 Player closure、倒带 UI 与首片实际范围继续分别裁决。
 - **事件与处理结果**：Journal 保持 S→E→S 和唯一 ref；ReadEvent/ReadState 独立，Resume 可便利地读取准确配对但不合并实例。State 不必嵌最近 Event，异常/retry 历史继续延期。
 - **快照与领域适配**：事件保留旧快照，闭包小是建模目标；文档/XML doc 明确可变别名和大图回指风险，关联当前实体走领域身份而非跨图 ReferenceEquals。各图内部仍保持真实共享/循环，完整 State 仍覆盖 Game+Spatial+Kernel。
-- **API 反馈与历史读取**：[反馈目录](docs/feedback/durablegraph/README.md)集中维护处理状态。DB-065 的上手/恢复改进待正式交付验收；新增 ReadPair 审查未发现错版本共享，编码回调依赖与 Transient 用法待厘清。跨重开定位和局部浏览继续按真实需求触发，不阻塞首片。
+- **API 反馈与历史读取**：[反馈目录](docs/feedback/durablegraph/README.md)集中维护处理状态。跨重开定位和局部浏览按真实需求触发，不阻塞首片；ReadPair 不是可编辑恢复入口，也不是接入前置条件。
 - **Player 与外部调用的恢复边界？** 先明确客观世界切片，再逐项确定记忆、叙事记录和 Player 状态如何同世界对齐。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。
 - **跨项目会话协作**：用户正在完善 Codex MCP；本批准备工作独立推进。接口就绪后试用固定项目会话的咨询、追问、结果读取、内部子代理与重启恢复；双方维护各自 PROJECT-STATE，交换具体需求、证据与结论。
 - **Spatial 扩展**：调速/途中停留、Area、ViewLink、关系变化等按真实玩法触发；contact 索引按性能证据触发，详见 008。旧 Grid 留作历史证据，当前无恢复双实现的需求。

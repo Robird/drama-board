@@ -6,6 +6,11 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 - [Simulation Kernel](design/simulation-kernel.md): the governing occurrence, time, and publication law.
 - [Graph Spatial World](design/graph-spatial-world.md): the current objective-space model and its boundary with FirstBoard.
+- [DurableGraph occurrence persistence proposal](design/durablegraph-occurrence-persistence.md): proposed E/S placement, complete state, and recovery semantics; awaiting adoption.
+
+## Proposed near-term work
+
+- [DurableGraph first integration](worksets/durablegraph-first-integration.md): evidence-backed route comparison and staged real-consumer integration; proposed, not implemented.
 
 ## Current implementation boundaries and evidence
 
@@ -18,7 +23,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 - [Player spatial knowledge](research/player-spatial-knowledge.md): frozen Getter seam and deferred fog-of-war work.
 - [Persistent Script VM selection](research/persistent-script-vm-selection.md): research charter; selection and production migration remain deferred.
 - [EventJournal + StateStore draft](research/event-journal-state-store-draft.md): independent event/state graphs, resumable processing, and the delivered EventHistory capability check; editable consumer contract.
-- [DurableGraph consumer preflight](research/durablegraph-consumer-preflight.md): consumer closure, validation scenario, and earlier integration alternatives.
+- [DurableGraph consumer preflight](research/durablegraph-consumer-preflight.md): successor navigation for the superseded early study; its real-world oracle continues in the integration plan.
 
 ## Consumer feedback
 
