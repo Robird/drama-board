@@ -17,7 +17,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 - [Player spatial knowledge](research/player-spatial-knowledge.md): frozen Getter seam and deferred fog-of-war work.
 - [Persistent Script VM selection](research/persistent-script-vm-selection.md): research charter; selection and production migration remain deferred.
-- [EventJournal + StateStore draft](research/event-journal-state-store-draft.md): independently readable event snapshots and states, interleaved history, and resumable processing; editable consumer contract.
+- [EventJournal + StateStore draft](research/event-journal-state-store-draft.md): independent event/state graphs, resumable processing, and the delivered EventHistory capability check; editable consumer contract.
 - [DurableGraph consumer preflight](research/durablegraph-consumer-preflight.md): consumer closure, validation scenario, and earlier integration alternatives.
 
 ## Historical material

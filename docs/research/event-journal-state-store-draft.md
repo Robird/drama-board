@@ -1,7 +1,7 @@
 # EventJournal + StateStore 两层持久化草稿
 
 > 状态：用户明确要求独立浏览事件；当前方向为 Event/State 独立图、交错提交与快照语义，撤销强制 PairRoot/联合加载。
-> 本文是可编辑设计草稿，API 与底层实现尚未冻结，产品尚未实现。按结论替换正文，不追加讨论日志。入口：[项目状态](../../PROJECT-STATE.md)。
+> 本文是可编辑消费者合同，API 与底层实现尚未冻结。DurableGraph `1cace42` 已交付 EventHistory，当前能力核对见 §6；DramaBoard 尚未接入。按结论替换正文，不追加讨论日志。入口：[项目状态](../../PROJECT-STATE.md)。
 
 ## 1. 消费者合同与来源
 
@@ -12,7 +12,7 @@
 | 用户新增的明确用例 | 可以遍历和读取事件，不为每个事件反序列化完整 State；事件与状态应能独立读取。 |
 | 用户当前方向 | Event/State 以独立根交错提交；Event 引用领域 Snapshot，避免引用大批活动可变实例。通过文档/XML doc 说明建模合同。 |
 | 保留的使用规则 | 生成事件只读旧世界；处理器读取事件快照并更新领域状态。先按单活动分支会话、串行处理验证。 |
-| 本轮边界 | 修订方案，不实施产品；异常/retry 账本、完整 Player/LLM 恢复、GC 与并发 merge 继续延期。 |
+| 当前边界 | 评估上游交付与消费者适配，未实施 DramaBoard 接入；异常/retry 账本、完整 Player/LLM 恢复、GC 与并发 merge 继续延期。 |
 
 已保存 State 是历史处理结果，不默认当作可删缓存。逻辑完整图不要求物理全量写入，Base/Delta 由底层负责。
 两层是职责划分，不意味着删除 SchemaStore/Generator 或为领域事件另建 JSON Schema/正文 codec。
@@ -82,7 +82,7 @@ ReadState(S1).Alice.HP = 7
 不可变领域子图可以共享；如果活动世界有可变别名，需在建模时隔离会被写入的可达部分。小闭包是建模目标，不要求整世界深拷贝、平行 Saved/DTO 模型或自动冻结框架。
 避免快照回指活动世界容器、会话选择器或完整历史链。已有不可变替换式 reducer 可让事件继续保留旧对象，不要求改成稳定可变实体。
 
-公开文档与 XML doc 至少说明以下内容（待上游 API 定稿时落到实际方法）：
+公开文档与 XML doc 应说明以下使用合同；上游当前已在 [README](../../../durable-graph/README.md) 与 [EventHistorySession](../../../durable-graph/src/DurableGraph.StateStore/EventHistorySession.cs) 的 remarks 说明快照/别名边界，下面保留消费者文案意图：
 
 ```xml
 <remarks>
@@ -110,13 +110,23 @@ Commit 错误先停止并重开判定 head；不承诺自动 retry、透明回�
 
 ## 6. 接入边界与最小验证
 
-对外独立读写已经消除了跨两份图合并 CLR 身份的正确性要求，但不证明当前入口可以直接交替换根。
-此前核对的 [WorldWorkspace](../../../durable-graph/src/DurableGraph.StateStore/WorldWorkspace.cs)、[CaptureSession](../../../durable-graph/src/DurableGraph/CaptureSession.cs) 与 [ObjectRevisionPlanner](../../../durable-graph/src/DurableGraph.StateStore/ObjectRevisionPlanner.cs) 仍有固定根、候选绑定替换和完整成员集 Remove 语义；内部复用/比较基线由 DG 细化，不转嫁为消费者维护 ObjectId 的义务。
-[RevisionDecoder](../../../durable-graph/src/DurableGraph.StateStore/RevisionDecoder.cs) 当前全 live 行解码的路径不能仅改名就宣称满足独立浏览；需用实际读取验证独立事件成员集或按根读取方案。
-[GraphRepository](../../../durable-graph/src/DurableGraph.StateStore/GraphRepository.cs) 原 publication 与 [EventJournal](../../../atelia/src/EventJournal/EventJournal.cs) / [Refs](../../../atelia/src/EventJournal/EventJournal.Refs.cs) 的发布职责仍需接通，不能叠成两个权威 head。
-上述为实现边界提示，本轮未实施或跑测试，不在此冻结底层 Parent/新类型/编码方案。
+2026-09-11 核对 DurableGraph `1cace42`：[EventHistoryRepository](../../../durable-graph/src/DurableGraph.StateStore/EventHistoryRepository.cs) 与 [EventHistorySession](../../../durable-graph/src/DurableGraph.StateStore/EventHistorySession.cs) 已实现主要消费合同，旧 GraphRepository/GraphSession 与 publication.rbf 发布器已退出产品。上游实现与完整验收入口见 [DB-063 §8](../../../durable-graph/docs/design-branches/0063-event-history-journal-slice.md#8-实现与验收记录2026-09-11)。
 
-最小见证使用 `World(Alice, Bob) + Event(AliceSnapshot)`，事件不引用 World/Bob：
+| 本稿要求 | 已核对的实现与边界 |
+|---|---|
+| 独立保存 E/S | CommitDomainEvent 只保存事件闭包；后继 CommitDomainState 仍相对前 S 比较，不安装 E 为 State 基线。上游选择 E/S 的 Revision Parent 均为前 S，应用不管理内部成员集。 |
+| 独立浏览事件 | OpenReadOnlyExisting 不需要模型目录；ReadEvent 可仅登记事件及其快照模型。GraphReader 仍先解码所选 Revision 的全部成员；E 的成员集只含事件闭包，事件不引用 World/Bob 时才无需解码它们。 |
+| 恢复与快照身份 | Resume 在 E-head 取其直接前置 S，独立恢复两图；各图内部共享/循环保留。热路径由调用方保证事件只读，不自动拆开调用方建立的可变别名。 |
+| 唯一发布与分支 | Journal ref 唯一发布；CreateBranch/MoveBranch 支持历史 E/S，须先关闭活动 session。失败结果区分 NotPublished/Unknown/Published，重开按持久 head 判定。 |
+| 替换式领域更新 | CommitDomainState(nextState) 支持同 exact 类型根替换，成功发布后才安装候选实例，适合保留 scratch-fold 风格。 |
+
+相关回归见 [EventHistoryRepositoryTests](../../../durable-graph/tests/DurableGraph.StateStore.Tests/EventHistoryRepositoryTests.cs)、[发布故障测试](../../../durable-graph/tests/DurableGraph.StateStore.Tests/EventHistoryPublicationFailureTests.cs)与[真实包消费者](../../../durable-graph/experiments/PackageConsumerProbe/EventHistoryConsumer/README.md)。独立读取见证从只读打开开始，不登记 World，并断言无关 Bob 的 typed read/hydrate 为零；包消费者还覆盖两代模型、E-head 跨进程恢复、升级与根替换。
+
+本轮重跑 EventHistory / HistoryJournal / GraphEnvelopeCodec 相关测试 67 项通过，并从源码打包重跑 `Run-EventHistoryProbe.ps1`，两代模型/两个进程与 history Verify 均通过。包见证完成升级强制 Base、随后零对象写入/一个 Delta 及根替换；不将这个小夹具的体积当作一般性能结论。日志与 TRX 位于忽略目录 `artifacts/durablegraph-fit-20260911/`。验证使用上述 DG 提交及兄弟 Atelia 当时的工作树（HEAD `5390884`，含原有未提交修改），不是固定依赖的干净 checkout；未修改上游源码，也未运行 DramaBoard 接入测试。
+
+尚不能从这些结果推出长轨迹性能：只读打开仍遍历并验证全历史（含 orphan）的底层记录；ReadEvents 当前返回整链列表，倒序可在该列表上进行，未提供按页或流式倒序外观。无关世界不进入 typed 恢复，不等于启动时零世界 I/O。真实读取量、启动内存与保存成本分开测量；这属于后续消费者反馈，不是首个场景接入的功能阻碍。
+
+上游机制已有上述见证；DramaBoard 接入仍需用真实 `World(Alice, Bob) + Event(AliceSnapshot)` 验收，事件不引用 World/Bob：
 
 1. 构造交错 E/S 历史，打开只读历史并仅浏览 E；从打开到遍历，无关 World/Bob 的 typed 解码、Allocate、Hydrate 均不发生，而事件快照正确。仅“打开时已解码整个世界，遍历时不实例化它”不算通过。
 2. 只读 S 不自动加载前 E；读取任意 E 仍保留旧值，后续当前 Alice 为新值。集合/元素变化不能暗改事件快照。
