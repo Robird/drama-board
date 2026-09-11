@@ -37,6 +37,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 ## 焦点问题与延期条件
 
 - **首个可用存档是否必须倒带/分叉？** 旧实验重视这两项；本次用户尚未确认首轮优先级。答案决定是否需要先扩展 DurableGraph 的历史访问能力。
+- **ArtifactStore 与统一历史**：用户提出复用 EventJournal、State/Artifact 互引及共同提交，尚未裁决。建议对象图接入先行，以完整可浏览历史/按事件查看当时世界触发联合历史切片；需分别解决 exact 引用、历史加载与单一发布，不能用双 head 独立提交替代。见[优先级讨论](docs/research/durablegraph-consumer-preflight.md#artifactstore-与联合历史优先级讨论)。
 - **谁持有权威状态、谁提交？** 现有不可变 record + reducer/Journal 与 DurableGraph 的持久对象身份需要明确衔接。不要把“替换 adapter”或“重写为可变领域图”预先记成裁决；Game + Spatial、逻辑时间与候选消费状态必须一致恢复。
 - **Player 与外部调用的恢复边界？** 先明确客观世界切片，再逐项确定记忆、叙事记录和 Player 状态如何同世界对齐。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。
 - **跨项目会话协作**：用户正在完善 Codex MCP；本批准备工作独立推进。接口就绪后试用固定项目会话的咨询、追问、结果读取、内部子代理与重启恢复；双方维护各自 PROJECT-STATE，交换具体需求、证据与结论。
