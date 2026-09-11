@@ -6,7 +6,7 @@
 
 | 文档 | 涉及版本 | 当前状态 |
 |---|---|---|
-| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DurableGraph `1cace42` | 已整理，待上游评估；文档改进可先行，历史定位/局部浏览待真实接入确认优先级。 |
+| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | 原反馈 `1cace42`；方案 DB-065 / `613f759` | 上游已回应，消费者认可本片方案；待实施验收，历史定位/局部浏览 API 继续按真实需求触发。 |
 
 ## 持续维护
 
