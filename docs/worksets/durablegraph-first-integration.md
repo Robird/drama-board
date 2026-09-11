@@ -1,6 +1,6 @@
 # DurableGraph 真实接入近期计划
 
-> 状态：**推荐路线，待用户采纳；本轮只完成调研与文档，没有实施迁移。**
+> 状态：**2026-09-12 用户授权自主实施，正在推进 A。** 实际完成范围与验证证据见本文施工记录；设计不等于实现。
 > 2026-09-12 静态核对：DramaBoard `063e3e7`、DurableGraph `f68388f`。上游另有 DB-067 研究文档未提交，本计划不依赖它；没有重跑构建、测试或包实验。
 
 ## 1. 推荐路线
@@ -17,10 +17,10 @@
 | 来源 | 本计划据此保留或限制的内容 |
 |---|---|
 | 用户已定方向 | 强类型领域图、独立 E/S 历史、事件快照与独立浏览；正常恢复不从头执行历史业务 reducing。 |
-| 用户本轮要求 | 比较实验、原地迁移和重写，形成近期计划；不是已批准实施任何候选路线。 |
+| 用户本轮要求 | 自主带队实施至难以解决的问题或上游功能需求；保留最近单事件时间、Human/LLM 统一调度决策、面向 LLM 的 Graph 导航三个核心，其余按证据调整。 |
 | 当前源码与行为测试 | 全量 Forecast、确定性 winner、单次 Occurrence 跨域完整提交、1ms 时间、contact 局部进展、Player 信息隔离。 |
 | 当前真实消费者 | FirstBoard rules/Host、FirstBoard.Demo 的 Authority/Presentation、现有保存/读取/fork 测试；不能只验证一个孤立 storage adapter。 |
-| 尚待采纳的建议 | E 在 Plan 与 scratch 验证后；首片保留纯 fold；先客观世界冷恢复，再接实际入口与退出旧路径。 |
+| 本批实施选择 | E 在 Plan 与 scratch 验证后；首片保留纯 fold；先客观世界冷恢复，再接实际入口与退出旧路径。 |
 | 首片之外 | 完整 Player memory/LLM 交互与执行栈恢复、可玩 fork/rewind、长轨迹局部查询、模型升版验证分别安排，不暗中提升为首片门槛。 |
 
 ## 3. 路线比较与改动范围
@@ -52,7 +52,7 @@ DG `79be2c2` / `f68388f` 已落地上手、恢复、XML 与 ReadPair 反馈；�
 - 从 PassageEncounterHostTests 提取 traveling prefix 与 request→response 纯 driver；对照保存在新进程可读取的规范测试输出中，不依赖同一进程保存的对象引用或 driver 队列游标。
 - 补齐完整 committed-boundary oracle：WorldSnapshot 只作差异提示，另外比较 NextPersistentId、KnownFacts.Text、完整 Spatial、Kernel 游标与下一 request/候选行为。
 - 前缀若直接由 reducer 构造，将它明示为这个测试 run 的 S0，按其世界时间初始化 genesis、count=0、last instant/key=null；不能把原用例的手工 fold 前缀伪称为已有历史。随后真实 Kernel 提交 contact/encounter/response。
-- 固定本批 DG 与 Atelia 源码/包版本及来源。若本机打包，使用干净的固定 checkout 和新包版本，记录 feed/命令；CI 不依赖任意兄弟工作树。原有 Atelia CI pin 不自动等于 DG 本批依赖版本。
+- 固定本批 DG 与 Atelia 源码/包版本及来源，见[包准备与证据](durablegraph-package-source.md)。若本机打包，使用干净的固定 checkout 和新包版本，记录 feed/命令；CI 不依赖任意兄弟工作树。原有 Atelia CI pin 不自动等于 DG 本批依赖版本。
 - 逐项映射 FirstBoard.Persistence.Tests 的旧 Kernel 调用与保存/fork 行为：受新接缝直接影响的测试随 A 迁移，纯旧 codec/sink 见证可暂独立保留。若 fork 等未决行为阻碍这次切换，在 A2 前裁决该项范围；不能把测试禁用或旧兼容构造器当作阶段衔接。
 
 ### A1 · 正式持久模型闭包
@@ -105,6 +105,17 @@ C 是退出条件，不是必须拖到最后的清理批次；在 A/B 中已经�
 随后用一个有业务意义的字段完成一次两代真实模型升级/续写，再按实际代码和测量判断局部 mutable、历史定位/局部浏览与 Spatial 新玩法的优先级。ReadPair 优化、完整 VM、MCP 就绪均不构成 A 的依赖。
 
 ## 7. 施工分工与停止扩张条件
+
+本批施工边界：先交付 A 的完整世界与 pending 恢复，再把相同边界接回现有运行入口。完整 LLM 会话记忆及可玩持久 fork 延期；旧存档无需转换。新开/恢复时显式绑定 Player 策略，不能把重新创建 driver 描述为恢复旧记忆。这是依据用户允许三项核心之外按需调整作出的范围选择。
+
+| 当前要求 | 实施责任与验证位置 |
+|---|---|
+| 完整领域闭包、事件快照 | Kernel / Spatial / FirstBoard 模型各自适配；真实包生成和冷读取验证 |
+| E/S 发布、有限游标、仅完成 pending | Kernel 与 FirstBoard Persistence adapter；Kernel 失败窗口测试及真实重开测试 |
+| 真实 encounter 连续/分段等价 | 独立 encounter oracle 与冷进程见证；比较完整字段及下一决策 |
+| 统一 Human/LLM 调度与完成呈现 | Scenario / LiveSession / Authority；既有 Demo 行为测试随接缝迁移 |
+| 可复现依赖与历史声明 | 主线程固定源码、包与 CI；Publish → Clean → Verify，串行集成验收 |
+| 旧路径退出与事实文档 | 主线程审查消费者后退役；独立审阅失败边界与验收缺口 |
 
 | 有界工作包 | 所有权与依赖 |
 |---|---|

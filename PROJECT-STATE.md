@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-12；当前进入真实接入路线评审。此前准备证据见[批次记录](docs/worksets/pre-integration-cleanup.md)，不作为本轮新测试结果。
+> 最近整理：2026-09-12；当前实施 DurableGraph 真实接入。此前准备证据见[批次记录](docs/worksets/pre-integration-cleanup.md)，不作为本轮新测试结果。
 
 ## 最终目标
 
@@ -18,11 +18,11 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 ## 当前焦点与建议下一步
 
-用户本轮要求调研与近期计划；推荐路线已写成[真实接入计划](docs/worksets/durablegraph-first-integration.md)与[Occurrence 持久化方案](docs/design/durablegraph-occurrence-persistence.md)，**待采纳，尚未实施**。没有发现阻断首片的上游功能缺口。
+用户已授权按[真实接入计划](docs/worksets/durablegraph-first-integration.md)与[Occurrence 持久化方案](docs/design/durablegraph-occurrence-persistence.md)自主带队实施，直到难以解决的问题或上游能力缺口。必须保留三个核心：迭代预测最近单个事件的时间模式、Human/LLM Player 统一被调度唤醒决策、面向 LLM 理解与导航移动的 Graph 空间；其余按实现证据调整。
 
-推荐原地适配领域模型、局部替换 Kernel 发布/恢复接缝，保留调度与 Graph Spatial 算法；首片继续纯 fold。E 在 Plan 与 scratch 验证后记录完整变化，热路径复用 scratch，冷 E-head 只完成 pending，不重问 Player；S 包含完整世界与 Kernel 游标（含 LastCauseKey）。这些是本轮建议，不写成已有产品行为。
+本批原地适配领域模型、局部替换 Kernel 发布/恢复接缝，保留调度与 Graph Spatial 算法；首片继续纯 fold。E 在 Plan 与 scratch 验证后记录完整变化，热路径复用 scratch，冷 E-head 只完成 pending，不重问 Player；S 包含完整世界与 Kernel 游标（含 LastCauseKey）。当前正在冻结接口、准备真实 oracle 与干净固定依赖，尚未完成代码接入。
 
-采纳后的顺序：真实 encounter 的完整 oracle/包消费/冷恢复 → 实际运行入口与明确的 Player 恢复边界 → 迁移行为测试并退出旧持久路径 → 真实升版与成本反馈。详细任务及验收只维护在计划中。旧 preflight 已转为后继导航，两份目标设计的 AppendBatch/replay 条款在采纳后定向修订。
+实施顺序：真实 encounter 的完整 oracle/包消费/冷恢复 → 实际运行入口与明确的 Player 恢复边界 → 迁移行为测试并退出旧持久路径 → 真实升版与成本反馈。详细任务及验收只维护在计划中。旧 preflight 已转为后继导航，两份目标设计的 AppendBatch/replay 条款随代码切换定向修订。
 
 ## 长期 roadmap
 

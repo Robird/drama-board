@@ -1,6 +1,6 @@
 # DurableGraph 下的 Occurrence 提交与恢复
 
-> 状态：2026-09-12 调研形成的**推荐设计，待用户采纳**；尚未实施。接口名为职责示意，不冻结 C# API。
+> 状态：2026-09-12 用户授权实施，本批采用以下提交与恢复语义；**代码迁移进行中**。接口名为职责示意，具体签名随实现收敛。
 > 本文细化[独立 E/S 消费者合同](../research/event-journal-state-store-draft.md)在 DramaBoard 的映射；任务顺序只维护在[近期计划](../worksets/durablegraph-first-integration.md)。
 
 ## 1. 保留什么，改变什么
