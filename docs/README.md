@@ -20,6 +20,10 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 - [EventJournal + StateStore draft](research/event-journal-state-store-draft.md): independent event/state graphs, resumable processing, and the delivered EventHistory capability check; editable consumer contract.
 - [DurableGraph consumer preflight](research/durablegraph-consumer-preflight.md): consumer closure, validation scenario, and earlier integration alternatives.
 
+## Consumer feedback
+
+- [DramaBoard → DurableGraph](feedback/durablegraph/README.md): concrete API and feature feedback, evidence, upstream responses, and follow-up validation.
+
 ## Historical material
 
 [Archive](archive/README.md) preserves retired experiments and early work records. Its `legacy/` subtree is deliberately excluded from default local text search; use `rg --no-ignore -n "keyword" docs/archive/legacy` when historical evidence is required.
