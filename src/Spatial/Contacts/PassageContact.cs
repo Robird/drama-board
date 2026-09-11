@@ -12,7 +12,7 @@ public enum PassageContactKind
 
 /// <summary>Identifies one unordered pair of current movement segments on a passage.</summary>
 [DurableType("DramaBoard.Spatial.PassageContactKey", 1)]
-public sealed partial class PassageContactKey : DurableBase, IComparable<PassageContactKey>, IEquatable<PassageContactKey>
+public sealed partial class PassageContactKey : IDurableObject, IComparable<PassageContactKey>, IEquatable<PassageContactKey>
 {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private EntityId _entityA;

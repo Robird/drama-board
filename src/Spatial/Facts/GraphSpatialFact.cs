@@ -5,7 +5,7 @@ namespace DramaBoard.Spatial;
 
 /// <summary>Base payload for one authoritative Graph Spatial state change.</summary>
 [DurableType("DramaBoard.Spatial.GraphSpatialFact", 1)]
-public abstract partial class GraphSpatialFact : DurableBase, IEquatable<GraphSpatialFact>
+public abstract partial class GraphSpatialFact : IDurableObject, IEquatable<GraphSpatialFact>
 {
     public bool Equals(GraphSpatialFact? other) => other is not null && Equals((object)other);
 

@@ -3,15 +3,15 @@
 param(
     [string] $DurableGraphSource = (Join-Path $PSScriptRoot '../../durable-graph'),
     [string] $AteliaSource = (Join-Path $PSScriptRoot '../../atelia'),
-    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed'),
+    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-1c6083c'),
     [string] $Feed = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/feed'),
-    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.f68388f\.[1-9][0-9]*$')]
-    [string] $PackageVersion = '0.0.0-dramaboard.20260912.f68388f.1'
+    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.1c6083c\.[1-9][0-9]*$')]
+    [string] $PackageVersion = '0.0.0-dramaboard.20260912.1c6083c.1'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$durableGraphRevision = 'f68388f88ba09354e9fa90420dc2cf22b146b6cf'
+$durableGraphRevision = '1c6083c578426b3b098b4df2144bed448723d5ac'
 $ateliaRevision = '742fcd62e691b6b6acca4113a3ac3638bc7275ba'
 $CheckoutRoot = [IO.Path]::GetFullPath($CheckoutRoot)
 $Feed = [IO.Path]::GetFullPath($Feed)

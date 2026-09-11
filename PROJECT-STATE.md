@@ -14,7 +14,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 支持仅完成 pending 的恢复。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs)与[提交方案](docs/design/durablegraph-occurrence-persistence.md)。旧 occurrence baseline 的时间/仲裁部分保留，Journal 接缝已被替换。
 - **Spatial**：Graph Slice 1/2 已实现，FirstBoard 已组合 Game + Spatial；动态状态/事实已直接声明 durable。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[FirstBoardWorld / FirstBoardReducer](src/FirstBoard/FirstBoardDomain.cs)。领域依赖仍只有 Kernel，另引用 DG Runtime；客观位置与运动归 Spatial，玩法回应和认知归消费者。
 - **运行与存储**：[FirstBoardOccurrenceHistory](src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs) 保存完整世界、游标与精确内容/规则绑定；[LiveSession](src/FirstBoard.Demo/Live/LiveSession.cs)已接创建/续局入口，并明确重新建立 Player 记忆/预算。[真实存储](tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)与[冷进程](tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)已有验收。旧 Journal.Atelia 已退役，历史可从 Git `3b77450` 恢复。
-- **DurableGraph**：本批用 `f68388f` 与干净固定 Atelia 的真实包；三库模型已直接声明 durable，事件独立读取与冷恢复已有实际证据。单 writer/单活动 session，record class/集合已在消费方适配；[包来源](docs/worksets/durablegraph-package-source.md)不依赖兄弟库未提交修改。
+- **DurableGraph**：当前固定包为 `1c6083c`（DB-068），三库模型通过 `IDurableObject` 声明 durable；单 writer/单活动 session。旧包存档兼容与迁移证据见[包来源](docs/worksets/durablegraph-package-source.md)，不依赖兄弟库未提交修改。
 
 ## 当前焦点与下一步
 
@@ -22,7 +22,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 首轮接入已完成：纯 fold、E 前预检、热路径复用 scratch、冷 E-head 仅完成 pending、完整 S 和实际 Human/LLM 入口都已落实；验收范围只维护在[工作集 §8](docs/worksets/durablegraph-first-integration.md#8-本次交付与证据)。没有当前必须等待的上游功能缺口。
 
-下一步：用实际玩法选择一个业务字段，验证两代模型升级与续写；按续局体验确定 Player 记忆如何与世界提交对齐。较长轨迹再测写入/分配，决定是否局部 mutable。首轮[反馈 003](docs/feedback/durablegraph/003-real-model-integration.md)已记录不可变 record class 的易用性成本与测量；供上游评估，不自动改其代码。
+下一步：用实际玩法选择一个业务字段，验证两代模型升级与续写；按续局体验确定 Player 记忆如何与世界提交对齐。较长轨迹再测写入/分配，决定是否局部 mutable。[反馈 003](docs/feedback/durablegraph/003-real-model-integration.md)的 record class 支持已由上游 DB-068 落实；本库先完成 marker 接口迁移，后续按具体模型简化收益采用 record，集合快照和内容相等仍由领域维护。
 
 ## 长期 roadmap
 

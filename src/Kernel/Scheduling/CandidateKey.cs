@@ -6,7 +6,7 @@ namespace DramaBoard.Kernel.Scheduling;
 /// Owns the canonical bytes that completely and deterministically identify one occurrence candidate.
 /// </summary>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.CandidateKey", 1)]
-public sealed partial class CandidateKey : Atelia.DurableGraph.DurableBase, IComparable<CandidateKey>, IEquatable<CandidateKey>
+public sealed partial class CandidateKey : Atelia.DurableGraph.IDurableObject, IComparable<CandidateKey>, IEquatable<CandidateKey>
 {
     [Atelia.DurableGraph.DurableField(1)] private readonly byte[] _canonicalBytes;
 

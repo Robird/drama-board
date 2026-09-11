@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <DurableGraphPackageVersion>0.0.0-dramaboard.20260912.f68388f.1</DurableGraphPackageVersion>
+    <DurableGraphPackageVersion>0.0.0-dramaboard.20260912.1c6083c.1</DurableGraphPackageVersion>
     <DurableGraphPackageSource Condition="'$(DurableGraphPackageSource)' == ''">$(MSBuildThisFileDirectory)artifacts/durablegraph-integration/feed</DurableGraphPackageSource>
     <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(DurableGraphPackageSource)</RestoreAdditionalProjectSources>
     <TargetFramework>net10.0</TargetFramework>

@@ -7,7 +7,7 @@ namespace DramaBoard.FirstBoard.Persistence;
 /// <summary>The immutable content, scheduling configuration and strategy identity of one run.
 /// Successive States share this object; the dynamic world is never encoded as JSON.</summary>
 [DurableType("DramaBoard.FirstBoard.RunBinding", 1)]
-public sealed partial class FirstBoardRunBinding : DurableBase
+public sealed partial class FirstBoardRunBinding : IDurableObject
 {
     [DurableField(1)] private readonly byte[] _definitionJson;
     [DurableField(2)] private readonly string _definitionSha256;

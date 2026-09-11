@@ -7,7 +7,7 @@ namespace DramaBoard.Kernel.Journal;
 /// <summary>A complete ordered change whose planning and scratch validation have succeeded.
 /// Facts and their reachable persistent graph must remain snapshots after publication.</summary>
 [DurableType("DramaBoard.Kernel.OccurrenceEvent", 1)]
-public sealed partial class OccurrenceEvent<TFact> : DurableBase
+public sealed partial class OccurrenceEvent<TFact> : IDurableObject
 {
     [DurableField(1)] private readonly CandidateKey _causeKey;
     [DurableField(2)] private readonly LogicalInstant _targetInstant;

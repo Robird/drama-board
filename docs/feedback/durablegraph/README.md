@@ -8,7 +8,7 @@
 |---|---|---|
 | [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DB-065 / `79be2c2` | A/B/C 与枚举文档已落地；历史定位/局部浏览 API 按真实需求触发，实际游戏消费见 003。 |
 | [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | DB-066 / `f68388f` | 编码依赖已移除、Transient 合同已明确；已静态复核，本轮未重跑测试。 |
-| [003 · 真实领域模型接入](003-real-model-integration.md) | `f68388f` 实际包 | 完整世界与独立事件冷恢复已跑通；建议评估不可变 record class 易用性，附真实模型与首轮写入成本。 |
+| [003 · 真实领域模型接入](003-real-model-integration.md) | `1c6083c` / DB-068 | record class 支持已回应，消费方迁移至 IDurableObject；保留旧包首轮写入成本及快照建模边界。 |
 
 ## 持续维护
 

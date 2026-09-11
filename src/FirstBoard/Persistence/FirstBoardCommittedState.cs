@@ -5,7 +5,7 @@ namespace DramaBoard.FirstBoard.Persistence;
 
 /// <summary>The complete world and finite scheduling cursor published together as one State.</summary>
 [DurableType("DramaBoard.FirstBoard.CommittedState", 1)]
-public sealed partial class FirstBoardCommittedState : DurableBase
+public sealed partial class FirstBoardCommittedState : IDurableObject
 {
     [DurableField(1)] private readonly FirstBoardWorld _world;
     [DurableField(2)] private readonly KernelCursor _cursor;

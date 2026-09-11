@@ -1,7 +1,7 @@
 # DurableGraph 真实接入近期计划
 
 > 状态：**2026-09-12 首轮 A/B/C 已实施并通过本机验收。** B 交付世界续局，Player 记忆/预算重新建立；完整 Player closure 与可玩持久 fork 延期。实际证据见 §8。
-> 固定消费 DurableGraph `f68388f` 与 Atelia `742fcd62`，使用真实 NuGet 包；源码、版本及准备命令见[包来源](durablegraph-package-source.md)。后续模型升版与长轨迹研究不混作本次已交付能力。
+> 首轮验收使用 DurableGraph `f68388f` 与 Atelia `742fcd62` 的真实 NuGet 包；后续已迁移至 DB-068 的 `IDurableObject`，当前 pin 与跨包兼容证据见[包来源](durablegraph-package-source.md)。后续业务模型升版与长轨迹研究不混作本次已交付能力。
 
 ## 1. 本次选择
 

@@ -4,10 +4,10 @@
 
 | 来源 | 完整提交 |
 |---|---|
-| [Robird/durable-graph](https://github.com/Robird/durable-graph/tree/f68388f88ba09354e9fa90420dc2cf22b146b6cf) | `f68388f88ba09354e9fa90420dc2cf22b146b6cf` |
+| [Robird/durable-graph](https://github.com/Robird/durable-graph/tree/1c6083c578426b3b098b4df2144bed448723d5ac) | `1c6083c578426b3b098b4df2144bed448723d5ac` |
 | [Atelia-org/atelia](https://github.com/Atelia-org/atelia/tree/742fcd62e691b6b6acca4113a3ac3638bc7275ba) | `742fcd62e691b6b6acca4113a3ac3638bc7275ba` |
 
-默认版本为 `0.0.0-dramaboard.20260912.f68388f.1`，九个项目全部使用相同 `PackageVersion`。按固定上游 `experiments/PackageConsumerProbe/Run-EventHistoryRecoveryProbe.ps1` 的顺序串行打包：Data、Primitives、Rbf、RbfSegmentStore、EventJournal、DurableGraph.StateStore.Serialization、DurableGraph、DurableGraph.StateStore.Storage、DurableGraph.StateStore。包 ID 均以 `Atelia.` 开头；Generator 与 Build 工具按上游 DurableGraph 包的既有规则随包分发，不另造消费者手工接线。
+默认版本为 `0.0.0-dramaboard.20260912.1c6083c.1`，九个项目全部使用相同 `PackageVersion`。按固定上游 `experiments/PackageConsumerProbe/Run-EventHistoryRecoveryProbe.ps1` 的顺序串行打包：Data、Primitives、Rbf、RbfSegmentStore、EventJournal、DurableGraph.StateStore.Serialization、DurableGraph、DurableGraph.StateStore.Storage、DurableGraph.StateStore。包 ID 均以 `Atelia.` 开头；Generator 与 Build 工具按上游 DurableGraph 包的既有规则随包分发，不另造消费者手工接线。
 
 从 DramaBoard 根目录运行（PowerShell 7+、Git、.NET 10 SDK）：
 
@@ -15,7 +15,7 @@
 pwsh -File scripts/Prepare-DurableGraph.ps1
 ```
 
-默认源仓库为兄弟 `../durable-graph` 与 `../atelia`。缺少目标 checkout 时，脚本从源仓库执行 `git worktree add --detach <target> <完整 SHA>`，目标为忽略目录 `artifacts/durablegraph-integration/fixed/{durable-graph,atelia}`。这会登记源仓库的 worktree 元数据，不修改其当前工作树。源仓库必须已有固定提交对象；脚本不自行 fetch、reset 或删除目录。已有目标必须是准确的仓库根目录、HEAD 匹配且 tracked 文件干净，否则立即停止。源仓库的未提交开发不会被复制过去。
+默认源仓库为兄弟 `../durable-graph` 与 `../atelia`。缺少目标 checkout 时，脚本从源仓库执行 `git worktree add --detach <target> <完整 SHA>`，目标为忽略目录 `artifacts/durablegraph-integration/fixed-1c6083c/{durable-graph,atelia}`。这会登记源仓库的 worktree 元数据，不修改其当前工作树。源仓库必须已有固定提交对象；脚本不自行 fetch、reset 或删除目录。已有目标必须是准确的仓库根目录、HEAD 匹配且 tracked 文件干净，否则立即停止。源仓库的未提交开发不会被复制过去。
 
 可显式指定源仓库、checkout 根与 feed；CI 也可以事先把固定源码 checkout 到同一根下的 `durable-graph` 和 `atelia` 两个目录，随后用同一脚本校验、打包，已有 checkout 不需要访问源仓库：
 
@@ -23,7 +23,7 @@ pwsh -File scripts/Prepare-DurableGraph.ps1
 pwsh -File scripts/Prepare-DurableGraph.ps1 `
     -DurableGraphSource E:/repos/Atelia-org/durable-graph `
     -AteliaSource E:/repos/Atelia-org/atelia `
-    -CheckoutRoot artifacts/durablegraph-integration/fixed `
+    -CheckoutRoot artifacts/durablegraph-integration/fixed-1c6083c `
     -Feed artifacts/durablegraph-integration/feed
 ```
 
@@ -36,11 +36,23 @@ pwsh -File scripts/Prepare-DurableGraph.ps1 `
 需要重新生成时使用未消费过的 freshVersion，并让全部消费者的 `DurableGraphPackageVersion` 同步，例如：
 
 ```powershell
-$freshVersion = '0.0.0-dramaboard.20260912.f68388f.2'
+$freshVersion = '0.0.0-dramaboard.20260912.1c6083c.2'
 pwsh -File scripts/Prepare-DurableGraph.ps1 -PackageVersion $freshVersion
 # 后续 restore/build/test 同时传 -p:DurableGraphPackageVersion=$freshVersion。
 ```
 
 不通过清理全局 NuGet 缓存掩盖同版本不同内容；默认版本是本批固定来源标识。更换源码提交时须显式修订脚本中的 pin、此文档以及消费者版本，不能只改变版本号便声称来自新源码。
 
-本轮证据（2026-09-12）：在上述两个干净 checkout 上执行默认命令，九个包全部打包成功；再次执行校验并复用九个包成功。首个 Kernel 消费构建通过并发布七份 schema history。这些结果证明固定依赖与包接线可用，游戏保存、冷恢复及完整验收仍由真实接入计划推进，不能由本条推断已完成。
+## DB-068 接口迁移证据
+
+2026-09-12：从 `f68388f` 包迁移至上述 `1c6083c` 包，Kernel / Spatial / FirstBoard 的 21 处框架基类声明改为 `IDurableObject`。保留普通 class、字段及版本、构造、相等与集合快照行为；本次未转换为 record，也不是业务 Schema 升版。
+
+九个包首次准备和再次校验复用均通过。全 solution 执行 Clean 后，以 `-warnaserror -p:DurableGraphSchemaHistoryMode=Verify` 构建，零警告、零错误；64 份已提交 `.dgschema` 的路径与 SHA256 均未改变。Windows 下 `dotnet test DramaBoard.Local.slnx --no-build --no-restore -m:1 -nr:false` 的 11 个测试程序集共 515 项通过、零失败、零跳过；本轮未运行远端 CI 或 Linux。
+
+另用真实旧包程序写出存档，新包程序跨进程恢复和续写，未通过诊断 JSON 重建世界。消费者使用[既有 process witness](../../tests/FirstBoard.Persistence.Process/Program.cs)，旧版为 DramaBoard `0155b30` / 包 `0.0.0-dramaboard.20260912.f68388f.1`。Continue、Reverse 分别验证：
+
+- 旧程序 `create <save> <response> 1` 写 S1；新程序 `open <save> <response> 0` 精确恢复且不改存档字节，再 `open ... 1` 续写到 S2。
+- 旧程序 `pending <save> <response> 1` 留下 E2；新程序 `open ... 0` 只 fold pending facts、零 Forecast/Plan，发布 S2。
+- 两条路径的完整 World、Cursor、NextRequest、Pending 与旧程序连续 `create ... 2` 的结果一致；续写事件与 pending 事件内容一致。再次冷开均无 replay，存档文件 SHA256 不变。
+
+上述 CLI 形式为 `dotnet <consumer>/DramaBoard.FirstBoard.Persistence.Process.dll <mode> ...`；复现跨包检查时，先独立保留旧构建的完整输出目录，再构建新包消费者，存档目录必须新建。当前一次性日志、两代输入及比较脚本保留在忽略目录 `artifacts/idurableobject-migration-20260912-035105/`；常规冷进程回归仍由[持久化测试](../../tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)维护。

@@ -21,7 +21,7 @@ public sealed record EntityPlacement
 
 /// <summary>Stores one entity and its current exclusive location.</summary>
 [DurableType("DramaBoard.Spatial.SpatialEntity", 1)]
-public sealed partial class SpatialEntity : DurableBase, IEquatable<SpatialEntity>
+public sealed partial class SpatialEntity : IDurableObject, IEquatable<SpatialEntity>
 {
     [DurableField(1)] private EntityId _id;
     [DurableField(2)] private long _movementGeneration;
@@ -56,7 +56,7 @@ public sealed partial class SpatialEntity : DurableBase, IEquatable<SpatialEntit
 
 /// <summary>Stores a sparse complete replacement of one passage's two entry bits.</summary>
 [DurableType("DramaBoard.Spatial.PassageEntryAccessOverride", 1)]
-public sealed partial class PassageEntryAccessOverride : DurableBase, IEquatable<PassageEntryAccessOverride>
+public sealed partial class PassageEntryAccessOverride : IDurableObject, IEquatable<PassageEntryAccessOverride>
 {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private PassageEntryAccess _access;
@@ -78,7 +78,7 @@ public sealed partial class PassageEntryAccessOverride : DurableBase, IEquatable
 
 /// <summary>Stores one future entry-access patch, uniquely addressed by passage and due time.</summary>
 [DurableType("DramaBoard.Spatial.ScheduledPassageEntryChange", 1)]
-public sealed partial class ScheduledPassageEntryChange : DurableBase, IEquatable<ScheduledPassageEntryChange>
+public sealed partial class ScheduledPassageEntryChange : IDurableObject, IEquatable<ScheduledPassageEntryChange>
 {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private ModelTime _due;
@@ -104,7 +104,7 @@ public sealed partial class ScheduledPassageEntryChange : DurableBase, IEquatabl
 
 /// <summary>Owns canonical immutable dynamic state for one Graph Spatial world.</summary>
 [DurableType("DramaBoard.Spatial.GraphSpatialState", 1)]
-public sealed partial class GraphSpatialState : DurableBase, IEquatable<GraphSpatialState>
+public sealed partial class GraphSpatialState : IDurableObject, IEquatable<GraphSpatialState>
 {
     [DurableField(1)] private List<SpatialEntity> _entities = [];
     [DurableField(2)] private List<PassageEntryAccessOverride> _passageEntryAccessOverrides = [];

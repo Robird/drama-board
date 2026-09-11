@@ -1,6 +1,6 @@
 # 003：真实领域模型接入反馈
 
-状态：2026-09-12，DramaBoard 已实际运行完整世界与独立事件的保存、冷恢复；本轮使用 DurableGraph `f68388f` 的真实 NuGet 包。[固定来源与复现](../../worksets/durablegraph-package-source.md)。本文是消费者反馈，不要求上游立刻扩张实现。
+状态：2026-09-12，record class 易用性反馈已由上游 DB-068（`1c6083c`）落实，DramaBoard 已采用 `IDurableObject` 包。[当前包来源与迁移证据](../../worksets/durablegraph-package-source.md)。下述首轮功能和成本观察使用旧包 `f68388f`，不代表新版性能测量。
 
 ## 已满足的需求
 
@@ -10,13 +10,13 @@
 
 本批没有发现阻断接入的存储功能缺口。ReadPair、局部历史分页、ArtifactStore 或运行栈恢复均不是这次集成的前置条件。
 
-## 最有价值的后续易用性需求：不可变 class 声明
+## 已回应的易用性需求：不可变 class 声明
 
 主要工作量在领域声明适配，而非保存 API。原来的 positional `record class` 需要改写为普通 partial durable class，并手工恢复构造、复制更新、值相等、hash、必要的 `==` 与只读集合外观。实际改造集中在 [FirstBoardDomain](../../../src/FirstBoard/FirstBoardDomain.cs) 和 [GraphSpatialFact](../../../src/Spatial/Facts/GraphSpatialFact.cs)。
 
 这不是单纯的写法偏好：cold E/S 的 contact key 必须按值比较；事件文本可以包含任意字符，不能用分隔符拼接代替结构相等；`readonly List<T>` 只禁止替换引用，仍然允许修改内容。迁移中这些错误都需要额外审查。当前消费方已修正，不需要为此暂停玩法开发。
 
-建议上游后续评估：支持普通/positional `record class` 的字段声明、恢复与继承，保留 C# 原有 `with` 和 equality；或先提供一份经过真实 PackageReference 验证的不可变领域模型使用范式。目标是减少消费者手工复制声明和语义的工作，不要求框架自动深复制任意事件闭包。容器及元素的快照纪律仍由应用负责。
+上游 [DB-068 消费示例](../../../../durable-graph/experiments/PackageConsumerProbe/RecordClassConsumer/README.md)现已支持普通/positional `record class`、泛型跨库继承以及 class→record 同版 Schema history；以 `IDurableObject` 替代框架基类。DramaBoard 本次先迁移 marker 并重编译，保留原字段、构造与相等行为。后续遇到具体模型时再用 record 删除样板代码：`with` 仍是浅复制，集合内容相等与事件快照纪律仍由应用负责。
 
 ## 首次成本观察
 

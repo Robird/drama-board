@@ -56,7 +56,7 @@ public static class BoardTiming
 }
 
 [DurableType("DramaBoard.FirstBoard.BoardFact", 1)]
-public sealed partial class BoardFact : DurableBase, IEquatable<BoardFact>
+public sealed partial class BoardFact : IDurableObject, IEquatable<BoardFact>
 {
     [DurableField(1)] public readonly string Kind;
     [DurableField(2)] public readonly string? RelatedId;
@@ -68,7 +68,7 @@ public sealed partial class BoardFact : DurableBase, IEquatable<BoardFact>
 }
 
 [DurableType("DramaBoard.FirstBoard.BoardWaitActivity", 1)]
-public sealed partial class BoardWaitActivity : DurableBase, IEquatable<BoardWaitActivity>
+public sealed partial class BoardWaitActivity : IDurableObject, IEquatable<BoardWaitActivity>
 {
     [DurableField(1)] public readonly ModelTime Due;
     public BoardWaitActivity(ModelTime Due) => this.Due = Due;
@@ -78,7 +78,7 @@ public sealed partial class BoardWaitActivity : DurableBase, IEquatable<BoardWai
 }
 
 [DurableType("DramaBoard.FirstBoard.BoardActor", 1)]
-public sealed partial class BoardActor : DurableBase, IEquatable<BoardActor>
+public sealed partial class BoardActor : IDurableObject, IEquatable<BoardActor>
 {
     [DurableField(1)] public readonly long Id;
     [DurableField(2)] public readonly string Key;
@@ -98,7 +98,7 @@ public sealed partial class BoardActor : DurableBase, IEquatable<BoardActor>
 }
 
 [DurableType("DramaBoard.FirstBoard.BoardObject", 1)]
-public sealed partial class BoardObject : DurableBase, IEquatable<BoardObject>
+public sealed partial class BoardObject : IDurableObject, IEquatable<BoardObject>
 {
     [DurableField(1)] public readonly long Id;
     [DurableField(2)] public readonly string Key;
@@ -111,7 +111,7 @@ public sealed partial class BoardObject : DurableBase, IEquatable<BoardObject>
 }
 
 [DurableType("DramaBoard.FirstBoard.PendingPassageEncounter", 1)]
-public sealed partial class PendingPassageEncounter : DurableBase, IEquatable<PendingPassageEncounter>
+public sealed partial class PendingPassageEncounter : IDurableObject, IEquatable<PendingPassageEncounter>
 {
     [DurableField(1)] public readonly PassageContactKey ContactKey;
     [DurableField(2)] public readonly PassageContactKind Kind;
@@ -122,7 +122,7 @@ public sealed partial class PendingPassageEncounter : DurableBase, IEquatable<Pe
 }
 
 [DurableType("DramaBoard.FirstBoard.FirstBoardGameState", 1)]
-public sealed partial class FirstBoardGameState : DurableBase, IEquatable<FirstBoardGameState>
+public sealed partial class FirstBoardGameState : IDurableObject, IEquatable<FirstBoardGameState>
 {
     [DurableField(1)] public readonly ulong WorldSeed;
     [DurableField(2)] public readonly long NextPersistentId;
@@ -154,7 +154,7 @@ public sealed partial class FirstBoardGameState : DurableBase, IEquatable<FirstB
 
 /// <summary>Owns the complete Game + objective Graph Spatial committed world.</summary>
 [DurableType("DramaBoard.FirstBoard.FirstBoardWorld", 1)]
-public sealed partial class FirstBoardWorld : DurableBase, IEquatable<FirstBoardWorld>
+public sealed partial class FirstBoardWorld : IDurableObject, IEquatable<FirstBoardWorld>
 {
     [DurableField(1)] public readonly FirstBoardGameState Game;
     [DurableField(2)] public readonly GraphSpatialState Spatial;
@@ -222,7 +222,7 @@ public sealed partial class FirstBoardWorld : DurableBase, IEquatable<FirstBoard
 }
 
 [DurableType("DramaBoard.FirstBoard.BoardEventPayload", 1)]
-public abstract partial class BoardEventPayload : DurableBase
+public abstract partial class BoardEventPayload : IDurableObject
 {
     protected virtual IEnumerable<object?> GetEqualityComponents() => this switch
     {
@@ -427,7 +427,7 @@ public sealed partial class ChestOpenedEvent : BoardEventPayload
 }
 
 [DurableType("DramaBoard.FirstBoard.RejectedIntentSnapshot", 1)]
-public sealed partial class RejectedIntentSnapshot : DurableBase, IEquatable<RejectedIntentSnapshot>
+public sealed partial class RejectedIntentSnapshot : IDurableObject, IEquatable<RejectedIntentSnapshot>
 {
     [DurableField(1)] public readonly string ActionKindId;
     [DurableField(2)] public readonly string? TargetActorId;
@@ -468,7 +468,7 @@ public sealed partial class CellarSealedEvent : BoardEventPayload
 
 /// <summary>Exact Host fact union; every batch may combine Game and Spatial facts.</summary>
 [DurableType("DramaBoard.FirstBoard.FirstBoardFact", 1)]
-public abstract partial class FirstBoardFact : DurableBase
+public abstract partial class FirstBoardFact : IDurableObject
 {
     protected abstract object? EqualityValue { get; }
     public sealed override bool Equals(object? obj) => obj is FirstBoardFact other && other.GetType() == GetType() && Equals(EqualityValue, other.EqualityValue);

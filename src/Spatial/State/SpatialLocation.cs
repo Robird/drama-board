@@ -5,7 +5,7 @@ namespace DramaBoard.Spatial;
 
 /// <summary>Base value for one entity's exclusive objective location.</summary>
  [DurableType("DramaBoard.Spatial.SpatialLocation", 1)]
-public abstract partial class SpatialLocation : DurableBase
+public abstract partial class SpatialLocation : IDurableObject
 {
     private protected SpatialLocation()
     {
