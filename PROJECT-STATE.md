@@ -18,9 +18,9 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 ## 当前焦点与建议下一步
 
-用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。两层设计已选择双根（可用固定 PairRoot）、与 Journal 对应的线性 Revision Parent，以及事件引用不随后续处理变化的领域快照。唯一[可编辑草稿](docs/research/event-journal-state-store-draft.md)维护使用规则与证据；当前完善可交给 DurableGraph 的方案，具体 API/实现分片未冻结，本轮仅修订文档。
+用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。两层设计已选择双根、线性 Parent 和事件快照；[唯一草稿](docs/research/event-journal-state-store-draft.md)维护对外合同。仅对照 Kernel/Spatial 目标的消费者评审认为主要存储能力已足够；当前聚焦领域模型与 E/S 映射，内部比较/编码优化由用户在 DurableGraph 侧继续，具体产品尚未实现。
 
-1. 下一设计落点：按草稿的 PairRoot + World + Event 快照最小见证，具体化声明、Journal 接管发布/恢复的 API 与验证分片；不再建设兄弟 Revision 的合并身份机制。
+1. 下一设计落点：按草稿 §7 将一个 Occurrence 映射为 E/S，对齐 State 完成时的版本/时间、恢复与完整边界 fork；给上游的需求保持模型保存、单一发布、冷开和分支，不加入领域专用存储机制。
 2. DramaBoard 可独立从 PassageEncounterHostTests 提取前缀/纯 driver，补足 NextPersistentId 与 KnownFacts.Text 等完整边界对照；上游基础机制成立后接真实保存/重开。
 3. 接入后验证一次模型升版，汇总声明、快照构造及实际写入成本；完整 Player closure 与倒带 UI 继续分别裁决。
 

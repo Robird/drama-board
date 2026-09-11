@@ -131,3 +131,27 @@ Commit 错误先停止当前会话，重开判定实际 head；不承诺自动 r
 
 机制成立后接 FirstBoard 途中相遇场景。尚待具体化：领域快照构造与声明、Journal 接管发布的最小 API、真实包消费者及故障注入分片；不重开已选双根/Parent 方案。
 此前兄弟 Revision 与可变对象历史引用候选已退出当前草稿，演变保留在 Git，不重复维护方案对照表。
+
+## 7. DramaBoard 消费者目标对照
+
+本节只对照 [Kernel 目标设计](../design/simulation-kernel.md) 与 [Graph Spatial 目标设计](../design/graph-spatial-world.md)，不计现有代码迁移成本，也不选择 DG 内部的比较/编码优化。
+评审结论：若上述对外合同实现，已足以承载两份设计的主要持久化需求；未发现必须再向存储库索取的领域专用机制。消费者的持久化附加工作可集中在声明模型、快照纪律、一个统一驱动接缝和恢复校验。
+
+| 目标设计需求 | 消费者使用方式 |
+|---|---|
+| 完整世界、跨域原子性（003 §3、§7；008 §4.4） | State 保存 Game+Spatial+Kernel 完整边界；一个 E/S 对对应一次 Occurrence，多条 facts 不拆成可观察的部分世界。 |
+| 确定性时间与仲裁（003 §2、§4、§9） | State 保留逻辑时刻、版本、seed/规则所需状态；E 记录已选 cause 及领域事件内容。下一次只从完成状态 Forecast。 |
+| Lazy traversal 与接触进展（008 §2.5–2.6） | 保存 anchor/time/speed/generation、entry overrides、scheduled patches、consumed contacts；位置/路线/关系继续由领域查询推导，不生成逐 tick 存储协议。 |
+| 恢复、历史与分叉（003 §8；008 §6.3） | 正常恢复直接 Load 已存图，历史沿 Journal 查询；DramaBoard 的可玩 fork 选完整 StateFrame，创建新 lineage 并继承世界/count/instant/seed。 |
+| 内容与信息边界（008 §5.4、§6.2） | 保存所用不可变 Definition 或能精确恢复它的绑定；完整持久图属于宿主，Player 仍只收到合法投影，不直接获得事件/世界根。 |
+
+这里的 E 应由已选 winner 的可信领域流程产生，不是每个 Forecast candidate、每条子 fact 或未经校验的 Player proposal。
+已选 cause 的 CandidateKey 需要保留；全量候选集合、临时 owner map 与 Forecast/query cache 不需要保存。领域边界字段可放在领域根/事件对象中，不要求通用 Journal 或 StateStore 理解它们。
+
+两份目标文档尚含旧存储约定，后续应定向修订，不能称为逐字兼容：
+
+- 003 §5/§7 的单帧发布改为 E/S 阶段；只有 S 完成才推进 WorldVersion/LogicalInstant、发布世界与重新 Forecast。E 已发布而 S 未完成时保持待处理状态，失败“零已完成 transition”不再等于“物理 Journal 零新增”。
+- 003 §8.1、008 §6.3 的正常恢复从 facts fold 改为加载状态；运行时领域状态更新与可选 conformance 验证仍可保留，不要求恢复重新调用 Player。
+- 003 §8.3 的完整边界 fork 继续由应用限制在 S；存储能从 E 分叉不自动授予游戏中途分叉语义。新 lineage 是领域分支身份，不能直接照搬旧 State 中的完整 WorldVersion。
+
+本节是消费者契约评审，未改上述目标设计正文。E 相对 Plan/校验的精确位置和接缝命名在 DramaBoard 后续设计中收敛；这些是领域流程映射，不是缺少新的存储原语。
