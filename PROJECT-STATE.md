@@ -18,11 +18,11 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 ## 当前焦点与建议下一步
 
-用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。当前共同设计用户提出的 EventJournal + StateStore 两层方案：DomainEvent/DomainState 帧都引用强类型对象图 Revision，复用 branch/ref。用户指定[可编辑草稿](docs/research/event-journal-state-store-draft.md)作为唯一方案讨论载体；主体有可行路径，Parent 拓扑、事件生成能否修改旧世界及共享引用语义待裁决，尚未实施。
+用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。两层设计已选择双根（可用固定 PairRoot）、与 Journal 对应的线性 Revision Parent，以及事件引用不随后续处理变化的领域快照。唯一[可编辑草稿](docs/research/event-journal-state-store-draft.md)维护使用规则与证据；当前完善可交给 DurableGraph 的方案，具体 API/实现分片未冻结，本轮仅修订文档。
 
-1. 最小独立下一包：从现有 PassageEncounterHostTests 提取场景前缀与纯 request→response driver，建立完整世界/提交边界对照，补足 NextPersistentId 与 KnownFacts.Text 等快照遗漏。无需先修改生产模型。
-2. 先按两层草稿裁决处理视图/Parent 与领域身份，再做真实包保存/重开试验。旧固定会话根方案仅作比较；新路径需要框架联合恢复世界与事件的共享对象，不能分别 Load 后直接拼接。
-3. 基础路径成立后验证一次模型升版，汇总模型声明、登记/恢复代码及实际对象写入反馈；倒带/分叉和完整 Player closure 的范围继续显式待决。
+1. 下一设计落点：按草稿的 PairRoot + World + Event 快照最小见证，具体化声明、Journal 接管发布/恢复的 API 与验证分片；不再建设兄弟 Revision 的合并身份机制。
+2. DramaBoard 可独立从 PassageEncounterHostTests 提取前缀/纯 driver，补足 NextPersistentId 与 KnownFacts.Text 等完整边界对照；上游基础机制成立后接真实保存/重开。
+3. 接入后验证一次模型升版，汇总声明、快照构造及实际写入成本；完整 Player closure 与倒带 UI 继续分别裁决。
 
 ## 长期 roadmap
 
@@ -37,8 +37,8 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 ## 焦点问题与延期条件
 
 - **分支与续局**：branch/ref 已进入用户两层候选；需验证 E/S 两种 head 的恢复与分支间对象隔离。完整 Player closure、倒带 UI 与首片实际范围继续分别裁决。
-- **事件与处理结果**：Journal 交替 S→E→S，以一个 ref 表达前沿；StateRevision 可同父也可线性，区别及具体反例只在草稿维护。事件语义由领域定义，异常/retry 历史继续延期。
-- **谁持有权威状态、谁提交？** 现有不可变 record + reducer/Journal 与 DurableGraph 的持久对象身份需要明确衔接。不要把“替换 adapter”或“重写为可变领域图”预先记成裁决；Game + Spatial、逻辑时间与候选消费状态必须一致恢复。
+- **事件与处理结果**：统一 PairRoot.State/Event 槽随 S→E→S 交替更新，只有 Journal ref 发布前沿；事件语义由领域定义，异常/retry 历史继续延期。
+- **快照与领域适配**：事件保留旧快照，替换式 reducer 方向可继续；需核对集合/元素别名及 DG 支持的声明形状，不强制稳定可变实体或全量深拷贝。Game + Spatial、逻辑时间与候选消费状态仍须一致恢复；根封套不自动串起历史。
 - **Player 与外部调用的恢复边界？** 先明确客观世界切片，再逐项确定记忆、叙事记录和 Player 状态如何同世界对齐。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。
 - **跨项目会话协作**：用户正在完善 Codex MCP；本批准备工作独立推进。接口就绪后试用固定项目会话的咨询、追问、结果读取、内部子代理与重启恢复；双方维护各自 PROJECT-STATE，交换具体需求、证据与结论。
 - **Spatial 扩展**：调速/途中停留、Area、ViewLink、关系变化等按真实玩法触发；contact 索引按性能证据触发，详见 008。旧 Grid 留作历史证据，当前无恢复双实现的需求。

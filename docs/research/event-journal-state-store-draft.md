@@ -1,135 +1,133 @@
 # EventJournal + StateStore 两层持久化草稿
 
-> 状态：共同讨论中的可编辑草稿，不是已批准设计或实现说明。随结论替换正文，不追加逐轮纪要。
-> 用户于 2026-09-11 提出两层方案并要求以本文作为讨论载体。入口：[项目状态](../../PROJECT-STATE.md)。
+> 状态：用户已选双根、线性 Parent 与事件快照方向；本文是可编辑设计草稿，具体 API 和实施分片尚未冻结，产品尚未实现。
+> 按结论替换正文，不追加讨论日志。入口：[项目状态](../../PROJECT-STATE.md)。
 
-## 1. 问题与需求来源
+## 1. 已选方向与来源
 
-| 来源 | 当前要求或边界 |
+| 来源 | 方向或边界 |
 |---|---|
-| 用户当前设想 | 事件历史为应用主轴；每次处理后的对象图直接保存；正常恢复不执行历史业务 reducing。 |
-| 用户当前设想 | 下层 StateStore，上层 EventJournal；核心帧仅 DomainEvent/DomainState，两者都引用 StateRevision。 |
-| 用户当前设想 | 输入输出都是强类型领域对象；事件直接引用旧世界对象；框架承担 Schema、序列化、引用身份及增量编码。 |
-| 用户当前设想 | 复用 EventJournal 的 branch/ref；领域 EventInstance 可同时被结果状态引用。 |
-| 用户已说明的延期 | 异常/retry 是否记录到同一事件历史可以后议；本轮讨论，不实施产品。 |
-| 当前 DramaBoard 事实 | Kernel scratch-fold、验证、AppendBatch 后安装世界；新设计可以改此接缝，但 Game+Spatial+Kernel 边界须完整恢复。 |
-| 评审范围建议 | 先按一个活动分支会话、串行处理分析；不预设多 writer、通用并发 merge、GC 或历史兼容框架。 |
+| 用户已选 | 事件历史为应用主轴；每步处理后的对象图直接保存，正常恢复不执行历史业务 reducing。 |
+| 用户已选 | 下层 StateStore 保存领域对象图；上层 EventJournal 的 EventFrame/StateFrame 均引用 StateRevision，复用 branch/ref。 |
+| 用户已选 | EventFrame 包含 LastStateRoot + CurrentEventRoot；StateFrame 包含 LastEventRoot + CurrentStateRoot。双根可用虚拟单根表达。 |
+| 用户已选 | 前一个 Revision 自然是后一个的 Parent，与 Journal 历史对应；不再选择兄弟 Revision 拓扑。 |
+| 用户已选 | Event 按快照建模，引用领域对象快照，不引用随后变化的 mutable 领域对象；接受加载状态时连带加载最近事件。 |
+| 用户目标 | 输入输出均为强类型领域对象，框架承担 Schema、序列化、身份恢复和增量编码；不另建 JSON Schema/事件正文 codec。 |
+| 本稿收敛的使用规则 | 生成事件只读旧世界；处理事件保留事件快照并产生下一状态。先按单活动分支会话、串行处理验证。 |
+| 本轮授权与延期 | 本轮修订文档，不实施产品；异常/retry 是否进入同一历史、完整 Player/LLM 恢复、GC 与并发 merge 继续延期。 |
 
-本轮不是要求在当前 GraphRepository 外面保留全部旧限制；源码限制用于评估改造成本，不作为新产品需求。
+已保存 State 是历史处理结果，不默认当作可从事件重建的可删缓存。逻辑完整快照不要求物理全量保存，Base/Delta 重建由底层负责。
+两层是职责划分，不意味着移除 SchemaStore、Generator 或建立新的程序集划分。
 
-## 2. 用户候选的主体
+## 2. 双根作为一种使用模式
 
-下层继续使用 StateStore，外观可按需调整。上层 EventJournal 的两类帧结构高度相似，少量 Kind/Meta 区分语义，主体都指向 StateStore 中的一次对象图保存。
-
-- **DomainEvent**：保存以强类型 EventInstance 为根的图。产生事件的基态是上一个 DomainState，事件可以直接引用其中任意受支持对象。
-  调用方提交事件根，由框架处理增量保存；可以单独加载事件根，只实例化其可达对象。
-- **DomainState**：保存处理后的领域世界，包含产生它的 EventInstance。用户希望连续处理时能保持同一个事件实例以及共享引用。
-  用户描述其增量基态仍为上一个 DomainState。
-- **Journal branch/ref**：提供历史选择和分支。分支 head 为 DomainEvent 表示该事件尚待处理；head 为 DomainState 表示可产生下一事件。
-
-用户给出的调用流程，按语义整理如下，尚非 API 设计：
+建议先用一个固定的、可声明持久化的封套表达双根，无需先给 StateStore 增加通用多根 API：
 
 ```text
-LoadRepoAndBranch
-取得最新 DomainState 与 branch head
-if head.Kind == DomainEvent:
-    用 EventInstance 更新领域状态
-    CommitDomainState(domainState, eventInstance)
-else if head.Kind == DomainState:
-    由当前领域状态产生 EventInstance
-    CommitDomainEvent(eventInstance)
-    安排事件处理管线
+PairRoot { State, Event }
+JournalFrame { Kind, RevisionAddress, PairRootId, 必要 Meta }
 ```
 
-根状态初始化可以表现为第一条 DomainState；其具体 API 与元数据尚未讨论。
+PairRoot 是框架/使用模式的选择器，不是业务历史对象。Kind 只在 Journal 一处维护；State/Event 槽是普通领域对象引用，帧通过 Revision 与 PairRootId 选定完整图。
 
-## 3. 临时术语与两个 Parent
-
-| 本文简称 | 所处层与含义 |
-|---|---|
-| `event` / EventInstance | 内存中的领域对象，例如某种 EventClass；不是 Journal Frame。 |
-| `R_E` / `R_S` | StateStore 中事件图/世界图的 StateRevision；是否共用现有类型仍可按证据裁决。 |
-| `J_E` / `J_S` | EventJournal 中 DomainEvent/DomainState 帧，指向相应 Revision 与选定根。 |
-
-候选帧的最小逻辑内容为 `Kind + RevisionAddress + RootObjectId + 必要 Meta`。根地址需能支持恢复，字段位置尚未冻结。
-
-为了检查现有 branch/ref，主线程当前将 **Journal Parent** 理解为连续历史：
-
-```text
-J_S0 → J_E1 → J_S1 → J_E2 → J_S2
-```
-
-用户关于“相对于上一个 DomainState”的描述，则暂解释为 **StateRevision 增量 Parent**：
-
-```text
-R_S0 ─┬→ R_E1
-      └→ R_S1 ─┬→ R_E2
-               └→ R_S2
-```
-
-这是待确认的解释，不应把两个 Parent 自动合并。评审需要比较兄弟 Revision 与线性 Revision 的实际代价，不预设必须修改用户提案。
-
-## 4. 当前证据入口
-
-- [WorldWorkspace](../../../durable-graph/src/DurableGraph.StateStore/WorldWorkspace.cs)：固定 World 根；每次 Load 创建自己的实例表，先处理完整 Revision 再实例化可达图；保存与安装维护身份和比较基线。
-- [LoadedRevisionPlanner](../../../durable-graph/src/DurableGraph.StateStore/LoadedRevisionPlanner.cs) / [ObjectRevisionPlanner](../../../durable-graph/src/DurableGraph.StateStore/ObjectRevisionPlanner.cs)：exact Parent 校验；完整 post-live 集合决定 Removes。
-- [RevisionDecoder](../../../durable-graph/src/DurableGraph.StateStore/RevisionDecoder.cs)：当前遍历全部 live 行读取/验证，不等于按根仅读取可达字节。
-- [CaptureSession](../../../durable-graph/src/DurableGraph/CaptureSession.cs)：实例与 ObjectId、分配游标、候选接受。
-- [GraphRepository](../../../durable-graph/src/DurableGraph.StateStore/GraphRepository.cs)：当前单 head publication 入口；不是新两层方案已经可直接复用的高层 façade。
-- [EventJournal](../../../atelia/src/EventJournal/EventJournal.cs) / [Refs](../../../atelia/src/EventJournal/EventJournal.Refs.cs)：帧追加、持久化、ref 推进、分支和祖先链。
-- [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)：当前领域提交边界；不是新方案的不可变限制。
-
-以上是静态阅读入口，本轮没有运行实现验证。
-
-## 5. 已核实的约束与最小机制
-
-以下来自三个独立评审角色及一次交叉质询，主线程核对源码；是设计评审结论，不是运行验收。
-
-| 项目 | 裁决与证据 |
-|---|---|
-| 两类帧和一个 Journal ref | **保留**。ref 指向 E 表示待处理，指向 S 表示已完成；最近 S 可从链导出，不另建已处理 head。 |
-| 第三种 manifest、独立事件正文 codec | **合并/延期**。E/S 帧已承担 Revision/根选择；领域 event 使用 DG 生成能力，框架只需统一引用封套。Schema 登记仍是下层能力，两层不等于删除 SchemaStore。 |
-| 发布顺序 | **保留**。Schema/Revision 完成规定持久化 → Journal Frame 追加 → ref 发布 → 安装内存比较基线。未被 ref 选中的追加记录不算分支进展。GraphRepository 的独立 publication head 需重构，不能叠成第二权威。 |
-| 两种 Parent 的职责 | **区分，拓扑待决**。Refs.AdvanceRef 要求新帧 Parent 等于旧 head；StateRevision Parent 则选择增量比较/恢复基态，两者不必相同。 |
-| 单独捕获 E 的 membership | **允许**。ObjectRevisionPlanner 会从 R_E 中 Remove 非事件可达的旧对象，但不修改 R_S0；兄弟方案仍可从 R_S0 保存完整新世界。不能把局部 Remove 误称为丢失旧存档。 |
-| S/E 共用身份 | **保留框架内机制**。WorldWorkspace.Load 每次创建新实例表；分开 Load 会产生两份 Alice。需一个受控处理视图，消费者无需自行合并对象。 |
-| 按根只实例化 | **已有基础，读取优化另议**。WorldWorkspace 只 Allocate 可达对象；RevisionDecoder 当前仍读取/验证全部 live 行。不能声称当前读取量只与事件闭包相关。 |
-
-“同一实例”的建议边界是**一次处理视图**。独立查看不同历史版本必须隔离；不能建立全库 ObjectId→单一 CLR 对象的缓存。
-兄弟方案还需保留 R_S0 的绑定并导入 R_E1 的新对象 ID/分配游标：CaptureSession.Accept 当前会用候选可达绑定替换旧表，event-only Accept 不能直接成为世界的下一身份表。
-例如旧 S 最大 ID 为 10，E 已分配 11；冷恢复不能再从旧 S 的 11 开始给另一个新对象编号。
-
-事件普通引用按所属快照解析的建议语义：R_E1 中 `event.Target.HP=10`，处理后 R_S1 中同一事件身份的 `Target.HP=7`。
-这不修改 R_E1；同一事件身份不保证其引用闭包在所有版本中值相同。需要固定的观察值可作为事件字段，但不强制改成手工 ID。
-事件回指 World 会扩大可达闭包，这是普通引用的真实含义；不因假设中的大闭包提前增加新引用框架。
-
-DramaBoard 当前 `FirstBoardReducer.UpdateActor` 使用 `with` 替换 Actor。若事件仍引用旧 Alice，新世界装入新 Alice 后引用不会自动重定向。
-因此领域模型还需选择稳定实体原地更新，或明确事件保留旧对象版本；共同加载只解决恢复身份，不能替代这个运行时选择。
-
-## 6. 评审裁决与最小验证
-
-**当前结论**：两层主体有可行路径；保持应用层小循环的主要工作落在框架的处理视图、根选择、身份与发布接缝。不能称为现有 GraphRepository 的零成本包装。
-
-**待决一：StateRevision Parent 与成员集。**
-
-| 候选 | 最小机制 | 代价 |
+| Journal 帧 | PairRoot.State | PairRoot.Event |
 |---|---|---|
-| A，保留用户原描述：R_E1、R_S1 同父 R_S0 | R_E1 只存 event 闭包；框架保留 S0 基线/身份，冷恢复时将同源 S0+E1 联合实例化，S1 继续比较 S0。 | 两来源需验证共享对象兼容并导入 E 新 ID；E 在 S1 相对 S0 是新对象，当前规划器需再写 Base。 |
-| B，评审提出的线性备选：R_S0→R_E1→R_S1 | R_E1 保留完整世界与 event 的成员集，帧主要根仍是 event；恢复从同一 Revision 联合选择 World/Event 根，共用一份表与比较基线。 | 需支持保留世界根/联合捕获；E 的 Revision 目录更大，当前全 live 解码成本存在；改变了用户提出的 S 增量 Parent。 |
+| 初始 StateFrame | 初始完整状态 S0 | null |
+| EventFrame E1 | LastStateRoot = S0 | CurrentEventRoot = E1 |
+| StateFrame S1 | CurrentStateRoot = S1 | LastEventRoot = E1 |
+| EventFrame E2 | LastStateRoot = S1 | CurrentEventRoot = E2 |
 
-B 在框架身份管理上更简单，A 更贴合原描述且 E 的成员集更小。此处尚不替用户选；保留成员集不等于每次重写全部对象。
+初始帧后两槽均非空；E 提交只更换 Event 槽、保留原 State；S 提交只更换 State 槽、保留导致它的同一个事件快照。
+State 领域模型不必再为存储关联重复保存 LastEvent。StateRoot 指领域世界，不是上一个 PairRoot。
+PairRoot 不含 PreviousPairRoot；领域快照也不得回指这个可变封套。前帧/前 Revision 通过存储地址连接，不自动纳入当前领域图的可达闭包。
+每帧保存的是双根联合可达图，旧对象仅在仍被当前世界或最近事件引用时留下；不为省加载重新拆成两个独立 Load。
 
-**待决二：生成事件是否可以修改旧世界？**
+## 3. 一条对应的提交历史
 
-建议先限定生成 E 只读旧世界持久字段，可创建任意受支持的新事件对象图；处理阶段再更新世界。这是建议，非用户已定法则。
-如果允许生成时修改 Alice 和 Bob，而 E 只引用 Alice，简单“继承 S0 目录再覆盖 E 闭包”会得到 Alice 新/Bob 旧的混合世界。
-A 此时不能仅以 ID 去重合并；B 也需捕获同一时刻完整 World+Event，并明确以这个中间世界继续处理，而非静默改变基态。
+```text
+Journal:       J_S0 → J_E1 → J_S1 → J_E2 → J_S2
+StateRevision: R_S0 → R_E1 → R_S1 → R_E2 → R_S2
+```
 
-**待决三：同实例引用与现有不可变领域模型。** 先选上节的引用版本语义，再决定 DramaBoard 保留哪些替换式 reducer、哪些对象需要稳定身份。
+每个 Journal 帧选一个 Revision；其前帧所选 Revision 就是本 Revision 的 Parent。两层地址类型仍不同，但不暴露第二种可独立选择的父关系。
+前驱只表示存储历史，不是领域对象引用。沿分支顺序保存一次联合图，就有一份身份表、一份比较基线和一个分配游标。
+冷重开直接从 head 帧所选 Revision 加载 PairRoot，不再分别加载“最近 S”和“待处理 E”并合并对象。
+同一加载图内保留真实共享/循环引用；独立历史查看、不同分支会话的 CLR 实例相互隔离，不建全库 ObjectId→实例缓存。
 
-最小可执行验证建议：`World(Alice, Bob) + Event(Target = Alice)`，事件另带一个新建对象。
-验证连续处理与 E 后冷重开等价，`ReferenceEquals(event.Target, world.Alice)` 成立，Bob 不丢失、新 ID 不冲突；原事件快照与处理后快照各自保留正确值。
-从同一历史点建两个 Journal 分支并分别处理，验证历史选择与实例隔离；在 Revision 追加后、Frame 追加后、ref 发布后中断，验证恢复只按发布的 head。
-这组机制成立后再接真实相遇场景；异常/retry 账本、完整 LLM 执行恢复、分页优化与 GC 继续延期。
+建议的最小应用调用形状，名称仅为草稿：
 
-历史背景与完整 DramaBoard 状态闭包见[消费者前置研究](durablegraph-consumer-preflight.md)。旧候选的固定会话根、Artifact 独立格式和额外 manifest 均不约束本文。
+```text
+session = LoadRepoAndBranch(...)
+if session.Kind == StateFrame:
+    event = GenerateSnapshotEvent(session.State)  // 不修改旧世界
+    session.CommitDomainEvent(event)              // 保留 State
+    安排处理管线
+else:
+    nextState = Handle(session.State, session.Event)
+    session.CommitDomainState(nextState)          // 保留同一 Event
+```
+
+处理管线的安排不是另一份权威待办：即使发布 E 后进程退出，重开时的 E-head 已足以表明待处理。
+业务的已完成步数按 StateFrame/领域游标解释，不直接沿用“Journal 总帧数等于 WorldVersion”的旧 Kernel 合同。
+
+## 4. 事件快照与共享的边界
+
+事件被记录后，其可达领域快照的持久值和引用关系不随后续处理改变。这是领域建模合同；DG Capture 冻结存储候选，并不会自动冻结原 CLR 对象。
+只把 Event.Target 字段设为 readonly 不够：若 Target.Inventory 与活动世界共用可变 List，后续 Add 仍会改变事件快照；仅复制 List 而共享可变 Item 也不够。
+
+最小建模方式是复用不可变领域对象及子图：更新时创建变化路径上的新对象，未改变的不可变对象可以共享，不要求整世界深拷贝或一套平行 Saved/DTO 模型。
+若领域世界采用可变对象，则事件需要隔离那些会被后续写入的可达部分；具体快照构造 API 由真实消费者试验选择，不先建设自动冻结/通用复制框架。
+已有快照内部的共享和循环也应保留，不能因复制破坏领域含义。
+
+```text
+E1 帧：State.Alice = Alice_v0；Event.TargetSnapshot = Alice_v0，HP=10
+S1 帧：State.Alice = Alice_v1，HP=7；Event.TargetSnapshot 仍为 Alice_v0，HP=10
+```
+
+E1→S1 连续会话保留同一个 Event 实例；冷重开后恢复其持久身份与引用关系，不承诺跨进程保留 CLR 实例。
+新旧 Alice 的业务身份可以相同；同一 Revision 中值不同的两个快照是不同对象，不能强制共用一个 ObjectId。
+删除原先要求 `ReferenceEquals(event.Target, world.Alice)` 始终成立的验收；只对本应共享的不可变子图检查实例一致。
+事件快照目标不是当前可变实体的写入入口；处理器根据领域语义产生下一世界，不把对快照的修改当作更新当前世界的捷径。
+
+这与 DramaBoard 当前替换式 reducer 方向相容：[FirstBoardReducer.UpdateActor](../../src/FirstBoard/FirstBoardDomain.cs) 创建新 Actor 后，事件保留旧 Actor 正是快照含义。
+但 record 或 IReadOnlyList 本身不证明递归不可变，仍需核对集合/元素别名；DG 当前不支持 record class 声明，适配声明形状与保留不可变语义是两项不同工作。
+领域主动引用大对象图会增加快照闭包；不把“连带一个事件”承诺为恒定小开销，也不把局部读取优化设为本片前置条件。
+
+## 5. 发布与恢复的最小边界
+
+一个 Journal branch ref 是唯一发布前沿；每次遵循：准备联合图 → Schema/StateRevision 完成规定持久化 → 追加 Journal Frame → 推进 ref → 安装本次内存基线。
+ref 只指向内容已完整持久化的 Revision/根，正常推进校验前帧与 Revision Parent 的对应；不能靠文件中最大的地址选择恢复点。
+
+| 中断位置 | 重开含义 |
+|---|---|
+| Revision 或 Frame 已追加，ref 尚未推进 | 分支仍在旧 head；新增物理记录不算该分支进展。 |
+| E 的 ref 已发布，尚未安排/完成处理 | 加载其 PairRoot 得到旧状态和完整事件快照，处理工作仍待完成。 |
+| S 的 ref 已发布，调用者尚未收到成功 | 加载其 PairRoot 得到完成状态；不能仅因上次报错再处理同一事件。 |
+
+根存在/类型与角色匹配、初始空 Event 特例及 S→E→S 交替由上层使用模式校验，不要求 StateStore 理解业务事件语义。
+Commit 错误先停止当前会话，重开判定实际 head；不承诺自动 retry、透明回滚或已实现的断电保证。故障验收范围由所选底层明确。
+分叉/移动 ref 选择已有历史帧后，需从其 Revision 创建新的处理会话，不能让旧会话携原基线继续写入。
+
+## 6. 已有基础、真实接缝与验证
+
+| 源码依据 | 本方案如何使用／尚缺什么 |
+|---|---|
+| [WorldWorkspace](../../../durable-graph/src/DurableGraph.StateStore/WorldWorkspace.cs) | 固定单根、一次加载的实例表及线性基线适合 PairRoot；双根模式本身不要求新 Revision 类型。 |
+| [CaptureSession](../../../durable-graph/src/DurableGraph/CaptureSession.cs)、[ObjectRevisionPlanner](../../../durable-graph/src/DurableGraph.StateStore/ObjectRevisionPlanner.cs) | 捕获 PairRoot 联合闭包，保留可达身份并计算 Removes；无需兄弟 Revision 合并、E 新 ID 导入或额外比较基线。 |
+| [RevisionDecoder](../../../durable-graph/src/DurableGraph.StateStore/RevisionDecoder.cs) | 当前读取/验证全部 live 行，随后只实例化根可达图；本片接受联合加载，不新增局部读取承诺。 |
+| [GraphRepository](../../../durable-graph/src/DurableGraph.StateStore/GraphRepository.cs) | 当前持有独立 publication.rbf 与单 head；需把发布/恢复入口接到 Journal 权威，不能直接叠加两次独立 Commit。 |
+| [EventJournal](../../../atelia/src/EventJournal/EventJournal.cs) / [Refs](../../../atelia/src/EventJournal/EventJournal.Refs.cs) | 复用帧寻址、持久化和 branch/ref；结合引用的 Revision/根验证与会话恢复，不从 ref 已有推断整个消费者已接通。 |
+| [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) | 当前 facts/scratch/AppendBatch 同步边界需要适配 E/S 两阶段；Game+Spatial+Kernel 完整状态仍按[消费者闭包](durablegraph-consumer-preflight.md)验收。 |
+
+上述为本轮源码阅读与独立交叉评审结果，尚未实现或运行测试。“根建模改动小”不代表发布改造、类型适配或写入量已有结论。
+
+下一验证包建议只用 `PairRoot + World(Alice, Bob) + Event(TargetSnapshot)`：
+
+1. 连续运行与 E-head/S-head 冷重开产生等价结果，Bob 不丢失；S 中 Event 快照保持处理前旧值，当前 Alice 为新值。
+2. 事件含集合与元素；随后修改活动世界不改变事件快照。本应共享的不可变子图在同次加载中只实例化一次。
+3. E→S 保留 Event，S→E 替换最近 Event；没有显式领域历史引用时，PairRoot 不自动保留所有历史封套/事件。
+4. 从同一历史点分两支处理，确认各自 head、旧快照和工作实例隔离；按上表三个发布位置验证中断恢复。
+5. 用真实生成模型保存/重开；统计模型改写量及实际 Base/Delta/Remove、文件写入，确认没有依赖旧业务 replay。
+
+机制成立后接 FirstBoard 途中相遇场景。尚待具体化：领域快照构造与声明、Journal 接管发布的最小 API、真实包消费者及故障注入分片；不重开已选双根/Parent 方案。
+此前兄弟 Revision 与可变对象历史引用候选已退出当前草稿，演变保留在 Git，不重复维护方案对照表。
