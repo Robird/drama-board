@@ -18,7 +18,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 ## 当前焦点与建议下一步
 
-用户已授权规划并执行不依赖 MCP 的先行任务、委派子代理和按需提交。[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付；当前焦点转向[消费者提案](docs/research/durablegraph-consumer-preflight.md)的途中相遇保存/重开场景。
+用户已授权的[接入前准备批次](docs/worksets/pre-integration-cleanup.md)已交付。当前与用户共同设计“事件为主轴、每步挂处理后对象图、恢复不重跑业务 reducer”的持久化模型；先记录事件、再发布引用事件的状态为用户提出的候选，待澄清事件语义与未完成处理边界。见[消费者讨论](docs/research/durablegraph-consumer-preflight.md#artifactstore-与联合历史优先级讨论)。
 
 1. 最小独立下一包：从现有 PassageEncounterHostTests 提取场景前缀与纯 request→response driver，建立完整世界/提交边界对照，补足 NextPersistentId 与 KnownFacts.Text 等快照遗漏。无需先修改生产模型。
 2. 再选择直接领域模型与原子发布/恢复接缝，做真实包编译及保存/重开试验。提案推荐保留不可变 scratch 的固定会话根，但尚未裁决；不能直接 Load 世界并配空 Journal 续局。
@@ -37,7 +37,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 ## 焦点问题与延期条件
 
 - **首个可用存档是否必须倒带/分叉？** 旧实验重视这两项；本次用户尚未确认首轮优先级。答案决定是否需要先扩展 DurableGraph 的历史访问能力。
-- **ArtifactStore 与统一历史**：用户提出复用 EventJournal、State/Artifact 互引及共同提交，尚未裁决。建议对象图接入先行，以完整可浏览历史/按事件查看当时世界触发联合历史切片；需分别解决 exact 引用、历史加载与单一发布，不能用双 head 独立提交替代。见[优先级讨论](docs/research/durablegraph-consumer-preflight.md#artifactstore-与联合历史优先级讨论)。
+- **事件与处理结果的关系**：先定 E 是已发生的输入/观察还是已生效的世界 facts；现有 JournalBatch 是后者。允许先落盘 E、再原子发布引用 E 的完整 S 时，已记录位置可领先于已处理位置，不要求两者同时可见。结果反向索引与异常/retry 归属待设计；不预先要求独立 manifest。
 - **谁持有权威状态、谁提交？** 现有不可变 record + reducer/Journal 与 DurableGraph 的持久对象身份需要明确衔接。不要把“替换 adapter”或“重写为可变领域图”预先记成裁决；Game + Spatial、逻辑时间与候选消费状态必须一致恢复。
 - **Player 与外部调用的恢复边界？** 先明确客观世界切片，再逐项确定记忆、叙事记录和 Player 状态如何同世界对齐。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。
 - **跨项目会话协作**：用户正在完善 Codex MCP；本批准备工作独立推进。接口就绪后试用固定项目会话的咨询、追问、结果读取、内部子代理与重启恢复；双方维护各自 PROJECT-STATE，交换具体需求、证据与结论。

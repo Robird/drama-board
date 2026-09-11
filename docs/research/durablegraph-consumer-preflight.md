@@ -94,22 +94,47 @@ Commit 失败不会撤销已改的领域字段；首轮宿主可统一停止并 
 
 ## ArtifactStore 与联合历史：优先级讨论
 
-2026-09-11 用户提出复用或改造 EventJournal，提供 State/Artifact 相互引用、统一提交历史和正反遍历；这是待讨论方向，尚未裁决实现。
+用户当前倾向：以事件历史为主轴，每次处理后保存对象图，正常恢复不执行历史业务 reducing；State 的增量编码负责存储密度。
+候选顺序是先持久记录事件，再保存包含该事件引用的处理后状态。异常/retry 是否进入同一历史延期讨论。以下是共同设计中的建议，不是实施授权。
 
-- 当前世界建模与完整边界保存/续局可先行；ArtifactStore 不必成为这条路径的前置依赖。现有 Kernel 仍需明确新的发布/恢复接缝。
-- 历史已有真实消费者：[DramaRecordWriter](../../src/FirstBoard.Demo/DramaRecordWriter.cs) 遍历 Journal 生成世界叙事并输出 LLM turn traces。
-  若要求重开后完整保留这些记录、按某次决策查看当时世界，而不让完整历史进入 State 可达闭包，ArtifactStore 就是直接有价值的下一片。
-- 不可变内容寻址、事件序列遍历、按历史 Revision 加载领域图、State/Artifact 共同发布，是相关但不同的能力。
-  DG 当前 GraphRepository.Load 只加载已发布 head；底层 exact Revision 读取不等于已提供历史 checkout/branch 产品入口。
-- 建议以单一提交记录关联 `ParentCommit + StateRevision + 本次事件/Artifact 引用`，统一定义一次 Occurrence 的完整边界；字段形状待设计。
-  State 可持 exact Artifact 引用，事件查看器通过所属提交定位事件后的世界、通过父提交定位事件前的世界。
-  跨提交历史引用可以显式保存；不要求同次新写入的 State 与 Artifact 在各自 payload 中互相嵌入尚未生成的物理地址。
-- 被引用内容先追加并完成规定持久化屏障，最后一次发布共同 head；发布前留下的孤立记录不算游戏进展。
-  这是需改造 DG 发布入口的建议，不能将现有 GraphSession.Commit 与 EventJournal.AdvanceRef 两次独立发布当成实现。
-- 若复用 EventJournal，先复用不可变帧寻址、父链和读取机制，并明确分支所选逻辑顺序；不要让物理文件扫描混入孤立帧或其他分支。
-  当前兄弟库 [EventJournal](../../../atelia/src/EventJournal/EventJournal.cs) 的 ReadAncestorChain 沿 Parent 逆向走，ReadChronologicalChain 经 ForwardPlan 正向读取，二者返回地址列表；尚不能据此承诺常量内存的分页游标。
-  事件记录本身不强制采用 event-sourcing：恢复世界与浏览历史可分别从 State 和 Artifact 读取；事件重建验收另行定义。
+### 概念与恢复边界
 
-建议次序仍是完整边界 oracle → 最小 DG 保存/重开 → 联合历史切片；若用户要求首个存档必须保留完整可浏览历史，则把后两项合并裁决。
-联合历史的最小验收：同一相遇场景提交两步，冷重开后正反读取事件、定位对应世界，并在各发布阶段注入失败验证只恢复完整前/后边界。
-完整 LLM 调用恢复、通用序列化、GC 与可写分叉不由这份讨论自动加入范围。
+- 每步仍执行业务状态更新；省去的是恢复时重跑历史业务逻辑。State 因而是需要保留的处理结果，不应视为随时可删、保证可从事件重建的缓存。
+  历史查看读取已保存结果；用新规则重新处理旧输入是新的实验运行，不能静默替换原结果。
+- 任意领域事件没有通用的高效尾部重建法。记录字段后值、删除标记与对象身份可支持逆向合并，但已转为状态变更日志。
+  每步有逻辑完整 StateRevision，不要求每步物理全量快照；DG 仍可能读取 Base/Delta 链，只是不再执行业务 reducer。
+- 第一阶段产生的 E 可以存在而尚无处理结果。第二阶段发布的 S 必须同时绑定完整世界/Kernel 边界与 exact EventRef；它才证明该次处理已完成。
+  存储提交不证明业务逻辑正确，领域校验仍由应用负责。
+- 所以允许“已记录事件位置”领先于“已完成处理位置”；这两个位置含义不同，无需强迫两次落盘同时可见。
+  必须原子的是处理完成与其完整状态的发布。此前共同 manifest 是一种候选，不能再当作唯一前置方案。
+
+### 建议的最小关联
+
+`已发布结果 S = ParentStateRevision + AppliedEventRef + 完整领域状态/Kernel 边界`，仅为逻辑关系，尚未冻结字段或格式。
+Parent/事件关联可由 Revision 元数据或持久根承载，不先要求第三类实体。
+先 durable append E，再处理并发布 S；S 指向 E，E 的不可变正文不回填未来的 S 地址。
+通过已发布结果建立 `Event → StateRevision` 反向查询；索引可重建，索引缺失不能直接判定事件未完成。
+事件链/State Parent 都使用外部 exact 地址，不能用普通领域引用把全部历史世界或事件正文纳入当前图的可达闭包。
+若以后允许同一输入在不同基态/分支产生多个结果，查询需携带该上下文，不能永久假设全库 Event→State 一对一。
+
+| 可恢复事实 | 建议含义 |
+|---|---|
+| 没有持久 E | 没有这条已记录事件 |
+| 已有 E，没有对应的已发布 S | 有事件、处理未完成或结果未发布；保留旧世界并暴露待处理项 |
+| S 字节已追加，但没有发布 | 仍非已完成处理，不按最新物理地址恢复 |
+| S 已发布，调用者尚未收到成功 | 已完成；重开直接加载 S，不因上次调用报错再处理一次 |
+
+首片建议单分支、串行、至多一个未完成事件；异常先停止并重开辨认状态，不自动重试。重试协议及失败记录归属继续待决。
+
+### 必须先澄清的事件语义
+
+外部输入/观察已经发生，不等于内部处理已经完成。例如“玩家提交反向选择”与“人物已经反向”断言的事实不同。
+也可以规定 E 一经记录就成为权威世界事实，S 是该事实的处理结果；此时 E 已推进事实历史而 S 尚未跟上是正式状态，不能将旧 S 冒充最新世界，处理失败也不撤销 E 的发生。
+现有 [JournalBatch](../../src/Kernel/Journal/JournalBatch.cs) 表示已提交 facts，Kernel 在 scratch-fold/validate 后才发布它；直接前移发布将改变“事件历史与内存世界同步”的现有合同。
+下一轮先选择 E 是输入/已选 occurrence，还是被接受的世界事实；再确定验证/业务处理相对于 E 落盘的位置及未完成时的可查询含义。
+完整边界 oracle 仍可独立推进；A/B 模型方案、联合历史实现顺序随上述语义裁决，不将先前“对象图先行”建议当作用户决定。
+
+现有复用基础：[EventJournal](../../../atelia/src/EventJournal/EventJournal.cs) 有 exact 地址、逆向父链及 ForwardPlan 正向列表；DG 底层 LoadedWorld.Load 接受指定 Revision，高层 GraphRepository.Load 仍只加载已发布 head。
+[DramaRecordWriter](../../src/FirstBoard.Demo/DramaRecordWriter.cs) 已消费世界事件与 LLM turn traces，联合历史有实际消费者。
+最小验收候选：相遇/回应两步，冷重开浏览事件并加载关联世界；在 E 保存后、S 追加后及 S 发布后中断，验证上述状态区分。
+完整 LLM 调用恢复、通用序列化、GC 与可写分叉不由本讨论自动加入范围。
