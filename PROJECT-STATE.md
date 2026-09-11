@@ -39,7 +39,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 - **分支与续局**：上游 branch/ref、E/S head 恢复已有验证；DramaBoard 的可玩 fork 仍须选完整 S 并落实新 lineage 的持久化语义。完整 Player closure、倒带 UI 与首片实际范围继续分别裁决。
 - **事件与处理结果**：Journal 保持 S→E→S 和唯一 ref；ReadEvent/ReadState 独立，Resume 可便利地读取准确配对但不合并实例。State 不必嵌最近 Event，异常/retry 历史继续延期。
 - **快照与领域适配**：事件保留旧快照，闭包小是建模目标；文档/XML doc 明确可变别名和大图回指风险，关联当前实体走领域身份而非跨图 ReferenceEquals。各图内部仍保持真实共享/循环，完整 State 仍覆盖 Game+Spatial+Kernel。
-- **API 反馈与历史读取**：[首轮反馈及上游回应](docs/feedback/durablegraph/001-eventhistory-api.md)集中维护处理状态。DB-065 Proposed 覆盖默认调用、实际交付的 XML、快照/恢复示例与枚举成本文档，消费者评审认可范围，尚未实施；跨重开定位和局部浏览继续按真实需求触发，不阻塞首片。
+- **API 反馈与历史读取**：[反馈目录](docs/feedback/durablegraph/README.md)集中维护处理状态。DB-065 的上手/恢复改进待正式交付验收；新增 ReadPair 审查未发现错版本共享，编码回调依赖与 Transient 用法待厘清。跨重开定位和局部浏览继续按真实需求触发，不阻塞首片。
 - **Player 与外部调用的恢复边界？** 先明确客观世界切片，再逐项确定记忆、叙事记录和 Player 状态如何同世界对齐。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。
 - **跨项目会话协作**：用户正在完善 Codex MCP；本批准备工作独立推进。接口就绪后试用固定项目会话的咨询、追问、结果读取、内部子代理与重启恢复；双方维护各自 PROJECT-STATE，交换具体需求、证据与结论。
 - **Spatial 扩展**：调速/途中停留、Area、ViewLink、关系变化等按真实玩法触发；contact 索引按性能证据触发，详见 008。旧 Grid 留作历史证据，当前无恢复双实现的需求。
