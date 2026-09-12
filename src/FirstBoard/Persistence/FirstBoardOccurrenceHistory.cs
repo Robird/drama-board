@@ -1,4 +1,4 @@
-using Atelia.DurableGraph.StateStore;
+using Atelia.DurableGraph.Persistence;
 using DramaBoard.Kernel;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;

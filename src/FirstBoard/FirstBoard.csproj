@@ -6,7 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Atelia.DurableGraph" Version="$(DurableGraphPackageVersion)" />
-    <PackageReference Include="Atelia.DurableGraph.StateStore" Version="$(DurableGraphPackageVersion)" />
+    <PackageReference Include="Atelia.DurableGraph.Persistence" Version="$(DurableGraphPackageVersion)" />
     <ProjectReference Include="..\Decision.Validation\Decision.Validation.csproj" />
     <ProjectReference Include="..\Host\Host.csproj" />
     <ProjectReference Include="..\Kernel\Kernel.csproj" />

@@ -4,10 +4,10 @@
 
 | 来源 | 完整提交 |
 |---|---|
-| [Robird/durable-graph](https://github.com/Robird/durable-graph/tree/1c6083c578426b3b098b4df2144bed448723d5ac) | `1c6083c578426b3b098b4df2144bed448723d5ac` |
+| [Robird/durable-graph](https://github.com/Robird/durable-graph/tree/4cea773e3eac7a2df2d57e518f45e90459d53cf3) | `4cea773e3eac7a2df2d57e518f45e90459d53cf3` |
 | [Atelia-org/atelia](https://github.com/Atelia-org/atelia/tree/742fcd62e691b6b6acca4113a3ac3638bc7275ba) | `742fcd62e691b6b6acca4113a3ac3638bc7275ba` |
 
-默认版本为 `0.0.0-dramaboard.20260912.1c6083c.1`，九个项目全部使用相同 `PackageVersion`。按固定上游 `experiments/PackageConsumerProbe/Run-EventHistoryRecoveryProbe.ps1` 的顺序串行打包：Data、Primitives、Rbf、RbfSegmentStore、EventJournal、DurableGraph.StateStore.Serialization、DurableGraph、DurableGraph.StateStore.Storage、DurableGraph.StateStore。包 ID 均以 `Atelia.` 开头；Generator 与 Build 工具按上游 DurableGraph 包的既有规则随包分发，不另造消费者手工接线。
+默认版本为 `0.0.0-dramaboard.20260912.4cea773.1`，九个项目全部使用相同 `PackageVersion`。按固定上游 `experiments/PackageConsumerProbe/Run-EventHistoryRecoveryProbe.ps1` 的顺序串行打包：Data、Primitives、Rbf、RbfSegmentStore、EventJournal、DurableGraph.Serialization、DurableGraph、DurableGraph.Storage、DurableGraph.Persistence。包 ID 均以 `Atelia.` 开头；Generator 与 Build 工具按上游 DurableGraph 包的既有规则随包分发，不另造消费者手工接线。
 
 从 DramaBoard 根目录运行（PowerShell 7+、Git、.NET 10 SDK）：
 
@@ -15,7 +15,7 @@
 pwsh -File scripts/Prepare-DurableGraph.ps1
 ```
 
-默认源仓库为兄弟 `../durable-graph` 与 `../atelia`。缺少目标 checkout 时，脚本从源仓库执行 `git worktree add --detach <target> <完整 SHA>`，目标为忽略目录 `artifacts/durablegraph-integration/fixed-1c6083c/{durable-graph,atelia}`。这会登记源仓库的 worktree 元数据，不修改其当前工作树。源仓库必须已有固定提交对象；脚本不自行 fetch、reset 或删除目录。已有目标必须是准确的仓库根目录、HEAD 匹配且 tracked 文件干净，否则立即停止。源仓库的未提交开发不会被复制过去。
+默认源仓库为兄弟 `../durable-graph` 与 `../atelia`。缺少目标 checkout 时，脚本从源仓库执行 `git worktree add --detach <target> <完整 SHA>`，目标为忽略目录 `artifacts/durablegraph-integration/fixed-4cea773/{durable-graph,atelia}`。这会登记源仓库的 worktree 元数据，不修改其当前工作树。源仓库必须已有固定提交对象；脚本不自行 fetch、reset 或删除目录。已有目标必须是准确的仓库根目录、HEAD 匹配且 tracked 文件干净，否则立即停止。源仓库的未提交开发不会被复制过去。
 
 可显式指定源仓库、checkout 根与 feed；CI 也可以事先把固定源码 checkout 到同一根下的 `durable-graph` 和 `atelia` 两个目录，随后用同一脚本校验、打包，已有 checkout 不需要访问源仓库：
 
@@ -23,7 +23,7 @@ pwsh -File scripts/Prepare-DurableGraph.ps1
 pwsh -File scripts/Prepare-DurableGraph.ps1 `
     -DurableGraphSource E:/repos/Atelia-org/durable-graph `
     -AteliaSource E:/repos/Atelia-org/atelia `
-    -CheckoutRoot artifacts/durablegraph-integration/fixed-1c6083c `
+    -CheckoutRoot artifacts/durablegraph-integration/fixed-4cea773 `
     -Feed artifacts/durablegraph-integration/feed
 ```
 
@@ -36,7 +36,7 @@ pwsh -File scripts/Prepare-DurableGraph.ps1 `
 需要重新生成时使用未消费过的 freshVersion，并让全部消费者的 `DurableGraphPackageVersion` 同步，例如：
 
 ```powershell
-$freshVersion = '0.0.0-dramaboard.20260912.1c6083c.2'
+$freshVersion = '0.0.0-dramaboard.20260912.4cea773.2'
 pwsh -File scripts/Prepare-DurableGraph.ps1 -PackageVersion $freshVersion
 # 后续 restore/build/test 同时传 -p:DurableGraphPackageVersion=$freshVersion。
 ```
@@ -45,7 +45,7 @@ pwsh -File scripts/Prepare-DurableGraph.ps1 -PackageVersion $freshVersion
 
 ## DB-068 接口迁移证据
 
-2026-09-12：从 `f68388f` 包迁移至上述 `1c6083c` 包，Kernel / Spatial / FirstBoard 的 21 处框架基类声明改为 `IDurableObject`。保留普通 class、字段及版本、构造、相等与集合快照行为；本次未转换为 record，也不是业务 Schema 升版。
+2026-09-12：从 `f68388f` 包迁移至 `1c6083c` 包（当时版本 `0.0.0-dramaboard.20260912.1c6083c.1`），Kernel / Spatial / FirstBoard 的 21 处框架基类声明改为 `IDurableObject`。保留普通 class、字段及版本、构造、相等与集合快照行为；本次未转换为 record，也不是业务 Schema 升版。
 
 九个包首次准备和再次校验复用均通过。全 solution 执行 Clean 后，以 `-warnaserror -p:DurableGraphSchemaHistoryMode=Verify` 构建，零警告、零错误；64 份已提交 `.dgschema` 的路径与 SHA256 均未改变。Windows 下 `dotnet test DramaBoard.Local.slnx --no-build --no-restore -m:1 -nr:false` 的 11 个测试程序集共 515 项通过、零失败、零跳过；本轮未运行远端 CI 或 Linux。
 

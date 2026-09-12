@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using Atelia.DurableGraph.StateStore;
-using Atelia.DurableGraph.StateStore.Storage;
+using Atelia.DurableGraph.Persistence;
+using Atelia.DurableGraph.Storage;
 using DramaBoard.FirstBoard;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;

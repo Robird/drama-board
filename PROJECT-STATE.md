@@ -14,7 +14,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 支持仅完成 pending 的恢复。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs)与[提交方案](docs/design/durablegraph-occurrence-persistence.md)。旧 occurrence baseline 的时间/仲裁部分保留，Journal 接缝已被替换。
 - **Spatial**：Graph Slice 1/2 已实现；contact 按 floor 提前开放交互，arrival 保持 ceil，保留严格内部掉头及 current-segment 配对消费。FirstBoard 已组合 Game + Spatial；见[接触时间边界与证据](docs/worksets/passage-contact-floor.md)、[GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[FirstBoardWorld / FirstBoardReducer](src/FirstBoard/FirstBoardDomain.cs)。领域依赖仍只有 Kernel，另引用 DG Runtime；客观运动归 Spatial，回应与认知归消费者。
 - **运行与存储**：[FirstBoardOccurrenceHistory](src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs) 保存完整世界、游标与精确内容/规则绑定；[LiveSession](src/FirstBoard.Demo/Live/LiveSession.cs)已接创建/续局入口，并明确重新建立 Player 记忆/预算。[真实存储](tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)与[冷进程](tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)已有验收。旧 Journal.Atelia 已退役，历史可从 Git `3b77450` 恢复。
-- **DurableGraph**：当前固定包为 `1c6083c`（DB-068），三库模型通过 `IDurableObject` 声明 durable；单 writer/单活动 session。旧包存档兼容与迁移证据见[包来源](docs/worksets/durablegraph-package-source.md)，不依赖兄弟库未提交修改。
+- **DurableGraph**：固定包已更新至 `4cea773`（DB-071），适配 Persistence / Storage / Runtime 命名空间；来源见[包准备说明](docs/worksets/durablegraph-package-source.md)，试用与兼容证据见[反馈 004](docs/feedback/durablegraph/004-db071-namespace-adaptation.md)。三库模型仍通过 `IDurableObject` 声明 durable；单 writer/单活动 session。
 
 ## 当前焦点与下一步
 

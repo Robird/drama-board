@@ -6,6 +6,7 @@
 
 | 文档 | 涉及版本 | 当前状态 |
 |---|---|---|
+| [004 · DB-071 命名空间重组试用](004-db071-namespace-adaptation.md) | `4cea773` / DB-071 | 消费适配与跨包冷恢复通过，未发现 API 缺口；已固定正式源码来源。 |
 | [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DB-065 / `79be2c2` | A/B/C 与枚举文档已落地；历史定位/局部浏览 API 按真实需求触发，实际游戏消费见 003。 |
 | [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | DB-066 / `f68388f` | 编码依赖已移除、Transient 合同已明确；已静态复核，本轮未重跑测试。 |
 | [003 · 真实领域模型接入](003-real-model-integration.md) | `1c6083c` / DB-068 | record class 支持已回应，消费方迁移至 IDurableObject；保留旧包首轮写入成本及快照建模边界。 |

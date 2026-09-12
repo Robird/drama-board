@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Robird/durable-graph
-          ref: 1c6083c578426b3b098b4df2144bed448723d5ac
+          ref: 4cea773e3eac7a2df2d57e518f45e90459d53cf3
           path: external/durable-graph
       - uses: actions/setup-dotnet@v4
         with:

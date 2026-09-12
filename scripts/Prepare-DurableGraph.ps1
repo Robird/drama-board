@@ -3,15 +3,15 @@
 param(
     [string] $DurableGraphSource = (Join-Path $PSScriptRoot '../../durable-graph'),
     [string] $AteliaSource = (Join-Path $PSScriptRoot '../../atelia'),
-    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-1c6083c'),
+    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-4cea773'),
     [string] $Feed = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/feed'),
-    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.1c6083c\.[1-9][0-9]*$')]
-    [string] $PackageVersion = '0.0.0-dramaboard.20260912.1c6083c.1'
+    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.4cea773\.[1-9][0-9]*$')]
+    [string] $PackageVersion = '0.0.0-dramaboard.20260912.4cea773.1'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$durableGraphRevision = '1c6083c578426b3b098b4df2144bed448723d5ac'
+$durableGraphRevision = '4cea773e3eac7a2df2d57e518f45e90459d53cf3'
 $ateliaRevision = '742fcd62e691b6b6acca4113a3ac3638bc7275ba'
 $CheckoutRoot = [IO.Path]::GetFullPath($CheckoutRoot)
 $Feed = [IO.Path]::GetFullPath($Feed)
@@ -64,10 +64,10 @@ $projects = @(
     @{ Root = $ateliaRoot; Name = 'Rbf' },
     @{ Root = $ateliaRoot; Name = 'RbfSegmentStore' },
     @{ Root = $ateliaRoot; Name = 'EventJournal' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.StateStore.Serialization' },
+    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Serialization' },
     @{ Root = $durableGraphRoot; Name = 'DurableGraph' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.StateStore.Storage' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.StateStore' }
+    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Storage' },
+    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Persistence' }
 )
 $packageFiles = @($projects | ForEach-Object { "Atelia.$($_.Name).$PackageVersion.nupkg" })
 $manifestPath = Join-Path $Feed "source-$PackageVersion.json"
