@@ -156,7 +156,7 @@ public sealed class GraphSpatialStateTests
             movementGenerationB: 1);
         state = reducer.Apply(
             state,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             new PassageContactOccurredFact(contact, PassageContactKind.HeadOnMeeting));
 
         SpatialEntity[] entities = [.. state.Entities.Reverse()];

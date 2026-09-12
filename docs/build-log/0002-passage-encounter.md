@@ -1,5 +1,7 @@
 # Build Log 0002：Passage Contact 与单响应 Encounter 竖切
 
+> 历史实现记录：正文的 ceil contact 与参与者 arrival 同刻竞争已由[向下取整方案](../worksets/passage-contact-floor.md)替代；当前规则见 [Graph Spatial §3.5](../design/graph-spatial-world.md#35-passage-contact目标法则与第二竖切)。旧 Journal/replay 证据另由 DurableGraph 接入替代。
+
 > 状态：**Implemented and verified**
 > 规划日期：2026-08-22
 > 实施日期：2026-08-23

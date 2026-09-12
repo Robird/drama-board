@@ -42,3 +42,5 @@ dotnet run --project src/FirstBoard.Demo -- --backend codex --model gpt-5.6-luna
 ```
 
 当前恢复范围是**世界与待处理事件**。Player 记忆、LLM 会话和 turn 预算在本次运行重新建立，界面会提示；续局不要传 `--seed`。已完成的历史不会自动重播；旧 Journal 存档转换与可玩持久 fork 暂未提供。
+
+当前规则为 `firstboard.duchess-letter/3`：途中交互提前到交会时间所在刻度，到达时间仍向上取整。旧 `/2` 世界存档不支持续局，请使用新目录开始；旧存档保留不变。见[接触时间与兼容边界](docs/worksets/passage-contact-floor.md)。

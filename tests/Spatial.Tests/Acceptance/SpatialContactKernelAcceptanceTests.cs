@@ -51,8 +51,9 @@ public sealed class SpatialContactKernelAcceptanceTests
                 reducer.Apply,
                 state => GraphSpatialStateValidator.ValidateComplete(definition, state));
 
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(2)));
-        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(2)));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(1)));
+        Assert.Equal(GraphTestWorld.Time(1), kernel.CurrentModelTime);
+        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(1)));
         Assert.Single(kernel.World.ConsumedContacts);
         Assert.Single(history.CompletedEvents);
         Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts));

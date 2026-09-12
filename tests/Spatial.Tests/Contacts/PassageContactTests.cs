@@ -52,7 +52,7 @@ public sealed class PassageContactTests
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
             Assert.Single(rule.Forecast(context.State, Rules));
-        Assert.Equal(GraphTestWorld.Time(2), candidate.Due.ModelTime);
+        Assert.Equal(GraphTestWorld.Time(1), candidate.Due.ModelTime);
         Assert.Equal(PassageContactKind.HeadOnMeeting, candidate.Data.Kind);
         Assert.Equal(new EntityId("alice"), candidate.Data.ContactKey.EntityA);
         Assert.Equal(new EntityId("bob"), candidate.Data.ContactKey.EntityB);
@@ -65,14 +65,14 @@ public sealed class PassageContactTests
             Assert.IsType<PassageContactOccurredFact>(Assert.Single(draft.Facts));
         GraphSpatialState next = context.Reducer.Apply(
             context.State,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             fact);
 
         Assert.Equal(candidate.Data.ContactKey, Assert.Single(next.ConsumedContacts));
         Assert.Empty(rule.Forecast(next, Rules));
         Assert.Throws<InvalidOperationException>(() => context.Reducer.Apply(
             next,
-            GraphTestWorld.Instant(2, 1),
+            GraphTestWorld.Instant(1, 1),
             fact));
     }
 
@@ -120,8 +120,72 @@ public sealed class PassageContactTests
         Assert.Equal(GraphTestWorld.Time(4), candidate.Due.ModelTime);
     }
 
+    [Theory]
+    [InlineData(6, 1, 0, 1, 2, 10)] // Exact contact 10/7 precedes the fast actor's exit at 10/6.
+    [InlineData(6, 6, 5, 5, 7, 7)] // Exact contact 5 + 5/6 belongs to the entry tick.
+    [InlineData(3, 2, 0, 2, 4, 5)] // Exact integer contacts keep their time.
+    public async Task HeadOnMeeting_FloorsContactBeforeEitherCeilingArrival(
+        long speedA, long speedB, long anchor, long due, long arrivalA, long arrivalB)
+    {
+        ContactContext context = CreateHeadOnContext(speedA, speedB, anchor);
+        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        OccurrenceCandidate<PassageContactOccurrenceData> candidate =
+            Assert.Single(rule.Forecast(context.State, Rules));
+
+        Assert.Equal(GraphTestWorld.Time(due), candidate.Due.ModelTime);
+        Assert.Equal(GraphTestWorld.Time(arrivalA),
+            Assert.IsType<TraversingLocation>(context.State.Entities[0].Location).ArrivalDue);
+        Assert.Equal(GraphTestWorld.Time(arrivalB),
+            Assert.IsType<TraversingLocation>(context.State.Entities[1].Location).ArrivalDue);
+        Assert.True(due >= anchor);
+        Assert.True(due < arrivalA && due < arrivalB);
+
+        TransitionDraft<GraphSpatialFact> draft = await rule.PlanSelectedAsync(
+            context.State, candidate, CancellationToken.None);
+        GraphSpatialState next = context.Reducer.Apply(
+            context.State, GraphTestWorld.Instant(due), Assert.Single(draft.Facts));
+        Assert.Equal(context.State.Entities, next.Entities);
+        Assert.Empty(rule.Forecast(next, Rules));
+    }
+
     [Fact]
-    public void Forecast_CeilsNegativeAbsoluteRationalTimeMathematically()
+    public async Task ReverseBeforeExactMeeting_AllowsNewGenerationOvertakeInTheSameTickOnce()
+    {
+        // Head-on contact is at 10/7. At tick 1 Alice is at 1, Bob at 4.
+        // Reversing Alice creates a real catch-up at 1 + 3/5, still in tick 1.
+        ContactContext context = CreateHeadOnContext(speedA: 1, speedB: 6);
+        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        OccurrenceCandidate<PassageContactOccurrenceData> headOn =
+            Assert.Single(rule.Forecast(context.State, Rules));
+        Assert.Equal(GraphTestWorld.Time(1), headOn.Due.ModelTime);
+        GraphSpatialState state = context.Reducer.Apply(
+            context.State,
+            GraphTestWorld.Instant(1),
+            Assert.Single((await rule.PlanSelectedAsync(context.State, headOn, CancellationToken.None)).Facts));
+        Assert.Empty(rule.Forecast(state, Rules));
+
+        var planner = new SpatialPlanner(context.Definition);
+        state = GraphTestWorld.Fold(context.Reducer, state, GraphTestWorld.Instant(1, 1),
+            planner.TryReverseTraversal(state, new EntityId("alice"), GraphTestWorld.Time(1)));
+        Assert.Empty(state.ConsumedContacts);
+        OccurrenceCandidate<PassageContactOccurrenceData> overtake =
+            Assert.Single(rule.Forecast(state, Rules));
+        Assert.Equal(PassageContactKind.Overtake, overtake.Data.Kind);
+        Assert.Equal(GraphTestWorld.Time(1), overtake.Due.ModelTime);
+        Assert.NotEqual(headOn.Key, overtake.Key);
+        Assert.Equal(2, overtake.Data.ContactKey.MovementGenerationA);
+        Assert.Equal(1, overtake.Data.ContactKey.MovementGenerationB);
+
+        state = context.Reducer.Apply(state, GraphTestWorld.Instant(1, 2),
+            Assert.Single((await rule.PlanSelectedAsync(state, overtake, CancellationToken.None)).Facts));
+        Assert.Empty(rule.Forecast(state, Rules));
+        GraphTestWorld.Rejected(
+            planner.TryReverseTraversal(state, new EntityId("alice"), GraphTestWorld.Time(1)),
+            "reverse-outside-active-interval");
+    }
+
+    [Fact]
+    public void Forecast_FloorsNegativeAbsoluteRationalTimeMathematically()
     {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
@@ -139,7 +203,7 @@ public sealed class PassageContactTests
             new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
 
         Assert.Equal(PassageContactKind.HeadOnMeeting, candidate.Data.Kind);
-        Assert.Equal(GraphTestWorld.Time(-3), candidate.Due.ModelTime);
+        Assert.Equal(GraphTestWorld.Time(-4), candidate.Due.ModelTime);
     }
 
     [Fact]
@@ -189,7 +253,7 @@ public sealed class PassageContactTests
         OccurrenceCandidate<PassageContactOccurrenceData> candidate = Assert.Single(
             new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
 
-        Assert.Equal(GraphTestWorld.Time(1), candidate.Due.ModelTime);
+        Assert.Equal(GraphTestWorld.Time(0), candidate.Due.ModelTime);
         Assert.Equal(PassageContactKind.HeadOnMeeting, candidate.Data.Kind);
     }
 
@@ -232,11 +296,11 @@ public sealed class PassageContactTests
             new PassageContactOccurredFact(key, candidate.Data.Kind)));
         Assert.Throws<InvalidOperationException>(() => context.Reducer.Apply(
             context.State,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             new PassageContactOccurredFact(key, wrongKind)));
         Assert.Throws<InvalidOperationException>(() => context.Reducer.Apply(
             context.State,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             new PassageContactOccurredFact(staleKey, candidate.Data.Kind)));
     }
 
@@ -273,11 +337,11 @@ public sealed class PassageContactTests
                 state,
                 candidate,
                 CancellationToken.None);
-            state = reducer.Apply(state, GraphTestWorld.Instant(2), Assert.Single(draft.Facts));
+            state = reducer.Apply(state, GraphTestWorld.Instant(1), Assert.Single(draft.Facts));
         }
 
         Assert.Equal(2, state.ConsumedContacts.Count);
-        state = reducer.Apply(state, GraphTestWorld.Instant(2, 1), new EntityRemovedFact(new EntityId("a")));
+        state = reducer.Apply(state, GraphTestWorld.Instant(1, 1), new EntityRemovedFact(new EntityId("a")));
 
         PassageContactKey remaining = Assert.Single(state.ConsumedContacts);
         Assert.Equal(secondPassage, remaining.PassageId);
@@ -294,7 +358,7 @@ public sealed class PassageContactTests
             Assert.Single(arrivalRule.Forecast(arrivalContext.State, Rules));
         GraphSpatialState arrivalState = arrivalContext.Reducer.Apply(
             arrivalContext.State,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             Assert.Single((await arrivalRule.PlanSelectedAsync(
                 arrivalContext.State,
                 arrivalContact,
@@ -311,7 +375,7 @@ public sealed class PassageContactTests
             Assert.Single(reverseRule.Forecast(reverseContext.State, Rules));
         GraphSpatialState reverseState = reverseContext.Reducer.Apply(
             reverseContext.State,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             Assert.Single((await reverseRule.PlanSelectedAsync(
                 reverseContext.State,
                 reverseContact,
@@ -319,11 +383,11 @@ public sealed class PassageContactTests
         reverseState = GraphTestWorld.Fold(
             reverseContext.Reducer,
             reverseState,
-            GraphTestWorld.Instant(2, 1),
+            GraphTestWorld.Instant(1, 1),
             new SpatialPlanner(reverseContext.Definition).TryReverseTraversal(
                 reverseState,
                 new EntityId("alice"),
-                GraphTestWorld.Time(2)));
+                GraphTestWorld.Time(1)));
         Assert.Empty(reverseState.ConsumedContacts);
         Assert.Equal(2, reverseState.Entities.Single(entity => entity.Id == new EntityId("alice")).MovementGeneration);
     }
@@ -349,7 +413,7 @@ public sealed class PassageContactTests
         var reducer = new GraphSpatialReducer(firstDefinition);
         GraphSpatialState sameTickPrefix = reducer.Apply(
             firstState,
-            GraphTestWorld.Instant(2),
+            GraphTestWorld.Instant(1),
             new PassageEntryAccessChangedFact(
                 GraphTestWorld.Bridge,
                 new PassageEntryAccess(false, true)));
@@ -357,7 +421,7 @@ public sealed class PassageContactTests
             Assert.Single(
                 firstRule.Forecast(sameTickPrefix, Rules),
                 candidate => candidate.Data.ContactKey.PassageId == GraphTestWorld.Bridge);
-        Assert.Equal(GraphTestWorld.Time(2), dueNow.Due.ModelTime);
+        Assert.Equal(GraphTestWorld.Time(1), dueNow.Due.ModelTime);
     }
 
     private static async Task AssertPlanRejected(
@@ -387,7 +451,7 @@ public sealed class PassageContactTests
         Assert.Empty(new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
     }
 
-    private static ContactContext CreateHeadOnContext()
+    private static ContactContext CreateHeadOnContext(long speedA = 4, long speedB = 3, long anchor = 0)
     {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
@@ -398,8 +462,8 @@ public sealed class PassageContactTests
             ("bob", GraphTestWorld.B));
         var planner = new SpatialPlanner(definition);
         var reducer = new GraphSpatialReducer(definition);
-        state = Start(reducer, planner, state, "alice", GraphTestWorld.A, speed: 4, at: 0);
-        state = Start(reducer, planner, state, "bob", GraphTestWorld.B, speed: 3, at: 0);
+        state = Start(reducer, planner, state, "alice", GraphTestWorld.A, speed: speedA, at: anchor);
+        state = Start(reducer, planner, state, "bob", GraphTestWorld.B, speed: speedB, at: anchor);
         return new ContactContext(definition, state, reducer);
     }
 

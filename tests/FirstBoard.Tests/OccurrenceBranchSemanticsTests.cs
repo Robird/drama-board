@@ -83,7 +83,7 @@ public sealed class OccurrenceBranchSemanticsTests
         ScenarioInstance instance = EncounterScenario(prefix);
         var history = FirstBoardScenario.CreateMemoryHistory(instance.CreateInitialWorld());
         var reducer = new FirstBoardReducer(instance.Graph);
-        foreach (var occurrence in EncounterPrefixBatches(prefix))
+        foreach (var occurrence in EncounterPrefixBatches(instance, prefix))
         {
             var next = occurrence.Facts.Aggregate(history.State,
                 (world, fact) => reducer.Apply(world, occurrence.TargetInstant, fact));
@@ -125,17 +125,9 @@ public sealed class OccurrenceBranchSemanticsTests
     }
 
     private static OccurrenceEvent<FirstBoardFact>[] EncounterPrefixBatches(
+        ScenarioInstance instance,
         PersistedEncounterPrefix prefix)
     {
-        ModelTime contactDue = prefix == PersistedEncounterPrefix.ArrivalBeforeWorldChanged
-            ? new ModelTime(1)
-            : new ModelTime(150_000);
-        var contactKey = new PassageContactKey(
-            new PassageId(BoardIds.TavernMarketRoad),
-            new EntityId(BoardIds.Alice),
-            movementGenerationA: 1,
-            new EntityId(BoardIds.Bob),
-            movementGenerationB: 1);
         var start = new OccurrenceEvent<FirstBoardFact>(
             CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/start"),
             new LogicalInstant(ModelTime.Zero, 0),
@@ -154,34 +146,52 @@ public sealed class OccurrenceBranchSemanticsTests
                     new PlaceId(BoardIds.Market),
                     BoardTiming.TravelSpeed)),
             ]);
+        var reducer = new FirstBoardReducer(instance.Graph);
+        FirstBoardWorld traveling = start.Facts.Aggregate(instance.CreateInitialWorld(),
+            (world, fact) => reducer.Apply(world, start.TargetInstant, fact));
+        OccurrenceCandidate<PassageContactOccurrenceData> contact = Assert.Single(
+            new SpatialContactOccurrenceRule(instance.Graph).Forecast(
+                traveling.Spatial,
+                new SimulationRules(instance.WorldSeed, maxTransitionsPerModelTime: 100)));
+        PassageContactKey contactKey = contact.Data.ContactKey;
+        ModelTime contactDue = contact.Due.ModelTime;
+        var contactInstant = new LogicalInstant(contactDue,
+            contactDue == start.TargetInstant.ModelTime ? start.TargetInstant.CausalOrdinal + 1 : 0);
         var opened = new OccurrenceEvent<FirstBoardFact>(
             CandidateKey.FromUtf8($"test/persisted-encounter/{prefix}/opened"),
-            new LogicalInstant(contactDue, 0),
+            contactInstant,
             [
                 new SpatialBoardFact(new PassageContactOccurredFact(
                     contactKey,
-                    PassageContactKind.HeadOnMeeting)),
+                    contact.Data.Kind)),
                 new GameBoardFact(new PassageEncounterOpenedEvent(
                     contactKey,
-                    PassageContactKind.HeadOnMeeting)),
+                    contact.Data.Kind)),
             ]);
         if (prefix == PersistedEncounterPrefix.Pending)
         {
             return [start, opened];
         }
 
+        var responseInstant = new LogicalInstant(contactDue, contactInstant.CausalOrdinal + 1);
+        TraversingLocation aliceTraversal = Assert.IsType<TraversingLocation>(
+            traveling.Spatial.Entities.Single(entity => entity.Id == new EntityId(BoardIds.Alice)).Location);
+        // This deliberately constructs an already-stale pending State to retain cleanup coverage.
+        // Arrival is later than the floor-rounded contact, not a same-tick scheduler race.
+        var arrivalInstant = new LogicalInstant(aliceTraversal.ArrivalDue,
+            aliceTraversal.ArrivalDue == contactDue ? contactInstant.CausalOrdinal + 1 : 0);
         OccurrenceEvent<FirstBoardFact> outcome = prefix switch
         {
             PersistedEncounterPrefix.Continued => new(
                 CandidateKey.FromUtf8("test/persisted-encounter/continued"),
-                new LogicalInstant(contactDue, 1),
+                responseInstant,
                 [new GameBoardFact(new PassageEncounterResolvedEvent(
                     contactKey,
                     BoardIds.Alice,
                     PassageEncounterResolution.Continued))]),
             PersistedEncounterPrefix.Reversed => new(
                 CandidateKey.FromUtf8("test/persisted-encounter/reversed"),
-                new LogicalInstant(contactDue, 1),
+                responseInstant,
                 [
                     new GameBoardFact(new PassageEncounterResolvedEvent(
                         contactKey,
@@ -193,7 +203,7 @@ public sealed class OccurrenceBranchSemanticsTests
                 ]),
             PersistedEncounterPrefix.ArrivalBeforeWorldChanged => new(
                 CandidateKey.FromUtf8("test/persisted-encounter/arrival-before-cleanup"),
-                new LogicalInstant(contactDue, 1),
+                arrivalInstant,
                 [new SpatialBoardFact(new TraversalArrivedFact(
                     new EntityId(BoardIds.Alice),
                     ExpectedMovementGeneration: 1))]),

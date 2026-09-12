@@ -12,7 +12,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 ## 当前实现锚点
 
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 支持仅完成 pending 的恢复。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs)与[提交方案](docs/design/durablegraph-occurrence-persistence.md)。旧 occurrence baseline 的时间/仲裁部分保留，Journal 接缝已被替换。
-- **Spatial**：Graph Slice 1/2 已实现，FirstBoard 已组合 Game + Spatial；动态状态/事实已直接声明 durable。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[FirstBoardWorld / FirstBoardReducer](src/FirstBoard/FirstBoardDomain.cs)。领域依赖仍只有 Kernel，另引用 DG Runtime；客观位置与运动归 Spatial，玩法回应和认知归消费者。
+- **Spatial**：Graph Slice 1/2 已实现；contact 按 floor 提前开放交互，arrival 保持 ceil，保留严格内部掉头及 current-segment 配对消费。FirstBoard 已组合 Game + Spatial；见[接触时间边界与证据](docs/worksets/passage-contact-floor.md)、[GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[FirstBoardWorld / FirstBoardReducer](src/FirstBoard/FirstBoardDomain.cs)。领域依赖仍只有 Kernel，另引用 DG Runtime；客观运动归 Spatial，回应与认知归消费者。
 - **运行与存储**：[FirstBoardOccurrenceHistory](src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs) 保存完整世界、游标与精确内容/规则绑定；[LiveSession](src/FirstBoard.Demo/Live/LiveSession.cs)已接创建/续局入口，并明确重新建立 Player 记忆/预算。[真实存储](tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)与[冷进程](tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)已有验收。旧 Journal.Atelia 已退役，历史可从 Git `3b77450` 恢复。
 - **DurableGraph**：当前固定包为 `1c6083c`（DB-068），三库模型通过 `IDurableObject` 声明 durable；单 writer/单活动 session。旧包存档兼容与迁移证据见[包来源](docs/worksets/durablegraph-package-source.md)，不依赖兄弟库未提交修改。
 
@@ -38,6 +38,7 @@ DramaBoard 作为 DurableGraph 的真实消费者，用游戏需求检验声明�
 
 - **分支与续局**：本批可玩持久 fork、倒带 UI 和完整 Player closure 延期；原 encounter 分支调度资产迁入[内存边界测试](tests/FirstBoard.Tests/OccurrenceBranchSemanticsTests.cs)。真实需求触发时再落实新 lineage 与 Player 同步语义。
 - **事件与处理结果**：Journal 保持 S→E→S 和唯一 ref；ReadEvent/ReadState 独立，Resume 可便利地读取准确配对但不合并实例。State 不必嵌最近 Event，异常/retry 历史继续延期。
+- **规则版本**：FirstBoard 当前 `/3` 使用 floor contact；旧 `/2` S/E-head 明确拒绝续跑，不自动转换。领域 Schema 未变化；新旧业务规则不可仅因对象图可读就混用。
 - **快照与领域适配**：事件保留旧快照，闭包小是建模目标；文档/XML doc 明确可变别名和大图回指风险，关联当前实体走领域身份而非跨图 ReferenceEquals。各图内部仍保持真实共享/循环，完整 State 仍覆盖 Game+Spatial+Kernel。
 - **API 反馈与历史读取**：[反馈目录](docs/feedback/durablegraph/README.md)集中维护处理状态。跨重开定位和局部浏览按真实需求触发，不阻塞首片；ReadPair 不是可编辑恢复入口，也不是接入前置条件。
 - **Player 与外部调用的恢复边界**：现有世界续局明确重建 Player 记忆/预算；完整记忆、叙事记录与世界对齐待真实交互需求。DurableGraph 不提供 Task、LLM 调用或执行栈的透明恢复。

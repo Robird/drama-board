@@ -6,6 +6,18 @@ namespace DramaBoard.FirstBoard.Tests;
 public sealed class ScenarioDefinitionTests
 {
     [Fact]
+    public void Validate_RejectsLegacyCeilingContactRuleset()
+    {
+        ScenarioDefinition legacy = ScenarioDefinition.Default with
+        {
+            RulesetId = "firstboard.duchess-letter/2",
+        };
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(legacy.Validate);
+        Assert.Contains("firstboard.duchess-letter/2", error.Message);
+    }
+
+    [Fact]
     public void CanonicalDefinition_ReorderingDoesNotChangeBytesOrCurrentHash()
     {
         ScenarioDefinition original = ScenarioDefinition.Default;

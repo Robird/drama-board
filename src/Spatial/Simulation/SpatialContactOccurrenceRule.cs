@@ -5,7 +5,10 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>Forecasts and consumes exact pairwise contacts between active passage segments.</summary>
+/// <summary>
+/// Forecasts and consumes interaction opportunities for exact pairwise intersections of active passage segments.
+/// The due time is the start of the model tick containing the intersection, rounded toward negative infinity.
+/// </summary>
 public sealed class SpatialContactOccurrenceRule :
     IOccurrenceRule<GraphSpatialState, PassageContactOccurrenceData, GraphSpatialFact>
 {

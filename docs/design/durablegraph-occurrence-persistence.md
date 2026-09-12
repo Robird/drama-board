@@ -53,6 +53,8 @@ OccurrenceEvent
 
 Definition 首片可复用 [ScenarioInstance](../../src/FirstBoard/ScenarioDefinition.cs) 已有的 canonical 内容与 hash：保存精确内容，重建 GraphDefinition 并验证绑定。这里的内容 JSON 是现有内容格式，动态世界与 E 仍由强类型领域模型保存。不能只保存场景名字再加载当前默认地图。
 
+当前 FirstBoard Ruleset 为 `firstboard.duchess-letter/3`：contact 使用 floor，arrival 保持 ceil。旧 `/2` 的 contact fact 时间校验与未来预测不同，因此旧 S-head/E-head 均拒绝按新规则续跑；不自动重解释 pending 或转换存档。此为规则变更，durable 字段与 Schema history 不变。验证记录见[接触时间量化](../worksets/passage-contact-floor.md)。
+
 规则对象、driver、GraphDefinition 查询索引、candidate/owner map 和呈现上下文留在图外。构造器不在 DG 恢复时运行，应用需显式完成领域校验与 Transient 重建；不能只依赖构造器中的规范排序和合法性检查。
 
 ## 4. 正常 Step 与恢复

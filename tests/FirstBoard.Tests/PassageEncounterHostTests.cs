@@ -323,10 +323,14 @@ public sealed class PassageEncounterHostTests
         Assert.Empty(alice.Requests);
     }
 
-    [Fact]
-    public async Task SameTickPeerContacts_AreOpenedAndResolvedOneAtATimeWithoutConsumptionLoss()
+    [Theory]
+    [InlineData(300_000, ContactDueTicks)]
+    [InlineData(11, 5)]
+    public async Task SameTickPeerContacts_AreOpenedAndResolvedOneAtATimeWithoutConsumptionLoss(
+        long passageLength,
+        long contactDueTicks)
     {
-        ScenarioInstance instance = ScenarioInstance.CreateDefault(worldSeed: 407);
+        ScenarioInstance instance = CreateRoadInstance(worldSeed: 407, length: passageLength);
         FirstBoardWorld initial = CreateThreeActorTravelingPrefix(instance);
         var bob = new RecordingPlayerDriver(
             request => new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ContinueTravel)),
@@ -340,13 +344,15 @@ public sealed class PassageEncounterHostTests
 
         for (int step = 0; step < 4; step++)
         {
-            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ContactDue));
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(contactDueTicks)));
         }
 
         Assert.Null(kernel.World.Game.PendingEncounter);
         Assert.Equal(2, kernel.World.Spatial.ConsumedContacts.Count);
         Assert.Equal(2, bob.Requests.Count);
         Assert.Equal(4, journal.CompletedEvents.Count);
+        Assert.All(journal.CompletedEvents,
+            occurrence => Assert.Equal(new ModelTime(contactDueTicks), occurrence.TargetInstant.ModelTime));
         Assert.Equal(
             2,
             journal.CompletedEvents.SelectMany(batch => batch.Facts)
@@ -359,50 +365,113 @@ public sealed class PassageEncounterHostTests
                     { Resolution: PassageEncounterResolution.Continued } }));
     }
 
-    [Fact]
-    public async Task SameTickContactAndArrival_DifferentSeedsCommitEitherLegalFirstBranch()
+    [Theory]
+    [InlineData(0UL)]
+    [InlineData(1UL)]
+    [InlineData(407UL)]
+    public async Task FractionalContactAndResponse_PrecedeCeilingArrivalRegardlessOfSeed(ulong seed)
     {
-        ScenarioInstance template = CreateShortRoadInstance(worldSeed: 0);
-        FirstBoardWorld templateWorld = CreateTravelingPrefix(template);
-        var templateDrivers = Drivers((BoardIds.Alice, new RecordingPlayerDriver()));
-        var rules = new SimulationRules(template.WorldSeed, maxTransitionsPerModelTime: 100);
-        OccurrenceCandidate<BoardCandidate>[] candidates =
-        [
-            .. new SpatialHostOccurrenceRule(template.Graph).Forecast(templateWorld, rules),
-            .. new FirstBoardPassageEncounterRule(template.Graph, templateDrivers)
-                .Forecast(templateWorld, rules),
-        ];
-        (ulong contactFirstSeed, ulong arrivalFirstSeed) = FindContestSeeds(
-            candidates,
-            candidate => candidate is PassageEncounterOpeningCandidate,
-            candidate => candidate is SpatialBoardCandidate
-                { Value: TraversalArrivalOccurrenceData });
+        ScenarioInstance instance = CreateRoadInstance(seed, length: 10);
+        FirstBoardWorld initial = CreateTravelingPrefix(instance, aliceSpeed: 6, bobSpeed: 1);
+        var alice = new RecordingPlayerDriver(request => new PlayerDecision(
+            request.DecisionId, new Intent(ActionKinds.ContinueTravel)));
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
+        var kernel = FirstBoardScenario.CreateKernel(Drivers((BoardIds.Alice, alice)), instance, journal);
+        var interactionTime = new ModelTime(1);
 
-        await AssertContactArrivalFirstBranchAsync(contactFirstSeed, contactFirst: true);
-        await AssertContactArrivalFirstBranchAsync(arrivalFirstSeed, contactFirst: false);
+        // Exact contact is 10/7 and Alice's arrival is 10/6. Both used to ceil to 2.
+        Assert.Equal(new ModelTime(2),
+            Assert.IsType<TraversingLocation>(SpatialEntity(initial, BoardIds.Alice).Location).ArrivalDue);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(interactionTime));
+        AssertOpeningBatch(Assert.Single(journal.CompletedEvents));
+        Assert.Empty(alice.Requests);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(interactionTime));
+        Assert.Equal(1, Assert.Single(alice.Requests).ModelTimeMs);
+        Assert.Null(kernel.World.Game.PendingEncounter);
+        Assert.All(journal.CompletedEvents, occurrence => Assert.Equal(interactionTime, occurrence.TargetInstant.ModelTime));
+        Assert.Equal(StepStatus.BoundaryReached, await kernel.StepAsync(interactionTime));
+        Assert.IsType<TraversingLocation>(SpatialEntity(kernel.World, BoardIds.Alice).Location);
     }
 
     [Fact]
-    public async Task SameTickPendingResponseAndArrival_DifferentSeedsCommitEitherLegalFirstBranch()
+    public async Task BornAtAnchorContact_OffersContinueOnly_AndResolvesBeforeArrival()
     {
-        ScenarioInstance template = CreateShortRoadInstance(worldSeed: 0);
-        FirstBoardWorld templateWorld = CreateOpenedPrefix(template);
-        var templateDrivers = Drivers((BoardIds.Alice, new RecordingPlayerDriver()));
-        var rules = new SimulationRules(template.WorldSeed, maxTransitionsPerModelTime: 100);
-        OccurrenceCandidate<BoardCandidate>[] candidates =
-        [
-            .. new SpatialHostOccurrenceRule(template.Graph).Forecast(templateWorld, rules),
-            .. new FirstBoardPassageEncounterResponseRule(template.Graph, templateDrivers)
-                .Forecast(templateWorld, rules),
-        ];
-        (ulong responseFirstSeed, ulong arrivalFirstSeed) = FindContestSeeds(
-            candidates,
-            candidate => candidate is PassageEncounterResponseCandidate,
-            candidate => candidate is SpatialBoardCandidate
-                { Value: TraversalArrivalOccurrenceData });
+        ScenarioInstance instance = CreateRoadInstance(worldSeed: 412, length: 1);
+        FirstBoardWorld initial = CreateTravelingPrefix(instance);
+        var alice = new RecordingPlayerDriver(request => new PlayerDecision(
+            request.DecisionId, new Intent(ActionKinds.ContinueTravel)));
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
+        var kernel = FirstBoardScenario.CreateKernel(Drivers((BoardIds.Alice, alice)), instance, journal);
 
-        await AssertResponseArrivalFirstBranchAsync(responseFirstSeed, responseFirst: true);
-        await AssertResponseArrivalFirstBranchAsync(arrivalFirstSeed, responseFirst: false);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        AssertOpeningBatch(Assert.Single(journal.CompletedEvents));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        DecisionRequest request = Assert.Single(alice.Requests);
+        Assert.Equal(0, request.ModelTimeMs);
+        Assert.Equal([ActionKinds.ContinueTravel], request.AvailableActions.Select(action => action.ActionKind));
+        Assert.Null(kernel.World.Game.PendingEncounter);
+        Assert.Single(kernel.World.Spatial.ConsumedContacts);
+        Assert.Equal(StepStatus.BoundaryReached, await kernel.StepAsync(ModelTime.Zero));
+        Assert.All(kernel.World.Spatial.Entities.Where(entity => entity.Location is TraversingLocation),
+            entity => Assert.Equal(new ModelTime(1), ((TraversingLocation)entity.Location).ArrivalDue));
+    }
+
+    [Fact]
+    public async Task BornAtAnchorContact_ForgedReversePublishesNoResponse()
+    {
+        ScenarioInstance instance = CreateRoadInstance(worldSeed: 413, length: 1);
+        var alice = new RecordingPlayerDriver(request => new PlayerDecision(
+            request.DecisionId, new Intent(ActionKinds.ReverseTravel)));
+        var journal = FirstBoardScenario.CreateMemoryHistory(CreateTravelingPrefix(instance));
+        var kernel = FirstBoardScenario.CreateKernel(Drivers((BoardIds.Alice, alice)), instance, journal);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(ModelTime.Zero));
+        FirstBoardWorld opened = kernel.World;
+        KernelCursor cursor = kernel.Cursor;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(ModelTime.Zero));
+
+        Assert.DoesNotContain(Assert.Single(alice.Requests).AvailableActions,
+            action => action.ActionKind == ActionKinds.ReverseTravel);
+        Assert.Same(opened, kernel.World);
+        Assert.Equal(cursor, kernel.Cursor);
+        Assert.Single(journal.CompletedEvents);
+        Assert.Null(journal.PendingEvent);
+        Assert.NotNull(kernel.World.Game.PendingEncounter);
+    }
+
+    [Fact]
+    public async Task ReverseCreatesNewSameTickOvertake_WithoutAllowingRepeatedFlip()
+    {
+        ScenarioInstance instance = CreateRoadInstance(worldSeed: 414, length: 10);
+        FirstBoardWorld initial = CreateTravelingPrefix(instance, aliceSpeed: 1, bobSpeed: 6);
+        var alice = new RecordingPlayerDriver(
+            request => new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ReverseTravel)),
+            request => new PlayerDecision(request.DecisionId, new Intent(ActionKinds.ContinueTravel)));
+        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
+        var kernel = FirstBoardScenario.CreateKernel(Drivers((BoardIds.Alice, alice)), instance, journal);
+        var interactionTime = new ModelTime(1);
+
+        // Head-on at 10/7 floors to 1. After Alice reverses at position 1, Bob catches
+        // her at 8/5, also in tick 1; this is a distinct, still actionable generation pair.
+        for (int step = 0; step < 4; step++)
+        {
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(interactionTime));
+        }
+
+        Assert.Equal(2, alice.Requests.Count);
+        Assert.Contains(alice.Requests[0].AvailableActions, action => action.ActionKind == ActionKinds.ReverseTravel);
+        Assert.Equal([ActionKinds.ContinueTravel],
+            alice.Requests[1].AvailableActions.Select(action => action.ActionKind));
+        PassageContactOccurredFact[] contacts = journal.CompletedEvents.SelectMany(occurrence => occurrence.Facts)
+            .OfType<SpatialBoardFact>().Select(fact => fact.Value).OfType<PassageContactOccurredFact>().ToArray();
+        Assert.Equal([PassageContactKind.HeadOnMeeting, PassageContactKind.Overtake], contacts.Select(contact => contact.Kind));
+        Assert.NotEqual(contacts[0].ContactKey, contacts[1].ContactKey);
+        Assert.Equal(2, SpatialEntity(kernel.World, BoardIds.Alice).MovementGeneration);
+        Assert.Single(kernel.World.Spatial.ConsumedContacts);
+        Assert.Null(kernel.World.Game.PendingEncounter);
+        Assert.All(journal.CompletedEvents, occurrence => Assert.Equal(interactionTime, occurrence.TargetInstant.ModelTime));
+        Assert.Equal(StepStatus.BoundaryReached, await kernel.StepAsync(interactionTime));
+        Assert.Equal(4, journal.CompletedEvents.Count);
     }
 
     [Fact]
@@ -529,75 +598,6 @@ public sealed class PassageEncounterHostTests
         Assert.Equal(expectedActorId == BoardIds.Bob ? 1 : 0, bob.Requests.Count);
         Assert.Equal(1, alice.Requests.Count + bob.Requests.Count);
         Assert.Null(kernel.World.Game.PendingEncounter);
-    }
-
-    private static async Task AssertContactArrivalFirstBranchAsync(
-        ulong seed,
-        bool contactFirst)
-    {
-        ScenarioInstance instance = CreateShortRoadInstance(seed);
-        FirstBoardWorld initial = CreateTravelingPrefix(instance);
-        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(
-                Drivers((BoardIds.Alice, new RecordingPlayerDriver())),
-                instance,
-                journal);
-
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(1)));
-
-        OccurrenceEvent<FirstBoardFact> first = Assert.Single(journal.CompletedEvents);
-        if (contactFirst)
-        {
-            AssertOpeningBatch(first);
-            Assert.NotNull(kernel.World.Game.PendingEncounter);
-            Assert.Single(kernel.World.Spatial.ConsumedContacts);
-        }
-        else
-        {
-            Assert.IsType<TraversalArrivedFact>(
-                Assert.IsType<SpatialBoardFact>(Assert.Single(first.Facts)).Value);
-            Assert.Null(kernel.World.Game.PendingEncounter);
-            Assert.Empty(kernel.World.Spatial.ConsumedContacts);
-        }
-    }
-
-    private static async Task AssertResponseArrivalFirstBranchAsync(
-        ulong seed,
-        bool responseFirst)
-    {
-        ScenarioInstance instance = CreateShortRoadInstance(seed);
-        FirstBoardWorld initial = CreateOpenedPrefix(instance);
-        var alice = new RecordingPlayerDriver(request => new PlayerDecision(
-            request.DecisionId,
-            new Intent(ActionKinds.ContinueTravel)));
-        var journal = FirstBoardScenario.CreateMemoryHistory(initial);
-        SimulationKernel<FirstBoardWorld, BoardCandidate, FirstBoardFact> kernel =
-            FirstBoardScenario.CreateKernel(
-                Drivers((BoardIds.Alice, alice)),
-                instance,
-                journal);
-
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(1)));
-
-        OccurrenceEvent<FirstBoardFact> first = Assert.Single(journal.CompletedEvents);
-        if (responseFirst)
-        {
-            PassageEncounterResolvedEvent resolved = Assert.IsType<PassageEncounterResolvedEvent>(
-                Assert.IsType<GameBoardFact>(Assert.Single(first.Facts)).Value);
-            Assert.Equal(PassageEncounterResolution.Continued, resolved.Resolution);
-            Assert.Single(alice.Requests);
-            Assert.Null(kernel.World.Game.PendingEncounter);
-            Assert.Single(kernel.World.Spatial.ConsumedContacts);
-        }
-        else
-        {
-            Assert.IsType<TraversalArrivedFact>(
-                Assert.IsType<SpatialBoardFact>(Assert.Single(first.Facts)).Value);
-            Assert.Empty(alice.Requests);
-            Assert.NotNull(kernel.World.Game.PendingEncounter);
-            Assert.Empty(kernel.World.Spatial.ConsumedContacts);
-        }
     }
 
     private static async Task AssertResponseEntryCloseBranchAsync(
@@ -882,7 +882,7 @@ public sealed class PassageEncounterHostTests
         return world;
     }
 
-    private static ScenarioInstance CreateShortRoadInstance(ulong worldSeed)
+    private static ScenarioInstance CreateRoadInstance(ulong worldSeed, long length)
     {
         ScenarioDefinition definition = ScenarioDefinition.Default;
         return new ScenarioInstance(
@@ -890,7 +890,7 @@ public sealed class PassageEncounterHostTests
             {
                 Passages = Array.AsReadOnly(definition.Passages.Select(passage =>
                     passage.Id == BoardIds.TavernMarketRoad
-                        ? passage with { Length = 1 }
+                        ? passage with { Length = length }
                         : passage).ToArray()),
             },
             worldSeed);
@@ -899,7 +899,9 @@ public sealed class PassageEncounterHostTests
     private static FirstBoardWorld CreateTravelingPrefix(
         ScenarioInstance instance,
         bool withAliceGoal = false,
-        bool closeReverseEntry = false)
+        bool closeReverseEntry = false,
+        long aliceSpeed = BoardTiming.TravelSpeed,
+        long bobSpeed = BoardTiming.TravelSpeed)
     {
         var reducer = new FirstBoardReducer(instance.Graph);
         FirstBoardWorld world = instance.CreateInitialWorld();
@@ -914,8 +916,8 @@ public sealed class PassageEncounterHostTests
                     new PlaceId(BoardIds.Cellar))));
         }
 
-        world = StartTraversal(instance, reducer, world, BoardIds.Alice, instant);
-        world = StartTraversal(instance, reducer, world, BoardIds.Bob, instant);
+        world = StartTraversal(instance, reducer, world, BoardIds.Alice, instant, aliceSpeed);
+        world = StartTraversal(instance, reducer, world, BoardIds.Bob, instant, bobSpeed);
         if (closeReverseEntry)
         {
             world = reducer.Apply(
@@ -976,14 +978,15 @@ public sealed class PassageEncounterHostTests
         FirstBoardReducer reducer,
         FirstBoardWorld world,
         string actorId,
-        LogicalInstant instant)
+        LogicalInstant instant,
+        long speed = BoardTiming.TravelSpeed)
     {
         SpatialPlanAccepted plan = Assert.IsType<SpatialPlanAccepted>(
             new SpatialPlanner(instance.Graph).TryStartTraversal(
                 world.Spatial,
                 new EntityId(actorId),
                 new PassageId(BoardIds.TavernMarketRoad),
-                BoardTiming.TravelSpeed,
+                speed,
                 instant.ModelTime));
         return plan.Facts.Aggregate(
             world,

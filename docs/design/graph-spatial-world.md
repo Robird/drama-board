@@ -3,9 +3,9 @@
 
 **状态：Slice 1、Slice 2 已实施并通过验收；Slice 3+ 按真实故事触发延期**
 
-**本次修订：2026-08-23**
+**本次修订：2026-09-12；接触 floor、到达 ceil，同刻回应边界见 §3.5**
 
-> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成。当前动态模型与事实已原地适配 DurableGraph，算法保留；存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
+> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成。当前动态模型与事实已原地适配 DurableGraph；接触量化改为 §3.5 的 floor。存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
 
 **Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。
 
@@ -513,8 +513,10 @@ ContactTime = exact intersection of the two current worldlines
 require ContactTime > t0
 require ContactTime lies before both exact physical exits
 
-CandidateDue = ceil(ContactTime to 1ms)
+CandidateDue = floor(ContactTime to 1ms)
 ```
+
+这是提前开放的交互机会：按当前 motion，双方将在该刻度覆盖的 `[T,T+1ms)` 内交会，回应可以改变随后的运动。exact 整数交点仍在该整数时刻交互；负时间使用数学 floor。它不表示在 T 两个圆心已经重合，也不引入固定实体半径。Arrival 仍为 ceil；严格内部交点保证 `floor(ContactTime) < ceil(任一参与者的 physical exit)`，所以接触及其同刻回应不会再因自身 arrival 的取整碰撞而丢失。无关实体的 arrival 仍可同刻竞争。
 
 只保留两个最小 kind：
 
@@ -529,7 +531,7 @@ Overtake
 - 相对于共同窗口起点 `t0` 的 `tau == 0` overlap 不报 contact；
 - 相同 worldline 的 CoTravel 不报 contact；
 - `SpatialContactOccurrenceRule` 自身只接收 `GraphSpatialState`，没有第二份 `Now` authority；它依赖与 arrival rule 相同的 Host 前提：从诚实、连续注册的 committed Kernel prefix Forecast，Kernel 统一拒绝 past-due candidate。不得为了在 Spatial 内重复过滤而给 state 增加时钟；
-- 已进入同一整数 tick 后，不得用 `ContactTime > current ModelTime` 过滤 peers：exact time 已过去但 `CandidateDue == current ModelTime` 的未消费 contact 仍须保留；
+- 已进入同一整数 tick 后，`CandidateDue == current ModelTime` 的未消费 contact 仍须保留；只依据 current segment 和 consumed key，不额外用当前时刻截掉 peers 或恰在整数时刻发生的交点；
 - exact fraction 不进入 Candidate、World、Fact、Journal、query 或 Player view；
 - 同 tick contact 的顺序只由 Kernel `(Due, PRF rank, CandidateKey)` 决定；
 - contact 与 arrival/change/DecisionPoint 没有 fixed priority。
@@ -546,7 +548,7 @@ PassageContactOccurred(
     Kind)
 ```
 
-Reducer 在加入 key 前复用同一个 pair math，验证 current segment/generation 精确匹配、key 尚未消费、存在唯一严格内部有效交点、`ceil(ContactTime) == batch.LogicalInstant.ModelTime` 且 Kind 匹配。验证成功后，它只把自己的 current-segment pair key 加入 `ConsumedContacts`；不重锚、不调速、不移动参与者。这是 fact-local 领域真实性校验，不是跨 build audited replay。这样：
+Reducer 在加入 key 前复用同一个 pair math，验证 current segment/generation 精确匹配、key 尚未消费、存在唯一严格内部有效交点、`floor(ContactTime) == batch.LogicalInstant.ModelTime` 且 Kind 匹配。验证成功后，它只把自己的 current-segment pair key 加入 `ConsumedContacts`；不重锚、不调速、不移动参与者。这是 fact-local 领域真实性校验，不是跨 build audited replay。这样：
 
 - 同一 contact 不会重复 Forecast；
 - A-B 提交不会吞掉同 tick 的 C-D；
@@ -581,7 +583,9 @@ Reverse
     → Spatial(TraversalReversed)
 ```
 
-response candidate key 包含 encounter identity；只有已经 `EncounterResolved` 的 encounter 才停止 Forecast。若 arrival、remove 或其它 occurrence 先改变了空间条件，仍 open 的 encounter 必须继续产生一个可关闭它的 cleanup/response candidate，并提交：
+floor 可能使交互发生在刚进入 Passage 的 `AnchorTime`。仍保留 `AnchorTime < at` 与严格内部 offset 的 Reverse 条件：该参与者此刻只有 Continue；刚在本刻掉头的参与者也不能再次掉头。反转形成的新 generation pair 若有有效交点，则允许同刻产生一次新的交互机会，不按实体 pair 或整个 tick 粗略去重。有限参与者的这条链有界：每人每刻至多 Reverse 一次，每个 current generation pair 至多消费一次。无须新增 contact ledger 或尺寸模型。
+
+response candidate key 包含 encounter identity；只有已经 `EncounterResolved` 的 encounter 才停止 Forecast。若 remove 或其它 occurrence 先改变了空间条件，仍 open 的 encounter 必须继续产生一个可关闭它的 cleanup/response candidate，并提交（对导入的已过时 pending，arrival cleanup 仍保留）：
 
 ```text
 Game(EncounterResolved(ContactKey, WorldChanged))
@@ -959,12 +963,14 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 | MUT-1 | idempotent scheduled entry patch仍消费自己；unspecified方向保留Due时current值；同tick另一Passage schedule继续存在；active traversal不被破坏。 |
 | NAV-1 | Navigator只枚举origin endpoint当前允许的方向；equal-cost route使用完整leg key稳定tie-break；NoRoute、overflow与unknown input明确区分。 |
 | REL-1 | same-place只包含已提交AtPlace；同offset但不同future worldline不构成CoTravel。 |
-| CNT-1 | Slice 2：length10，A+4/B-3在 `10/7` 交会，CandidateDue=T2；Fact/World/Journal不保存fraction。 |
+| CNT-1 | length10，A+4/B-3在 `10/7` 交会，CandidateDue=T1；负数按数学 floor；Fact/World/Journal不保存fraction。 |
 | CNT-2 | Slice 2：A-B与A-C同T，提交一对后另一对仍Forecast；已提交pair不复发；C-D也不被whole-tick消费。 |
-| CNT-3 | Slice 2：contact、arrival、mutation同T仅由Kernel PRF仲裁；无contact-first；endpoint与`tau=0`不伪报。 |
+| CNT-3 | 同T不同原因仍由Kernel PRF仲裁，无family优先级；floor contact严格早于自己的ceil arrival；endpoint与`tau=0`不伪报。 |
 | ENC-1 | Slice 2：真实Host consumer把contact与`EncounterOpened`同draft提交；Continue提交`EncounterResolved`，Reverse同batch再提交`TraversalReversed`；exact pending encounter只消费一次。 |
 | ENC-2 | Slice 2：单/双 driver encounter 总共只调用一个 Player；Reverse 关闭时不广告且伪造 intent 零提交；arrival 先赢时自动 WorldChanged cleanup 且不调用 Player。 |
 | ENC-3 | Slice 2：encounter request 只披露 Passage、counterpart、当前 target/ETA、由两端与 current target 推导的 reverse destination、contact kind 与可选 TravelGoal；不披露 exact fraction、offset、route、occupancy 或 PRF rank。 |
+| ENC-4 | AnchorTime 时交互只提供 Continue；Reverse 后可有同T新 generation contact，但同一角色不能再次掉头。 |
+| ENC-5 | 分数交点按 floor 提交，pending恢复及其 Continue/Reverse 回应结果与连续运行一致。 |
 | RPL-1 | 当前格式full run/replay/fork在完整batch boundary重建同一HostWorld；Replay不调用AI、Navigator或Forecast。 |
 
 ---

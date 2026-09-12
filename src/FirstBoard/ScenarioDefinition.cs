@@ -58,7 +58,8 @@ public sealed record ScenarioDefinition(
     IReadOnlyList<ScenarioActorDefinition> Actors,
     IReadOnlyList<ScenarioObjectDefinition> Objects)
 {
-    public const string FirstBoardRuleset = "firstboard.duchess-letter/2";
+    // Contact opportunities use floor time; /2 used ceiling and cannot resume under these rules.
+    public const string FirstBoardRuleset = "firstboard.duchess-letter/3";
 
     public static ScenarioDefinition Default { get; } = CreateDefault();
 

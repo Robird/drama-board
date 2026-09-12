@@ -11,6 +11,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 ## Current work
 
 - [DurableGraph first integration](worksets/durablegraph-first-integration.md): delivered real-consumer integration, runtime entry, acceptance evidence and follow-up boundaries.
+- [Passage contact floor timing](worksets/passage-contact-floor.md): interaction timing, same-tick response boundaries, and ruleset compatibility evidence.
 
 ## Current implementation boundaries and evidence
 

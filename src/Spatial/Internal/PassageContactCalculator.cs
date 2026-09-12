@@ -76,7 +76,9 @@ internal static class PassageContactCalculator
         }
 
         BigInteger absoluteContactNumerator = t0 * denominator + numerator;
-        if (!TryCeilingModelTime(absoluteContactNumerator, denominator, out ModelTime due))
+        // Offer interaction at the start of the tick containing the exact intersection.
+        // Physical exits remain rounded up, so an interior contact precedes either arrival.
+        if (!TryFloorModelTime(absoluteContactNumerator, denominator, out ModelTime due))
         {
             return false;
         }
@@ -136,15 +138,15 @@ internal static class PassageContactCalculator
         return true;
     }
 
-    private static bool TryCeilingModelTime(
+    private static bool TryFloorModelTime(
         BigInteger numerator,
         BigInteger denominator,
         out ModelTime due)
     {
         BigInteger quotient = BigInteger.DivRem(numerator, denominator, out BigInteger remainder);
-        if (remainder.Sign > 0)
+        if (remainder.Sign < 0)
         {
-            quotient += BigInteger.One;
+            quotient -= BigInteger.One;
         }
 
         if (quotient < long.MinValue || quotient > long.MaxValue)
