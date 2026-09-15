@@ -31,7 +31,29 @@ jobs:
       - name: Prepare pinned DurableGraph packages
         shell: pwsh
         run: ./scripts/Prepare-DurableGraph.ps1 -DurableGraphSource ./external/durable-graph -AteliaSource ./external/atelia
-      - name: Build
-        run: dotnet build DramaBoard.Local.slnx -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: src/WebUI/package-lock.json
+      - name: Install frontend dependencies
+        run: npm --prefix src/WebUI ci
+      - name: Build frontend
+        run: npm --prefix src/WebUI run build
+      - name: Build solution
+        run: dotnet build DramaBoard.Local.slnx -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
       - name: Test
-        run: dotnet test DramaBoard.Local.slnx --no-build --no-restore
+        run: dotnet test DramaBoard.Local.slnx --no-build --no-restore -m:1
+      - name: Publish local server
+        shell: pwsh
+        run: ./scripts/Publish-Server.ps1
+      - name: Install Chromium
+        working-directory: src/WebUI
+        run: npx playwright install --with-deps chromium
+      - name: Verify published server in Chromium
+        run: npm --prefix src/WebUI run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-evidence-${{ matrix.os }}
+          path: artifacts/0025/

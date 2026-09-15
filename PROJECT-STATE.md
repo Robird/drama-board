@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-16；FirstBoard/LLM 冷归档与核心独立验证已完成。归档范围和 A1—A7 证据见 [Build Log 0024](docs/build-log/0024-archive-firstboard-and-verify-core.md)。
+> 最近整理：2026-09-16；本地 Server、双页面与首个真实移动闭环已完成，见 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 最终目标
 
@@ -13,16 +13,19 @@
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Player 与协议**：冻结的 Observation、DecisionRequest、Intent 和稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 Null/Scripted/Random driver，Decision.Validation 负责请求关联和动作校验，Player.Agency 提供已知图快照接缝。
 - **构建依赖**：Kernel/Spatial 使用固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。已提交的 Kernel/Spatial schema history 不因本批改变。
+- **本地可玩入口**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置与自身轨迹；诊断独立只读取数。发布启动见 [README](README.md)，Windows 实际 apphost/Chromium 证据见 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 当前焦点与下一步
 
 活跃核心固定为 Kernel、Spatial、Protocol、Player、Decision.Validation、Host、Player.Agency 及各自测试。FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料均已移至 [归档索引](docs/archive/firstboard-llm.md)，不参与默认编译或搜索。
 
-下一步才设计无剧情 free-play 的第一个移动闭环：Human 发出移动决策，系统呈现时间、位置、已知地图和自身轨迹。探索披露、轨迹模型、UI 技术与跨进程保存范围仍未裁决。
+当前应用边界为四点全图已知场景，只提供相邻 `action.travel`；出发/到达均由 Kernel 提交，等待不走模型时间。刷新继续同次运行，服务重启回 genesis；诊断仅展示最近 100 条完成记录，自身轨迹保留整次运行。七核心合同保持不变。
+
+当前回到设计阶段，结合 Human 游玩体验与 [0025 结果包](docs/build-log/0025-verification.md)选择下一种交互机制，尚未选定下一批范围。继续采用“设计会话裁决 → fork 会话施工 → 简短证据回传”的协作方式。
 
 ## 延期与重开条件
 
-- **自由玩法模型**：探索披露、轨迹模型、UI 技术与跨进程保存范围由首个移动闭环设计裁决，本批不预设。
+- **后续交互机制**：首个移动闭环验收后，依据 Human 游玩与诊断证据逐项选择。探索披露、途中操作、默认行为协议、自动导航、NPC/剧情/物品不进入 0025。
 - **持久化消费者**：核心保留 E/S 接缝和内存合同；新场景需要落盘时，从其真实闭包重新设计 adapter、恢复与 Player 同步边界。归档 FirstBoard 的结果只是历史证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：调速/途中停留、Area、ViewLink、关系变化与 contact 索引按实际玩法和性能证据触发。
@@ -30,5 +33,5 @@
 
 ## 按需导航与验证
 
-- 两份等价入口：[DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx)。先运行 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1)，再按 Build Log 0024 进行串行构建和测试；[CI](.github/workflows/ci.yml)同样准备固定包并验证 schema history。
+- 两份等价入口：[DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx)，均含七核心、Server 及对应测试。先运行 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1)，再按 [README](README.md)串行构建/测试及[发布](scripts/Publish-Server.ps1)；[CI](.github/workflows/ci.yml)先准备前端，再验证 .NET 与发布产物的 Chromium 行为。
 - 文档入口：[docs/README](docs/README.md)。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

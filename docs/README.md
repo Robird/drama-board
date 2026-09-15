@@ -14,7 +14,9 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 ## Current work
 
-[Archive FirstBoard and verify the core](build-log/0024-archive-firstboard-and-verify-core.md) records the completed archival boundary and A1--A7 validation. No free-play scene, Human frontend, map/trajectory model, or new persistence adapter has been implemented.
+[Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries. Further mechanisms await design decisions.
+
+[Archive FirstBoard and verify the core](build-log/0024-archive-firstboard-and-verify-core.md) records the completed archival boundary and A1--A7 validation. Disk persistence and LLM integration remain deferred.
 
 ## Consumer feedback
 

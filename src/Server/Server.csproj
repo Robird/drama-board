@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../Kernel/Kernel.csproj" />
+    <ProjectReference Include="../Spatial/Spatial.csproj" />
+    <ProjectReference Include="../Protocol/Protocol.csproj" />
+    <ProjectReference Include="../Player/Player.csproj" />
+    <ProjectReference Include="../Decision.Validation/Decision.Validation.csproj" />
+    <ProjectReference Include="../Player.Agency/Player.Agency.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../WebUI/dist/**/*" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
