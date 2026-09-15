@@ -5,7 +5,7 @@
 
 **本次修订：2026-09-12；接触 floor、到达 ceil，同刻回应边界见 §3.5**
 
-> 阅读提示（2026-09-12）：§1.4、§8 的 Grid/cutover 文字保留当时迁移语境，Graph Slice 1/2 已完成。当前动态模型与事实已原地适配 DurableGraph；接触量化改为 §3.5 的 floor。存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
+> 阅读提示（2026-09-16）：Graph Slice 1/2、客观空间权威和 §3.5 的 contact floor 是活跃核心合同。§1.4、§8 及所有 FirstBoard composition/cutover 文字保留已归档消费者的迁移语境；其源码与验收在[FirstBoard 归档](../archive/firstboard-llm.md)。存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
 
 **Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。
 
@@ -945,7 +945,7 @@ Replay 不 Forecast、不调用 AI、不重新算 route/contact winner，也不�
 
 ## 7.2 最小验收矩阵
 
-截至 2026-08-23，表中 Slice 1 与 Slice 2 条目均已有自动化测试；更细的 Slice 2 evidence map 见 [Build Log 0002](../build-log/0002-passage-encounter.md)。
+截至 2026-08-23，表中 Slice 1 与 Slice 2 条目均已有自动化测试；更细的历史 Slice 2 evidence map 见[归档 Build Log 0002](../../archive/firstboard-llm/docs/build-log/0002-passage-encounter.md)。
 
 | ID | 必须证明 |
 |---|---|

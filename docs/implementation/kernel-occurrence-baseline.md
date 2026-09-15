@@ -8,7 +8,7 @@
 
 **关联核心设计：[Simulation Kernel](../design/simulation-kernel.md)**
 
-**后继 package 边界（2026-08-23）：** 第 11–12 条仍禁止 Kernel 内的重型 audited replay、旧格式 reader 与 migration。后继 [Game content and Save boundary](game-content-save-boundary.md) 在 Runner/Ruleset package 层增加 current-format、exact-ID 的 fail-fast Save；pure wire 变化由各 codec ID 承担，同一 bytes 的 Ruleset meaning/future behavior 变化由 `RulesetId` 承担，software provenance 只作审计。
+**历史 package 边界（2026-08-23）：** 第 11–12 条仍禁止 Kernel 内的重型 audited replay、旧格式 reader 与 migration。归档的 [Game content and Save boundary](../../archive/firstboard-llm/docs/implementation/game-content-save-boundary.md) 曾在 Runner/Ruleset package 层定义 current-format Save；新消费者另行裁决其格式。
 
 ---
 
@@ -43,7 +43,7 @@ Kernel 的完整职责收敛为：
 12. 原型阶段不存在需要保留的旧 Journal 数据；不实现旧格式版本门、只读打开、转换或迁移。格式变化后直接丢弃开发数据并重建。
 13. 当前不存在通用跨域 transaction coordinator 的需求。首个真实 Game + Spatial 组合由一个 composite `HostWorld`、一个 draft 和一次 `AppendBatch` 解决。
 
-`src/FirstBoard`、`src/FirstBoard.Demo`、`src/Spatial` 与这些法则冲突时，为新法则让路，不要求 Kernel 保留双轨兼容。
+归档的具体消费者与 `src/Spatial` 冲突时，为新法则让路，不要求 Kernel 保留双轨兼容。
 
 ---
 

@@ -19,4 +19,4 @@
 - 每个视图持有自己的上下文/索引，不能用全局 Actor→context 表代替它。
 - 独立小事件未必与世界有很多可共享内容。按实际模型测量读取延迟、分配和保留实例，不从共享机制推导一般性能收益。
 
-ReadPair 不是 DramaBoard 首片的前置依赖；[近期计划](../../worksets/durablegraph-first-integration.md)先验证独立 E/S 与 Resume。原始算法审查和建议保存在 Git：`063e3e7:docs/feedback/durablegraph/002-readpair-sharing-contract.md`。
+ReadPair 不是活跃核心的前置依赖；独立 E/S 与 Resume 的 FirstBoard 消费验证已归档。原始算法审查和建议保存在 Git：`063e3e7:docs/feedback/durablegraph/002-readpair-sharing-contract.md`。

@@ -12,7 +12,8 @@ public sealed class ProjectDependencyGuardTests
             { "Decision.Validation", ["Protocol"] },
             { "Player", ["Kernel", "Protocol"] },
             { "Host", ["Kernel"] },
-            { "Player.Llm", ["Player", "Protocol"] },
+            { "Spatial", ["Kernel"] },
+            { "Player.Agency", ["Spatial"] },
         };
 
     [Theory]

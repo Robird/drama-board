@@ -1,7 +1,7 @@
 # DurableGraph 下的 Occurrence 提交与恢复
 
-> 状态：2026-09-12 **已实施首轮接入并验收**；本文解释所采用的语义，具体 C# 接缝见 [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs)、[KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs)与 [FirstBoard adapter](../../src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs)。证据与范围见近期计划 §8。
-> 本文细化[独立 E/S 消费者合同](../research/event-journal-state-store-draft.md)在 DramaBoard 的映射；任务顺序只维护在[近期计划](../worksets/durablegraph-first-integration.md)。
+> 状态：2026-09-16。活跃核心保留独立 E/S、`IOccurrenceHistory` 与有限 [KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs) 的合同；FirstBoard adapter、完整世界与跨进程恢复是已归档的消费者映射，见[归档索引](../archive/firstboard-llm.md)。
+> 本文的 Kernel 合同仍是当前依据；涉及具体 FirstBoard 模型、Ruleset 和 adapter 的段落保留历史语境，原始消费者合同与施工顺序均在归档中。
 
 ## 1. 保留什么，改变什么
 
@@ -51,9 +51,9 @@ OccurrenceEvent
 
 沿用 Game.Now 和 Game.WorldSeed 时，Kernel 的当前时间/规则种子必须与它们对齐；不另造第三份时钟或种子。恢复先校验完整边界，再交给查询与下一轮 Forecast。
 
-Definition 首片可复用 [ScenarioInstance](../../src/FirstBoard/ScenarioDefinition.cs) 已有的 canonical 内容与 hash：保存精确内容，重建 GraphDefinition 并验证绑定。这里的内容 JSON 是现有内容格式，动态世界与 E 仍由强类型领域模型保存。不能只保存场景名字再加载当前默认地图。
+FirstBoard 首片曾复用 `ScenarioInstance` 的 canonical 内容与 hash：保存精确内容，重建 GraphDefinition 并验证绑定。这是[归档消费者](../archive/firstboard-llm.md)的历史模型，不是新场景的预设存储格式。
 
-当前 FirstBoard Ruleset 为 `firstboard.duchess-letter/3`：contact 使用 floor，arrival 保持 ceil。旧 `/2` 的 contact fact 时间校验与未来预测不同，因此旧 S-head/E-head 均拒绝按新规则续跑；不自动重解释 pending 或转换存档。此为规则变更，durable 字段与 Schema history 不变。验证记录见[接触时间量化](../worksets/passage-contact-floor.md)。
+归档 FirstBoard Ruleset 曾使用 `firstboard.duchess-letter/3`；其 `/2` 兼容和续局结论只适用于该历史消费者。活跃 Spatial 仍保持 contact floor、arrival ceil，见[接触时间量化](../worksets/passage-contact-floor.md)。
 
 规则对象、driver、GraphDefinition 查询索引、candidate/owner map 和呈现上下文留在图外。构造器不在 DG 恢复时运行，应用需显式完成领域校验与 Transient 重建；不能只依赖构造器中的规范排序和合法性检查。
 

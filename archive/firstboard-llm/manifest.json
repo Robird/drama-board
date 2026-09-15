@@ -1,0 +1,1151 @@
+{
+  "formatVersion": 1,
+  "archiveRoot": "archive/firstboard-llm",
+  "preArchiveHead": "5a7de712ad8de0d8c8357832be0d97b13ad11d78",
+  "preArchiveGitStatus": [],
+  "trackedSourceFileCount": 163,
+  "generatedAtUtc": "2026-09-15T17:42:54.9329247Z",
+  "files": [
+    {
+      "sourcePath": "docs/开放世界棋盘游戏设计_002_整体软件架构与技术栈.md",
+      "archivePath": "archive/firstboard-llm/docs/开放世界棋盘游戏设计_002_整体软件架构与技术栈.md",
+      "sourceSha256": "D403DFB78872BEB7ADF3012A4B877321A9204F64F5D9E6629C3C870855C8A0CD",
+      "archiveSha256": "D403DFB78872BEB7ADF3012A4B877321A9204F64F5D9E6629C3C870855C8A0CD",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/开放世界棋盘游戏设计_004_Providence与因果模板.md",
+      "archivePath": "archive/firstboard-llm/docs/开放世界棋盘游戏设计_004_Providence与因果模板.md",
+      "sourceSha256": "95D8F45C429F425C5C2C34BEDE2E4E53CF17F890345E7E35E02AF9D3D78E3956",
+      "archiveSha256": "95D8F45C429F425C5C2C34BEDE2E4E53CF17F890345E7E35E02AF9D3D78E3956",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/开放世界棋盘游戏设计_006_伴生RPG与AI_Player体验设计.md",
+      "archivePath": "archive/firstboard-llm/docs/开放世界棋盘游戏设计_006_伴生RPG与AI_Player体验设计.md",
+      "sourceSha256": "438EF386AF606CCF4CEB66F79365DC5876CBF9AED42EF17B39751774B0B8F904",
+      "archiveSha256": "438EF386AF606CCF4CEB66F79365DC5876CBF9AED42EF17B39751774B0B8F904",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/研发计划_001_架构基线与决策记录.md",
+      "archivePath": "archive/firstboard-llm/docs/研发计划_001_架构基线与决策记录.md",
+      "sourceSha256": "E8BBC500A041C5558007169B8824DE06126904E3941EAD3A377146EC069AC9A6",
+      "archiveSha256": "E8BBC500A041C5558007169B8824DE06126904E3941EAD3A377146EC069AC9A6",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/研发计划_003_Kernel攻击性评审_2026-08-16.md",
+      "archivePath": "archive/firstboard-llm/docs/研发计划_003_Kernel攻击性评审_2026-08-16.md",
+      "sourceSha256": "448F5E2C5ED850B2219DB8DFC0953FF451A97BC8D9954C4C08410EC849E3F974",
+      "archiveSha256": "448F5E2C5ED850B2219DB8DFC0953FF451A97BC8D9954C4C08410EC849E3F974",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/研发计划_004_Host落盘层攻击性评审_2026-08-17.md",
+      "archivePath": "archive/firstboard-llm/docs/研发计划_004_Host落盘层攻击性评审_2026-08-17.md",
+      "sourceSha256": "D00D8FC4B91A6C2738ECFD3DCCB08344AFA1DE469BD81CBB25D474F845F5F3DF",
+      "archiveSha256": "D00D8FC4B91A6C2738ECFD3DCCB08344AFA1DE469BD81CBB25D474F845F5F3DF",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/研发计划_005_LLM_Player设计研究.md",
+      "archivePath": "archive/firstboard-llm/docs/研发计划_005_LLM_Player设计研究.md",
+      "sourceSha256": "8A9131D36C3F7BAA293B8319A5DC583A9C56907F8BDF07074E81F83E8E202D84",
+      "archiveSha256": "8A9131D36C3F7BAA293B8319A5DC583A9C56907F8BDF07074E81F83E8E202D84",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0001-travel-to.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0001-travel-to.md",
+      "sourceSha256": "68841319BDCAC236CCB6A5F2842D7119E2C3965085625B4D704A1258EE23C691",
+      "archiveSha256": "68841319BDCAC236CCB6A5F2842D7119E2C3965085625B4D704A1258EE23C691",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0002-passage-encounter.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0002-passage-encounter.md",
+      "sourceSha256": "24A04962D477DD3DDF740EC3A947B4D04807B9C0E817A5026F5A382C7D5C8813",
+      "archiveSha256": "24A04962D477DD3DDF740EC3A947B4D04807B9C0E817A5026F5A382C7D5C8813",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0003-live-session-playback.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0003-live-session-playback.md",
+      "sourceSha256": "7E7FD1B5F6D5C7F776E6C433697ECA1319FD8C5AE099FC562A8401D11A552893",
+      "archiveSha256": "7E7FD1B5F6D5C7F776E6C433697ECA1319FD8C5AE099FC562A8401D11A552893",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0005-game-definition-and-ruleset-bindings.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0005-game-definition-and-ruleset-bindings.md",
+      "sourceSha256": "40E6B7EA9B592B8E2B8AD995D76DCC21B65A1C8F7299FBA3E8FF0D6CC80D90A5",
+      "archiveSha256": "40E6B7EA9B592B8E2B8AD995D76DCC21B65A1C8F7299FBA3E8FF0D6CC80D90A5",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0007-content-pack-contract-and-loader-probe.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0007-content-pack-contract-and-loader-probe.md",
+      "sourceSha256": "8E09E56080712CC54552DB85D0560586331516E29D58673EDD12163FFD220102",
+      "archiveSha256": "8E09E56080712CC54552DB85D0560586331516E29D58673EDD12163FFD220102",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0009-content-neutral-runner.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0009-content-neutral-runner.md",
+      "sourceSha256": "80DD98D4B36CDDCFC4C28F6708EC477C92D22A9DFCF92007044DDEA2AEE65F06",
+      "archiveSha256": "80DD98D4B36CDDCFC4C28F6708EC477C92D22A9DFCF92007044DDEA2AEE65F06",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0011-mechanical-naming-cleanup.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0011-mechanical-naming-cleanup.md",
+      "sourceSha256": "961FB172B83254C1748EE44326C9DB9665C76A59A4D8214581FD37A09942822E",
+      "archiveSha256": "961FB172B83254C1748EE44326C9DB9665C76A59A4D8214581FD37A09942822E",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0012-game-definition-codec.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0012-game-definition-codec.md",
+      "sourceSha256": "9297BCFCB2D90450630E0466B57BA39620164D0A0DBA205E8D1E000D730868FD",
+      "archiveSha256": "9297BCFCB2D90450630E0466B57BA39620164D0A0DBA205E8D1E000D730868FD",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0013-firstboard-fact-codec.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0013-firstboard-fact-codec.md",
+      "sourceSha256": "5532162D0F4CCEC8FB5E67F644EFEAB3B3650090BFC88A4A223C5D2448D8AAAC",
+      "archiveSha256": "5532162D0F4CCEC8FB5E67F644EFEAB3B3650090BFC88A4A223C5D2448D8AAAC",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0014-journal-neutral-capture.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0014-journal-neutral-capture.md",
+      "sourceSha256": "C725A3E860CB728F12D15CDBFC98AD59794791CAD84C3BD657B5170A88F3D32C",
+      "archiveSha256": "C725A3E860CB728F12D15CDBFC98AD59794791CAD84C3BD657B5170A88F3D32C",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0015-durable-atelia-journal.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0015-durable-atelia-journal.md",
+      "sourceSha256": "0EB5888D4F5D3DE7E28F85461BEDD821EC009B56FF95B923AA56D6FFFB5EBD45",
+      "archiveSha256": "0EB5888D4F5D3DE7E28F85461BEDD821EC009B56FF95B923AA56D6FFFB5EBD45",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0016-objective-replay-package.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0016-objective-replay-package.md",
+      "sourceSha256": "EDFC33134C8E0E05E5A8BD3B5B4951C17AF25D9B00F717C60B501C652CF61D92",
+      "archiveSha256": "EDFC33134C8E0E05E5A8BD3B5B4951C17AF25D9B00F717C60B501C652CF61D92",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0017-llm-player-checkpoint.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0017-llm-player-checkpoint.md",
+      "sourceSha256": "B5B5B3C5F8C18D8271EBACF155F141EB2A40615B42AC7C3CF8909DECA0C740E0",
+      "archiveSha256": "B5B5B3C5F8C18D8271EBACF155F141EB2A40615B42AC7C3CF8909DECA0C740E0",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0018-player-composition-checkpoint.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0018-player-composition-checkpoint.md",
+      "sourceSha256": "2BCC8A1970B48D29E55FF999DE9EADC66D91A2C2EDFB91032CE0C20FC537444E",
+      "archiveSha256": "2BCC8A1970B48D29E55FF999DE9EADC66D91A2C2EDFB91032CE0C20FC537444E",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0019-composite-save-package.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0019-composite-save-package.md",
+      "sourceSha256": "F668B281C6FB560EDD6523EFD184E49D406D428DBC1514CF9C96D10043C7799A",
+      "archiveSha256": "F668B281C6FB560EDD6523EFD184E49D406D428DBC1514CF9C96D10043C7799A",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/build-log/0020-runner-resume-successor.md",
+      "archivePath": "archive/firstboard-llm/docs/build-log/0020-runner-resume-successor.md",
+      "sourceSha256": "CFDBD5F5338D945213DEE6D2F9C9004BF5630668B20BEAA2CBB221DFA75A5922",
+      "archiveSha256": "CFDBD5F5338D945213DEE6D2F9C9004BF5630668B20BEAA2CBB221DFA75A5922",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/Design Note 001：戏剧棋盘——一种面向 AI Player 的角色化沙盒游戏.md",
+      "archivePath": "archive/firstboard-llm/docs/Design Note 001：戏剧棋盘——一种面向 AI Player 的角色化沙盒游戏.md",
+      "sourceSha256": "981360C198BCECECB7EE39A68D35437C333FD6B2FF6D0D07AD9E8364F42E7146",
+      "archiveSha256": "981360C198BCECECB7EE39A68D35437C333FD6B2FF6D0D07AD9E8364F42E7146",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/Design Note 004：叙事化长期材料——来源与信念分离.md",
+      "archivePath": "archive/firstboard-llm/docs/Design Note 004：叙事化长期材料——来源与信念分离.md",
+      "sourceSha256": "4F78FC17DE51B7D71DCB492A8BAEEA9AE76D93E0D218EA5ABB29D4B654082158",
+      "archiveSha256": "4F78FC17DE51B7D71DCB492A8BAEEA9AE76D93E0D218EA5ABB29D4B654082158",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/Design Note 005：分块 MemoryBank——不同稳定性的独立认知维护.md",
+      "archivePath": "archive/firstboard-llm/docs/Design Note 005：分块 MemoryBank——不同稳定性的独立认知维护.md",
+      "sourceSha256": "F9DAE1186774B286F50076467D338C8A779C2217CAEC75E9CBBE3026DDD1C6F7",
+      "archiveSha256": "F9DAE1186774B286F50076467D338C8A779C2217CAEC75E9CBBE3026DDD1C6F7",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/Design Note 006：Scenario Definition、Instance 与 Run Manifest.md",
+      "archivePath": "archive/firstboard-llm/docs/Design Note 006：Scenario Definition、Instance 与 Run Manifest.md",
+      "sourceSha256": "B2F60D9B09E19D2030F7F99B93D566CCED3F6C8D18F804009297FA2FD5E7CC9A",
+      "archiveSha256": "B2F60D9B09E19D2030F7F99B93D566CCED3F6C8D18F804009297FA2FD5E7CC9A",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/implementation/game-content-save-boundary.md",
+      "archivePath": "archive/firstboard-llm/docs/implementation/game-content-save-boundary.md",
+      "sourceSha256": "4884FCE946F2383DB3BAAF100D293A7C3E133F9B107071F73DAFD6EA3BB9C0BC",
+      "archiveSha256": "4884FCE946F2383DB3BAAF100D293A7C3E133F9B107071F73DAFD6EA3BB9C0BC",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/research/durablegraph-consumer-preflight.md",
+      "archivePath": "archive/firstboard-llm/docs/research/durablegraph-consumer-preflight.md",
+      "sourceSha256": "D4A6A6C06DBE84E39AD9008172315C38E0E71C68D45778282137A359E18EF6B4",
+      "archiveSha256": "D4A6A6C06DBE84E39AD9008172315C38E0E71C68D45778282137A359E18EF6B4",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/research/event-journal-state-store-draft.md",
+      "archivePath": "archive/firstboard-llm/docs/research/event-journal-state-store-draft.md",
+      "sourceSha256": "9570CB83F7983321ED4E2BDD06FE87621BE4928584F3A2C91F665F543759A64E",
+      "archiveSha256": "9570CB83F7983321ED4E2BDD06FE87621BE4928584F3A2C91F665F543759A64E",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/research/persistent-script-vm-selection.md",
+      "archivePath": "archive/firstboard-llm/docs/research/persistent-script-vm-selection.md",
+      "sourceSha256": "72A214BD72587869A84C8D04616FC2055DB1A827991BC525A0D921E0295096FC",
+      "archiveSha256": "72A214BD72587869A84C8D04616FC2055DB1A827991BC525A0D921E0295096FC",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/worksets/durablegraph-first-integration.md",
+      "archivePath": "archive/firstboard-llm/docs/worksets/durablegraph-first-integration.md",
+      "sourceSha256": "34AD31BC834FD51382FC3A0CCEECF134A73811A88F6A256C335CA1B5795B4575",
+      "archiveSha256": "34AD31BC834FD51382FC3A0CCEECF134A73811A88F6A256C335CA1B5795B4575",
+      "verified": true
+    },
+    {
+      "sourcePath": "docs/worksets/pre-integration-cleanup.md",
+      "archivePath": "archive/firstboard-llm/docs/worksets/pre-integration-cleanup.md",
+      "sourceSha256": "F7507A7BB0A56DC3D42FD5B90FA728E4AC5A2695EB0C17A230B0A1F349CCDB57",
+      "archiveSha256": "F7507A7BB0A56DC3D42FD5B90FA728E4AC5A2695EB0C17A230B0A1F349CCDB57",
+      "verified": true
+    },
+    {
+      "sourcePath": "README.md",
+      "archivePath": "archive/firstboard-llm/README.md",
+      "sourceSha256": "942246005D8BA87808EE82B275DE43873DBB72866A08E27B10A9F68782591987",
+      "archiveSha256": "942246005D8BA87808EE82B275DE43873DBB72866A08E27B10A9F68782591987",
+      "verified": true
+    },
+    {
+      "sourcePath": "scripts/analyze_llm_runtime.py",
+      "archivePath": "archive/firstboard-llm/scripts/analyze_llm_runtime.py",
+      "sourceSha256": "0024BE1C81B63DF861C51D35E953EF8FC6B6BA95A194CAC3DDD573C7325B2AEF",
+      "archiveSha256": "0024BE1C81B63DF861C51D35E953EF8FC6B6BA95A194CAC3DDD573C7325B2AEF",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoBackend.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoBackend.cs",
+      "sourceSha256": "EAAE23269F464EAB48D03FA4137B3E7E073DC31AC0B7655BCBBB258B3894297E",
+      "archiveSha256": "EAAE23269F464EAB48D03FA4137B3E7E073DC31AC0B7655BCBBB258B3894297E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoLlmComposition.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoLlmComposition.cs",
+      "sourceSha256": "F370D75C895F9117F36F82EA39C33BBC3C9960FD5F844A7E453A9D311C7DBE6B",
+      "archiveSha256": "F370D75C895F9117F36F82EA39C33BBC3C9960FD5F844A7E453A9D311C7DBE6B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoLlmProfiler.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoLlmProfiler.cs",
+      "sourceSha256": "3CC75F170DAFE5032D74E1BC17EC5EAE690D40510E7A581A9B00D394C0753BCE",
+      "archiveSha256": "3CC75F170DAFE5032D74E1BC17EC5EAE690D40510E7A581A9B00D394C0753BCE",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoMemoryProfile.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoMemoryProfile.cs",
+      "sourceSha256": "F04FBEA1DA1A34CC54AE79AC1DE5C32F6B5462610ACE33CFDCB343FE238DBD07",
+      "archiveSha256": "F04FBEA1DA1A34CC54AE79AC1DE5C32F6B5462610ACE33CFDCB343FE238DBD07",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoOptions.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoOptions.cs",
+      "sourceSha256": "285B27C5509B18732D7CED037447E37B6AF313BD92885C20068B242379848B4E",
+      "archiveSha256": "285B27C5509B18732D7CED037447E37B6AF313BD92885C20068B242379848B4E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoRunManifestWriter.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoRunManifestWriter.cs",
+      "sourceSha256": "E291A9BEE78E4AC7682A6E057CBC31D1D5D8AC238413506B10B4D923A5F3784E",
+      "archiveSha256": "E291A9BEE78E4AC7682A6E057CBC31D1D5D8AC238413506B10B4D923A5F3784E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoTraceSink.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoTraceSink.cs",
+      "sourceSha256": "6874A534FB8F40EC0CFB0138EE324ECAB6425DB3FDF6444DF64238544CB84774",
+      "archiveSha256": "6874A534FB8F40EC0CFB0138EE324ECAB6425DB3FDF6444DF64238544CB84774",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DemoWorldStore.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DemoWorldStore.cs",
+      "sourceSha256": "9F79DE2A9821BD5A6EE38107356CE0A0C654D4D20DB921EAF178682DA62ABE72",
+      "archiveSha256": "9F79DE2A9821BD5A6EE38107356CE0A0C654D4D20DB921EAF178682DA62ABE72",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/DramaRecordWriter.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/DramaRecordWriter.cs",
+      "sourceSha256": "3FF958188A514DA280ED4583343407115312F01AD221A8A586EEE2D70AA2A005",
+      "archiveSha256": "3FF958188A514DA280ED4583343407115312F01AD221A8A586EEE2D70AA2A005",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/FirstBoard.Demo.csproj",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/FirstBoard.Demo.csproj",
+      "sourceSha256": "2A60F7650181540A570062C79C3D01FC474CA2C33026F235976354179A319728",
+      "archiveSha256": "2A60F7650181540A570062C79C3D01FC474CA2C33026F235976354179A319728",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/CommittedTransition.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/CommittedTransition.cs",
+      "sourceSha256": "AD5F68C20E5FF2AB73AA9206FDC0821AF8A03BF35221C2BE21A49C516F9E2405",
+      "archiveSha256": "AD5F68C20E5FF2AB73AA9206FDC0821AF8A03BF35221C2BE21A49C516F9E2405",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/FirstBoardPresentationLoop.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/FirstBoardPresentationLoop.cs",
+      "sourceSha256": "0308E5F3D342B698C9D50A9860A5764C9104CFE4FF1442C70F4396B95CB9DD85",
+      "archiveSha256": "0308E5F3D342B698C9D50A9860A5764C9104CFE4FF1442C70F4396B95CB9DD85",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/FirstBoardPresentationProjector.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/FirstBoardPresentationProjector.cs",
+      "sourceSha256": "5F9F859586AB5F02C1A687C323300FA9F0BF7819DB13775190824A13506F1131",
+      "archiveSha256": "5F9F859586AB5F02C1A687C323300FA9F0BF7819DB13775190824A13506F1131",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/HumanDecisionParser.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/HumanDecisionParser.cs",
+      "sourceSha256": "DB14568B2D445B7A8BA9726A41709227F8EACBF22AE74D73158F81F9BBB9B483",
+      "archiveSha256": "DB14568B2D445B7A8BA9726A41709227F8EACBF22AE74D73158F81F9BBB9B483",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/LiveAuthorityLoop.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/LiveAuthorityLoop.cs",
+      "sourceSha256": "AC82601A509ED42773FD87EE01787F28853606BA51F662F814C418389A31DEE3",
+      "archiveSha256": "AC82601A509ED42773FD87EE01787F28853606BA51F662F814C418389A31DEE3",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/LiveSession.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/LiveSession.cs",
+      "sourceSha256": "727981F26787A76E16A934F6AB99154D702BF216A11DE15AD64BBB4ECD5CC126",
+      "archiveSha256": "727981F26787A76E16A934F6AB99154D702BF216A11DE15AD64BBB4ECD5CC126",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/LiveSessionCoordination.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/LiveSessionCoordination.cs",
+      "sourceSha256": "CEE2D9198E5F5505C48AAD2E78D058B84BEDFEA8A4EBB0DEE5D6EB9C428DB55A",
+      "archiveSha256": "CEE2D9198E5F5505C48AAD2E78D058B84BEDFEA8A4EBB0DEE5D6EB9C428DB55A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/PresentationContracts.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/PresentationContracts.cs",
+      "sourceSha256": "59ED70CC7506FC09F23CB6474D5D5D53118A61CC4520E2F7D5C3B67A117D89B1",
+      "archiveSha256": "59ED70CC7506FC09F23CB6474D5D5D53118A61CC4520E2F7D5C3B67A117D89B1",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/PresentationGatedHumanPlayerDriver.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/PresentationGatedHumanPlayerDriver.cs",
+      "sourceSha256": "2DEA0E5E4CC839D774B3160D536A20842DACD812C19CA690CA2C5A2FF4C3CA64",
+      "archiveSha256": "2DEA0E5E4CC839D774B3160D536A20842DACD812C19CA690CA2C5A2FF4C3CA64",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Live/TerminalUi.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Live/TerminalUi.cs",
+      "sourceSha256": "1B16CBC1822A654D1F0BDAB2FF2228B1584BB453625C555EBB945AEE5C707F76",
+      "archiveSha256": "1B16CBC1822A654D1F0BDAB2FF2228B1584BB453625C555EBB945AEE5C707F76",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Program.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Program.cs",
+      "sourceSha256": "5C76EADC7DEBD42B2A3276D2D39A5248A035C125538B0F74D2A3F147B1905BC7",
+      "archiveSha256": "5C76EADC7DEBD42B2A3276D2D39A5248A035C125538B0F74D2A3F147B1905BC7",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard.Demo/Properties/AssemblyInfo.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard.Demo/Properties/AssemblyInfo.cs",
+      "sourceSha256": "1F7C66533979A05C8282F48085B8586E7925215DCAF2F01613D1DBEE0759341E",
+      "archiveSha256": "1F7C66533979A05C8282F48085B8586E7925215DCAF2F01613D1DBEE0759341E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.030d8524208c19a3de1de7276a7620ff7dacb078d0431f91bb468cad7cf6d879.V1.10e9e73dd25c8b44933396d52c853c063d337bc72188b46aaca9303570dedf0a.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.030d8524208c19a3de1de7276a7620ff7dacb078d0431f91bb468cad7cf6d879.V1.10e9e73dd25c8b44933396d52c853c063d337bc72188b46aaca9303570dedf0a.dgschema",
+      "sourceSha256": "10E9E73DD25C8B44933396D52C853C063D337BC72188B46AACA9303570DEDF0A",
+      "archiveSha256": "10E9E73DD25C8B44933396D52C853C063D337BC72188B46AACA9303570DEDF0A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.06a91381859a70e0954b77c7c2a8fadab73b012d609b08ebff49f939a4f31c2b.V1.db74200a4ed84900a9ec5407901f85720c3b08f4ac6bc1cda3439dc9072a19d7.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.06a91381859a70e0954b77c7c2a8fadab73b012d609b08ebff49f939a4f31c2b.V1.db74200a4ed84900a9ec5407901f85720c3b08f4ac6bc1cda3439dc9072a19d7.dgschema",
+      "sourceSha256": "DB74200A4ED84900A9EC5407901F85720C3B08F4AC6BC1CDA3439DC9072A19D7",
+      "archiveSha256": "DB74200A4ED84900A9EC5407901F85720C3B08F4AC6BC1CDA3439DC9072A19D7",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.0e61b71ea149e08e87088d655221a583a1d2be23169cae06ad00a9d0a183cb20.V1.fc4b2588333f532492e284a742d1b1649e02d1bd6bf8c1d219656e2f948dd37b.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.0e61b71ea149e08e87088d655221a583a1d2be23169cae06ad00a9d0a183cb20.V1.fc4b2588333f532492e284a742d1b1649e02d1bd6bf8c1d219656e2f948dd37b.dgschema",
+      "sourceSha256": "FC4B2588333F532492E284A742D1B1649E02D1BD6BF8C1D219656E2F948DD37B",
+      "archiveSha256": "FC4B2588333F532492E284A742D1B1649E02D1BD6BF8C1D219656E2F948DD37B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.118033401523f8509092ab97412617c557050d498be03966a145d7e992eb5ac2.V1.f3a0c98be87022fa7b2d9e0e0b01de2ab428b54e95adb5cfef7ca98ca6e49386.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.118033401523f8509092ab97412617c557050d498be03966a145d7e992eb5ac2.V1.f3a0c98be87022fa7b2d9e0e0b01de2ab428b54e95adb5cfef7ca98ca6e49386.dgschema",
+      "sourceSha256": "F3A0C98BE87022FA7B2D9E0E0B01DE2AB428B54E95ADB5CFEF7CA98CA6E49386",
+      "archiveSha256": "F3A0C98BE87022FA7B2D9E0E0B01DE2AB428B54E95ADB5CFEF7CA98CA6E49386",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.274f38531f15662f88b845c2fbb64bce72e861d6d168e4135015e3accd6943dd.V1.652716beb672a4b99daa961343745b0ee44600a332b9e09f7286d0bcbe1b0a54.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.274f38531f15662f88b845c2fbb64bce72e861d6d168e4135015e3accd6943dd.V1.652716beb672a4b99daa961343745b0ee44600a332b9e09f7286d0bcbe1b0a54.dgschema",
+      "sourceSha256": "652716BEB672A4B99DAA961343745B0EE44600A332B9E09F7286D0BCBE1B0A54",
+      "archiveSha256": "652716BEB672A4B99DAA961343745B0EE44600A332B9E09F7286D0BCBE1B0A54",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.2bcee5f5cb8c798e935628fad210b9104c82c052d2bbdaa3733a517874ce95cc.V1.0d8a8f025ee2c72797e7c65edb47dd9624c9c531a18219e5dbb4160df5882294.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.2bcee5f5cb8c798e935628fad210b9104c82c052d2bbdaa3733a517874ce95cc.V1.0d8a8f025ee2c72797e7c65edb47dd9624c9c531a18219e5dbb4160df5882294.dgschema",
+      "sourceSha256": "0D8A8F025EE2C72797E7C65EDB47DD9624C9C531A18219E5DBB4160DF5882294",
+      "archiveSha256": "0D8A8F025EE2C72797E7C65EDB47DD9624C9C531A18219E5DBB4160DF5882294",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.35630acf23c71774495ba5628f0815421c29a7f6829689f9ba829da406b8e546.V1.00569194e07dfc7d4b9ea0d3d42b76df4e0a1ec87c208976ab4f4e1e2ca0872f.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.35630acf23c71774495ba5628f0815421c29a7f6829689f9ba829da406b8e546.V1.00569194e07dfc7d4b9ea0d3d42b76df4e0a1ec87c208976ab4f4e1e2ca0872f.dgschema",
+      "sourceSha256": "00569194E07DFC7D4B9EA0D3D42B76DF4E0A1EC87C208976AB4F4E1E2CA0872F",
+      "archiveSha256": "00569194E07DFC7D4B9EA0D3D42B76DF4E0A1EC87C208976AB4F4E1E2CA0872F",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.44902dca68400eef650672a38bbf5a04b21dac66229fe66bc8dff8896c5e1489.V1.a66ba4631bb04377ea8ce6f606e74cf16c4320381a4ee391fabbe7e7030caeb5.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.44902dca68400eef650672a38bbf5a04b21dac66229fe66bc8dff8896c5e1489.V1.a66ba4631bb04377ea8ce6f606e74cf16c4320381a4ee391fabbe7e7030caeb5.dgschema",
+      "sourceSha256": "A66BA4631BB04377EA8CE6F606E74CF16C4320381A4EE391FABBE7E7030CAEB5",
+      "archiveSha256": "A66BA4631BB04377EA8CE6F606E74CF16C4320381A4EE391FABBE7E7030CAEB5",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.489781a02809eff826844fafde070f79d3d913ca58cd863368f97b09de6af8d5.V1.795856da5ad54c338be675936247c2b09621fc40e76a488a462432095f8748dd.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.489781a02809eff826844fafde070f79d3d913ca58cd863368f97b09de6af8d5.V1.795856da5ad54c338be675936247c2b09621fc40e76a488a462432095f8748dd.dgschema",
+      "sourceSha256": "795856DA5AD54C338BE675936247C2B09621FC40E76A488A462432095F8748DD",
+      "archiveSha256": "795856DA5AD54C338BE675936247C2B09621FC40E76A488A462432095F8748DD",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.5931394949d417fb69312dc3a7e410547e2a2b84f0894c4ac557e8ced6d27d5f.V1.fea3f9e8d5ae55ab255546e05cc5ce75ad6fba59fdf654fe5044bac8fd149cd6.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.5931394949d417fb69312dc3a7e410547e2a2b84f0894c4ac557e8ced6d27d5f.V1.fea3f9e8d5ae55ab255546e05cc5ce75ad6fba59fdf654fe5044bac8fd149cd6.dgschema",
+      "sourceSha256": "FEA3F9E8D5AE55AB255546E05CC5CE75AD6FBA59FDF654FE5044BAC8FD149CD6",
+      "archiveSha256": "FEA3F9E8D5AE55AB255546E05CC5CE75AD6FBA59FDF654FE5044BAC8FD149CD6",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.5944ad7734be5470674e5766dad12189acf13fb4e6d2945680c75b24b6dbfe09.V1.62fb460f244d3a14eab69e57c2d3c0c377556b73a49320d7627d0012bbb88727.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.5944ad7734be5470674e5766dad12189acf13fb4e6d2945680c75b24b6dbfe09.V1.62fb460f244d3a14eab69e57c2d3c0c377556b73a49320d7627d0012bbb88727.dgschema",
+      "sourceSha256": "62FB460F244D3A14EAB69E57C2D3C0C377556B73A49320D7627D0012BBB88727",
+      "archiveSha256": "62FB460F244D3A14EAB69E57C2D3C0C377556B73A49320D7627D0012BBB88727",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.5d3239501753f116d4dfcdd61cde3b264efbc04c0b3ff5a0bd1347d027d3aa32.V1.c64590d1e482fe243aabafe2acf3af83c880750d2001e252c061618f6eca001a.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.5d3239501753f116d4dfcdd61cde3b264efbc04c0b3ff5a0bd1347d027d3aa32.V1.c64590d1e482fe243aabafe2acf3af83c880750d2001e252c061618f6eca001a.dgschema",
+      "sourceSha256": "C64590D1E482FE243AABAFE2ACF3AF83C880750D2001E252C061618F6ECA001A",
+      "archiveSha256": "C64590D1E482FE243AABAFE2ACF3AF83C880750D2001E252C061618F6ECA001A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.5e155a64197b5184423ae458e1fef5a0b9d521dc0cc2f5cbbad3a8ba936b84a7.V1.1b2faa65fc5d36ba59c95e39653cdd47811b5f6d093bdf46bb410b1f4eb612e3.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.5e155a64197b5184423ae458e1fef5a0b9d521dc0cc2f5cbbad3a8ba936b84a7.V1.1b2faa65fc5d36ba59c95e39653cdd47811b5f6d093bdf46bb410b1f4eb612e3.dgschema",
+      "sourceSha256": "1B2FAA65FC5D36BA59C95E39653CDD47811B5F6D093BDF46BB410B1F4EB612E3",
+      "archiveSha256": "1B2FAA65FC5D36BA59C95E39653CDD47811B5F6D093BDF46BB410B1F4EB612E3",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.6c045bc80680eb230deff3bffa830db828bba66046c4949e18356cefc222f8d1.V1.1891b890743cd9f4ff11490a6db2ad1b459bdb6eff8a2794e46f8ac371f2ef17.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.6c045bc80680eb230deff3bffa830db828bba66046c4949e18356cefc222f8d1.V1.1891b890743cd9f4ff11490a6db2ad1b459bdb6eff8a2794e46f8ac371f2ef17.dgschema",
+      "sourceSha256": "1891B890743CD9F4FF11490A6DB2AD1B459BDB6EFF8A2794E46F8AC371F2EF17",
+      "archiveSha256": "1891B890743CD9F4FF11490A6DB2AD1B459BDB6EFF8A2794E46F8AC371F2EF17",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.6c5a58a84f0fbdb372dca0ebd2d1ea38c94ea12c1580d5615958599af5534603.V1.287445cfcec819118a5d2fff79cdea067ef99222bd320759e073e76eb5ec00f4.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.6c5a58a84f0fbdb372dca0ebd2d1ea38c94ea12c1580d5615958599af5534603.V1.287445cfcec819118a5d2fff79cdea067ef99222bd320759e073e76eb5ec00f4.dgschema",
+      "sourceSha256": "287445CFCEC819118A5D2FFF79CDEA067EF99222BD320759E073E76EB5EC00F4",
+      "archiveSha256": "287445CFCEC819118A5D2FFF79CDEA067EF99222BD320759E073E76EB5EC00F4",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.6d667b8d41c2ae12b39b4b85bff9b28bd2532ee441cb24502d6faaaf7bceac66.V1.4af15380f43e7324839e1ebb87cbd631023cb3304aef616d487c8728e7750c5a.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.6d667b8d41c2ae12b39b4b85bff9b28bd2532ee441cb24502d6faaaf7bceac66.V1.4af15380f43e7324839e1ebb87cbd631023cb3304aef616d487c8728e7750c5a.dgschema",
+      "sourceSha256": "4AF15380F43E7324839E1EBB87CBD631023CB3304AEF616D487C8728E7750C5A",
+      "archiveSha256": "4AF15380F43E7324839E1EBB87CBD631023CB3304AEF616D487C8728E7750C5A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.71f50fab4bc85945a70b66b486070820fe62f14c674baa351304d81b102b7d96.V1.cdebdff12d8e6617d1020c750c937e57b0d02a6a10ad2dc5eb5a238506ec5848.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.71f50fab4bc85945a70b66b486070820fe62f14c674baa351304d81b102b7d96.V1.cdebdff12d8e6617d1020c750c937e57b0d02a6a10ad2dc5eb5a238506ec5848.dgschema",
+      "sourceSha256": "CDEBDFF12D8E6617D1020C750C937E57B0D02A6A10AD2DC5EB5A238506EC5848",
+      "archiveSha256": "CDEBDFF12D8E6617D1020C750C937E57B0D02A6A10AD2DC5EB5A238506EC5848",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.78a3ad637e779d5ee7060907bcc9f90ca0cbf3a713d239c34199b090fd830bee.V1.2d07a3fe01e49067a645aa2005816bb3d83a2ac020fbf8bf866a90fb41e42e49.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.78a3ad637e779d5ee7060907bcc9f90ca0cbf3a713d239c34199b090fd830bee.V1.2d07a3fe01e49067a645aa2005816bb3d83a2ac020fbf8bf866a90fb41e42e49.dgschema",
+      "sourceSha256": "2D07A3FE01E49067A645AA2005816BB3D83A2AC020FBF8BF866A90FB41E42E49",
+      "archiveSha256": "2D07A3FE01E49067A645AA2005816BB3D83A2AC020FBF8BF866A90FB41E42E49",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.7bf12c68444dc457ba53b67277e574ea2cc5e697feff80633ebdd569d9205154.V1.0d275a62a05317bdb0ae45f8e3dad40783d58c28edf32ab156bb0b3c63fc2763.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.7bf12c68444dc457ba53b67277e574ea2cc5e697feff80633ebdd569d9205154.V1.0d275a62a05317bdb0ae45f8e3dad40783d58c28edf32ab156bb0b3c63fc2763.dgschema",
+      "sourceSha256": "0D275A62A05317BDB0AE45F8E3DAD40783D58C28EDF32AB156BB0B3C63FC2763",
+      "archiveSha256": "0D275A62A05317BDB0AE45F8E3DAD40783D58C28EDF32AB156BB0B3C63FC2763",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.8c0b609eef031fc6cb76d826b36e98b239c1fbefd20420a4d4de754bdaeb1978.V1.3a3329557040792edc8c056e1f751658eb617c6a454696884a70322430e0034b.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.8c0b609eef031fc6cb76d826b36e98b239c1fbefd20420a4d4de754bdaeb1978.V1.3a3329557040792edc8c056e1f751658eb617c6a454696884a70322430e0034b.dgschema",
+      "sourceSha256": "3A3329557040792EDC8C056E1F751658EB617C6A454696884A70322430E0034B",
+      "archiveSha256": "3A3329557040792EDC8C056E1F751658EB617C6A454696884A70322430E0034B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.8ca385327deb0516e28f5765d84cd67ebc7060fe3dc46e3d9eb0ab3d6d609ef8.V1.0ff99a9e7e51d49a9872a82152bc831b31afb4f16310c5d445a25e7ec6b06804.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.8ca385327deb0516e28f5765d84cd67ebc7060fe3dc46e3d9eb0ab3d6d609ef8.V1.0ff99a9e7e51d49a9872a82152bc831b31afb4f16310c5d445a25e7ec6b06804.dgschema",
+      "sourceSha256": "0FF99A9E7E51D49A9872A82152BC831B31AFB4F16310C5D445A25E7EC6B06804",
+      "archiveSha256": "0FF99A9E7E51D49A9872A82152BC831B31AFB4F16310C5D445A25E7EC6B06804",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.92631ee0af35643638c0b05406d15de85f26a0b6e8eb8611c92f49dbd2060ad3.V1.1061e3d78320b867faafeb4e622389ec142d50bd1a1fc542fbb1edac6f7ea399.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.92631ee0af35643638c0b05406d15de85f26a0b6e8eb8611c92f49dbd2060ad3.V1.1061e3d78320b867faafeb4e622389ec142d50bd1a1fc542fbb1edac6f7ea399.dgschema",
+      "sourceSha256": "1061E3D78320B867FAAFEB4E622389EC142D50BD1A1FC542FBB1EDAC6F7EA399",
+      "archiveSha256": "1061E3D78320B867FAAFEB4E622389EC142D50BD1A1FC542FBB1EDAC6F7EA399",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.97a8c6f84e1daae7a492ee5d8f1b8b24a81dc39116d790f52de1849e5385b909.V1.6e76b7883d0c0f167b0453c94126c5b26f56c962918ca54a546f972dd78d4298.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.97a8c6f84e1daae7a492ee5d8f1b8b24a81dc39116d790f52de1849e5385b909.V1.6e76b7883d0c0f167b0453c94126c5b26f56c962918ca54a546f972dd78d4298.dgschema",
+      "sourceSha256": "6E76B7883D0C0F167B0453C94126C5B26F56C962918CA54A546F972DD78D4298",
+      "archiveSha256": "6E76B7883D0C0F167B0453C94126C5B26F56C962918CA54A546F972DD78D4298",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.9e924aa5e1ee3ed2a9236d2459fc7215a966b70b8d8b3e045f0a21a4066d9b28.V1.5765af493a19b5ac6926faab0b59e47a26dd5ee466b057937ccff1ae1b19789b.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.9e924aa5e1ee3ed2a9236d2459fc7215a966b70b8d8b3e045f0a21a4066d9b28.V1.5765af493a19b5ac6926faab0b59e47a26dd5ee466b057937ccff1ae1b19789b.dgschema",
+      "sourceSha256": "5765AF493A19B5AC6926FAAB0B59E47A26DD5EE466B057937CCFF1AE1B19789B",
+      "archiveSha256": "5765AF493A19B5AC6926FAAB0B59E47A26DD5EE466B057937CCFF1AE1B19789B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.a1469a627954291bed4c00640cd5aec7e0463774f0a6cf82ff3d0b7217f02d87.V1.b5fc049b75c82fe3d739ff582fa167ba82a1e4d5df81fbb43b5e040e7dc0b721.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.a1469a627954291bed4c00640cd5aec7e0463774f0a6cf82ff3d0b7217f02d87.V1.b5fc049b75c82fe3d739ff582fa167ba82a1e4d5df81fbb43b5e040e7dc0b721.dgschema",
+      "sourceSha256": "B5FC049B75C82FE3D739FF582FA167BA82A1E4D5DF81FBB43B5E040E7DC0B721",
+      "archiveSha256": "B5FC049B75C82FE3D739FF582FA167BA82A1E4D5DF81FBB43B5E040E7DC0B721",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.a41e88d1964c415419ed32e0e849612fbac98c074ee2b8387be4fcf7b4565cb8.V1.e2a7e466411b58fba08429a8a39fa9cafb9d7850448b7d6da5fa6e425c66ff8c.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.a41e88d1964c415419ed32e0e849612fbac98c074ee2b8387be4fcf7b4565cb8.V1.e2a7e466411b58fba08429a8a39fa9cafb9d7850448b7d6da5fa6e425c66ff8c.dgschema",
+      "sourceSha256": "E2A7E466411B58FBA08429A8A39FA9CAFB9D7850448B7D6DA5FA6E425C66FF8C",
+      "archiveSha256": "E2A7E466411B58FBA08429A8A39FA9CAFB9D7850448B7D6DA5FA6E425C66FF8C",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.a6d97d0e3dc569503e887e8f773b7239a45710ac13bd09c092b483e87cbee17b.V1.cb72592ce5e74f72e262509813e7f32c1b271021d84a990ca60865d69e1a066a.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.a6d97d0e3dc569503e887e8f773b7239a45710ac13bd09c092b483e87cbee17b.V1.cb72592ce5e74f72e262509813e7f32c1b271021d84a990ca60865d69e1a066a.dgschema",
+      "sourceSha256": "CB72592CE5E74F72E262509813E7F32C1B271021D84A990CA60865D69E1A066A",
+      "archiveSha256": "CB72592CE5E74F72E262509813E7F32C1B271021D84A990CA60865D69E1A066A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.bc364ad81ce808923edc17bae6d24fa88cc0db9d170c03d8c450c756d10668e6.V1.5e5d83c846845392e4d4b8aa38dc54b1f0888b75ada025a2f815f335ff28c61f.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.bc364ad81ce808923edc17bae6d24fa88cc0db9d170c03d8c450c756d10668e6.V1.5e5d83c846845392e4d4b8aa38dc54b1f0888b75ada025a2f815f335ff28c61f.dgschema",
+      "sourceSha256": "5E5D83C846845392E4D4B8AA38DC54B1F0888B75ADA025A2F815F335FF28C61F",
+      "archiveSha256": "5E5D83C846845392E4D4B8AA38DC54B1F0888B75ADA025A2F815F335FF28C61F",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.d51d39fd909acff1a89eb20ed332688e56bb0dfd8eb4684279a99c6a89cec14a.V1.27d7e2f457a03d6c0e405f09c79bf50ad4084cbded970b4de0048bd1acaebffd.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.d51d39fd909acff1a89eb20ed332688e56bb0dfd8eb4684279a99c6a89cec14a.V1.27d7e2f457a03d6c0e405f09c79bf50ad4084cbded970b4de0048bd1acaebffd.dgschema",
+      "sourceSha256": "27D7E2F457A03D6C0E405F09C79BF50AD4084CBDED970B4DE0048BD1ACAEBFFD",
+      "archiveSha256": "27D7E2F457A03D6C0E405F09C79BF50AD4084CBDED970B4DE0048BD1ACAEBFFD",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.e9718713ca56a16235a269d52d7438b5a57acce32f96d6f2b15cc3663285f523.V1.1f0e8dec8df63a55e2891e3716a2b8aa7d7a91e17a103e37ee44dac556dd57f4.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.e9718713ca56a16235a269d52d7438b5a57acce32f96d6f2b15cc3663285f523.V1.1f0e8dec8df63a55e2891e3716a2b8aa7d7a91e17a103e37ee44dac556dd57f4.dgschema",
+      "sourceSha256": "1F0E8DEC8DF63A55E2891E3716A2B8AA7D7A91E17A103E37EE44DAC556DD57F4",
+      "archiveSha256": "1F0E8DEC8DF63A55E2891E3716A2B8AA7D7A91E17A103E37EE44DAC556DD57F4",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.f711b7f75d1b8488c5b0752cf2b7499572e3f9164ba0b138eaddcffd4d20b542.V1.ec4bb5954a11e71f89320995477764cbd5a3030567d5f7c97b208ef1109e45fa.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.f711b7f75d1b8488c5b0752cf2b7499572e3f9164ba0b138eaddcffd4d20b542.V1.ec4bb5954a11e71f89320995477764cbd5a3030567d5f7c97b208ef1109e45fa.dgschema",
+      "sourceSha256": "EC4BB5954A11E71F89320995477764CBD5A3030567D5F7C97B208EF1109E45FA",
+      "archiveSha256": "EC4BB5954A11E71F89320995477764CBD5A3030567D5F7C97B208EF1109E45FA",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.f74568c458c2d586bab0f8b4ef4867be98181eebb757946c7d2b8c4d66d55b46.V1.a74d51406796e353596d5b03d97a194f8c569678cb65963c66a09644b790b0b2.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.f74568c458c2d586bab0f8b4ef4867be98181eebb757946c7d2b8c4d66d55b46.V1.a74d51406796e353596d5b03d97a194f8c569678cb65963c66a09644b790b0b2.dgschema",
+      "sourceSha256": "A74D51406796E353596D5B03D97A194F8C569678CB65963C66A09644B790B0B2",
+      "archiveSha256": "A74D51406796E353596D5B03D97A194F8C569678CB65963C66A09644B790B0B2",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/DurableGraphSchemaHistory/schema.fb529af6775bc3381e0d4e308af7e562801340759663604d3d30076fc06193a1.V1.2425d62f6a64193f64e9efb366804fb629e68e0cf978486ac141cf6811cee4b8.dgschema",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/DurableGraphSchemaHistory/schema.fb529af6775bc3381e0d4e308af7e562801340759663604d3d30076fc06193a1.V1.2425d62f6a64193f64e9efb366804fb629e68e0cf978486ac141cf6811cee4b8.dgschema",
+      "sourceSha256": "2425D62F6A64193F64E9EFB366804FB629E68E0CF978486AC141CF6811CEE4B8",
+      "archiveSha256": "2425D62F6A64193F64E9EFB366804FB629E68E0CF978486AC141CF6811CEE4B8",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoard.csproj",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoard.csproj",
+      "sourceSha256": "50CDC644B899CE9289E0D6F0F3D17E71FBEA5182E38B51036371C34E405D980C",
+      "archiveSha256": "50CDC644B899CE9289E0D6F0F3D17E71FBEA5182E38B51036371C34E405D980C",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardDomain.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardDomain.cs",
+      "sourceSha256": "89E51B5EA2134391C87B88466B5F77006D6E5F312FADB482C2B15CFA2EAE1DD6",
+      "archiveSha256": "89E51B5EA2134391C87B88466B5F77006D6E5F312FADB482C2B15CFA2EAE1DD6",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardDurableModels.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardDurableModels.cs",
+      "sourceSha256": "AF45591A5A4275B2F51A4207179051EC89DE123B1C7E4A1D6756DD02C22A838C",
+      "archiveSha256": "AF45591A5A4275B2F51A4207179051EC89DE123B1C7E4A1D6756DD02C22A838C",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardScenario.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardScenario.cs",
+      "sourceSha256": "2044CDDB79BA809F2B01F1A267D180112983B3627B3BEA37B4BF2509A3600A7D",
+      "archiveSha256": "2044CDDB79BA809F2B01F1A267D180112983B3627B3BEA37B4BF2509A3600A7D",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardSpatialProjection.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardSpatialProjection.cs",
+      "sourceSha256": "76C8D8CFA03E337D2B49A430E66BF9763CE0BC402B4D8F8858718F08DA18910A",
+      "archiveSha256": "76C8D8CFA03E337D2B49A430E66BF9763CE0BC402B4D8F8858718F08DA18910A",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardSystems.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardSystems.cs",
+      "sourceSha256": "990E4B39B2B188B2987E5F84AED997F1C281A4A8ADF857FB1B68D99713EB6152",
+      "archiveSha256": "990E4B39B2B188B2987E5F84AED997F1C281A4A8ADF857FB1B68D99713EB6152",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/FirstBoardTravelGoalPlanner.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/FirstBoardTravelGoalPlanner.cs",
+      "sourceSha256": "4035700E1B1B692316488A45C2A45DC1209C483435BE6EDEF700A359B345B6AB",
+      "archiveSha256": "4035700E1B1B692316488A45C2A45DC1209C483435BE6EDEF700A359B345B6AB",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/FirstBoardCommittedState.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardCommittedState.cs",
+      "sourceSha256": "7F2ABC85CDA4B605A156C85127D4A90A3AE1CF123F252B056FD353507823142B",
+      "archiveSha256": "7F2ABC85CDA4B605A156C85127D4A90A3AE1CF123F252B056FD353507823142B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/FirstBoardDriverBinding.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardDriverBinding.cs",
+      "sourceSha256": "767919645C423F0EB1FB5CB42AF37AF3C2B60A12FFD01A645E929FB9D334D535",
+      "archiveSha256": "767919645C423F0EB1FB5CB42AF37AF3C2B60A12FFD01A645E929FB9D334D535",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs",
+      "sourceSha256": "AB26F30E88405DDF2CCE378D00E8C9D526F6393D8DABAD6BE9CEBBB87CE1448C",
+      "archiveSha256": "AB26F30E88405DDF2CCE378D00E8C9D526F6393D8DABAD6BE9CEBBB87CE1448C",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/FirstBoardRunBinding.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardRunBinding.cs",
+      "sourceSha256": "49BD1FB3900EA2922F33B2212C2294C6A4F6387202365E7B2568870020C3B2A8",
+      "archiveSha256": "49BD1FB3900EA2922F33B2212C2294C6A4F6387202365E7B2568870020C3B2A8",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/FirstBoardStoredGraphValidation.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardStoredGraphValidation.cs",
+      "sourceSha256": "8A680480C613FCB2056FC348C57DABF639EA534374FE218700F50C89DA08A463",
+      "archiveSha256": "8A680480C613FCB2056FC348C57DABF639EA534374FE218700F50C89DA08A463",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/Persistence/StoredScenarioContent.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/Persistence/StoredScenarioContent.cs",
+      "sourceSha256": "9E4B076B0D5A487650742803E98FDD31AF001D6F3326A05C0D57672872181944",
+      "archiveSha256": "9E4B076B0D5A487650742803E98FDD31AF001D6F3326A05C0D57672872181944",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/FirstBoard/ScenarioDefinition.cs",
+      "archivePath": "archive/firstboard-llm/src/FirstBoard/ScenarioDefinition.cs",
+      "sourceSha256": "D6FE32731949DBCBD2286E6A5B7A6E10D5CC422B1B943C7385D4BE878421B2FF",
+      "archiveSha256": "D6FE32731949DBCBD2286E6A5B7A6E10D5CC422B1B943C7385D4BE878421B2FF",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/Backends/CodexAppServerBackend.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/Backends/CodexAppServerBackend.cs",
+      "sourceSha256": "94CC2A236807B29695EC85C6B43BE933D8BAE139A821B51724E2E8CC1EFD9B1E",
+      "archiveSha256": "94CC2A236807B29695EC85C6B43BE933D8BAE139A821B51724E2E8CC1EFD9B1E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/Backends/CodexAppServerOptions.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/Backends/CodexAppServerOptions.cs",
+      "sourceSha256": "208A0D4497FC10C5353BAB60835843D17B7819F5D4AB247D602072EFADC1277B",
+      "archiveSha256": "208A0D4497FC10C5353BAB60835843D17B7819F5D4AB247D602072EFADC1277B",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/Backends/OpenAiCompatBackend.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/Backends/OpenAiCompatBackend.cs",
+      "sourceSha256": "ED4C72A747DCF9072EC2FE53BE9AB66A3B246625869E052706CFED6016ECCDAD",
+      "archiveSha256": "ED4C72A747DCF9072EC2FE53BE9AB66A3B246625869E052706CFED6016ECCDAD",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/CharacterCard.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/CharacterCard.cs",
+      "sourceSha256": "A19C33936B1E15A10C9A1995D9A814AC8D69E356A751186972C13A09BB01DA13",
+      "archiveSha256": "A19C33936B1E15A10C9A1995D9A814AC8D69E356A751186972C13A09BB01DA13",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/ILlmChatBackend.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/ILlmChatBackend.cs",
+      "sourceSha256": "0BA9EFCB1F5D287AA2D79EE5DB146759E9023CE3CA04AB9C4BB3BBF8843271DB",
+      "archiveSha256": "0BA9EFCB1F5D287AA2D79EE5DB146759E9023CE3CA04AB9C4BB3BBF8843271DB",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/LlmOutputParser.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/LlmOutputParser.cs",
+      "sourceSha256": "D9FA46025EACDC5C9E4F319CD229E89D4AE20560D32B0A9434B77A7FF9B3F579",
+      "archiveSha256": "D9FA46025EACDC5C9E4F319CD229E89D4AE20560D32B0A9434B77A7FF9B3F579",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/LlmPlayerDriver.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/LlmPlayerDriver.cs",
+      "sourceSha256": "6B927CD8E2C9355323B9464A0E3CF74CD4FA1B46C2EDA800A10B299CB66B56E6",
+      "archiveSha256": "6B927CD8E2C9355323B9464A0E3CF74CD4FA1B46C2EDA800A10B299CB66B56E6",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/LlmTurnTrace.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/LlmTurnTrace.cs",
+      "sourceSha256": "617620E4DE66A4D862011293037B8C07154757C57267E829E7A6AE36A3801E4E",
+      "archiveSha256": "617620E4DE66A4D862011293037B8C07154757C57267E829E7A6AE36A3801E4E",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/MemoryBank.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/MemoryBank.cs",
+      "sourceSha256": "C8AC4F470584FA7E7A60A1CEEDC92A50CEB50C8E8552336A9886BD683A3524AB",
+      "archiveSha256": "C8AC4F470584FA7E7A60A1CEEDC92A50CEB50C8E8552336A9886BD683A3524AB",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/MemoryMaintenance.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/MemoryMaintenance.cs",
+      "sourceSha256": "E15385205C26C9412461BAECE4B700E9162D0947510473674E4A5AE6EC8331F2",
+      "archiveSha256": "E15385205C26C9412461BAECE4B700E9162D0947510473674E4A5AE6EC8331F2",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/Player.Llm.csproj",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/Player.Llm.csproj",
+      "sourceSha256": "1300233352B0972A7C20276204DD2D1D2F8B3FE8EFC6C2CE5BBE3B9475D0CEEB",
+      "archiveSha256": "1300233352B0972A7C20276204DD2D1D2F8B3FE8EFC6C2CE5BBE3B9475D0CEEB",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/PromptRenderer.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/PromptRenderer.cs",
+      "sourceSha256": "F1FAD41E645840ED78C48B95F270937AC4BAA5F5248671959E3DFC5DEF26DCAE",
+      "archiveSha256": "F1FAD41E645840ED78C48B95F270937AC4BAA5F5248671959E3DFC5DEF26DCAE",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/Properties/AssemblyInfo.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/Properties/AssemblyInfo.cs",
+      "sourceSha256": "054CCF44426BD963FCB2FF446F01CFAD39C7522EAC810218A0C313060621B8DD",
+      "archiveSha256": "054CCF44426BD963FCB2FF446F01CFAD39C7522EAC810218A0C313060621B8DD",
+      "verified": true
+    },
+    {
+      "sourcePath": "src/Player.Llm/ReferenceMaterial.cs",
+      "archivePath": "archive/firstboard-llm/src/Player.Llm/ReferenceMaterial.cs",
+      "sourceSha256": "505A2FA49055C6333D1293C004BF582B878A606FF5F2B69F215445ADA75EC1EA",
+      "archiveSha256": "505A2FA49055C6333D1293C004BF582B878A606FF5F2B69F215445ADA75EC1EA",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/DemoLlmCompositionTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/DemoLlmCompositionTests.cs",
+      "sourceSha256": "F109EB89F490A534FEEB63D69BA9C0DAFEBD1A0CA0F45F57921F8414C03105F3",
+      "archiveSha256": "F109EB89F490A534FEEB63D69BA9C0DAFEBD1A0CA0F45F57921F8414C03105F3",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/DemoOptionsTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/DemoOptionsTests.cs",
+      "sourceSha256": "FA1452F9996877564ED56C34448832D5408392353218C15CB22C4A49D51F5C63",
+      "archiveSha256": "FA1452F9996877564ED56C34448832D5408392353218C15CB22C4A49D51F5C63",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/DemoRunManifestWriterTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/DemoRunManifestWriterTests.cs",
+      "sourceSha256": "9906C66BEAB4E92BCCBF626FFC9205587F3863D509A4AD43D262E6AD42A73633",
+      "archiveSha256": "9906C66BEAB4E92BCCBF626FFC9205587F3863D509A4AD43D262E6AD42A73633",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/DramaRecordWriterTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/DramaRecordWriterTests.cs",
+      "sourceSha256": "D07409B7D31C4040B401AA1E36FE853068FD342E2A592877DE41D4F4577019A1",
+      "archiveSha256": "D07409B7D31C4040B401AA1E36FE853068FD342E2A592877DE41D4F4577019A1",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/FakeTerminalUi.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/FakeTerminalUi.cs",
+      "sourceSha256": "901A1F9DF0A442F7D9C396F18ACA83156829A013C9362F86BB65B908FD4CCB6E",
+      "archiveSha256": "901A1F9DF0A442F7D9C396F18ACA83156829A013C9362F86BB65B908FD4CCB6E",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/FirstBoard.Demo.Tests.csproj",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/FirstBoard.Demo.Tests.csproj",
+      "sourceSha256": "D8EAEDDA37E8B24C70AEE1BC71EBF29C5259AF2F6EBE7D248AE6DA7928EEA3F6",
+      "archiveSha256": "D8EAEDDA37E8B24C70AEE1BC71EBF29C5259AF2F6EBE7D248AE6DA7928EEA3F6",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/FirstBoardPresentationLoopTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/FirstBoardPresentationLoopTests.cs",
+      "sourceSha256": "CF08EC9CF251D04813418B4DDEE738A49119C2CBB04518AB57EF1AEAF1881AD0",
+      "archiveSha256": "CF08EC9CF251D04813418B4DDEE738A49119C2CBB04518AB57EF1AEAF1881AD0",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/FirstBoardPresentationProjectorTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/FirstBoardPresentationProjectorTests.cs",
+      "sourceSha256": "9FBAC10D76860A3C499743DCF22DCDA1817316CC90CD23386BA671569C106519",
+      "archiveSha256": "9FBAC10D76860A3C499743DCF22DCDA1817316CC90CD23386BA671569C106519",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/HumanDecisionParserTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/HumanDecisionParserTests.cs",
+      "sourceSha256": "73BAD3A524FDE6DC1A5C1C2F828BDF48E732BEF389A0D666FE0A8E66F30B23A7",
+      "archiveSha256": "73BAD3A524FDE6DC1A5C1C2F828BDF48E732BEF389A0D666FE0A8E66F30B23A7",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/LiveAuthorityLoopTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/LiveAuthorityLoopTests.cs",
+      "sourceSha256": "9B8A54EC6EA60A3B6486118CA5CE69D491CA9021B1ADD97318EBCEEE9C0447C8",
+      "archiveSha256": "9B8A54EC6EA60A3B6486118CA5CE69D491CA9021B1ADD97318EBCEEE9C0447C8",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/LiveSessionCoordinationTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/LiveSessionCoordinationTests.cs",
+      "sourceSha256": "C996DE3A167CFFD18DF89C2FE47F1CE41778B2FB2A9DA6909C4B393A3A31ED6C",
+      "archiveSha256": "C996DE3A167CFFD18DF89C2FE47F1CE41778B2FB2A9DA6909C4B393A3A31ED6C",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/LiveSessionTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/LiveSessionTests.cs",
+      "sourceSha256": "E5D3B50D3ABECA8186BF975EDA077CB7E98D87BE5707D5555A1DFE9E8C7E4E60",
+      "archiveSha256": "E5D3B50D3ABECA8186BF975EDA077CB7E98D87BE5707D5555A1DFE9E8C7E4E60",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/ManualPresentationPacer.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/ManualPresentationPacer.cs",
+      "sourceSha256": "7A9EC2BDC0326B3FF7EC32C08DB08D9D2DE2BC5B22A208CDDFB8E3C1017AF7A0",
+      "archiveSha256": "7A9EC2BDC0326B3FF7EC32C08DB08D9D2DE2BC5B22A208CDDFB8E3C1017AF7A0",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/PresentationGatedHumanPlayerDriverTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/PresentationGatedHumanPlayerDriverTests.cs",
+      "sourceSha256": "4F8ED3FA31C9F2053D0DEEE57F783E8372C419D7E9F7C9226D02A9E964FF7435",
+      "archiveSha256": "4F8ED3FA31C9F2053D0DEEE57F783E8372C419D7E9F7C9226D02A9E964FF7435",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/TerminalUiTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/TerminalUiTests.cs",
+      "sourceSha256": "231701D01D3B7C595D77112511144D825EF822B17C2F4DBBAEB8B8B743E36487",
+      "archiveSha256": "231701D01D3B7C595D77112511144D825EF822B17C2F4DBBAEB8B8B743E36487",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Demo.Tests/WorldStoreLiveTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Demo.Tests/WorldStoreLiveTests.cs",
+      "sourceSha256": "C677D7653C305E72B786F8D66893450D343E7930FF38325C6464796E8B44E3C1",
+      "archiveSha256": "C677D7653C305E72B786F8D66893450D343E7930FF38325C6464796E8B44E3C1",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Process/FirstBoard.Persistence.Process.csproj",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Process/FirstBoard.Persistence.Process.csproj",
+      "sourceSha256": "7576C78EEE5F8DF14D4D9588079DB3A9F228C221260738E4B0DED62AB1BFB755",
+      "archiveSha256": "7576C78EEE5F8DF14D4D9588079DB3A9F228C221260738E4B0DED62AB1BFB755",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Process/Metrics.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Metrics.cs",
+      "sourceSha256": "741ABBE6F16BADBED2437B40B6628ECA5CE3F43BBBE17B7E6D9001530662C8EF",
+      "archiveSha256": "741ABBE6F16BADBED2437B40B6628ECA5CE3F43BBBE17B7E6D9001530662C8EF",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Process/Program.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Program.cs",
+      "sourceSha256": "A6B1AF3DEB5409ED578EA2E917B9505EAB68A6C213538B9C561719BE5947D84A",
+      "archiveSha256": "A6B1AF3DEB5409ED578EA2E917B9505EAB68A6C213538B9C561719BE5947D84A",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs",
+      "sourceSha256": "777D243BC72B73CF5CCA43B4BEC1B9EC52368EBEF7ADA0293D325D142F28CE81",
+      "archiveSha256": "777D243BC72B73CF5CCA43B4BEC1B9EC52368EBEF7ADA0293D325D142F28CE81",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Tests/ContactFloorPersistenceTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/ContactFloorPersistenceTests.cs",
+      "sourceSha256": "FF61CCAD36A6DB00CD1D02DE5C4FBF13F867F1DA7D72E281BAA9095004A0B652",
+      "archiveSha256": "FF61CCAD36A6DB00CD1D02DE5C4FBF13F867F1DA7D72E281BAA9095004A0B652",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Tests/FirstBoard.Persistence.Tests.csproj",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/FirstBoard.Persistence.Tests.csproj",
+      "sourceSha256": "7413322FDD4AA58770A9411623F96E15D1D10EE2FD285A73A3F82E2FDED5FA22",
+      "archiveSha256": "7413322FDD4AA58770A9411623F96E15D1D10EE2FD285A73A3F82E2FDED5FA22",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs",
+      "sourceSha256": "78B7E4A38F7ECD7EEFBB6A8DA46B205C6D25D717D1376AA3A02CF9425C71BEAD",
+      "archiveSha256": "78B7E4A38F7ECD7EEFBB6A8DA46B205C6D25D717D1376AA3A02CF9425C71BEAD",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Persistence.Tests/TemporaryJournalDirectory.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/TemporaryJournalDirectory.cs",
+      "sourceSha256": "77A76FBEAE038C301D70B58CB771B84BF5FC37BB03973395C0FCDF86BDB18B34",
+      "archiveSha256": "77A76FBEAE038C301D70B58CB771B84BF5FC37BB03973395C0FCDF86BDB18B34",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/CompositeGraphHostTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/CompositeGraphHostTests.cs",
+      "sourceSha256": "63E7A9F291B301A519A83B0E18CDE59FDA93BFD68B1BDAF76CEBAE317B4F8171",
+      "archiveSha256": "63E7A9F291B301A519A83B0E18CDE59FDA93BFD68B1BDAF76CEBAE317B4F8171",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/EncounterPersistenceOracle.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/EncounterPersistenceOracle.cs",
+      "sourceSha256": "B21F1F326245698C7B9F2F17CCF06E1599DF3F840C7211E9B6B8D453D0B6D880",
+      "archiveSha256": "B21F1F326245698C7B9F2F17CCF06E1599DF3F840C7211E9B6B8D453D0B6D880",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/EncounterPersistenceOracleTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/EncounterPersistenceOracleTests.cs",
+      "sourceSha256": "3EF502A139B5BFE1CBB94B3EDDCB564C390F92AB938F2F8035AA30FDE44D6270",
+      "archiveSha256": "3EF502A139B5BFE1CBB94B3EDDCB564C390F92AB938F2F8035AA30FDE44D6270",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/FirstBoard.Tests.csproj",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/FirstBoard.Tests.csproj",
+      "sourceSha256": "89F11752F630E3EF2FE1288ADBB2669AB3B175EA3749DE1154B3798014C73D84",
+      "archiveSha256": "89F11752F630E3EF2FE1288ADBB2669AB3B175EA3749DE1154B3798014C73D84",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/OccurrenceBranchSemanticsTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/OccurrenceBranchSemanticsTests.cs",
+      "sourceSha256": "A2ACE9F35DEAD3A9564B7AA4E45A4CFCCE0D6ADF8FA9EFB64FF27F73BB7F3ED5",
+      "archiveSha256": "A2ACE9F35DEAD3A9564B7AA4E45A4CFCCE0D6ADF8FA9EFB64FF27F73BB7F3ED5",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/PassageEncounterHostTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/PassageEncounterHostTests.cs",
+      "sourceSha256": "DE8B4355EC384749B0CC0627162838F36C1AD89BF720FF84E20266A20D027E49",
+      "archiveSha256": "DE8B4355EC384749B0CC0627162838F36C1AD89BF720FF84E20266A20D027E49",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/PassageEncounterReducerTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/PassageEncounterReducerTests.cs",
+      "sourceSha256": "0A89CB9ED74D0E62AA47549E897B54E27877A34FF06DF06945DA0E9A9EF3051D",
+      "archiveSha256": "0A89CB9ED74D0E62AA47549E897B54E27877A34FF06DF06945DA0E9A9EF3051D",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/RecordingPlayerDriver.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/RecordingPlayerDriver.cs",
+      "sourceSha256": "8F4FD6A28E9551226013F06FFE989036A8D643A86E7E5ED248266F813F3511DA",
+      "archiveSha256": "8F4FD6A28E9551226013F06FFE989036A8D643A86E7E5ED248266F813F3511DA",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/ScenarioDefinitionTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/ScenarioDefinitionTests.cs",
+      "sourceSha256": "8CE4E548CA221B3BFD6B512E665C2E52C33A7929D511A6A0E80EC926443FEBD6",
+      "archiveSha256": "8CE4E548CA221B3BFD6B512E665C2E52C33A7929D511A6A0E80EC926443FEBD6",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/TravelGoalAtomicityAndReplayTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/TravelGoalAtomicityAndReplayTests.cs",
+      "sourceSha256": "A9D89919ADA1C8E4435BE8FCA10D4C366A81CD3F14F8350CD40B87368E4531C5",
+      "archiveSha256": "A9D89919ADA1C8E4435BE8FCA10D4C366A81CD3F14F8350CD40B87368E4531C5",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/TravelGoalHostTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/TravelGoalHostTests.cs",
+      "sourceSha256": "0A5941F1B43371E9E8E7A1F794F0BE1D02A36C97F7CBCEC50E97310667766012",
+      "archiveSha256": "0A5941F1B43371E9E8E7A1F794F0BE1D02A36C97F7CBCEC50E97310667766012",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/FirstBoard.Tests/TravelGoalReducerTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/FirstBoard.Tests/TravelGoalReducerTests.cs",
+      "sourceSha256": "7D6F339579CF1AE14F9325649A73675ACA1A3F8A01DA903199A723EF6B94A419",
+      "archiveSha256": "7D6F339579CF1AE14F9325649A73675ACA1A3F8A01DA903199A723EF6B94A419",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/AssemblyDependencyTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/AssemblyDependencyTests.cs",
+      "sourceSha256": "6DB2E81C6719C20ED4D58CD265E77D01BCEDDDCD5982293983DBFF59FDA3A596",
+      "archiveSha256": "6DB2E81C6719C20ED4D58CD265E77D01BCEDDDCD5982293983DBFF59FDA3A596",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/CodexAppServerBackendTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/CodexAppServerBackendTests.cs",
+      "sourceSha256": "43574743E6C8C3A2E6FF2FBF181FC5BB244A6FC99EEAE522711B575C2CD94D14",
+      "archiveSha256": "43574743E6C8C3A2E6FF2FBF181FC5BB244A6FC99EEAE522711B575C2CD94D14",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/FakeLlmBackend.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/FakeLlmBackend.cs",
+      "sourceSha256": "9F776B93B177A90FA1FE56EFA50AD8B81556C58FCF5C23FA44532D9031E26EB4",
+      "archiveSha256": "9F776B93B177A90FA1FE56EFA50AD8B81556C58FCF5C23FA44532D9031E26EB4",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/LlmOutputParserTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/LlmOutputParserTests.cs",
+      "sourceSha256": "D259693A8236D155EC794A548EC35853FCF2B6125648904EA2D760C7AD2C465D",
+      "archiveSha256": "D259693A8236D155EC794A548EC35853FCF2B6125648904EA2D760C7AD2C465D",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/LlmPlayerDriverTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/LlmPlayerDriverTests.cs",
+      "sourceSha256": "69350EB4D703299FB50DB038EC0559C44C2E2A8719A2ECB60B786532FA629577",
+      "archiveSha256": "69350EB4D703299FB50DB038EC0559C44C2E2A8719A2ECB60B786532FA629577",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/MemoryBankTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/MemoryBankTests.cs",
+      "sourceSha256": "34550A7EB1FA6CD1C273DDB6DBB2793312DF7A12E39591B3FE24DD6762E61B9C",
+      "archiveSha256": "34550A7EB1FA6CD1C273DDB6DBB2793312DF7A12E39591B3FE24DD6762E61B9C",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/OpenAiCompatBackendTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/OpenAiCompatBackendTests.cs",
+      "sourceSha256": "CE443CDA0CE03FDC63058EB5D2B4A4F60512C07DC1935088DCCA8F945930B89B",
+      "archiveSha256": "CE443CDA0CE03FDC63058EB5D2B4A4F60512C07DC1935088DCCA8F945930B89B",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/Player.Llm.Tests.csproj",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/Player.Llm.Tests.csproj",
+      "sourceSha256": "0C8ABB5F0A816935B8297A0ED5EC959936B94FF2B90024EB5E39E5C597699319",
+      "archiveSha256": "0C8ABB5F0A816935B8297A0ED5EC959936B94FF2B90024EB5E39E5C597699319",
+      "verified": true
+    },
+    {
+      "sourcePath": "tests/Player.Llm.Tests/PromptRendererTests.cs",
+      "archivePath": "archive/firstboard-llm/tests/Player.Llm.Tests/PromptRendererTests.cs",
+      "sourceSha256": "DFF5ECE16C0F985D42D14253481D1E15230680BB39C06359E95F05DD1762F001",
+      "archiveSha256": "DFF5ECE16C0F985D42D14253481D1E15230680BB39C06359E95F05DD1762F001",
+      "verified": true
+    }
+  ]
+}

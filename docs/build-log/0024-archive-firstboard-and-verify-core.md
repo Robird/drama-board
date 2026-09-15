@@ -1,8 +1,8 @@
 # Build Log 0024：归档旧实验与核心独立验证
 
-> 状态：**设计与实施交接已撰写；归档及构建验收尚未执行**。
+> 状态：**已实施并完成 A1—A7 验收**。
 > 日期：2026-09-16。
-> 撰写时源码基线：`d3d6cefc5b4faee652e12fd47d3ed5626b226efb`；工作树无既有修改。实施会话必须重新记录实际基线。
+> 撰写时源码基线：`d3d6cefc5b4faee652e12fd47d3ed5626b226efb`；实施实际基线为 `5a7de712ad8de0d8c8357832be0d97b13ad11d78`，工作树无既有修改。
 > 阶段：只覆盖“归档减负 → 核心独立验证”。下一阶段才设计无剧情 free-play 场景与 Human 入口。
 > 使用方式：用户将本设计交给另一 Coding Agent 会话实施；本文末尾提供可复制的启动文本。本设计会话只修改文档。
 
@@ -42,7 +42,7 @@
 - 默认文本搜索由根目录 [.ignore](../../.ignore)控制，当前只排除 `docs/archive/legacy/`。本批沿用这个入口，不另建同义配置文件。
 - Kernel、Spatial 仍引用固定 DurableGraph 包；[Directory.Build.props](../../Directory.Build.props)、[包准备脚本](../../scripts/Prepare-DurableGraph.ps1)和[包来源说明](../worksets/durablegraph-package-source.md)是保留构建路径的一部分。
 - 实际落盘 adapter、场景绑定和冷进程续局验证在 FirstBoard 内。归档后保留的是 Kernel 的 [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs)、[InMemoryOccurrenceHistory](../../src/Kernel/Journal/InMemoryOccurrenceHistory.cs)及其合同测试，不是一个已经可用的新游戏存档入口。
-- [analyze_llm_runtime.py](../../scripts/analyze_llm_runtime.py)专门分析旧 Demo 的模型调用日志，也随实验归档；包准备脚本保留。
+- [analyze_llm_runtime.py](../../archive/firstboard-llm/scripts/analyze_llm_runtime.py)专门分析旧 Demo 的模型调用日志，也随实验归档；包准备脚本保留。
 
 上述事实来自源码与配置阅读；本文撰写时未运行构建或测试。历史文档中的测试结果不能充当本批基线。
 
@@ -268,6 +268,15 @@ rg --files --no-ignore archive/firstboard-llm
 本机 .NET 验证串行执行。若可用环境只有 Windows，报告 Windows 实跑与跨平台 CI 配置检查，不声称 Linux 已通过，也不为了执行 CI 自动推送。
 
 ## 8. 交付、异常与后续交接
+
+### 8.1 实施结果（2026-09-16）
+
+- G0 复用冻结的九个 DurableGraph 包；七个保留测试项目归档前为 254/254 通过。
+- G1/G2 将 163 个 Git 管理文件移至 `archive/firstboard-llm/`；`manifest.json` 记录实际 HEAD、原/归档路径和匹配的双 SHA-256。两份 solution 均收敛为相同的七个生产项目和七个测试项目，依赖 guard 覆盖全部七个生产项目。
+- 默认 `rg --files` 不列出归档正文，显式 `rg --files --no-ignore archive/firstboard-llm` 可列出；[归档索引](../archive/firstboard-llm.md)提供恢复上下文。活跃入口和设计资料已明确区分核心合同与历史 FirstBoard 映射。
+- 工作树 Rebuild 与两份 solution 入口构建均为 0 warning / 0 error；保留测试为 255/255。比归档前多出的一个 Kernel 用例是本批新增的项目依赖覆盖，不是领域行为改写。
+- 独立临时副本以 152 个最终活跃构建输入的 SHA-256 核对后创建，不含 archive、旧项目或预存 `bin/obj`；使用隔离 NuGet 缓存和显式固定包 feed 重新 restore、Rebuild、test，结果同为 255/255。详细 TRX 和副本清单位于忽略的 `artifacts/core-archive-validation/`。
+- 本轮未更改活跃 Kernel/Spatial schema history，未进入 free-play、Human、地图/轨迹或新 persistence adapter，也未提交、推送或发布。
 
 实施会话最终报告：归档与保留范围、实际恢复入口、两份 solution 与独立副本的验证结果、保留测试的基线差异、未验证边界、Git 状态以及 A1—A7 的完成情况。不要以“文件已经移动”作为全部完成。
 

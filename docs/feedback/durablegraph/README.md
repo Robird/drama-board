@@ -1,6 +1,6 @@
 # DramaBoard → DurableGraph 使用反馈
 
-这里保存 DramaBoard 作为 DurableGraph 消费者的反馈，供两个项目持续讨论。接入总判断见[近期计划](../../worksets/durablegraph-first-integration.md)，原消费验证见[消费者合同 §6](../../research/event-journal-state-store-draft.md#6-接入边界与最小验证)；本目录只维护具体问题及处理结果。
+这里保存 DramaBoard 作为 DurableGraph 消费者的反馈，供两个项目持续讨论。FirstBoard 的接入判断和消费者验证均已进入[归档索引](../../archive/firstboard-llm.md)；本目录只维护具体问题及处理结果。
 
 ## 反馈索引
 

@@ -45,14 +45,14 @@ pwsh -File scripts/Prepare-DurableGraph.ps1 -PackageVersion $freshVersion
 
 ## DB-068 接口迁移证据
 
-2026-09-12：从 `f68388f` 包迁移至 `1c6083c` 包（当时版本 `0.0.0-dramaboard.20260912.1c6083c.1`），Kernel / Spatial / FirstBoard 的 21 处框架基类声明改为 `IDurableObject`。保留普通 class、字段及版本、构造、相等与集合快照行为；本次未转换为 record，也不是业务 Schema 升版。
+2026-09-12：从 `f68388f` 包迁移至 `1c6083c` 包（当时版本 `0.0.0-dramaboard.20260912.1c6083c.1`），Kernel / Spatial 与归档 FirstBoard 的 21 处框架基类声明改为 `IDurableObject`。保留普通 class、字段及版本、构造、相等与集合快照行为；本次未转换为 record，也不是业务 Schema 升版。
 
 九个包首次准备和再次校验复用均通过。全 solution 执行 Clean 后，以 `-warnaserror -p:DurableGraphSchemaHistoryMode=Verify` 构建，零警告、零错误；64 份已提交 `.dgschema` 的路径与 SHA256 均未改变。Windows 下 `dotnet test DramaBoard.Local.slnx --no-build --no-restore -m:1 -nr:false` 的 11 个测试程序集共 515 项通过、零失败、零跳过；本轮未运行远端 CI 或 Linux。
 
-另用真实旧包程序写出存档，新包程序跨进程恢复和续写，未通过诊断 JSON 重建世界。消费者使用[既有 process witness](../../tests/FirstBoard.Persistence.Process/Program.cs)，旧版为 DramaBoard `0155b30` / 包 `0.0.0-dramaboard.20260912.f68388f.1`。Continue、Reverse 分别验证：
+另用真实旧包程序写出存档，新包程序跨进程恢复和续写，未通过诊断 JSON 重建世界。这是[归档 process witness](../../archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Program.cs)的历史消费者证据，旧版为 DramaBoard `0155b30` / 包 `0.0.0-dramaboard.20260912.f68388f.1`。Continue、Reverse 分别验证：
 
 - 旧程序 `create <save> <response> 1` 写 S1；新程序 `open <save> <response> 0` 精确恢复且不改存档字节，再 `open ... 1` 续写到 S2。
 - 旧程序 `pending <save> <response> 1` 留下 E2；新程序 `open ... 0` 只 fold pending facts、零 Forecast/Plan，发布 S2。
 - 两条路径的完整 World、Cursor、NextRequest、Pending 与旧程序连续 `create ... 2` 的结果一致；续写事件与 pending 事件内容一致。再次冷开均无 replay，存档文件 SHA256 不变。
 
-上述 CLI 形式为 `dotnet <consumer>/DramaBoard.FirstBoard.Persistence.Process.dll <mode> ...`；复现跨包检查时，先独立保留旧构建的完整输出目录，再构建新包消费者，存档目录必须新建。当前一次性日志、两代输入及比较脚本保留在忽略目录 `artifacts/idurableobject-migration-20260912-035105/`；常规冷进程回归仍由[持久化测试](../../tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)维护。
+上述 CLI 形式和冷进程回归均属于归档 FirstBoard 消费者；复现时从[归档索引](../archive/firstboard-llm.md)恢复其完整上下文。当前一次性日志、两代输入及比较脚本保留在忽略目录 `artifacts/idurableobject-migration-20260912-035105/`。

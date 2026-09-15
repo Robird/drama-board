@@ -29,7 +29,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
 - Process 消费者实际还原九个指定版本包；输出九个 DLL 的 SHA256 与试用 feed 中对应 nupkg 的 `lib/net10.0` 资产逐一相同。
 - 先以默认旧包 `0.0.0-dramaboard.20260912.1c6083c.1` 构建并保留完整进程输出，再用旧程序创建 Continue/Reverse 的连续基线、S1 和 pending E2 存档。新程序跨进程打开 S1、续写到 S2，以及仅 fold pending E2；完整 World、Cursor、NextRequest、Pending 与旧程序连续运行一致，事件内容相同，pending 恢复零 Forecast/Plan。再次冷开无 replay，纯 S-head 读取前后存档字节不变。
 
-跨包验证复用[进程见证](../../../tests/FirstBoard.Persistence.Process/Program.cs)；常规冷恢复由[冷进程测试](../../../tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)维护。本机一次性旧消费者、存档、诊断 JSON、比较脚本和包哈希记录保留在忽略目录 `artifacts/db071-adaptation-20260912/`。本轮验证范围为 Windows 本地，未运行远端 CI 或 Linux。
+跨包验证复用[归档进程见证](../../../archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Program.cs)；常规冷恢复也属于归档 FirstBoard 测试。本机一次性旧消费者、存档、诊断 JSON、比较脚本和包哈希记录保留在忽略目录 `artifacts/db071-adaptation-20260912/`。本轮验证范围为 Windows 本地，未运行远端 CI 或 Linux。
 
 ## 正式来源固定
 

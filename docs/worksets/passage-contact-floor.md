@@ -1,6 +1,6 @@
 # Passage 接触时间向下取整
 
-用户已采纳：contact 采用数学 floor，arrival 保持 ceil。权威语义见[Graph Spatial §3.5](../design/graph-spatial-world.md#35-passage-contact目标法则与第二竖切)；本文件保存本片验收边界与证据。
+用户已采纳：contact 采用数学 floor，arrival 保持 ceil。权威语义见[Graph Spatial §3.5](../design/graph-spatial-world.md#35-passage-contact目标法则与第二竖切)；本文件保存本片验收边界与证据。FirstBoard 规则、续局和持久化条目是已归档消费者证据，不构成活跃产品能力。
 
 ## 实施边界
 
@@ -15,9 +15,9 @@
 | 要求 | 实现与证据入口 |
 |---|---|
 | 正负数 floor、整数、出生刻、配对消费 | [PassageContactCalculator](../../src/Spatial/Internal/PassageContactCalculator.cs)、[Spatial contact tests](../../tests/Spatial.Tests/Contacts/PassageContactTests.cs) |
-| 提前接触、Continue-only、同刻新代数接触 | [FirstBoard encounter tests](../../tests/FirstBoard.Tests/PassageEncounterHostTests.cs) |
-| 规则绑定拒绝旧版本 | [ScenarioDefinition](../../src/FirstBoard/ScenarioDefinition.cs)、[定义测试](../../tests/FirstBoard.Tests/ScenarioDefinitionTests.cs)、真实旧程序写出的存档 |
-| pending 仅处理已保存事实、冷开结果一致 | [分数交点持久化回归](../../tests/FirstBoard.Persistence.Tests/ContactFloorPersistenceTests.cs) |
+| 提前接触、Continue-only、同刻新代数接触 | [归档 FirstBoard encounter tests](../../archive/firstboard-llm/tests/FirstBoard.Tests/PassageEncounterHostTests.cs) |
+| 规则绑定拒绝旧版本 | [归档 ScenarioDefinition](../../archive/firstboard-llm/src/FirstBoard/ScenarioDefinition.cs)、[归档定义测试](../../archive/firstboard-llm/tests/FirstBoard.Tests/ScenarioDefinitionTests.cs)、真实旧程序写出的存档 |
+| pending 仅处理已保存事实、冷开结果一致 | [归档分数交点持久化回归](../../archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/ContactFloorPersistenceTests.cs) |
 
 ## 验证结果
 

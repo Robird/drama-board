@@ -4,7 +4,7 @@
 
 **创建日期：2026-08-20；最近裁决：2026-08-22**
 
-**来源：** 从 [Graph Spatial World](../design/graph-spatial-world.md) 拆出；首个施工 consumer 见 [Build Log 0001](../build-log/0001-travel-to.md)。
+**来源：** 从 [Graph Spatial World](../design/graph-spatial-world.md) 拆出；首个施工 consumer 见[归档 Build Log 0001](../../archive/firstboard-llm/docs/build-log/0001-travel-to.md)。FirstBoard/LLM 的具体使用法则以下作为历史消费者映射保留；当前正式边界仅为 Getter 与精确子图快照。
 
 ---
 

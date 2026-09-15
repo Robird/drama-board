@@ -6,13 +6,13 @@
 
 `CreateBranch → CommitDomainEvent → CommitDomainState(nextState) → Resume` 足够实现当前游戏持久化。完整 S 包含世界、有限调度游标、精确内容和规则绑定；E 是小型强类型事实图。正常重开不执行历史业务 reducing，pending 只处理一次已记录 occurrence，不重问 Player。
 
-证据是[实际 adapter](../../../src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs)、[真实包行为测试](../../../tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)与[独立进程测试](../../../tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)。模型直接位于原 Kernel / Spatial / FirstBoard，共 64 份声明历史；没有 SavedWorld 镜像、动态世界 JSON 或旧 Journal 双写。独立事件登记明确排除了 World/State 根，完整事实 union 的读取仍成功。
+证据是[归档实际 adapter](../../../archive/firstboard-llm/src/FirstBoard/Persistence/FirstBoardOccurrenceHistory.cs)、[归档真实包行为测试](../../../archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/FirstBoardPersistenceTests.cs)与[归档独立进程测试](../../../archive/firstboard-llm/tests/FirstBoard.Persistence.Tests/ColdProcessTests.cs)。模型曾直接位于 Kernel / Spatial / FirstBoard，共 64 份声明历史；没有 SavedWorld 镜像、动态世界 JSON 或旧 Journal 双写。独立事件登记明确排除了 World/State 根，完整事实 union 的读取仍成功。
 
 本批没有发现阻断接入的存储功能缺口。ReadPair、局部历史分页、ArtifactStore 或运行栈恢复均不是这次集成的前置条件。
 
 ## 已回应的易用性需求：不可变 class 声明
 
-主要工作量在领域声明适配，而非保存 API。原来的 positional `record class` 需要改写为普通 partial durable class，并手工恢复构造、复制更新、值相等、hash、必要的 `==` 与只读集合外观。实际改造集中在 [FirstBoardDomain](../../../src/FirstBoard/FirstBoardDomain.cs) 和 [GraphSpatialFact](../../../src/Spatial/Facts/GraphSpatialFact.cs)。
+主要工作量在领域声明适配，而非保存 API。原来的 positional `record class` 需要改写为普通 partial durable class，并手工恢复构造、复制更新、值相等、hash、必要的 `==` 与只读集合外观。实际改造集中在[归档 FirstBoardDomain](../../../archive/firstboard-llm/src/FirstBoard/FirstBoardDomain.cs) 和 [GraphSpatialFact](../../../src/Spatial/Facts/GraphSpatialFact.cs)。
 
 这不是单纯的写法偏好：cold E/S 的 contact key 必须按值比较；事件文本可以包含任意字符，不能用分隔符拼接代替结构相等；`readonly List<T>` 只禁止替换引用，仍然允许修改内容。迁移中这些错误都需要额外审查。当前消费方已修正，不需要为此暂停玩法开发。
 
@@ -20,7 +20,7 @@
 
 ## 首次成本观察
 
-使用[实际 process consumer](../../../tests/FirstBoard.Persistence.Process/Program.cs)及[低层诊断](../../../tests/FirstBoard.Persistence.Process/Metrics.cs)，从 Alice/Bob traveling S0 完成 encounter 打开及 Continue/Reverse 响应，各产生 `S0,E1,S1,E2,S2`。以下为 Windows Debug 单次、未预热观察，不能作为稳定性能结论；没有同机旧后端对照。
+使用[归档 process consumer](../../../archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Program.cs)及[归档低层诊断](../../../archive/firstboard-llm/tests/FirstBoard.Persistence.Process/Metrics.cs)，从 Alice/Bob traveling S0 完成 encounter 打开及 Continue/Reverse 响应，各产生 `S0,E1,S1,E2,S2`。以下为 Windows Debug 单次、未预热观察，不能作为稳定性能结论；没有同机旧后端对照。
 
 | 观察 | Continue | Reverse |
 |---|---:|---:|
@@ -42,7 +42,7 @@
 复现时使用尚不存在的目录，先构建 process 项目，再运行；两种回应分别执行即可：
 
 ```powershell
-$consumer = 'tests/FirstBoard.Persistence.Process/bin/Debug/net10.0/DramaBoard.FirstBoard.Persistence.Process.dll'
+$consumer = 'archive/firstboard-llm/tests/FirstBoard.Persistence.Process/bin/Debug/net10.0/DramaBoard.FirstBoard.Persistence.Process.dll'
 dotnet $consumer create artifacts/my-continue Continue 2
 dotnet $consumer inspect artifacts/my-continue
 ```

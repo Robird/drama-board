@@ -1,36 +1,25 @@
 # DramaBoard documentation
 
-Start with the repository's [current project state](../PROJECT-STATE.md). It identifies the active goal, source anchors, and unresolved decisions. This index classifies documents; it does not replace that state.
+Start with the repository's [current project state](../PROJECT-STATE.md). It identifies the active core, validation entry points, and deferred product decisions.
 
-## Current design
+## Current design and core
 
-- [Simulation Kernel](design/simulation-kernel.md): the governing occurrence, time, and publication law.
-- [Graph Spatial World](design/graph-spatial-world.md): the current objective-space model and its boundary with FirstBoard.
-- [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): adopted E/S placement, complete state, and recovery semantics.
+- [Simulation Kernel](design/simulation-kernel.md): occurrence, time, publication, and Player boundaries.
+- [Graph Spatial World](design/graph-spatial-world.md): the objective-space model and its Kernel boundary.
+- [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): retained E/S seam and finite recovery contract.
+- [Kernel occurrence baseline](implementation/kernel-occurrence-baseline.md): time and scheduler evidence.
+- [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial floor-contact and ceil-arrival semantics.
+- [Player spatial knowledge](research/player-spatial-knowledge.md): the retained known-graph seam; exploration disclosure is deferred.
+- [DurableGraph package source](worksets/durablegraph-package-source.md): fixed package preparation and consumption path.
 
 ## Current work
 
-- [Archive FirstBoard and verify the core](build-log/0024-archive-firstboard-and-verify-core.md): design and implementation handoff for the next coding session; archival and fresh core validation have not run. Stops before a free-play scene or Human frontend.
-
-## Current implementation boundaries and evidence
-
-- [DurableGraph first integration](worksets/durablegraph-first-integration.md): delivered FirstBoard integration and historical acceptance scope; the implementation remains in the active tree until the archival work above runs.
-- [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial timing rules and FirstBoard integration evidence.
-- [Kernel occurrence baseline](implementation/kernel-occurrence-baseline.md): the retained scheduling baseline; its old Journal boundary is superseded by the DurableGraph design above.
-- [Game content and Save boundary](implementation/game-content-save-boundary.md): the current-format Save direction; it is a target boundary, not a DurableGraph integration claim.
-- [TravelTo](build-log/0001-travel-to.md), [passage encounter](build-log/0002-passage-encounter.md), and [live-session playback](build-log/0003-live-session-playback.md): implemented vertical-slice evidence.
-
-## Active research
-
-- [Player spatial knowledge](research/player-spatial-knowledge.md): frozen Getter seam and deferred fog-of-war work.
-- [Persistent Script VM selection](research/persistent-script-vm-selection.md): research charter; selection and production migration remain deferred.
-- [EventJournal + StateStore draft](research/event-journal-state-store-draft.md): independent event/state graphs, resumable processing, and the delivered EventHistory capability check; editable consumer contract.
-- [DurableGraph consumer preflight](research/durablegraph-consumer-preflight.md): successor navigation for the superseded early study; its real-world oracle continues in the integration plan.
+[Archive FirstBoard and verify the core](build-log/0024-archive-firstboard-and-verify-core.md) records the completed archival boundary and A1--A7 validation. No free-play scene, Human frontend, map/trajectory model, or new persistence adapter has been implemented.
 
 ## Consumer feedback
 
-- [DramaBoard → DurableGraph](feedback/durablegraph/README.md): concrete API and feature feedback, evidence, upstream responses, and follow-up validation.
+[DramaBoard to DurableGraph](feedback/durablegraph/README.md) indexes active API feedback. Its FirstBoard consumer evidence is historical and links to the archive where needed.
 
 ## Historical material
 
-[Archive](archive/README.md) preserves retired experiments and early work records. Its `legacy/` subtree is deliberately excluded from default local text search; use `rg --no-ignore -n "keyword" docs/archive/legacy` when historical evidence is required.
+[FirstBoard and LLM archive](archive/firstboard-llm.md) is the recovery index for the retired source, tests, Demo, LLM implementation, and dedicated documents. [Archive](archive/README.md) also indexes older retained material. Both `legacy/` and the repository-root `archive/firstboard-llm/` bodies are excluded from default local text search; inspect them explicitly with `rg --no-ignore`.
