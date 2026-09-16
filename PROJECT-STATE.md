@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-16；本地 Server、双页面与首个真实移动闭环已完成，见 [0025 验收](docs/build-log/0025-verification.md)。
+> 最近整理：2026-09-17；本地 Server、双页面与首个真实移动闭环已完成，见 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 最终目标
 
@@ -21,7 +21,9 @@
 
 当前应用边界为四点全图已知场景，只提供相邻 `action.travel`；出发/到达均由 Kernel 提交，等待不走模型时间。刷新继续同次运行，服务重启回 genesis；诊断仅展示最近 100 条完成记录，自身轨迹保留整次运行。七核心合同保持不变。
 
-当前回到设计阶段，结合 Human 游玩体验与 [0025 结果包](docs/build-log/0025-verification.md)选择下一种交互机制，尚未选定下一批范围。继续采用“设计会话裁决 → fork 会话施工 → 简短证据回传”的协作方式。
+已形成 [Player 运行时与 Plan-Maintainer 关键设计理念](docs/design/player-runtime/README.md)，经[独立审视与交叉质询](docs/worksets/player-runtime-principles-review.md)完善。该文集中维护用户已确认的共享运行时、未来安排与“再想想”方向；当前源码尚未实现这些能力。
+
+已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。下一步把第 7 节小闭环转成工程工单，明确类型/协议并验证自动执行、原子修订、思考与笔记续用、受阻和正常待机。当前未实现；继续采用“设计会话裁决 → fork 会话施工 → 简短证据回传”。
 
 ## 延期与重开条件
 
