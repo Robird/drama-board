@@ -25,7 +25,7 @@
 
 已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。
 
-工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1（Protocol 契约类型）与 R2（`IDynamicProgrammer`、脚本驱动器与响应校验器）已落地，各自测试全绿，新类型尚无生产消费者；下一步 R3（Process 领域状态/facts/reducer），进度以工单 README 状态表为准。
+工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1（Protocol 契约类型）、R2（`IDynamicProgrammer`、脚本驱动器与响应校验器）与 R3（Server/FreePlay/Runtime 的 Process 领域：不可变 Buffer、互斥执行状态、七种 facts 与单一 reducer，internal 可见、未接入调度）已落地，各自测试全绿，新类型尚未接入运行世界；下一步 R4（FreePlayWorld 扩展与 FreePlayFact 联合），进度以工单 README 状态表为准。
 
 ## 延期与重开条件
 

@@ -1,6 +1,6 @@
 # R3 · Server/FreePlay/Runtime：Process 领域
 
-状态：未开始。依赖：R1。产物：`src/Server/FreePlay/Runtime/`、`src/Server/Properties/AssemblyInfo.cs`、`tests/Server.Tests`。
+状态：已完成。依赖：R1。产物：`src/Server/FreePlay/Runtime/`、`src/Server/Properties/AssemblyInfo.cs`、`tests/Server.Tests`。
 
 ## 目标
 
