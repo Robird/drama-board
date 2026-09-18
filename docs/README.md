@@ -13,10 +13,11 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 - [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial floor-contact and ceil-arrival semantics.
 - [Player spatial knowledge](research/player-spatial-knowledge.md): the retained known-graph seam; exploration disclosure is deferred.
 - [DurableGraph package source](worksets/durablegraph-package-source.md): fixed package preparation and consumption path.
+- [Server wwwroot static web assets](worksets/server-wwwroot-staticwebassets.md): the .NET 10 dev-manifest directory fix and the rejected alternatives.
 
 ## Current work
 
-The [shared Player-runtime principles](design/player-runtime/README.md) now have a [Dynamic-Programmer mechanism model](design/player-runtime/dynamic-programmer.md), refined through [independent review and cross-examination](worksets/dynamic-programmer-review.md), and a frozen engineering decomposition: [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) pin the typed instructions, immutable buffer, process state, programmer contract, and component placement. The new mechanism fully replaces the legacy intent decision path; rounds run in order, one fork session each, and these runtime capabilities are not implemented yet.
+The [shared Player-runtime principles](design/player-runtime/README.md) now have a [Dynamic-Programmer mechanism model](design/player-runtime/dynamic-programmer.md), refined through [independent review and cross-examination](worksets/dynamic-programmer-review.md), and a frozen engineering decomposition: [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) pin the typed instructions, immutable buffer, process state, programmer contract, and component placement. The new mechanism fully replaces the legacy intent decision path; rounds run in order. R1 (Protocol contract types) and R2 (programmer contract and response validation) are implemented with zero production consumers; the runtime capabilities arrive from R3 on.
 
 [Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries.
 

@@ -1,6 +1,6 @@
 # R2 · Programmer 接口与响应校验器
 
-状态：未开始。依赖：R1。产物：`src/Player`、`src/Decision.Validation`、`tests/Player.Tests`、`tests/Decision.Validation.Tests`。
+状态：已完成。依赖：R1。产物：`src/Player`、`src/Decision.Validation`、`tests/Player.Tests`、`tests/Decision.Validation.Tests`。
 
 ## 目标
 

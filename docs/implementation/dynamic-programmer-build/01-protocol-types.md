@@ -1,6 +1,6 @@
 # R1 · Protocol：指令与程序契约类型
 
-状态：未开始。依赖：无。产物：`src/Protocol`、`tests/Protocol.Tests`。
+状态：已完成。依赖：无。产物：`src/Protocol`、`tests/Protocol.Tests`。
 
 ## 目标
 

@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-19；Dynamic-Programmer 施工工单（R1–R8）已建立，见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
+> 最近整理：2026-09-19；Dynamic-Programmer 施工 R1/R2 已落地，见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 最终目标
 
@@ -12,7 +12,7 @@
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Player 与协议**：冻结的 Observation、DecisionRequest、Intent 和稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 Null/Scripted/Random driver，Decision.Validation 负责请求关联和动作校验，Player.Agency 提供已知图快照接缝。
-- **构建依赖**：Kernel/Spatial 使用固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。已提交的 Kernel/Spatial schema history 不因本批改变。
+- **构建依赖**：Kernel/Spatial 使用固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。已提交的 Kernel/Spatial schema history 不因本批改变。Server 前端静态资源的 .NET 10 清单故障（曾致 CI 的 Server.Tests 长期红）已用 Server.csproj 的 `EnsureWwwrootDirectory` 空目录目标修复，根因与已否决方案见 [wwwroot 调查](docs/worksets/server-wwwroot-staticwebassets.md)；本地全量测试绿，CI 推送后确认转绿。
 - **本地可玩入口**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置与自身轨迹；诊断独立只读取数。发布启动见 [README](README.md)，Windows 实际 apphost/Chromium 证据见 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 当前焦点与下一步
@@ -25,7 +25,7 @@
 
 已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。
 
-工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。当前状态：未开工，进度以工单 README 状态表为准。
+工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1（Protocol 契约类型）与 R2（`IDynamicProgrammer`、脚本驱动器与响应校验器）已落地，各自测试全绿，新类型尚无生产消费者；下一步 R3（Process 领域状态/facts/reducer），进度以工单 README 状态表为准。
 
 ## 延期与重开条件
 
