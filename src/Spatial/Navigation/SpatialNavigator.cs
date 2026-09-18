@@ -3,12 +3,10 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Spatial;
 
 /// <summary>Finds deterministic minimum-duration routes on the current effective directed graph.</summary>
-public sealed class SpatialNavigator
-{
+public sealed class SpatialNavigator {
     private readonly GraphDefinition _definition;
 
-    public SpatialNavigator(GraphDefinition definition)
-    {
+    public SpatialNavigator(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
@@ -17,27 +15,22 @@ public sealed class SpatialNavigator
         GraphSpatialState state,
         PlaceId startPlaceId,
         PlaceId goalPlaceId,
-        long speedSnapshot)
-    {
+        long speedSnapshot) {
         ArgumentNullException.ThrowIfNull(state);
         GraphSpatialStateValidator.ValidateComplete(_definition, state);
-        if (!_definition.Contains(startPlaceId))
-        {
+        if (!_definition.Contains(startPlaceId)) {
             return new UnknownStart();
         }
 
-        if (!_definition.Contains(goalPlaceId))
-        {
+        if (!_definition.Contains(goalPlaceId)) {
             return new UnknownGoal();
         }
 
-        if (speedSnapshot <= 0)
-        {
+        if (speedSnapshot <= 0) {
             return new InvalidSpeed();
         }
 
-        if (startPlaceId == goalPlaceId)
-        {
+        if (startPlaceId == goalPlaceId) {
             return new AlreadyAtGoal();
         }
 
@@ -47,29 +40,22 @@ public sealed class SpatialNavigator
         best.Add(startPlaceId, start);
         frontier.Enqueue(start, start);
 
-        while (frontier.TryDequeue(out PathLabel? current, out _))
-        {
+        while (frontier.TryDequeue(out PathLabel? current, out _)) {
             if (!best.TryGetValue(current.PlaceId, out PathLabel? known) ||
-                PathLabelComparer.Instance.Compare(current, known) != 0)
-            {
+                PathLabelComparer.Instance.Compare(current, known) != 0) {
                 continue;
             }
 
-            if (current.PlaceId == goalPlaceId)
-            {
+            if (current.PlaceId == goalPlaceId) {
                 return new RouteFound(new ModelDuration(current.Cost), current.Legs);
             }
 
-            foreach (DirectedPassage edge in Outgoing(state, current.PlaceId))
-            {
+            foreach (DirectedPassage edge in Outgoing(state, current.PlaceId)) {
                 long resultingCost;
-                try
-                {
+                try {
                     resultingCost = checked(
                         current.Cost + SpatialMath.TravelDuration(edge.Passage.Length, speedSnapshot).Ticks);
-                }
-                catch (OverflowException)
-                {
+                } catch (OverflowException) {
                     continue;
                 }
 
@@ -80,8 +66,7 @@ public sealed class SpatialNavigator
                 ];
                 var resulting = new PathLabel(edge.Destination, resultingCost, resultingLegs);
                 if (!best.TryGetValue(edge.Destination, out PathLabel? previous) ||
-                    PathLabelComparer.Instance.ComparePath(resulting, previous) < 0)
-                {
+                    PathLabelComparer.Instance.ComparePath(resulting, previous) < 0) {
                     best[edge.Destination] = resulting;
                     frontier.Enqueue(resulting, resulting);
                 }
@@ -93,10 +78,8 @@ public sealed class SpatialNavigator
             : new NoRoute();
     }
 
-    private IEnumerable<DirectedPassage> Outgoing(GraphSpatialState state, PlaceId placeId)
-    {
-        foreach (PassageDefinition passage in _definition.Passages)
-        {
+    private IEnumerable<DirectedPassage> Outgoing(GraphSpatialState state, PlaceId placeId) {
+        foreach (PassageDefinition passage in _definition.Passages) {
             if (EffectiveGraph.TryResolveDirection(
                     _definition,
                     state,
@@ -104,29 +87,23 @@ public sealed class SpatialNavigator
                     placeId,
                     out PlaceId destination,
                     out bool entryAllowed) &&
-                entryAllowed)
-            {
+                entryAllowed) {
                 yield return new DirectedPassage(passage, destination);
             }
         }
     }
 
-    private bool IsReachable(GraphSpatialState state, PlaceId start, PlaceId goal)
-    {
+    private bool IsReachable(GraphSpatialState state, PlaceId start, PlaceId goal) {
         var visited = new HashSet<PlaceId> { start };
         var pending = new Queue<PlaceId>();
         pending.Enqueue(start);
-        while (pending.TryDequeue(out PlaceId current))
-        {
-            foreach (DirectedPassage edge in Outgoing(state, current))
-            {
-                if (edge.Destination == goal)
-                {
+        while (pending.TryDequeue(out PlaceId current)) {
+            foreach (DirectedPassage edge in Outgoing(state, current)) {
+                if (edge.Destination == goal) {
                     return true;
                 }
 
-                if (visited.Add(edge.Destination))
-                {
+                if (visited.Add(edge.Destination)) {
                     pending.Enqueue(edge.Destination);
                 }
             }
@@ -139,24 +116,19 @@ public sealed class SpatialNavigator
 
     private sealed record PathLabel(PlaceId PlaceId, long Cost, IReadOnlyList<RouteLeg> Legs);
 
-    private sealed class PathLabelComparer : IComparer<PathLabel>
-    {
+    private sealed class PathLabelComparer : IComparer<PathLabel> {
         internal static PathLabelComparer Instance { get; } = new();
 
-        public int Compare(PathLabel? left, PathLabel? right)
-        {
-            if (ReferenceEquals(left, right))
-            {
+        public int Compare(PathLabel? left, PathLabel? right) {
+            if (ReferenceEquals(left, right)) {
                 return 0;
             }
 
-            if (left is null)
-            {
+            if (left is null) {
                 return -1;
             }
 
-            if (right is null)
-            {
+            if (right is null) {
                 return 1;
             }
 
@@ -166,20 +138,16 @@ public sealed class SpatialNavigator
                 : left.PlaceId.CompareTo(right.PlaceId);
         }
 
-        internal int ComparePath(PathLabel left, PathLabel right)
-        {
+        internal int ComparePath(PathLabel left, PathLabel right) {
             int costComparison = left.Cost.CompareTo(right.Cost);
-            if (costComparison != 0)
-            {
+            if (costComparison != 0) {
                 return costComparison;
             }
 
             int common = Math.Min(left.Legs.Count, right.Legs.Count);
-            for (int index = 0; index < common; index++)
-            {
+            for (int index = 0; index < common; index++) {
                 int legComparison = CompareLeg(left.Legs[index], right.Legs[index]);
-                if (legComparison != 0)
-                {
+                if (legComparison != 0) {
                     return legComparison;
                 }
             }
@@ -187,11 +155,9 @@ public sealed class SpatialNavigator
             return left.Legs.Count.CompareTo(right.Legs.Count);
         }
 
-        private static int CompareLeg(RouteLeg left, RouteLeg right)
-        {
+        private static int CompareLeg(RouteLeg left, RouteLeg right) {
             int passageComparison = left.PassageId.CompareTo(right.PassageId);
-            if (passageComparison != 0)
-            {
+            if (passageComparison != 0) {
                 return passageComparison;
             }
 

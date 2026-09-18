@@ -4,11 +4,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.ToyModels;
 
-public sealed class TimerSystemTests
-{
+public sealed class TimerSystemTests {
     [Fact]
-    public async Task StepAsync_ThreeTimersCommitOneBatchPerStepInTimeOrder()
-    {
+    public async Task StepAsync_ThreeTimersCommitOneBatchPerStepInTimeOrder() {
         TimerWorld world = TimerWorld.Start(
             new TimerEntity(1, "A", AtSecond(10)),
             new TimerEntity(2, "B", AtSecond(20)),
@@ -38,8 +36,7 @@ public sealed class TimerSystemTests
     }
 
     [Fact]
-    public async Task StepAsync_SameTickTimersUseSchedulerAndReforecastAfterEachCommit()
-    {
+    public async Task StepAsync_SameTickTimersUseSchedulerAndReforecastAfterEachCommit() {
         TimerWorld world = TimerWorld.Start(
             new TimerEntity(1, "A", AtSecond(10)),
             new TimerEntity(2, "B", AtSecond(10)));

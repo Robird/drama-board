@@ -3,11 +3,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.Random;
 
-public sealed class DeterministicRandomTests
-{
+public sealed class DeterministicRandomTests {
     [Fact]
-    public void SampleUInt64_SameCoordinatesAroundExtraCall_ReturnsSameValue()
-    {
+    public void SampleUInt64_SameCoordinatesAroundExtraCall_ReturnsSameValue() {
         ulong first = DeterministicRandom.SampleUInt64(42, 73, 4, 2);
 
         _ = DeterministicRandom.SampleUInt64(42, 73, 4, 999);
@@ -18,16 +16,14 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void SampleUInt64_KnownCoordinates_ReturnsStableBitPattern()
-    {
+    public void SampleUInt64_KnownCoordinates_ReturnsStableBitPattern() {
         ulong sample = DeterministicRandom.SampleUInt64(42, 73, 4, 2);
 
         Assert.Equal(1_468_166_576_533_988_118UL, sample);
     }
 
     [Fact]
-    public void SampleUnitDouble_KnownCoordinates_ReturnsStableBitPatternInRange()
-    {
+    public void SampleUnitDouble_KnownCoordinates_ReturnsStableBitPatternInRange() {
         double sample = DeterministicRandom.SampleUnitDouble(42, 73, 4, 2);
 
         Assert.Equal(4_590_399_446_352_750_816L, BitConverter.DoubleToInt64Bits(sample));
@@ -36,8 +32,7 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void DeriveStreamId_PurposeString_ReturnsStableBitPattern()
-    {
+    public void DeriveStreamId_PurposeString_ReturnsStableBitPattern() {
         ulong streamId = DeterministicRandom.DeriveStreamId(73, "discovery");
 
         Assert.Equal(4_093_831_665_954_233_643UL, streamId);
@@ -46,15 +41,13 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void DeriveStreamId_PersistentLong_ReturnsStableBitPatterns()
-    {
+    public void DeriveStreamId_PersistentLong_ReturnsStableBitPatterns() {
         Assert.Equal(13_535_481_488_331_451_459UL, DeterministicRandom.DeriveStreamId(17L));
         Assert.Equal(11_422_512_511_403_659_829UL, DeterministicRandom.DeriveStreamId(-1L));
     }
 
     [Fact]
-    public void DeriveStreamId_PersistentString_ReturnsStableBitPattern()
-    {
+    public void DeriveStreamId_PersistentString_ReturnsStableBitPattern() {
         ulong streamId = DeterministicRandom.DeriveStreamId("item-42");
 
         Assert.Equal(1_854_024_125_930_519_732UL, streamId);
@@ -63,8 +56,7 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void SampleInt32_WideSignedRange_AlwaysStaysWithinBounds()
-    {
+    public void SampleInt32_WideSignedRange_AlwaysStaysWithinBounds() {
         int[] samples = Enumerable.Range(0, 100)
             .Select(index => DeterministicRandom.SampleInt32(
                 worldSeed: 42,
@@ -80,8 +72,7 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void SampleExponentialDuration_KnownCoordinates_ReturnsStablePositiveTicks()
-    {
+    public void SampleExponentialDuration_KnownCoordinates_ReturnsStablePositiveTicks() {
         ModelDuration sample = DeterministicRandom.SampleExponentialDuration(
             worldSeed: 42,
             streamId: 73,
@@ -93,8 +84,7 @@ public sealed class DeterministicRandomTests
     }
 
     [Fact]
-    public void SampleExponentialDuration_NonPositiveMean_ThrowsArgumentOutOfRangeException()
-    {
+    public void SampleExponentialDuration_NonPositiveMean_ThrowsArgumentOutOfRangeException() {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             DeterministicRandom.SampleExponentialDuration(42, 73, 4, new ModelDuration(0)));
     }

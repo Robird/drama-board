@@ -3,11 +3,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Planning;
 
-public sealed class SpatialPlannerReducerTests
-{
+public sealed class SpatialPlannerReducerTests {
     [Fact]
-    public void StartTraversal_UsesCeilingDurationAndIncrementsGenerationPerSegment()
-    {
+    public void StartTraversal_UsesCeilingDurationAndIncrementsGenerationPerSegment() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -47,8 +45,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ReverseTraversal_AnchorsCurrentOffsetAndEachNewArrivalUsesCeilingDuration()
-    {
+    public void ReverseTraversal_AnchorsCurrentOffsetAndEachNewArrivalUsesCeilingDuration() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -100,8 +97,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ReverseTraversal_ChecksOppositeDirectionEntryOnlyWhenCreatingSegment()
-    {
+    public void ReverseTraversal_ChecksOppositeDirectionEntryOnlyWhenCreatingSegment() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -155,8 +151,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ReverseTraversal_RejectsBoundaryAndStaleSegmentProposals()
-    {
+    public void ReverseTraversal_RejectsBoundaryAndStaleSegmentProposals() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -196,8 +191,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ReverseTraversal_RejectsUnrepresentableArrivalWithoutFacts()
-    {
+    public void ReverseTraversal_RejectsUnrepresentableArrivalWithoutFacts() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -222,8 +216,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void DirectionalEntry_IsCheckedAtSegmentCreationOnly()
-    {
+    public void DirectionalEntry_IsCheckedAtSegmentCreationOnly() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -286,8 +279,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void GateFrontPlace_SeparatesApproachCompletionFromClosedCityEntry()
-    {
+    public void GateFrontPlace_SeparatesApproachCompletionFromClosedCityEntry() {
         var outside = new PlaceId("outside");
         var gateFront = new PlaceId("gate-front");
         var city = new PlaceId("city");
@@ -323,8 +315,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ScheduledPartialPatch_UsesEffectiveAccessAtDueAndConsumesOnlyItself()
-    {
+    public void ScheduledPartialPatch_UsesEffectiveAccessAtDueAndConsumesOnlyItself() {
         var second = new PassageId("second");
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C],
@@ -379,8 +370,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void ScheduledNoOp_IsStillConsumedAndCanonicalDefaultRemovesOverride()
-    {
+    public void ScheduledNoOp_IsStillConsumedAndCanonicalDefaultRemovesOverride() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B)]);
@@ -427,8 +417,7 @@ public sealed class SpatialPlannerReducerTests
     }
 
     [Fact]
-    public void Planner_RejectsInvalidOrStaleObjectiveProposalsWithoutFacts()
-    {
+    public void Planner_RejectsInvalidOrStaleObjectiveProposalsWithoutFacts() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B)]);

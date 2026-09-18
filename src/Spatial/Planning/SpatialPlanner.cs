@@ -3,12 +3,10 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Spatial;
 
 /// <summary>Plans objective Graph Spatial facts without queueing, committing, or performing I/O.</summary>
-public sealed class SpatialPlanner
-{
+public sealed class SpatialPlanner {
     private readonly GraphDefinition _definition;
 
-    public SpatialPlanner(GraphDefinition definition)
-    {
+    public SpatialPlanner(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
@@ -16,29 +14,24 @@ public sealed class SpatialPlanner
     public SpatialPlanResult TryPlaceEntity(
         GraphSpatialState state,
         EntityId entityId,
-        PlaceId placeId)
-    {
+        PlaceId placeId) {
         RequireState(state);
-        if (string.IsNullOrWhiteSpace(entityId.Value))
-        {
+        if (string.IsNullOrWhiteSpace(entityId.Value)) {
             return Rejected("entity-id-uninitialized");
         }
 
-        if (!_definition.Contains(placeId))
-        {
+        if (!_definition.Contains(placeId)) {
             return Rejected("place-not-found");
         }
 
-        if (state.TryGetEntity(entityId, out _))
-        {
+        if (state.TryGetEntity(entityId, out _)) {
             return Rejected("entity-already-exists");
         }
 
         return Accepted(new EntityPlacedFact(entityId, placeId));
     }
 
-    public SpatialPlanResult TryRemoveEntity(GraphSpatialState state, EntityId entityId)
-    {
+    public SpatialPlanResult TryRemoveEntity(GraphSpatialState state, EntityId entityId) {
         RequireState(state);
         return state.TryGetEntity(entityId, out _)
             ? Accepted(new EntityRemovedFact(entityId))
@@ -50,26 +43,21 @@ public sealed class SpatialPlanner
         EntityId entityId,
         PassageId passageId,
         long speedSnapshot,
-        ModelTime at)
-    {
+        ModelTime at) {
         RequireState(state);
-        if (!state.TryGetEntity(entityId, out SpatialEntity? entity))
-        {
+        if (!state.TryGetEntity(entityId, out SpatialEntity? entity)) {
             return Rejected("entity-not-found");
         }
 
-        if (entity!.Location is not AtPlaceLocation atPlace)
-        {
+        if (entity!.Location is not AtPlaceLocation atPlace) {
             return Rejected("entity-not-at-place");
         }
 
-        if (!_definition.Contains(passageId))
-        {
+        if (!_definition.Contains(passageId)) {
             return Rejected("passage-not-found");
         }
 
-        if (speedSnapshot <= 0)
-        {
+        if (speedSnapshot <= 0) {
             return Rejected("invalid-speed");
         }
 
@@ -80,23 +68,18 @@ public sealed class SpatialPlanner
                 passage,
                 atPlace.PlaceId,
                 out _,
-                out bool entryAllowed))
-        {
+                out bool entryAllowed)) {
             return Rejected("place-not-passage-endpoint");
         }
 
-        if (!entryAllowed)
-        {
+        if (!entryAllowed) {
             return Rejected("entry-closed");
         }
 
-        try
-        {
+        try {
             _ = checked(entity.MovementGeneration + 1);
             _ = SpatialMath.ArrivalDue(at, passage.Length, speedSnapshot);
-        }
-        catch (OverflowException)
-        {
+        } catch (OverflowException) {
             return Rejected("time-overflow");
         }
 
@@ -106,28 +89,23 @@ public sealed class SpatialPlanner
     public SpatialPlanResult TryReverseTraversal(
         GraphSpatialState state,
         EntityId entityId,
-        ModelTime at)
-    {
+        ModelTime at) {
         RequireState(state);
-        if (!state.TryGetEntity(entityId, out SpatialEntity? entity))
-        {
+        if (!state.TryGetEntity(entityId, out SpatialEntity? entity)) {
             return Rejected("entity-not-found");
         }
 
-        if (entity!.Location is not TraversingLocation traversal)
-        {
+        if (entity!.Location is not TraversingLocation traversal) {
             return Rejected("entity-not-traversing");
         }
 
-        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue)
-        {
+        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue) {
             return Rejected("reverse-outside-active-interval");
         }
 
         PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
         long currentOffset = SpatialMath.OffsetAt(passage, traversal, at);
-        if (currentOffset <= 0 || currentOffset >= passage.Length)
-        {
+        if (currentOffset <= 0 || currentOffset >= passage.Length) {
             return Rejected("reverse-not-inside-passage");
         }
 
@@ -137,26 +115,21 @@ public sealed class SpatialPlanner
                 passage,
                 traversal.TargetPlaceId,
                 out PlaceId targetPlaceId,
-                out bool entryAllowed))
-        {
+                out bool entryAllowed)) {
             return Rejected("invalid-traversal-target");
         }
 
-        if (!entryAllowed)
-        {
+        if (!entryAllowed) {
             return Rejected("entry-closed");
         }
 
         long distanceToTarget = targetPlaceId == passage.EndpointB
             ? checked(passage.Length - currentOffset)
             : currentOffset;
-        try
-        {
+        try {
             _ = checked(entity.MovementGeneration + 1);
             _ = SpatialMath.ArrivalDue(at, distanceToTarget, traversal.SpeedSnapshot);
-        }
-        catch (OverflowException)
-        {
+        } catch (OverflowException) {
             return Rejected("time-overflow");
         }
 
@@ -166,16 +139,13 @@ public sealed class SpatialPlanner
     public SpatialPlanResult TrySetPassageEntryAccess(
         GraphSpatialState state,
         PassageId passageId,
-        PassageEntryPatch patch)
-    {
+        PassageEntryPatch patch) {
         RequireState(state);
-        if (!_definition.Contains(passageId))
-        {
+        if (!_definition.Contains(passageId)) {
             return Rejected("passage-not-found");
         }
 
-        if (!IsValid(patch))
-        {
+        if (!IsValid(patch)) {
             return Rejected("empty-entry-patch");
         }
 
@@ -189,34 +159,28 @@ public sealed class SpatialPlanner
         PassageId passageId,
         ModelTime due,
         PassageEntryPatch patch,
-        ModelTime at)
-    {
+        ModelTime at) {
         RequireState(state);
-        if (!_definition.Contains(passageId))
-        {
+        if (!_definition.Contains(passageId)) {
             return Rejected("passage-not-found");
         }
 
-        if (!IsValid(patch))
-        {
+        if (!IsValid(patch)) {
             return Rejected("empty-entry-patch");
         }
 
-        if (due <= at)
-        {
+        if (due <= at) {
             return Rejected("schedule-not-in-future");
         }
 
-        if (state.FindSchedule(passageId, due) is not null)
-        {
+        if (state.FindSchedule(passageId, due) is not null) {
             return Rejected("schedule-already-exists");
         }
 
         return Accepted(new PassageEntryChangeScheduledFact(passageId, due, patch));
     }
 
-    private void RequireState(GraphSpatialState state)
-    {
+    private void RequireState(GraphSpatialState state) {
         ArgumentNullException.ThrowIfNull(state);
         GraphSpatialStateValidator.ValidateComplete(_definition, state);
     }

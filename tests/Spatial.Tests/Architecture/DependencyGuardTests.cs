@@ -2,11 +2,9 @@ using System.Xml.Linq;
 
 namespace DramaBoard.Spatial.Tests;
 
-public sealed class DependencyGuardTests
-{
+public sealed class DependencyGuardTests {
     [Fact]
-    public void SpatialProject_ReferencesOnlyKernelProject()
-    {
+    public void SpatialProject_ReferencesOnlyKernelProject() {
         string repositoryRoot = FindRepositoryRoot();
         XDocument project = XDocument.Load(Path.Combine(repositoryRoot, "src", "Spatial", "Spatial.csproj"));
         string[] projectReferences =
@@ -24,11 +22,9 @@ public sealed class DependencyGuardTests
         Assert.Empty(project.Descendants("Reference"));
     }
 
-    private static string FindRepositoryRoot()
-    {
+    private static string FindRepositoryRoot() {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
-        {
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props"))) {
             current = current.Parent;
         }
 

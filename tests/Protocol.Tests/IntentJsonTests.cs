@@ -2,10 +2,8 @@ using System.Text.Json;
 
 namespace DramaBoard.Protocol.Tests;
 
-public sealed class IntentJsonTests
-{
-    public static TheoryData<Intent> FirstBoardActions => new()
-    {
+public sealed class IntentJsonTests {
+    public static TheoryData<Intent> FirstBoardActions => new() {
         new Intent(ActionKinds.Travel, ExitId: "exit.inn.front-door"),
         new Intent(
             ActionKinds.TravelTo,
@@ -25,8 +23,7 @@ public sealed class IntentJsonTests
 
     [Theory]
     [MemberData(nameof(FirstBoardActions))]
-    public void Serialize_FirstBoardAction_RoundTrips(Intent intent)
-    {
+    public void Serialize_FirstBoardAction_RoundTrips(Intent intent) {
         string json = JsonSerializer.Serialize(intent);
         Intent? roundTripped = JsonSerializer.Deserialize<Intent>(json);
 
@@ -34,8 +31,7 @@ public sealed class IntentJsonTests
     }
 
     [Fact]
-    public void Serialize_WaitUntilModelTime_RoundTrips()
-    {
+    public void Serialize_WaitUntilModelTime_RoundTrips() {
         Intent intent = new(ActionKinds.Wait, UntilModelTimeMs: 120_000);
 
         string json = JsonSerializer.Serialize(intent);
@@ -46,15 +42,13 @@ public sealed class IntentJsonTests
     [Theory]
     [InlineData(0)]
     [InlineData(315_360_000_001)]
-    public void Constructor_DurationOutsideSupportedRange_Throws(long durationMs)
-    {
+    public void Constructor_DurationOutsideSupportedRange_Throws(long durationMs) {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new Intent(ActionKinds.Wait, DurationMs: durationMs));
     }
 
     [Fact]
-    public void Constructor_DurationAtSupportedBounds_Succeeds()
-    {
+    public void Constructor_DurationAtSupportedBounds_Succeeds() {
         Assert.Equal(1, new Intent(ActionKinds.Wait, DurationMs: 1).DurationMs);
         Assert.Equal(
             315_360_000_000,
@@ -62,18 +56,15 @@ public sealed class IntentJsonTests
     }
 
     [Fact]
-    public void Deserialize_NegativeDuration_Throws()
-    {
+    public void Deserialize_NegativeDuration_Throws() {
         const string json = "{\"ActionKind\":\"action.wait\",\"DurationMs\":-1}";
 
         Assert.Throws<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize<Intent>(json));
     }
 
     [Fact]
-    public void Deserialize_OverlongFreeText_Throws()
-    {
-        string json = JsonSerializer.Serialize(new
-        {
+    public void Deserialize_OverlongFreeText_Throws() {
+        string json = JsonSerializer.Serialize(new {
             ActionKind = "action.talk",
             FreeText = new string('x', 4_097),
         });

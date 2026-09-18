@@ -3,12 +3,10 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Spatial;
 
 /// <summary>Reads objective relations from one committed Graph Spatial state.</summary>
-public sealed class SpatialQueries
-{
+public sealed class SpatialQueries {
     private readonly GraphDefinition _definition;
 
-    public SpatialQueries(GraphDefinition definition)
-    {
+    public SpatialQueries(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
@@ -16,12 +14,10 @@ public sealed class SpatialQueries
     public SpatialLocationView GetLocation(
         GraphSpatialState state,
         EntityId entityId,
-        ModelTime at)
-    {
+        ModelTime at) {
         RequireState(state);
         SpatialEntity entity = RequireEntityForQuery(state, entityId);
-        return entity.Location switch
-        {
+        return entity.Location switch {
             AtPlaceLocation atPlace => new AtPlaceView(atPlace.PlaceId),
             TraversingLocation traversal => CreateTraversingView(traversal, at),
             _ => throw new InvalidOperationException(
@@ -31,8 +27,7 @@ public sealed class SpatialQueries
 
     public PassageEntryAccess GetPassageEntryAccess(
         GraphSpatialState state,
-        PassageId passageId)
-    {
+        PassageId passageId) {
         RequireState(state);
         PassageDefinition passage = RequirePassageForQuery(passageId);
         return EffectiveGraph.EntryAccess(_definition, state, passage);
@@ -41,16 +36,13 @@ public sealed class SpatialQueries
     public IReadOnlyList<PassageExit> GetExits(
         GraphSpatialState state,
         PlaceId placeId,
-        long speedSnapshot)
-    {
+        long speedSnapshot) {
         RequireState(state);
-        if (!_definition.Contains(placeId))
-        {
+        if (!_definition.Contains(placeId)) {
             throw new KeyNotFoundException($"Place '{placeId}' does not exist.");
         }
 
-        if (speedSnapshot <= 0)
-        {
+        if (speedSnapshot <= 0) {
             throw new ArgumentOutOfRangeException(nameof(speedSnapshot), "Travel speed must be positive.");
         }
 
@@ -66,12 +58,10 @@ public sealed class SpatialQueries
 
     public IReadOnlyList<EntityId> GetCoLocatedEntities(
         GraphSpatialState state,
-        EntityId entityId)
-    {
+        EntityId entityId) {
         RequireState(state);
         SpatialEntity entity = RequireEntityForQuery(state, entityId);
-        if (entity.Location is not AtPlaceLocation atPlace)
-        {
+        if (entity.Location is not AtPlaceLocation atPlace) {
             return Array.Empty<EntityId>();
         }
 
@@ -90,26 +80,22 @@ public sealed class SpatialQueries
     public IReadOnlyList<SamePassageRelation> GetSamePassageRelations(
         GraphSpatialState state,
         EntityId entityId,
-        ModelTime at)
-    {
+        ModelTime at) {
         RequireState(state);
         SpatialEntity entity = RequireEntityForQuery(state, entityId);
-        if (entity.Location is not TraversingLocation traversal)
-        {
+        if (entity.Location is not TraversingLocation traversal) {
             return Array.Empty<SamePassageRelation>();
         }
 
         PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
         long ownOffset = SpatialMath.OffsetAt(passage, traversal, at);
         var relations = new List<SamePassageRelation>();
-        foreach (SpatialEntity other in state.Entities)
-        {
+        foreach (SpatialEntity other in state.Entities) {
             if (other.Id == entity.Id ||
                 other.Location is not TraversingLocation otherTraversal ||
                 otherTraversal.PassageId != traversal.PassageId ||
                 at < otherTraversal.AnchorTime ||
-                at > otherTraversal.ArrivalDue)
-            {
+                at > otherTraversal.ArrivalDue) {
                 continue;
             }
 
@@ -127,8 +113,7 @@ public sealed class SpatialQueries
     public IReadOnlyList<EntityId> GetCoTravelingEntities(
         GraphSpatialState state,
         EntityId entityId,
-        ModelTime at)
-    {
+        ModelTime at) {
         EntityId[] values =
         [
             .. GetSamePassageRelations(state, entityId, at)
@@ -138,8 +123,7 @@ public sealed class SpatialQueries
         return Array.AsReadOnly(values);
     }
 
-    private TraversingView CreateTraversingView(TraversingLocation traversal, ModelTime at)
-    {
+    private TraversingView CreateTraversingView(TraversingLocation traversal, ModelTime at) {
         PassageDefinition passage = _definition.GetPassage(traversal.PassageId);
         return new TraversingView(
             traversal.PassageId,
@@ -153,16 +137,14 @@ public sealed class SpatialQueries
         GraphSpatialState state,
         PassageDefinition passage,
         PlaceId placeId,
-        long speedSnapshot)
-    {
+        long speedSnapshot) {
         if (!EffectiveGraph.TryResolveDirection(
                 _definition,
                 state,
                 passage,
                 placeId,
                 out PlaceId destination,
-                out bool entryAllowed))
-        {
+                out bool entryAllowed)) {
             return null;
         }
 
@@ -178,18 +160,15 @@ public sealed class SpatialQueries
             ? entity!
             : throw new KeyNotFoundException($"Entity '{entityId}' does not exist.");
 
-    private PassageDefinition RequirePassageForQuery(PassageId passageId)
-    {
-        if (!_definition.Contains(passageId))
-        {
+    private PassageDefinition RequirePassageForQuery(PassageId passageId) {
+        if (!_definition.Contains(passageId)) {
             throw new KeyNotFoundException($"Passage '{passageId}' does not exist.");
         }
 
         return _definition.GetPassage(passageId);
     }
 
-    private void RequireState(GraphSpatialState state)
-    {
+    private void RequireState(GraphSpatialState state) {
         ArgumentNullException.ThrowIfNull(state);
         GraphSpatialStateValidator.ValidateComplete(_definition, state);
     }

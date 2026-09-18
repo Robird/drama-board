@@ -2,8 +2,7 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial.Tests.TestSupport;
 
-internal static class GraphTestWorld
-{
+internal static class GraphTestWorld {
     internal static readonly PlaceId A = new("a");
     internal static readonly PlaceId B = new("b");
     internal static readonly PlaceId C = new("c");
@@ -49,8 +48,7 @@ internal static class GraphTestWorld
     internal static SpatialPlanAccepted Accepted(SpatialPlanResult result) =>
         Assert.IsType<SpatialPlanAccepted>(result);
 
-    internal static SpatialPlanRejected Rejected(SpatialPlanResult result, string reason)
-    {
+    internal static SpatialPlanRejected Rejected(SpatialPlanResult result, string reason) {
         SpatialPlanRejected rejected = Assert.IsType<SpatialPlanRejected>(result);
         Assert.Equal(reason, rejected.Reason);
         return rejected;
@@ -60,8 +58,7 @@ internal static class GraphTestWorld
         GraphSpatialReducer reducer,
         GraphSpatialState state,
         LogicalInstant instant,
-        SpatialPlanResult result)
-    {
+        SpatialPlanResult result) {
         SpatialPlanAccepted accepted = Accepted(result);
         return accepted.Facts.Aggregate(state, (current, fact) => reducer.Apply(current, instant, fact));
     }

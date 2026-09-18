@@ -4,16 +4,14 @@ namespace DramaBoard.Spatial;
 
 /// <summary>Classifies one exact intersection between two active passage segments.</summary>
 [DurableType("DramaBoard.Spatial.PassageContactKind", 1)]
-public enum PassageContactKind
-{
+public enum PassageContactKind {
     HeadOnMeeting = 0,
     Overtake = 1,
 }
 
 /// <summary>Identifies one unordered pair of current movement segments on a passage.</summary>
 [DurableType("DramaBoard.Spatial.PassageContactKey", 1)]
-public sealed partial class PassageContactKey : IDurableObject, IComparable<PassageContactKey>, IEquatable<PassageContactKey>
-{
+public sealed partial class PassageContactKey : IDurableObject, IComparable<PassageContactKey>, IEquatable<PassageContactKey> {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private EntityId _entityA;
     [DurableField(3)] private long _movementGenerationA;
@@ -24,38 +22,31 @@ public sealed partial class PassageContactKey : IDurableObject, IComparable<Pass
         EntityId entityA,
         long movementGenerationA,
         EntityId entityB,
-        long movementGenerationB)
-    {
+        long movementGenerationB) {
         SpatialIdentifier.Require(passageId, nameof(passageId));
         SpatialIdentifier.Require(entityA, nameof(entityA));
         SpatialIdentifier.Require(entityB, nameof(entityB));
-        if (movementGenerationA < 0)
-        {
+        if (movementGenerationA < 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(movementGenerationA),
                 "Movement generation cannot be negative.");
         }
 
-        if (movementGenerationB < 0)
-        {
+        if (movementGenerationB < 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(movementGenerationB),
                 "Movement generation cannot be negative.");
         }
 
-        if (entityA == entityB)
-        {
+        if (entityA == entityB) {
             throw new ArgumentException("A passage contact requires two different entities.", nameof(entityB));
         }
 
         _passageId = passageId;
-        if (entityA.CompareTo(entityB) < 0)
-        {
+        if (entityA.CompareTo(entityB) < 0) {
             _entityA = entityA; _movementGenerationA = movementGenerationA;
             _entityB = entityB; _movementGenerationB = movementGenerationB;
-        }
-        else
-        {
+        } else {
             _entityA = entityB; _movementGenerationA = movementGenerationB;
             _entityB = entityA; _movementGenerationB = movementGenerationA;
         }
@@ -80,28 +71,23 @@ public sealed partial class PassageContactKey : IDurableObject, IComparable<Pass
     public static bool operator ==(PassageContactKey? left, PassageContactKey? right) => Equals(left, right);
     public static bool operator !=(PassageContactKey? left, PassageContactKey? right) => !Equals(left, right);
 
-    public int CompareTo(PassageContactKey? other)
-    {
-        if (other is null)
-        {
+    public int CompareTo(PassageContactKey? other) {
+        if (other is null) {
             return 1;
         }
 
         int comparison = PassageId.CompareTo(other.PassageId);
-        if (comparison != 0)
-        {
+        if (comparison != 0) {
             return comparison;
         }
 
         comparison = EntityA.CompareTo(other.EntityA);
-        if (comparison != 0)
-        {
+        if (comparison != 0) {
             return comparison;
         }
 
         comparison = MovementGenerationA.CompareTo(other.MovementGenerationA);
-        if (comparison != 0)
-        {
+        if (comparison != 0) {
             return comparison;
         }
 

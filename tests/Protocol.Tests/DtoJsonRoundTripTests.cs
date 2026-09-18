@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace DramaBoard.Protocol.Tests;
 
-public sealed class DtoJsonRoundTripTests
-{
+public sealed class DtoJsonRoundTripTests {
     [Fact]
-    public void Serialize_EachDto_RoundTripsWithoutInformationLoss()
-    {
+    public void Serialize_EachDto_RoundTripsWithoutInformationLoss() {
         KnownFact fact = new(new FactKind("fact.secret.known"), "secret.letter", "Alice knows about the letter.");
         Observation observation = CreateObservation(fact);
         AvailableAction availableAction = new(
@@ -38,8 +36,7 @@ public sealed class DtoJsonRoundTripTests
     }
 
     [Fact]
-    public void Serialize_DefaultOptions_IncludeAndPreserveNullOptionalProperties()
-    {
+    public void Serialize_DefaultOptions_IncludeAndPreserveNullOptionalProperties() {
         Intent intent = new(ActionKinds.Observe);
         AvailableAction availableAction = new(ActionKinds.Observe);
         KnownFact fact = new(new FactKind("fact.weather"), null, "It is raining.");
@@ -91,8 +88,7 @@ public sealed class DtoJsonRoundTripTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void ObservedExit_NonPositiveExpectedDuration_Throws(long expectedDurationMs)
-    {
+    public void ObservedExit_NonPositiveExpectedDuration_Throws(long expectedDurationMs) {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new ObservedExit("exit.bridge", "place.inn", expectedDurationMs, true));
     }
@@ -100,8 +96,7 @@ public sealed class DtoJsonRoundTripTests
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
-    public void ObservedExit_BlankStableIdentifier_Throws(string identifier)
-    {
+    public void ObservedExit_BlankStableIdentifier_Throws(string identifier) {
         Assert.Throws<ArgumentException>(() =>
             new ObservedExit(identifier, "place.inn", 1, true));
         Assert.Throws<ArgumentException>(() =>
@@ -109,11 +104,9 @@ public sealed class DtoJsonRoundTripTests
     }
 
     [Fact]
-    public void DecisionRequest_CopiesNestedAffordanceCollections()
-    {
+    public void DecisionRequest_CopiesNestedAffordanceCollections() {
         var candidateExitIds = new List<string> { "exit.bridge" };
-        var availableActions = new List<AvailableAction>
-        {
+        var availableActions = new List<AvailableAction> {
             new(ActionKinds.Travel, CandidateExitIds: candidateExitIds),
         };
         DecisionRequest request = new(
@@ -141,8 +134,7 @@ public sealed class DtoJsonRoundTripTests
     }
 
     [Fact]
-    public void DecisionRequest_UnavailableOrUnobservedExitCandidate_Throws()
-    {
+    public void DecisionRequest_UnavailableOrUnobservedExitCandidate_Throws() {
         var observation = new Observation(
             "actor.alice",
             "place.square",
@@ -167,8 +159,7 @@ public sealed class DtoJsonRoundTripTests
     }
 
     [Fact]
-    public void Observation_DuplicateExitIdentifier_Throws()
-    {
+    public void Observation_DuplicateExitIdentifier_Throws() {
         Assert.Throws<ArgumentException>(() => new Observation(
             "actor.alice",
             "place.square",
@@ -183,8 +174,7 @@ public sealed class DtoJsonRoundTripTests
     }
 
     [Fact]
-    public void DecisionBoundaries_DefaultDecisionId_Throws()
-    {
+    public void DecisionBoundaries_DefaultDecisionId_Throws() {
         Observation observation = new(
             "actor.alice",
             "place.square",
@@ -205,8 +195,7 @@ public sealed class DtoJsonRoundTripTests
             new Intent(ActionKinds.Wait)));
     }
 
-    private static T AssertRoundTrip<T>(T value)
-    {
+    private static T AssertRoundTrip<T>(T value) {
         string json = JsonSerializer.Serialize(value);
         T? roundTripped = JsonSerializer.Deserialize<T>(json);
 
@@ -215,12 +204,10 @@ public sealed class DtoJsonRoundTripTests
         return roundTripped!;
     }
 
-    private static void AssertNullProperties<T>(T value, params string[] propertyNames)
-    {
+    private static void AssertNullProperties<T>(T value, params string[] propertyNames) {
         using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(value));
 
-        foreach (string propertyName in propertyNames)
-        {
+        foreach (string propertyName in propertyNames) {
             Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty(propertyName).ValueKind);
         }
     }

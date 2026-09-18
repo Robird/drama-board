@@ -6,11 +6,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.Simulation;
 
-public sealed class SimulationReplayTests
-{
+public sealed class SimulationReplayTests {
     [Fact]
-    public void Replay_FoldsWholeBatchesInFactOrderAndCountsTransitionsNotFacts()
-    {
+    public void Replay_FoldsWholeBatchesInFactOrderAndCountsTransitionsNotFacts() {
         JournalBatch<string>[] batches =
         [
             Batch(10, 0, "first", "A", "B"),
@@ -34,8 +32,7 @@ public sealed class SimulationReplayTests
     }
 
     [Fact]
-    public void Replay_EmptyHistoryReturnsGenesisBoundary()
-    {
+    public void Replay_EmptyHistoryReturnsGenesisBoundary() {
         ReplayResult<int> result = SimulationReplay.Replay<int, string>(
             genesisWorld: 5,
             lineageId: 9,
@@ -52,8 +49,7 @@ public sealed class SimulationReplayTests
 
     [Theory]
     [MemberData(nameof(InvalidInstantSequences))]
-    public void Replay_InvalidCausalInstantSequenceIsRejected(JournalBatch<string>[] batches)
-    {
+    public void Replay_InvalidCausalInstantSequenceIsRejected(JournalBatch<string>[] batches) {
         Assert.Throws<InvalidOperationException>(() => SimulationReplay.Replay(
             string.Empty,
             lineageId: 1,
@@ -63,10 +59,8 @@ public sealed class SimulationReplayTests
             validate: _ => { }));
     }
 
-    public static TheoryData<JournalBatch<string>[]> InvalidInstantSequences
-    {
-        get
-        {
+    public static TheoryData<JournalBatch<string>[]> InvalidInstantSequences {
+        get {
             var data = new TheoryData<JournalBatch<string>[]>();
             data.Add([Batch(10, 1, "first-not-zero", "A")]);
             data.Add([Batch(10, 0, "a", "A"), Batch(10, 2, "gap", "B")]);
@@ -78,8 +72,7 @@ public sealed class SimulationReplayTests
     }
 
     [Fact]
-    public async Task Fork_CopiesCommittedPrefixIntoDistinctLineageAndContinuesIndependently()
-    {
+    public async Task Fork_CopiesCommittedPrefixIntoDistinctLineageAndContinuesIndependently() {
         TimerWorld genesis = TimerWorld.Start(
             new TimerEntity(1, "A", new ModelTime(10)),
             new TimerEntity(2, "B", new ModelTime(20)),
@@ -95,8 +88,7 @@ public sealed class SimulationReplayTests
 
         // Explicit legacy fold/fork audit input, not the Kernel's persistence authority.
         var sourceJournal = new InMemoryJournal<TimerFact>(lineageId: 1);
-        foreach (OccurrenceEvent<TimerFact> occurrence in sourceHistory.CompletedEvents)
-        {
+        foreach (OccurrenceEvent<TimerFact> occurrence in sourceHistory.CompletedEvents) {
             sourceJournal.AppendBatch(new(occurrence.TargetInstant, occurrence.CauseKey, occurrence.Facts));
         }
 
@@ -142,8 +134,7 @@ public sealed class SimulationReplayTests
     }
 
     [Fact]
-    public async Task SchedulerConformance_RecomputesWinnersWithoutCallingPlan()
-    {
+    public async Task SchedulerConformance_RecomputesWinnersWithoutCallingPlan() {
         TimerWorld genesis = TimerWorld.Start(
             new TimerEntity(1, "A", new ModelTime(10)),
             new TimerEntity(2, "B", new ModelTime(10)),
@@ -153,8 +144,7 @@ public sealed class SimulationReplayTests
         var rules = new SimulationRules(73, 100);
         SimulationKernel<TimerWorld, string, TimerFact> kernel =
             TimerModel.CreateKernel(liveRule, journal, rules);
-        while (await kernel.StepAsync(new ModelTime(20)) == StepStatus.Committed)
-        {
+        while (await kernel.StepAsync(new ModelTime(20)) == StepStatus.Committed) {
         }
 
         var forwardAuditRule = new TimerRule(reverseForecast: false, throwIfPlanCalled: true);
@@ -191,8 +181,7 @@ public sealed class SimulationReplayTests
     }
 
     [Fact]
-    public async Task SchedulerConformance_TamperedCauseOrDueIsRejected()
-    {
+    public async Task SchedulerConformance_TamperedCauseOrDueIsRejected() {
         TimerWorld genesis = TimerWorld.Start(new TimerEntity(1, "A", new ModelTime(10)));
         var liveRule = new TimerRule();
         var journal = TimerHistory(genesis);
@@ -219,8 +208,7 @@ public sealed class SimulationReplayTests
     }
 
     [Fact]
-    public void SchedulerConformance_RejectsAdjacentSameCauseWhileOrdinaryReplayDoesNotAuditIt()
-    {
+    public void SchedulerConformance_RejectsAdjacentSameCauseWhileOrdinaryReplayDoesNotAuditIt() {
         TimerWorld genesis = TimerWorld.Start(new TimerEntity(1, "A", new ModelTime(10)));
         CandidateKey repeatedKey = CandidateKey.FromUtf8("timer:1");
         JournalBatch<TimerFact>[] batches =

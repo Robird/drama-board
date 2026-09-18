@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace DramaBoard.Protocol.Tests;
 
-public sealed class StableIdentifierTests
-{
+public sealed class StableIdentifierTests {
     [Fact]
-    public void Equality_SameDecisionId_HasValueSemantics()
-    {
+    public void Equality_SameDecisionId_HasValueSemantics() {
         DecisionId first = new("decision-42");
         DecisionId second = new("decision-42");
 
@@ -17,8 +15,7 @@ public sealed class StableIdentifierTests
     }
 
     [Fact]
-    public void Equality_SameKindIdentifier_HasValueSemantics()
-    {
+    public void Equality_SameKindIdentifier_HasValueSemantics() {
         Assert.Equal(new ActionKind("action.travel"), ActionKinds.Travel);
         Assert.Equal(new ActionKind("action.travel-to"), ActionKinds.TravelTo);
         Assert.Equal(new ActionKind("action.continue-travel"), ActionKinds.ContinueTravel);
@@ -29,8 +26,7 @@ public sealed class StableIdentifierTests
     }
 
     [Fact]
-    public void Serialize_StableIdentifiers_UseStringWireShapeAndRoundTrip()
-    {
+    public void Serialize_StableIdentifiers_UseStringWireShapeAndRoundTrip() {
         AssertStringRoundTrip(new DecisionId("decision-42"), "decision-42");
         AssertStringRoundTrip(new ActionKind("action.travel"), "action.travel");
         AssertStringRoundTrip(ActionKinds.TravelTo, "action.travel-to");
@@ -40,19 +36,16 @@ public sealed class StableIdentifierTests
     }
 
     [Fact]
-    public void Constructor_IdentifierLongerThanProtocolLimit_Throws()
-    {
+    public void Constructor_IdentifierLongerThanProtocolLimit_Throws() {
         Assert.Throws<ArgumentException>(() => new DecisionId(new string('x', 257)));
     }
 
     [Fact]
-    public void Constructor_IdentifierContainingControlCharacter_Throws()
-    {
+    public void Constructor_IdentifierContainingControlCharacter_Throws() {
         Assert.Throws<ArgumentException>(() => new ActionKind("action.\ntravel"));
     }
 
-    private static void AssertStringRoundTrip<T>(T value, string expectedJsonValue)
-    {
+    private static void AssertStringRoundTrip<T>(T value, string expectedJsonValue) {
         string json = JsonSerializer.Serialize(value);
 
         Assert.Equal(JsonSerializer.Serialize(expectedJsonValue), json);

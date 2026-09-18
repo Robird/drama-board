@@ -4,8 +4,7 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Kernel.Random;
 
 /// <summary>Provides stable random samples addressed only by explicit deterministic coordinates.</summary>
-public static class DeterministicRandom
-{
+public static class DeterministicRandom {
     private const ulong WorldSeedTag = 0x243F6A8885A308D3UL;
     private const ulong StreamTag = 0x13198A2E03707344UL;
     private const ulong GenerationTag = 0xA4093822299F31D0UL;
@@ -30,24 +29,20 @@ public static class DeterministicRandom
     /// Maps a persistent string identity to a stable stream identifier using UTF-8 FNV-1a followed by the
     /// fixed stream tag and SplitMix64 mixing constants; encoding and constants are part of the replay contract.
     /// </summary>
-    public static ulong DeriveStreamId(string persistentId)
-    {
+    public static ulong DeriveStreamId(string persistentId) {
         ArgumentNullException.ThrowIfNull(persistentId);
         return Mix(HashUtf8Fnv1A(persistentId) + StreamTag);
     }
 
     /// <summary>Derives a stable child stream identifier from numeric parent and child identities.</summary>
-    public static ulong DeriveStreamId(ulong parentStreamId, ulong childStreamId)
-    {
-        unchecked
-        {
+    public static ulong DeriveStreamId(ulong parentStreamId, ulong childStreamId) {
+        unchecked {
             return Mix(Mix(parentStreamId + ChildStreamTag) ^ Mix(childStreamId + StreamTag));
         }
     }
 
     /// <summary>Derives a stable child stream identifier from a parent identity and UTF-8 purpose string.</summary>
-    public static ulong DeriveStreamId(ulong parentStreamId, string purpose)
-    {
+    public static ulong DeriveStreamId(ulong parentStreamId, string purpose) {
         ArgumentNullException.ThrowIfNull(purpose);
         return DeriveStreamId(parentStreamId, HashUtf8Fnv1A(purpose));
     }
@@ -57,10 +52,8 @@ public static class DeterministicRandom
         ulong worldSeed,
         ulong streamId,
         ulong generation,
-        ulong sampleIndex = 0)
-    {
-        unchecked
-        {
+        ulong sampleIndex = 0) {
+        unchecked {
             ulong coordinate = Mix(worldSeed + WorldSeedTag);
             coordinate ^= Mix(streamId + StreamTag);
             coordinate ^= Mix(generation + GenerationTag);
@@ -84,10 +77,8 @@ public static class DeterministicRandom
         ulong generation,
         int minInclusive,
         int maxExclusive,
-        ulong sampleIndex = 0)
-    {
-        if (minInclusive >= maxExclusive)
-        {
+        ulong sampleIndex = 0) {
+        if (minInclusive >= maxExclusive) {
             throw new ArgumentOutOfRangeException(nameof(maxExclusive), "The upper bound must be greater than the lower bound.");
         }
 
@@ -95,12 +86,10 @@ public static class DeterministicRandom
         ulong rejectionThreshold = unchecked(0UL - range) % range;
         ulong offset = 0;
 
-        while (true)
-        {
+        while (true) {
             ulong currentSampleIndex = checked(sampleIndex + offset);
             ulong sample = SampleUInt64(worldSeed, streamId, generation, currentSampleIndex);
-            if (sample >= rejectionThreshold)
-            {
+            if (sample >= rejectionThreshold) {
                 return (int)(minInclusive + (long)(sample % range));
             }
 
@@ -114,10 +103,8 @@ public static class DeterministicRandom
         ulong streamId,
         ulong generation,
         ModelDuration mean,
-        ulong sampleIndex = 0)
-    {
-        if (mean.Ticks <= 0)
-        {
+        ulong sampleIndex = 0) {
+        if (mean.Ticks <= 0) {
             throw new ArgumentOutOfRangeException(nameof(mean), "The mean duration must be positive.");
         }
 
@@ -125,8 +112,7 @@ public static class DeterministicRandom
         double unitOpen = (fraction + 0.5) * InverseTwoToThe52;
         double sampledTicks = -NaturalLog(unitOpen) * mean.Ticks;
 
-        if (sampledTicks >= long.MaxValue)
-        {
+        if (sampledTicks >= long.MaxValue) {
             throw new OverflowException("The sampled duration exceeds the model duration range.");
         }
 
@@ -135,10 +121,8 @@ public static class DeterministicRandom
         return new ModelDuration(roundedUpTicks == 0 ? 1 : roundedUpTicks);
     }
 
-    private static ulong Mix(ulong value)
-    {
-        unchecked
-        {
+    private static ulong Mix(ulong value) {
+        unchecked {
             value += SplitMixIncrement;
             value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
             value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
@@ -146,19 +130,16 @@ public static class DeterministicRandom
         }
     }
 
-    private static ulong HashUtf8Fnv1A(string value)
-    {
+    private static ulong HashUtf8Fnv1A(string value) {
         ulong hash = FnvOffsetBasis;
-        foreach (byte byteValue in Encoding.UTF8.GetBytes(value))
-        {
+        foreach (byte byteValue in Encoding.UTF8.GetBytes(value)) {
             hash = unchecked((hash ^ byteValue) * FnvPrime);
         }
 
         return hash;
     }
 
-    private static double NaturalLog(double value)
-    {
+    private static double NaturalLog(double value) {
         long bits = BitConverter.DoubleToInt64Bits(value);
         int exponent = (int)((bits >> 52) & 0x7FF) - 1023;
         long normalizedBits = (bits & DoubleFractionMask) | (1023L << 52);
@@ -168,8 +149,7 @@ public static class DeterministicRandom
         double term = ratio;
         double sum = term;
 
-        for (int denominator = 3; denominator <= 41; denominator += 2)
-        {
+        for (int denominator = 3; denominator <= 41; denominator += 2) {
             term *= ratioSquared;
             sum += term / denominator;
         }

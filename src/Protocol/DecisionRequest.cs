@@ -6,16 +6,14 @@ namespace DramaBoard.Protocol;
 /// <param name="CandidateObjectIds">The optional object candidates allowed by the affordance.</param>
 /// <param name="CandidateExitIds">The optional observed-exit candidates allowed by the affordance.</param>
 /// <param name="CandidateDestinationIds">The optional destination candidates allowed by the affordance.</param>
-public sealed record AvailableAction
-{
+public sealed record AvailableAction {
     /// <summary>Creates one immutable action-affordance snapshot.</summary>
     public AvailableAction(
         ActionKind ActionKind,
         IReadOnlyList<string>? CandidateActorIds = null,
         IReadOnlyList<string>? CandidateObjectIds = null,
         IReadOnlyList<string>? CandidateExitIds = null,
-        IReadOnlyList<string>? CandidateDestinationIds = null)
-    {
+        IReadOnlyList<string>? CandidateDestinationIds = null) {
         this.ActionKind = ActionKind;
         this.CandidateActorIds = FrozenList.OptionalSnapshot(CandidateActorIds);
         this.CandidateObjectIds = FrozenList.OptionalSnapshot(CandidateObjectIds);
@@ -40,18 +38,15 @@ public sealed record AvailableAction
 /// <param name="ActorId">The identifier of the actor making the decision.</param>
 /// <param name="Observation">The actor's legal subjective observation.</param>
 /// <param name="AvailableActions">The actions and targets currently afforded to the actor.</param>
-public sealed record DecisionRequest
-{
+public sealed record DecisionRequest {
     /// <summary>Creates one frozen request and validates its exit affordances.</summary>
     public DecisionRequest(
         DecisionId DecisionId,
         string ActorId,
         long ModelTimeMs,
         Observation Observation,
-        IReadOnlyList<AvailableAction> AvailableActions)
-    {
-        if (string.IsNullOrWhiteSpace(DecisionId.Value))
-        {
+        IReadOnlyList<AvailableAction> AvailableActions) {
+        if (string.IsNullOrWhiteSpace(DecisionId.Value)) {
             throw new ArgumentException("Decision identifier must be initialized.", nameof(DecisionId));
         }
 
@@ -76,30 +71,24 @@ public sealed record DecisionRequest
 
     private static void ValidateExitAffordances(
         Observation observation,
-        IReadOnlyList<AvailableAction> availableActions)
-    {
+        IReadOnlyList<AvailableAction> availableActions) {
         IReadOnlyDictionary<string, ObservedExit> exits = observation.Exits.ToDictionary(
             exit => exit.ExitId,
             StringComparer.Ordinal);
-        foreach (AvailableAction action in availableActions)
-        {
-            if (action.CandidateExitIds is null)
-            {
+        foreach (AvailableAction action in availableActions) {
+            if (action.CandidateExitIds is null) {
                 continue;
             }
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (string exitId in action.CandidateExitIds)
-            {
-                if (!seen.Add(exitId))
-                {
+            foreach (string exitId in action.CandidateExitIds) {
+                if (!seen.Add(exitId)) {
                     throw new ArgumentException(
                         $"Exit candidate '{exitId}' is duplicated in one affordance.",
                         nameof(availableActions));
                 }
 
-                if (!exits.TryGetValue(exitId, out ObservedExit? exit) || !exit.IsAvailable)
-                {
+                if (!exits.TryGetValue(exitId, out ObservedExit? exit) || !exit.IsAvailable) {
                     throw new ArgumentException(
                         $"Exit candidate '{exitId}' must name one available observed exit.",
                         nameof(availableActions));

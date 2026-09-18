@@ -2,17 +2,13 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
-internal static class SpatialMath
-{
-    internal static ModelDuration TravelDuration(long distance, long speed)
-    {
-        if (distance <= 0)
-        {
+internal static class SpatialMath {
+    internal static ModelDuration TravelDuration(long distance, long speed) {
+        if (distance <= 0) {
             throw new ArgumentOutOfRangeException(nameof(distance), "Travel distance must be positive.");
         }
 
-        if (speed <= 0)
-        {
+        if (speed <= 0) {
             throw new ArgumentOutOfRangeException(nameof(speed), "Travel speed must be positive.");
         }
 
@@ -27,18 +23,15 @@ internal static class SpatialMath
     internal static long OffsetAt(
         PassageDefinition passage,
         TraversingLocation traversal,
-        ModelTime at)
-    {
-        if (at < traversal.AnchorTime || at > traversal.ArrivalDue)
-        {
+        ModelTime at) {
+        if (at < traversal.AnchorTime || at > traversal.ArrivalDue) {
             throw new ArgumentOutOfRangeException(
                 nameof(at),
                 "Location time must lie within the active traversal interval.");
         }
 
         bool targetsB = traversal.TargetPlaceId == passage.EndpointB;
-        if (at == traversal.ArrivalDue)
-        {
+        if (at == traversal.ArrivalDue) {
             return targetsB ? passage.Length : 0;
         }
 
@@ -48,8 +41,7 @@ internal static class SpatialMath
         long distanceToTarget = targetsB
             ? checked(targetOffset - traversal.AnchorOffset)
             : traversal.AnchorOffset;
-        if (advanced < 0 || advanced >= distanceToTarget)
-        {
+        if (advanced < 0 || advanced >= distanceToTarget) {
             throw new InvalidOperationException("Traversal offset is inconsistent with its arrival due time.");
         }
 

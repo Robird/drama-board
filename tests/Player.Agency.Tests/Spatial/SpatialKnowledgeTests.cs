@@ -3,8 +3,7 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.Player.Agency.Tests.Spatial;
 
-public sealed class SpatialKnowledgeTests
-{
+public sealed class SpatialKnowledgeTests {
     private static readonly PlaceId A = new("a");
     private static readonly PlaceId B = new("b");
     private static readonly PlaceId C = new("c");
@@ -14,8 +13,7 @@ public sealed class SpatialKnowledgeTests
     private static readonly PassageId UnknownPassage = new("unknown-passage");
 
     [Fact]
-    public void FullMap_ReturnsOriginalImmutableDefinitionForEveryWorldAndSubject()
-    {
+    public void FullMap_ReturnsOriginalImmutableDefinitionForEveryWorldAndSubject() {
         GraphDefinition objective = ObjectiveGraph();
         FullMapPlayerSpatialKnowledgeGetter<TestWorld> getter =
             FullMapPlayerSpatialKnowledgeGetter<TestWorld>.Instance;
@@ -36,8 +34,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void FullMapAndGetter_RejectNullOrInvalidArguments()
-    {
+    public void FullMapAndGetter_RejectNullOrInvalidArguments() {
         GraphDefinition objective = ObjectiveGraph();
         FullMapPlayerSpatialKnowledgeGetter<TestWorld> getter =
             FullMapPlayerSpatialKnowledgeGetter<TestWorld>.Instance;
@@ -65,8 +62,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void CreateExactSubgraph_PreservesCanonicalParallelPassagesAndDirections()
-    {
+    public void CreateExactSubgraph_PreservesCanonicalParallelPassagesAndDirections() {
         GraphDefinition objective = ObjectiveGraph();
         GraphDefinition exactSubgraph = GraphDefinition.Create(
             [B, A],
@@ -89,8 +85,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void CreateExactSubgraph_AllowsContentRemovalAndIsolatedKnownPlaces()
-    {
+    public void CreateExactSubgraph_AllowsContentRemovalAndIsolatedKnownPlaces() {
         GraphDefinition objective = ObjectiveGraph();
         GraphDefinition exactSubgraph = GraphDefinition.Create([C], []);
 
@@ -102,8 +97,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void CreateExactSubgraph_RejectsUnknownPlaceOrPassage()
-    {
+    public void CreateExactSubgraph_RejectsUnknownPlaceOrPassage() {
         GraphDefinition objective = ObjectiveGraph();
         GraphDefinition unknownPlace = GraphDefinition.Create([Unknown], []);
         GraphDefinition unknownPassage = GraphDefinition.Create(
@@ -117,8 +111,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void CreateExactSubgraph_RejectsEveryModifiedPassageField()
-    {
+    public void CreateExactSubgraph_RejectsEveryModifiedPassageField() {
         GraphDefinition objective = ObjectiveGraph();
 
         AssertModifiedPassageRejected(objective, Passage(Road, B, A, 10, true, false));
@@ -129,8 +122,7 @@ public sealed class SpatialKnowledgeTests
     }
 
     [Fact]
-    public void GraphDefinition_RejectsPassageWhoseEndpointIsMissingFromSubgraph()
-    {
+    public void GraphDefinition_RejectsPassageWhoseEndpointIsMissingFromSubgraph() {
         PassageDefinition road = Passage(Road, A, B, 10, true, false);
 
         Assert.Throws<ArgumentException>(() => GraphDefinition.Create([A], [road]));
@@ -138,8 +130,7 @@ public sealed class SpatialKnowledgeTests
 
     private static void AssertModifiedPassageRejected(
         GraphDefinition objective,
-        PassageDefinition modified)
-    {
+        PassageDefinition modified) {
         GraphDefinition exactSubgraph = GraphDefinition.Create(
             [A, B, C],
             [modified]);

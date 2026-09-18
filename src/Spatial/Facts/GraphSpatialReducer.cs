@@ -3,12 +3,10 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Spatial;
 
 /// <summary>Folds one committed Graph Spatial fact against immutable state.</summary>
-public sealed class GraphSpatialReducer
-{
+public sealed class GraphSpatialReducer {
     private readonly GraphDefinition _definition;
 
-    public GraphSpatialReducer(GraphDefinition definition)
-    {
+    public GraphSpatialReducer(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
@@ -16,14 +14,12 @@ public sealed class GraphSpatialReducer
     public GraphSpatialState Apply(
         GraphSpatialState state,
         LogicalInstant instant,
-        GraphSpatialFact fact)
-    {
+        GraphSpatialFact fact) {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(fact);
         GraphSpatialStateValidator.ValidateComplete(_definition, state);
 
-        GraphSpatialState result = fact switch
-        {
+        GraphSpatialState result = fact switch {
             EntityPlacedFact placed => ApplyPlaced(state, placed),
             EntityRemovedFact removed => ApplyRemoved(state, removed),
             TraversalStartedFact started => ApplyStarted(state, instant.ModelTime, started),
@@ -41,17 +37,14 @@ public sealed class GraphSpatialReducer
         return result;
     }
 
-    private GraphSpatialState ApplyPlaced(GraphSpatialState state, EntityPlacedFact fact)
-    {
+    private GraphSpatialState ApplyPlaced(GraphSpatialState state, EntityPlacedFact fact) {
         SpatialIdentifier.Require(fact.EntityId, nameof(fact));
         SpatialIdentifier.Require(fact.PlaceId, nameof(fact));
-        if (state.TryGetEntity(fact.EntityId, out _))
-        {
+        if (state.TryGetEntity(fact.EntityId, out _)) {
             throw new InvalidOperationException($"Spatial entity '{fact.EntityId}' already exists.");
         }
 
-        if (!_definition.Contains(fact.PlaceId))
-        {
+        if (!_definition.Contains(fact.PlaceId)) {
             throw new InvalidOperationException($"Spatial place '{fact.PlaceId}' does not exist.");
         }
 
@@ -59,8 +52,7 @@ public sealed class GraphSpatialReducer
         return state.Rebuild(entities: state.Entities.Append(entity));
     }
 
-    private static GraphSpatialState ApplyRemoved(GraphSpatialState state, EntityRemovedFact fact)
-    {
+    private static GraphSpatialState ApplyRemoved(GraphSpatialState state, EntityRemovedFact fact) {
         SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
         return state.Rebuild(
             entities: state.Entities.Where(value => value != entity),
@@ -70,11 +62,9 @@ public sealed class GraphSpatialReducer
     private GraphSpatialState ApplyStarted(
         GraphSpatialState state,
         ModelTime at,
-        TraversalStartedFact fact)
-    {
+        TraversalStartedFact fact) {
         SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
-        if (entity.Location is not AtPlaceLocation atPlace || atPlace.PlaceId != fact.FromPlaceId)
-        {
+        if (entity.Location is not AtPlaceLocation atPlace || atPlace.PlaceId != fact.FromPlaceId) {
             throw new InvalidOperationException(
                 $"Spatial entity '{fact.EntityId}' is not at traversal origin '{fact.FromPlaceId}'.");
         }
@@ -86,25 +76,20 @@ public sealed class GraphSpatialReducer
                 passage,
                 fact.FromPlaceId,
                 out PlaceId toPlaceId,
-                out bool entryAllowed))
-        {
+                out bool entryAllowed)) {
             throw new InvalidOperationException(
                 $"Place '{fact.FromPlaceId}' is not an endpoint of passage '{fact.PassageId}'.");
         }
 
-        if (!entryAllowed)
-        {
+        if (!entryAllowed) {
             throw new InvalidOperationException(
                 $"Passage '{fact.PassageId}' cannot currently be entered from '{fact.FromPlaceId}'.");
         }
 
         ModelTime arrivalDue;
-        try
-        {
+        try {
             arrivalDue = SpatialMath.ArrivalDue(at, passage.Length, fact.SpeedSnapshot);
-        }
-        catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
-        {
+        } catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException) {
             throw new InvalidOperationException("Traversal timing cannot be represented.", exception);
         }
 
@@ -125,18 +110,15 @@ public sealed class GraphSpatialReducer
     private GraphSpatialState ApplyReversed(
         GraphSpatialState state,
         ModelTime at,
-        TraversalReversedFact fact)
-    {
+        TraversalReversedFact fact) {
         SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
         if (entity.MovementGeneration != fact.ExpectedMovementGeneration ||
-            entity.Location is not TraversingLocation traversal)
-        {
+            entity.Location is not TraversingLocation traversal) {
             throw new InvalidOperationException(
                 $"Spatial reverse for entity '{fact.EntityId}' does not match its current movement segment.");
         }
 
-        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue)
-        {
+        if (at <= traversal.AnchorTime || at >= traversal.ArrivalDue) {
             throw new InvalidOperationException(
                 $"Spatial reverse for entity '{fact.EntityId}' must occur strictly during its traversal.");
         }
@@ -144,8 +126,7 @@ public sealed class GraphSpatialReducer
         PassageDefinition passage =
             GraphSpatialStateValidator.RequirePassage(_definition, traversal.PassageId);
         long currentOffset = SpatialMath.OffsetAt(passage, traversal, at);
-        if (currentOffset <= 0 || currentOffset >= passage.Length)
-        {
+        if (currentOffset <= 0 || currentOffset >= passage.Length) {
             throw new InvalidOperationException(
                 $"Spatial reverse for entity '{fact.EntityId}' must occur strictly inside its passage.");
         }
@@ -156,14 +137,12 @@ public sealed class GraphSpatialReducer
                 passage,
                 traversal.TargetPlaceId,
                 out PlaceId targetPlaceId,
-                out bool entryAllowed))
-        {
+                out bool entryAllowed)) {
             throw new InvalidOperationException(
                 $"Traversal target '{traversal.TargetPlaceId}' is not an endpoint of passage '{passage.Id}'.");
         }
 
-        if (!entryAllowed)
-        {
+        if (!entryAllowed) {
             throw new InvalidOperationException(
                 $"Passage '{passage.Id}' cannot currently be entered from '{traversal.TargetPlaceId}'.");
         }
@@ -173,13 +152,10 @@ public sealed class GraphSpatialReducer
             : currentOffset;
         ModelTime arrivalDue;
         long movementGeneration;
-        try
-        {
+        try {
             arrivalDue = SpatialMath.ArrivalDue(at, distanceToTarget, traversal.SpeedSnapshot);
             movementGeneration = checked(entity.MovementGeneration + 1);
-        }
-        catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
-        {
+        } catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException) {
             throw new InvalidOperationException("Reversed traversal timing cannot be represented.", exception);
         }
 
@@ -199,11 +175,9 @@ public sealed class GraphSpatialReducer
     private GraphSpatialState ApplyContact(
         GraphSpatialState state,
         ModelTime at,
-        PassageContactOccurredFact fact)
-    {
+        PassageContactOccurredFact fact) {
         ArgumentNullException.ThrowIfNull(fact.ContactKey);
-        if (state.ConsumedContacts.Contains(fact.ContactKey))
-        {
+        if (state.ConsumedContacts.Contains(fact.ContactKey)) {
             throw new InvalidOperationException("The passage contact has already been consumed.");
         }
 
@@ -213,8 +187,7 @@ public sealed class GraphSpatialReducer
                 fact.ContactKey,
                 out PassageContactCalculation calculation) ||
             calculation.Kind != fact.Kind ||
-            calculation.Due != at)
-        {
+            calculation.Due != at) {
             throw new InvalidOperationException("The passage contact fact does not match current segment truth.");
         }
 
@@ -224,18 +197,15 @@ public sealed class GraphSpatialReducer
     private static GraphSpatialState ApplyArrived(
         GraphSpatialState state,
         ModelTime at,
-        TraversalArrivedFact fact)
-    {
+        TraversalArrivedFact fact) {
         SpatialEntity entity = GraphSpatialStateValidator.RequireEntity(state, fact.EntityId);
         if (entity.MovementGeneration != fact.ExpectedMovementGeneration ||
-            entity.Location is not TraversingLocation traversal)
-        {
+            entity.Location is not TraversingLocation traversal) {
             throw new InvalidOperationException(
                 $"Spatial arrival for entity '{fact.EntityId}' does not match its current movement segment.");
         }
 
-        if (at != traversal.ArrivalDue)
-        {
+        if (at != traversal.ArrivalDue) {
             throw new InvalidOperationException(
                 $"Spatial arrival for entity '{fact.EntityId}' is not committed at its due time.");
         }
@@ -249,8 +219,7 @@ public sealed class GraphSpatialReducer
 
     private GraphSpatialState ApplyAccessChanged(
         GraphSpatialState state,
-        PassageEntryAccessChangedFact fact)
-    {
+        PassageEntryAccessChangedFact fact) {
         PassageDefinition passage = GraphSpatialStateValidator.RequirePassage(_definition, fact.PassageId);
         return WithResultAccess(state, passage, fact.ResultAccess);
     }
@@ -258,17 +227,14 @@ public sealed class GraphSpatialReducer
     private GraphSpatialState ApplyScheduled(
         GraphSpatialState state,
         ModelTime at,
-        PassageEntryChangeScheduledFact fact)
-    {
+        PassageEntryChangeScheduledFact fact) {
         GraphSpatialStateValidator.RequirePassage(_definition, fact.PassageId);
         PassageEntryPatch.Validate(fact.Patch, nameof(fact));
-        if (fact.Due <= at)
-        {
+        if (fact.Due <= at) {
             throw new InvalidOperationException("A scheduled passage entry change must be due after its creation.");
         }
 
-        if (state.FindSchedule(fact.PassageId, fact.Due) is not null)
-        {
+        if (state.FindSchedule(fact.PassageId, fact.Due) is not null) {
             throw new InvalidOperationException(
                 $"Passage '{fact.PassageId}' already has an entry change due at '{fact.Due}'.");
         }
@@ -281,12 +247,10 @@ public sealed class GraphSpatialReducer
     private GraphSpatialState ApplyScheduledChange(
         GraphSpatialState state,
         ModelTime at,
-        ScheduledPassageEntryChangeAppliedFact fact)
-    {
+        ScheduledPassageEntryChangeAppliedFact fact) {
         ScheduledPassageEntryChange schedule = state.FindSchedule(fact.PassageId, fact.Due)
             ?? throw new InvalidOperationException("The selected passage entry schedule no longer exists.");
-        if (at != schedule.Due)
-        {
+        if (at != schedule.Due) {
             throw new InvalidOperationException("A scheduled passage entry change must apply at its exact due time.");
         }
 
@@ -318,8 +282,7 @@ public sealed class GraphSpatialReducer
     private static GraphSpatialState WithResultAccess(
         GraphSpatialState state,
         PassageDefinition passage,
-        PassageEntryAccess result)
-    {
+        PassageEntryAccess result) {
         IEnumerable<PassageEntryAccessOverride> withoutCurrent =
             state.PassageEntryAccessOverrides.Where(value => value.PassageId != passage.Id);
         return result == passage.InitialEntryAccess

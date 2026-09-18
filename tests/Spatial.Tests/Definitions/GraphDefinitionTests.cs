@@ -2,11 +2,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Definitions;
 
-public sealed class GraphDefinitionTests
-{
+public sealed class GraphDefinitionTests {
     [Fact]
-    public void Create_CanonicalizesPlacesAndPassagesWithoutCollapsingParallelPassages()
-    {
+    public void Create_CanonicalizesPlacesAndPassagesWithoutCollapsingParallelPassages() {
         PassageDefinition bridge = GraphTestWorld.Passage(
             GraphTestWorld.Bridge,
             GraphTestWorld.A,
@@ -39,16 +37,14 @@ public sealed class GraphDefinitionTests
     [InlineData(" ")]
     [InlineData(" leading")]
     [InlineData("trailing ")]
-    public void Identifier_RejectsBlankOrOuterWhitespace(string value)
-    {
+    public void Identifier_RejectsBlankOrOuterWhitespace(string value) {
         Assert.Throws<ArgumentException>(() => new PlaceId(value));
         Assert.Throws<ArgumentException>(() => new PassageId(value));
         Assert.Throws<ArgumentException>(() => new EntityId(value));
     }
 
     [Fact]
-    public void Create_RejectsDuplicateAndUnknownDefinitionReferences()
-    {
+    public void Create_RejectsDuplicateAndUnknownDefinitionReferences() {
         Assert.Throws<ArgumentException>(() => GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.A],
             []));
@@ -71,8 +67,7 @@ public sealed class GraphDefinitionTests
     }
 
     [Fact]
-    public void Passage_RejectsEqualEndpointsAndNonPositiveLength()
-    {
+    public void Passage_RejectsEqualEndpointsAndNonPositiveLength() {
         Assert.Throws<ArgumentException>(() => GraphTestWorld.Passage(
             GraphTestWorld.Bridge,
             GraphTestWorld.A,
@@ -90,8 +85,7 @@ public sealed class GraphDefinitionTests
     }
 
     [Fact]
-    public void PassageEntryPatch_RequiresAtLeastOneSpecifiedBit()
-    {
+    public void PassageEntryPatch_RequiresAtLeastOneSpecifiedBit() {
         Assert.Throws<ArgumentException>(() => new PassageEntryPatch(null, null));
         Assert.Equal(false, new PassageEntryPatch(false, null).EnterableFromA);
         Assert.Null(new PassageEntryPatch(false, null).EnterableFromB);

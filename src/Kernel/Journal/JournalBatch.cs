@@ -4,25 +4,21 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Kernel.Journal;
 
 /// <summary>Represents one atomically committed occurrence and its ordered, non-empty facts.</summary>
-public sealed class JournalBatch<TFact>
-{
+public sealed class JournalBatch<TFact> {
     /// <summary>Initializes a committed batch by copying its facts.</summary>
     public JournalBatch(
         LogicalInstant instant,
         CandidateKey causeKey,
-        IEnumerable<TFact> facts)
-    {
+        IEnumerable<TFact> facts) {
         ArgumentNullException.ThrowIfNull(causeKey);
         ArgumentNullException.ThrowIfNull(facts);
 
         TFact[] factArray = [.. facts];
-        if (factArray.Length == 0)
-        {
+        if (factArray.Length == 0) {
             throw new ArgumentException("A journal batch must contain at least one fact.", nameof(facts));
         }
 
-        if (factArray.Any(fact => fact is null))
-        {
+        if (factArray.Any(fact => fact is null)) {
             throw new ArgumentException("A journal batch cannot contain null facts.", nameof(facts));
         }
 

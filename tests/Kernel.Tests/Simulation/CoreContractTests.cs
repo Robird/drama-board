@@ -2,11 +2,9 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.Kernel.Tests.Simulation;
 
-public sealed class CoreContractTests
-{
+public sealed class CoreContractTests {
     [Fact]
-    public void WorldVersion_UsesLineageAndLongTransitionCount()
-    {
+    public void WorldVersion_UsesLineageAndLongTransitionCount() {
         var first = new WorldVersion(lineageId: 7, transitionCount: (long)int.MaxValue + 1);
         var equal = new WorldVersion(lineageId: 7, transitionCount: (long)int.MaxValue + 1);
         var otherLineage = new WorldVersion(lineageId: 8, transitionCount: first.TransitionCount);
@@ -18,8 +16,7 @@ public sealed class CoreContractTests
     }
 
     [Fact]
-    public void TransitionDraft_CopiesFactsAndRejectsEmptyOrNullFacts()
-    {
+    public void TransitionDraft_CopiesFactsAndRejectsEmptyOrNullFacts() {
         string[] facts = ["a", "b"];
         var draft = new TransitionDraft<string>(facts);
         facts[0] = "mutated";
@@ -31,8 +28,7 @@ public sealed class CoreContractTests
     }
 
     [Fact]
-    public void StepStatus_HasOnlyThreeNormalOutcomes()
-    {
+    public void StepStatus_HasOnlyThreeNormalOutcomes() {
         Assert.Equal(
             [StepStatus.Committed, StepStatus.Exhausted, StepStatus.BoundaryReached],
             Enum.GetValues<StepStatus>());

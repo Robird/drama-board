@@ -4,13 +4,11 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Simulation;
 
-public sealed class SpatialOccurrenceRuleTests
-{
+public sealed class SpatialOccurrenceRuleTests {
     private static readonly SimulationRules Rules = new(worldSeed: 123, maxTransitionsPerModelTime: 100);
 
     [Fact]
-    public async Task Forecast_EmitsEveryArrivalAndScheduleAsAnIndependentCandidate()
-    {
+    public async Task Forecast_EmitsEveryArrivalAndScheduleAsAnIndependentCandidate() {
         TestContext context = CreateFourContenderContext();
         var rule = new SpatialOccurrenceRule(context.Definition);
 
@@ -45,8 +43,7 @@ public sealed class SpatialOccurrenceRuleTests
     }
 
     [Fact]
-    public async Task ScheduledNoOp_StillProducesANonEmptyFactThatConsumesItsExactSchedule()
-    {
+    public async Task ScheduledNoOp_StillProducesANonEmptyFactThatConsumesItsExactSchedule() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B)]);
@@ -80,8 +77,7 @@ public sealed class SpatialOccurrenceRuleTests
     }
 
     [Fact]
-    public async Task ArrivalPlanning_RejectsAStaleMovementGeneration()
-    {
+    public async Task ArrivalPlanning_RejectsAStaleMovementGeneration() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B)]);
@@ -111,8 +107,7 @@ public sealed class SpatialOccurrenceRuleTests
     }
 
     [Fact]
-    public async Task ReverseTraversal_InvalidatesOldArrivalAndForecastsTheNewAnchoredSegment()
-    {
+    public async Task ReverseTraversal_InvalidatesOldArrivalAndForecastsTheNewAnchoredSegment() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -155,8 +150,7 @@ public sealed class SpatialOccurrenceRuleTests
             Assert.Single(draft.Facts));
     }
 
-    private static TestContext CreateFourContenderContext()
-    {
+    private static TestContext CreateFourContenderContext() {
         var second = new PassageId("second");
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C],

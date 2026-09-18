@@ -1,22 +1,17 @@
 namespace DramaBoard.Spatial;
 
 /// <summary>Base result of one pure Graph Spatial planning attempt.</summary>
-public abstract record SpatialPlanResult
-{
-    private protected SpatialPlanResult()
-    {
+public abstract record SpatialPlanResult {
+    private protected SpatialPlanResult() {
     }
 }
 
 /// <summary>Contains the non-empty ordered facts accepted by a Spatial planner.</summary>
-public sealed record SpatialPlanAccepted : SpatialPlanResult
-{
-    public SpatialPlanAccepted(IEnumerable<GraphSpatialFact> facts)
-    {
+public sealed record SpatialPlanAccepted : SpatialPlanResult {
+    public SpatialPlanAccepted(IEnumerable<GraphSpatialFact> facts) {
         ArgumentNullException.ThrowIfNull(facts);
         GraphSpatialFact[] array = [.. facts];
-        if (array.Length == 0 || array.Any(fact => fact is null))
-        {
+        if (array.Length == 0 || array.Any(fact => fact is null)) {
             throw new ArgumentException("An accepted Spatial plan requires non-null facts.", nameof(facts));
         }
 
@@ -27,10 +22,8 @@ public sealed record SpatialPlanAccepted : SpatialPlanResult
 }
 
 /// <summary>Describes why an objective Spatial proposal could not be planned.</summary>
-public sealed record SpatialPlanRejected : SpatialPlanResult
-{
-    public SpatialPlanRejected(string reason)
-    {
+public sealed record SpatialPlanRejected : SpatialPlanResult {
+    public SpatialPlanRejected(string reason) {
         Reason = SpatialIdentifier.Require(reason, nameof(reason), "Spatial rejection reason");
     }
 

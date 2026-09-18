@@ -3,17 +3,14 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Simulation;
 
-internal static class LogicalInstantRules
-{
+internal static class LogicalInstantRules {
     public static LogicalInstant Propose(
         CandidateDue due,
         ModelTime genesisTime,
         LogicalInstant? lastCommittedInstant,
-        int maxTransitionsPerModelTime)
-    {
+        int maxTransitionsPerModelTime) {
         ModelTime currentModelTime = lastCommittedInstant?.ModelTime ?? genesisTime;
-        if (due.ModelTime < currentModelTime)
-        {
+        if (due.ModelTime < currentModelTime) {
             throw new InvalidOperationException(
                 $"A transition cannot be committed at {due.ModelTime} before {currentModelTime}.");
         }
@@ -22,8 +19,7 @@ internal static class LogicalInstantRules
             due.ModelTime > previous.ModelTime
                 ? 0
                 : checked(previous.CausalOrdinal + 1);
-        if (causalOrdinal >= maxTransitionsPerModelTime)
-        {
+        if (causalOrdinal >= maxTransitionsPerModelTime) {
             throw new InvalidOperationException(
                 $"Transition budget of {maxTransitionsPerModelTime} exhausted at model time {due.ModelTime}.");
         }

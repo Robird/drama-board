@@ -4,13 +4,11 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Contacts;
 
-public sealed class PassageContactTests
-{
+public sealed class PassageContactTests {
     private static readonly SimulationRules Rules = new(worldSeed: 123, maxTransitionsPerModelTime: 100);
 
     [Fact]
-    public void ContactKey_CanonicalizesWholeEntityGenerationPairsAndRejectsInvalidIdentity()
-    {
+    public void ContactKey_CanonicalizesWholeEntityGenerationPairsAndRejectsInvalidIdentity() {
         var first = new PassageContactKey(
             GraphTestWorld.Bridge,
             new EntityId("z"),
@@ -45,8 +43,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public async Task HeadOnMeeting_UsesExactBigIntegerIntersectionAndConsumesOnlySelectedPair()
-    {
+    public async Task HeadOnMeeting_UsesExactBigIntegerIntersectionAndConsumesOnlySelectedPair() {
         ContactContext context = CreateHeadOnContext();
         var rule = new SpatialContactOccurrenceRule(context.Definition);
 
@@ -77,8 +74,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Overtake_UsesTheLaterAnchorAsTheCommonMotionWindow()
-    {
+    public void Overtake_UsesTheLaterAnchorAsTheCommonMotionWindow() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 20)]);
@@ -99,8 +95,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Overtake_TowardEndpointA_NormalizesNegativeRelativeVelocity()
-    {
+    public void Overtake_TowardEndpointA_NormalizesNegativeRelativeVelocity() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -125,8 +120,7 @@ public sealed class PassageContactTests
     [InlineData(6, 6, 5, 5, 7, 7)] // Exact contact 5 + 5/6 belongs to the entry tick.
     [InlineData(3, 2, 0, 2, 4, 5)] // Exact integer contacts keep their time.
     public async Task HeadOnMeeting_FloorsContactBeforeEitherCeilingArrival(
-        long speedA, long speedB, long anchor, long due, long arrivalA, long arrivalB)
-    {
+        long speedA, long speedB, long anchor, long due, long arrivalA, long arrivalB) {
         ContactContext context = CreateHeadOnContext(speedA, speedB, anchor);
         var rule = new SpatialContactOccurrenceRule(context.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
@@ -149,8 +143,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public async Task ReverseBeforeExactMeeting_AllowsNewGenerationOvertakeInTheSameTickOnce()
-    {
+    public async Task ReverseBeforeExactMeeting_AllowsNewGenerationOvertakeInTheSameTickOnce() {
         // Head-on contact is at 10/7. At tick 1 Alice is at 1, Bob at 4.
         // Reversing Alice creates a real catch-up at 1 + 3/5, still in tick 1.
         ContactContext context = CreateHeadOnContext(speedA: 1, speedB: 6);
@@ -185,8 +178,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Forecast_FloorsNegativeAbsoluteRationalTimeMathematically()
-    {
+    public void Forecast_FloorsNegativeAbsoluteRationalTimeMathematically() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -207,8 +199,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Forecast_RejectsCoTravelTauZeroEndpointAndNoCommonPhysicalWindow()
-    {
+    public void Forecast_RejectsCoTravelTauZeroEndpointAndNoCommonPhysicalWindow() {
         AssertNoContact(
             length: 10,
             ("a", GraphTestWorld.A, 2, 0),
@@ -232,8 +223,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Forecast_HandlesProductsBeyondInt64WithoutLeakingExactFraction()
-    {
+    public void Forecast_HandlesProductsBeyondInt64WithoutLeakingExactFraction() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -258,8 +248,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public async Task SelectedPlanAndReducer_RejectTamperedKeyDueKindAndGeneration()
-    {
+    public async Task SelectedPlanAndReducer_RejectTamperedKeyDueKindAndGeneration() {
         ContactContext context = CreateHeadOnContext();
         var rule = new SpatialContactOccurrenceRule(context.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
@@ -305,8 +294,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public async Task Consumption_IsPairLocalAndRemoveClearsOnlyTheReplacedSegmentKeys()
-    {
+    public async Task Consumption_IsPairLocalAndRemoveClearsOnlyTheReplacedSegmentKeys() {
         var secondPassage = new PassageId("cd");
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C, GraphTestWorld.D],
@@ -331,8 +319,7 @@ public sealed class PassageContactTests
         OccurrenceCandidate<PassageContactOccurrenceData>[] candidates =
             [.. rule.Forecast(state, Rules)];
         Assert.Equal(2, candidates.Length);
-        foreach (OccurrenceCandidate<PassageContactOccurrenceData> candidate in candidates)
-        {
+        foreach (OccurrenceCandidate<PassageContactOccurrenceData> candidate in candidates) {
             TransitionDraft<GraphSpatialFact> draft = await rule.PlanSelectedAsync(
                 state,
                 candidate,
@@ -350,8 +337,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public async Task ArrivalAndReverse_EachClearConsumedKeysForTheOldGeneration()
-    {
+    public async Task ArrivalAndReverse_EachClearConsumedKeysForTheOldGeneration() {
         ContactContext arrivalContext = CreateHeadOnContext();
         var arrivalRule = new SpatialContactOccurrenceRule(arrivalContext.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> arrivalContact =
@@ -393,8 +379,7 @@ public sealed class PassageContactTests
     }
 
     [Fact]
-    public void Forecast_IsStableAcrossDefinitionEntityAndStartEnumerationOrderAndKeepsDueNow()
-    {
+    public void Forecast_IsStableAcrossDefinitionEntityAndStartEnumerationOrderAndKeepsDueNow() {
         (GraphDefinition firstDefinition, GraphSpatialState firstState) =
             CreatePermutationContext(reverseInputs: false);
         (GraphDefinition secondDefinition, GraphSpatialState secondState) =
@@ -433,8 +418,7 @@ public sealed class PassageContactTests
 
     private static void AssertNoContact(
         long length,
-        params (string Entity, PlaceId Place, long Speed, long At)[] segments)
-    {
+        params (string Entity, PlaceId Place, long Speed, long At)[] segments) {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length)]);
@@ -443,16 +427,14 @@ public sealed class PassageContactTests
             segments.Select(segment => (segment.Entity, segment.Place)).ToArray());
         var planner = new SpatialPlanner(definition);
         var reducer = new GraphSpatialReducer(definition);
-        foreach ((string entity, PlaceId place, long speed, long at) in segments)
-        {
+        foreach ((string entity, PlaceId place, long speed, long at) in segments) {
             state = Start(reducer, planner, state, entity, place, speed, at);
         }
 
         Assert.Empty(new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
     }
 
-    private static ContactContext CreateHeadOnContext(long speedA = 4, long speedB = 3, long anchor = 0)
-    {
+    private static ContactContext CreateHeadOnContext(long speedA = 4, long speedB = 3, long anchor = 0) {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -467,8 +449,7 @@ public sealed class PassageContactTests
         return new ContactContext(definition, state, reducer);
     }
 
-    private static (GraphDefinition Definition, GraphSpatialState State) CreatePermutationContext(bool reverseInputs)
-    {
+    private static (GraphDefinition Definition, GraphSpatialState State) CreatePermutationContext(bool reverseInputs) {
         var secondPassage = new PassageId("cd");
         PlaceId[] places = [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C, GraphTestWorld.D];
         PassageDefinition[] passages =
@@ -483,8 +464,7 @@ public sealed class PassageContactTests
             new(new EntityId("carol"), GraphTestWorld.C),
             new(new EntityId("dave"), GraphTestWorld.D),
         ];
-        if (reverseInputs)
-        {
+        if (reverseInputs) {
             Array.Reverse(places);
             Array.Reverse(passages);
             Array.Reverse(placements);
@@ -497,11 +477,9 @@ public sealed class PassageContactTests
         string[] starts = reverseInputs
             ? ["dave", "carol", "bob", "alice"]
             : ["alice", "bob", "carol", "dave"];
-        foreach (string entity in starts)
-        {
+        foreach (string entity in starts) {
             bool fromA = entity is "alice" or "carol";
-            PlaceId place = entity switch
-            {
+            PlaceId place = entity switch {
                 "alice" => GraphTestWorld.A,
                 "bob" => GraphTestWorld.B,
                 "carol" => GraphTestWorld.C,

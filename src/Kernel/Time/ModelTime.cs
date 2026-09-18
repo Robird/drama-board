@@ -4,8 +4,7 @@ namespace DramaBoard.Kernel.Time;
 
 /// <summary>Represents world logical time as one-millisecond ticks, allowing physical event timing without introducing calendar semantics.</summary>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.ModelTime", 1)]
-public readonly partial struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime>
-{
+public readonly partial struct ModelTime : IComparable<ModelTime>, IEquatable<ModelTime> {
     [Atelia.DurableGraph.DurableField(1)] private readonly long _ticks;
     private const long TicksPerSecond = 1_000;
     private const long TicksPerMinute = 60 * TicksPerSecond;
@@ -13,8 +12,7 @@ public readonly partial struct ModelTime : IComparable<ModelTime>, IEquatable<Mo
     private const long TicksPerDay = 24 * TicksPerHour;
 
     /// <summary>Initializes a logical time from a number of one-millisecond ticks.</summary>
-    public ModelTime(long ticks)
-    {
+    public ModelTime(long ticks) {
         _ticks = ticks;
     }
 
@@ -37,8 +35,7 @@ public readonly partial struct ModelTime : IComparable<ModelTime>, IEquatable<Mo
     public override int GetHashCode() => Ticks.GetHashCode();
 
     /// <summary>Formats this logical time as a signed day and time-of-day offset from the model epoch.</summary>
-    public override string ToString()
-    {
+    public override string ToString() {
         bool isNegative = Ticks < 0;
         ulong magnitude = isNegative ? unchecked((ulong)(-(Ticks + 1))) + 1 : (ulong)Ticks;
         ulong days = magnitude / TicksPerDay;

@@ -10,21 +10,18 @@ internal sealed record TimerEntity(long Id, string Name, ModelTime Due);
 
 internal sealed record TimerWorld(
     IReadOnlyList<TimerEntity> Timers,
-    IReadOnlyList<string> FiredTimers)
-{
+    IReadOnlyList<string> FiredTimers) {
     public static TimerWorld Start(params TimerEntity[] timers) =>
         new(Array.AsReadOnly([.. timers]), []);
 }
 
 internal sealed record TimerFact(string TimerName);
 
-internal sealed class TimerRule : IOccurrenceRule<TimerWorld, string, TimerFact>
-{
+internal sealed class TimerRule : IOccurrenceRule<TimerWorld, string, TimerFact> {
     private readonly bool _reverseForecast;
     private readonly bool _throwIfPlanCalled;
 
-    public TimerRule(bool reverseForecast = false, bool throwIfPlanCalled = false)
-    {
+    public TimerRule(bool reverseForecast = false, bool throwIfPlanCalled = false) {
         _reverseForecast = reverseForecast;
         _throwIfPlanCalled = throwIfPlanCalled;
     }
@@ -35,13 +32,11 @@ internal sealed class TimerRule : IOccurrenceRule<TimerWorld, string, TimerFact>
 
     public IReadOnlyList<OccurrenceCandidate<string>> Forecast(
         TimerWorld world,
-        SimulationRules rules)
-    {
+        SimulationRules rules) {
         ForecastCallCount++;
         IEnumerable<TimerEntity> timers = world.Timers
             .Where(timer => !world.FiredTimers.Contains(timer.Name));
-        if (_reverseForecast)
-        {
+        if (_reverseForecast) {
             timers = timers.Reverse();
         }
 
@@ -58,11 +53,9 @@ internal sealed class TimerRule : IOccurrenceRule<TimerWorld, string, TimerFact>
     public ValueTask<TransitionDraft<TimerFact>> PlanSelectedAsync(
         TimerWorld world,
         OccurrenceCandidate<string> winner,
-        CancellationToken cancellationToken)
-    {
+        CancellationToken cancellationToken) {
         PlanCallCount++;
-        if (_throwIfPlanCalled)
-        {
+        if (_throwIfPlanCalled) {
             throw new InvalidOperationException("Conformance and Replay must not call Plan.");
         }
 
@@ -72,24 +65,20 @@ internal sealed class TimerRule : IOccurrenceRule<TimerWorld, string, TimerFact>
     }
 }
 
-internal static class TimerModel
-{
+internal static class TimerModel {
     public static TimerWorld Fold(
         TimerWorld world,
         LogicalInstant instant,
         TimerFact fact) =>
         world with { FiredTimers = [.. world.FiredTimers, fact.TimerName] };
 
-    public static void Validate(TimerWorld world)
-    {
-        if (world.FiredTimers.Count != world.FiredTimers.Distinct(StringComparer.Ordinal).Count())
-        {
+    public static void Validate(TimerWorld world) {
+        if (world.FiredTimers.Count != world.FiredTimers.Distinct(StringComparer.Ordinal).Count()) {
             throw new InvalidOperationException("A timer cannot fire twice.");
         }
 
         if (world.FiredTimers.Any(
-            fired => !world.Timers.Any(timer => string.Equals(timer.Name, fired, StringComparison.Ordinal))))
-        {
+            fired => !world.Timers.Any(timer => string.Equals(timer.Name, fired, StringComparison.Ordinal)))) {
             throw new InvalidOperationException("An unknown timer was fired.");
         }
     }

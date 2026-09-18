@@ -5,8 +5,7 @@ namespace DramaBoard.Kernel.Journal;
 /// Implementations are driven serially. Returning normally from <see cref="AppendBatch"/> means the
 /// whole batch is committed; throwing before publication must leave <see cref="Batches"/> unchanged.
 /// </remarks>
-public interface IJournalSink<TFact>
-{
+public interface IJournalSink<TFact> {
     /// <summary>Gets the lineage whose committed transition history this sink publishes.</summary>
     long LineageId { get; }
 

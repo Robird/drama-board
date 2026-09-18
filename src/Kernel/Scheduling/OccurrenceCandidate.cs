@@ -1,11 +1,9 @@
 namespace DramaBoard.Kernel.Scheduling;
 
 /// <summary>Represents one temporary forecast owned by the rule that produced it.</summary>
-public sealed record OccurrenceCandidate<TData>
-{
+public sealed record OccurrenceCandidate<TData> {
     /// <summary>Initializes a forecast candidate.</summary>
-    public OccurrenceCandidate(CandidateKey key, CandidateDue due, TData data)
-    {
+    public OccurrenceCandidate(CandidateKey key, CandidateDue due, TData data) {
         ArgumentNullException.ThrowIfNull(key);
 
         Key = key;

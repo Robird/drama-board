@@ -2,11 +2,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Navigation;
 
-public sealed class SpatialNavigatorTests
-{
+public sealed class SpatialNavigatorTests {
     [Fact]
-    public void FindRoute_UsesDirectionalAccessAndReturnsDistinctOutcomeCases()
-    {
+    public void FindRoute_UsesDirectionalAccessAndReturnsDistinctOutcomeCases() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -35,8 +33,7 @@ public sealed class SpatialNavigatorTests
     }
 
     [Fact]
-    public void FindRoute_TieBreaksByFullOrdinalLegSequenceIndependentOfDefinitionPermutation()
-    {
+    public void FindRoute_TieBreaksByFullOrdinalLegSequenceIndependentOfDefinitionPermutation() {
         var start = new PlaceId("start");
         var x = new PlaceId("x");
         var y = new PlaceId("y");
@@ -59,8 +56,7 @@ public sealed class SpatialNavigatorTests
         Assert.Equal(expected, firstRoute.Legs.Select(value => value.PassageId));
         Assert.Equal(firstRoute, secondRoute);
 
-        RouteFound Route(GraphDefinition definition)
-        {
+        RouteFound Route(GraphDefinition definition) {
             GraphSpatialState state = GraphTestWorld.State(definition);
             return Assert.IsType<RouteFound>(
                 new SpatialNavigator(definition).FindRoute(state, start, goal, speedSnapshot: 1));
@@ -68,8 +64,7 @@ public sealed class SpatialNavigatorTests
     }
 
     [Fact]
-    public void FindRoute_UnrelatedOverflowingBranchDoesNotHideRepresentableGoal()
-    {
+    public void FindRoute_UnrelatedOverflowingBranchDoesNotHideRepresentableGoal() {
         var start = new PlaceId("start");
         var goal = new PlaceId("goal");
         var x = new PlaceId("x");
@@ -90,8 +85,7 @@ public sealed class SpatialNavigatorTests
     }
 
     [Fact]
-    public void FindRoute_ReturnsCostOverflowWhenEveryTopologicalRouteOverflows()
-    {
+    public void FindRoute_ReturnsCostOverflowWhenEveryTopologicalRouteOverflows() {
         var start = new PlaceId("start");
         var x = new PlaceId("x");
         var goal = new PlaceId("goal");
@@ -107,8 +101,7 @@ public sealed class SpatialNavigatorTests
     }
 
     [Fact]
-    public void FindRoute_ReturnsNoRouteWhenOverflowingDeadEndIsUnrelatedToDisconnectedGoal()
-    {
+    public void FindRoute_ReturnsNoRouteWhenOverflowingDeadEndIsUnrelatedToDisconnectedGoal() {
         var start = new PlaceId("start");
         var x = new PlaceId("x");
         var deadEnd = new PlaceId("dead-end");

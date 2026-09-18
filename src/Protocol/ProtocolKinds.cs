@@ -1,8 +1,7 @@
 namespace DramaBoard.Protocol;
 
 /// <summary>Provides the first-version action identifiers understood by the Player boundary.</summary>
-public static class ActionKinds
-{
+public static class ActionKinds {
     /// <summary>Identifies immediate travel through one observed exit.</summary>
     public static ActionKind Travel { get; } = new("action.travel");
 

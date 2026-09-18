@@ -5,11 +5,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Acceptance;
 
-public sealed class SpatialContactKernelAcceptanceTests
-{
+public sealed class SpatialContactKernelAcceptanceTests {
     [Fact]
-    public async Task ContactOnlyKernel_ForecastsPlansFoldsAndReplaysWithoutAnotherDomain()
-    {
+    public async Task ContactOnlyKernel_ForecastsPlansFoldsAndReplaysWithoutAnotherDomain() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);

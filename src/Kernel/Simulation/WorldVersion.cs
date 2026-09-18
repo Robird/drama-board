@@ -2,13 +2,10 @@ namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Identifies one committed transition prefix within a simulation lineage.</summary>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.WorldVersion", 1)]
-public readonly partial record struct WorldVersion
-{
+public readonly partial record struct WorldVersion {
     /// <summary>Initializes a version from a lineage and its committed transition count.</summary>
-    public WorldVersion(long lineageId, long transitionCount)
-    {
-        if (transitionCount < 0)
-        {
+    public WorldVersion(long lineageId, long transitionCount) {
+        if (transitionCount < 0) {
             throw new ArgumentOutOfRangeException(nameof(transitionCount));
         }
 

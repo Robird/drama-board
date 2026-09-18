@@ -5,11 +5,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Host.Tests;
 
-public sealed class SimulationHostTests
-{
+public sealed class SimulationHostTests {
     [Fact]
-    public async Task RunUntilAsync_RepeatsPublicStepsUntilExhausted()
-    {
+    public async Task RunUntilAsync_RepeatsPublicStepsUntilExhausted() {
         SimulationKernel<CounterWorld, int, int> kernel = CreateKernel(limit: 2);
 
         HostRunResult<CounterWorld> result = await SimulationHost.RunUntilAsync(
@@ -23,8 +21,7 @@ public sealed class SimulationHostTests
     }
 
     [Fact]
-    public async Task RunUntilAsync_DoesNotHideBoundaryAsTimeAdvance()
-    {
+    public async Task RunUntilAsync_DoesNotHideBoundaryAsTimeAdvance() {
         SimulationKernel<CounterWorld, int, int> kernel = CreateKernel(limit: 1, firstDue: 10);
 
         HostRunResult<CounterWorld> result = await SimulationHost.RunUntilAsync(
@@ -38,8 +35,7 @@ public sealed class SimulationHostTests
 
     private static SimulationKernel<CounterWorld, int, int> CreateKernel(
         int limit,
-        long firstDue = 0)
-    {
+        long firstDue = 0) {
         var history = new InMemoryOccurrenceHistory<CounterWorld, int>(new CounterWorld(0),
             new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         return new SimulationKernel<CounterWorld, int, int>(
@@ -52,13 +48,11 @@ public sealed class SimulationHostTests
 
     private sealed record CounterWorld(int Count);
 
-    private sealed class CounterRule : IOccurrenceRule<CounterWorld, int, int>
-    {
+    private sealed class CounterRule : IOccurrenceRule<CounterWorld, int, int> {
         private readonly int _limit;
         private readonly long _firstDue;
 
-        public CounterRule(int limit, long firstDue)
-        {
+        public CounterRule(int limit, long firstDue) {
             _limit = limit;
             _firstDue = firstDue;
         }
@@ -79,8 +73,7 @@ public sealed class SimulationHostTests
         public ValueTask<TransitionDraft<int>> PlanSelectedAsync(
             CounterWorld world,
             OccurrenceCandidate<int> winner,
-            CancellationToken cancellationToken)
-        {
+            CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new TransitionDraft<int>([1]));
         }

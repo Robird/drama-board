@@ -1,24 +1,20 @@
-using DramaBoard.Kernel.Time;
 using Atelia.DurableGraph;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
 /// <summary>Base value for one entity's exclusive objective location.</summary>
- [DurableType("DramaBoard.Spatial.SpatialLocation", 1)]
-public abstract partial class SpatialLocation : IDurableObject
-{
-    private protected SpatialLocation()
-    {
+[DurableType("DramaBoard.Spatial.SpatialLocation", 1)]
+public abstract partial class SpatialLocation : IDurableObject {
+    private protected SpatialLocation() {
     }
 }
 
 /// <summary>Places an entity at one stable semantic locality.</summary>
 [DurableType("DramaBoard.Spatial.AtPlaceLocation", 1)]
-public sealed partial class AtPlaceLocation : SpatialLocation, IEquatable<AtPlaceLocation>
-{
+public sealed partial class AtPlaceLocation : SpatialLocation, IEquatable<AtPlaceLocation> {
     [DurableField(1)] private PlaceId _placeId;
-    public AtPlaceLocation(PlaceId placeId)
-    {
+    public AtPlaceLocation(PlaceId placeId) {
         SpatialIdentifier.Require(placeId, nameof(placeId));
         _placeId = placeId;
     }
@@ -33,8 +29,7 @@ public sealed partial class AtPlaceLocation : SpatialLocation, IEquatable<AtPlac
 
 /// <summary>Stores one immutable anchored movement segment toward a passage endpoint.</summary>
 [DurableType("DramaBoard.Spatial.TraversingLocation", 1)]
-public sealed partial class TraversingLocation : SpatialLocation, IEquatable<TraversingLocation>
-{
+public sealed partial class TraversingLocation : SpatialLocation, IEquatable<TraversingLocation> {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private long _anchorOffset;
     [DurableField(3)] private ModelTime _anchorTime;
@@ -47,24 +42,20 @@ public sealed partial class TraversingLocation : SpatialLocation, IEquatable<Tra
         ModelTime anchorTime,
         PlaceId targetPlaceId,
         long speedSnapshot,
-        ModelTime arrivalDue)
-    {
+        ModelTime arrivalDue) {
         SpatialIdentifier.Require(passageId, nameof(passageId));
-        if (anchorOffset < 0)
-        {
+        if (anchorOffset < 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(anchorOffset),
                 "Traversal anchor offset cannot be negative.");
         }
 
         SpatialIdentifier.Require(targetPlaceId, nameof(targetPlaceId));
-        if (speedSnapshot <= 0)
-        {
+        if (speedSnapshot <= 0) {
             throw new ArgumentOutOfRangeException(nameof(speedSnapshot), "Traversal speed must be positive.");
         }
 
-        if (arrivalDue <= anchorTime)
-        {
+        if (arrivalDue <= anchorTime) {
             throw new ArgumentOutOfRangeException(nameof(arrivalDue), "Arrival must be later than traversal start.");
         }
 

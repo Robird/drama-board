@@ -1,13 +1,11 @@
-using DramaBoard.Kernel.Time;
 using Atelia.DurableGraph;
+using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
 /// <summary>Describes one entity's location in Genesis.</summary>
-public sealed record EntityPlacement
-{
-    public EntityPlacement(EntityId entityId, PlaceId placeId)
-    {
+public sealed record EntityPlacement {
+    public EntityPlacement(EntityId entityId, PlaceId placeId) {
         SpatialIdentifier.Require(entityId, nameof(entityId));
         SpatialIdentifier.Require(placeId, nameof(placeId));
         EntityId = entityId;
@@ -21,16 +19,13 @@ public sealed record EntityPlacement
 
 /// <summary>Stores one entity and its current exclusive location.</summary>
 [DurableType("DramaBoard.Spatial.SpatialEntity", 1)]
-public sealed partial class SpatialEntity : IDurableObject, IEquatable<SpatialEntity>
-{
+public sealed partial class SpatialEntity : IDurableObject, IEquatable<SpatialEntity> {
     [DurableField(1)] private EntityId _id;
     [DurableField(2)] private long _movementGeneration;
     [DurableField(3)] private SpatialLocation _location = null!;
-    public SpatialEntity(EntityId id, long movementGeneration, SpatialLocation location)
-    {
+    public SpatialEntity(EntityId id, long movementGeneration, SpatialLocation location) {
         SpatialIdentifier.Require(id, nameof(id));
-        if (movementGeneration < 0)
-        {
+        if (movementGeneration < 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(movementGeneration),
                 "Movement generation cannot be negative.");
@@ -56,12 +51,10 @@ public sealed partial class SpatialEntity : IDurableObject, IEquatable<SpatialEn
 
 /// <summary>Stores a sparse complete replacement of one passage's two entry bits.</summary>
 [DurableType("DramaBoard.Spatial.PassageEntryAccessOverride", 1)]
-public sealed partial class PassageEntryAccessOverride : IDurableObject, IEquatable<PassageEntryAccessOverride>
-{
+public sealed partial class PassageEntryAccessOverride : IDurableObject, IEquatable<PassageEntryAccessOverride> {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private PassageEntryAccess _access;
-    public PassageEntryAccessOverride(PassageId passageId, PassageEntryAccess access)
-    {
+    public PassageEntryAccessOverride(PassageId passageId, PassageEntryAccess access) {
         SpatialIdentifier.Require(passageId, nameof(passageId));
         _passageId = passageId; _access = access;
     }
@@ -78,13 +71,11 @@ public sealed partial class PassageEntryAccessOverride : IDurableObject, IEquata
 
 /// <summary>Stores one future entry-access patch, uniquely addressed by passage and due time.</summary>
 [DurableType("DramaBoard.Spatial.ScheduledPassageEntryChange", 1)]
-public sealed partial class ScheduledPassageEntryChange : IDurableObject, IEquatable<ScheduledPassageEntryChange>
-{
+public sealed partial class ScheduledPassageEntryChange : IDurableObject, IEquatable<ScheduledPassageEntryChange> {
     [DurableField(1)] private PassageId _passageId;
     [DurableField(2)] private ModelTime _due;
     [DurableField(3)] private PassageEntryPatch _patch;
-    public ScheduledPassageEntryChange(PassageId passageId, ModelTime due, PassageEntryPatch patch)
-    {
+    public ScheduledPassageEntryChange(PassageId passageId, ModelTime due, PassageEntryPatch patch) {
         SpatialIdentifier.Require(passageId, nameof(passageId));
         PassageEntryPatch.Validate(patch, nameof(patch));
         _passageId = passageId; _due = due; _patch = patch;
@@ -104,8 +95,7 @@ public sealed partial class ScheduledPassageEntryChange : IDurableObject, IEquat
 
 /// <summary>Owns canonical immutable dynamic state for one Graph Spatial world.</summary>
 [DurableType("DramaBoard.Spatial.GraphSpatialState", 1)]
-public sealed partial class GraphSpatialState : IDurableObject, IEquatable<GraphSpatialState>
-{
+public sealed partial class GraphSpatialState : IDurableObject, IEquatable<GraphSpatialState> {
     [DurableField(1)] private List<SpatialEntity> _entities = [];
     [DurableField(2)] private List<PassageEntryAccessOverride> _passageEntryAccessOverrides = [];
     [DurableField(3)] private List<ScheduledPassageEntryChange> _scheduledPassageEntryChanges = [];
@@ -114,8 +104,7 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
         IEnumerable<SpatialEntity> entities,
         IEnumerable<PassageEntryAccessOverride> passageEntryAccessOverrides,
         IEnumerable<ScheduledPassageEntryChange> scheduledPassageEntryChanges,
-        IEnumerable<PassageContactKey> consumedContacts)
-    {
+        IEnumerable<PassageContactKey> consumedContacts) {
         SpatialEntity[] entityArray = Canonicalize(
             entities,
             entity => entity.Id,
@@ -146,22 +135,18 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
 
     public static GraphSpatialState Create(
         GraphDefinition definition,
-        IEnumerable<EntityPlacement> placements)
-    {
+        IEnumerable<EntityPlacement> placements) {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(placements);
         EntityPlacement[] placementArray = [.. placements];
-        if (placementArray.Any(placement => placement is null))
-        {
+        if (placementArray.Any(placement => placement is null)) {
             throw new ArgumentException("Entity placements cannot contain null entries.", nameof(placements));
         }
 
         SpatialEntity[] entities =
         [
-            .. placementArray.Select(placement =>
-            {
-                if (!definition.Contains(placement.PlaceId))
-                {
+            .. placementArray.Select(placement => {
+                if (!definition.Contains(placement.PlaceId)) {
                     throw new ArgumentException(
                         $"Entity '{placement.EntityId}' references undefined place '{placement.PlaceId}'.",
                         nameof(placements));
@@ -186,8 +171,7 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
         IEnumerable<SpatialEntity> entities,
         IEnumerable<PassageEntryAccessOverride> passageEntryAccessOverrides,
         IEnumerable<ScheduledPassageEntryChange> scheduledPassageEntryChanges,
-        IEnumerable<PassageContactKey> consumedContacts)
-    {
+        IEnumerable<PassageContactKey> consumedContacts) {
         ArgumentNullException.ThrowIfNull(definition);
         var state = new GraphSpatialState(
             entities,
@@ -198,8 +182,7 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
         return state;
     }
 
-    public bool TryGetEntity(EntityId entityId, out SpatialEntity? entity)
-    {
+    public bool TryGetEntity(EntityId entityId, out SpatialEntity? entity) {
         entity = Entities.SingleOrDefault(value => value.Id == entityId);
         return entity is not null;
     }
@@ -213,26 +196,21 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
 
     public override bool Equals(object? obj) => Equals(obj as GraphSpatialState);
 
-    public override int GetHashCode()
-    {
+    public override int GetHashCode() {
         var hash = new HashCode();
-        foreach (SpatialEntity entity in Entities)
-        {
+        foreach (SpatialEntity entity in Entities) {
             hash.Add(entity);
         }
 
-        foreach (PassageEntryAccessOverride value in PassageEntryAccessOverrides)
-        {
+        foreach (PassageEntryAccessOverride value in PassageEntryAccessOverrides) {
             hash.Add(value);
         }
 
-        foreach (ScheduledPassageEntryChange value in ScheduledPassageEntryChanges)
-        {
+        foreach (ScheduledPassageEntryChange value in ScheduledPassageEntryChanges) {
             hash.Add(value);
         }
 
-        foreach (PassageContactKey value in ConsumedContacts)
-        {
+        foreach (PassageContactKey value in ConsumedContacts) {
             hash.Add(value);
         }
 
@@ -262,20 +240,16 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
         Func<T, TId> id,
         string description)
         where T : class
-        where TId : IComparable<TId>
-    {
+        where TId : IComparable<TId> {
         ArgumentNullException.ThrowIfNull(values);
         T[] array = [.. values];
-        if (array.Any(value => value is null))
-        {
+        if (array.Any(value => value is null)) {
             throw new InvalidOperationException($"Graph Spatial {description} collection contains null.");
         }
 
         T[] canonical = [.. array.OrderBy(id)];
-        for (int index = 1; index < canonical.Length; index++)
-        {
-            if (id(canonical[index - 1]).CompareTo(id(canonical[index])) == 0)
-            {
+        for (int index = 1; index < canonical.Length; index++) {
+            if (id(canonical[index - 1]).CompareTo(id(canonical[index])) == 0) {
                 throw new InvalidOperationException($"Graph Spatial {description} identities must be unique.");
             }
         }
@@ -284,12 +258,10 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
     }
 
     private static ScheduledPassageEntryChange[] CanonicalizeSchedules(
-        IEnumerable<ScheduledPassageEntryChange> schedules)
-    {
+        IEnumerable<ScheduledPassageEntryChange> schedules) {
         ArgumentNullException.ThrowIfNull(schedules);
         ScheduledPassageEntryChange[] array = [.. schedules];
-        if (array.Any(value => value is null))
-        {
+        if (array.Any(value => value is null)) {
             throw new InvalidOperationException("Graph Spatial schedule collection contains null.");
         }
 
@@ -297,12 +269,10 @@ public sealed partial class GraphSpatialState : IDurableObject, IEquatable<Graph
         [
             .. array.OrderBy(value => value.PassageId).ThenBy(value => value.Due),
         ];
-        for (int index = 1; index < canonical.Length; index++)
-        {
+        for (int index = 1; index < canonical.Length; index++) {
             ScheduledPassageEntryChange previous = canonical[index - 1];
             ScheduledPassageEntryChange current = canonical[index];
-            if (previous.PassageId == current.PassageId && previous.Due == current.Due)
-            {
+            if (previous.PassageId == current.PassageId && previous.Due == current.Due) {
                 throw new InvalidOperationException(
                     "Graph Spatial schedules must be unique by PassageId and Due.");
             }

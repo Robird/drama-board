@@ -17,8 +17,7 @@ public sealed record Intent(
     string? DestinationId = null,
     string? FreeText = null,
     long? DurationMs = null,
-    long? UntilModelTimeMs = null)
-{
+    long? UntilModelTimeMs = null) {
     /// <summary>Gets the optional natural-language content after validating its protocol limit.</summary>
     public string? FreeText { get; init; } = ProtocolValue.ValidateOptionalFreeText(FreeText, nameof(FreeText));
 
@@ -30,15 +29,12 @@ public sealed record Intent(
         ProtocolValue.ValidateModelTime(UntilModelTimeMs, nameof(UntilModelTimeMs));
 }
 
-internal static class ProtocolValue
-{
+internal static class ProtocolValue {
     private const int MaximumFreeTextLength = 4_096;
     private const long MaximumDurationMs = 315_360_000_000;
 
-    public static string? ValidateOptionalFreeText(string? value, string parameterName)
-    {
-        if (value is { Length: > MaximumFreeTextLength })
-        {
+    public static string? ValidateOptionalFreeText(string? value, string parameterName) {
+        if (value is { Length: > MaximumFreeTextLength }) {
             throw new ArgumentException(
                 $"Free text cannot exceed {MaximumFreeTextLength} characters.",
                 parameterName);
@@ -47,10 +43,8 @@ internal static class ProtocolValue
         return value;
     }
 
-    public static long? ValidateDuration(long? value, string parameterName)
-    {
-        if (value is < 1 or > MaximumDurationMs)
-        {
+    public static long? ValidateDuration(long? value, string parameterName) {
+        if (value is < 1 or > MaximumDurationMs) {
             throw new ArgumentOutOfRangeException(
                 parameterName,
                 value,
@@ -60,10 +54,8 @@ internal static class ProtocolValue
         return value;
     }
 
-    public static long? ValidateModelTime(long? value, string parameterName)
-    {
-        if (value is < 0)
-        {
+    public static long? ValidateModelTime(long? value, string parameterName) {
+        if (value is < 0) {
             throw new ArgumentOutOfRangeException(parameterName, value, "Model time cannot be negative.");
         }
 

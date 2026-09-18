@@ -2,11 +2,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.State;
 
-public sealed class GraphSpatialStateTests
-{
+public sealed class GraphSpatialStateTests {
     [Fact]
-    public void Create_CanonicalizesEntitiesAtKnownPlacesWithZeroMovementGeneration()
-    {
+    public void Create_CanonicalizesEntitiesAtKnownPlacesWithZeroMovementGeneration() {
         GraphDefinition definition = GraphTestWorld.Definition(
             places: [GraphTestWorld.A, GraphTestWorld.B],
             passages: []);
@@ -25,8 +23,7 @@ public sealed class GraphSpatialStateTests
     }
 
     [Fact]
-    public void Create_RejectsDuplicateEntityAndUnknownPlace()
-    {
+    public void Create_RejectsDuplicateEntityAndUnknownPlace() {
         GraphDefinition definition = GraphTestWorld.Definition(
             places: [GraphTestWorld.A, GraphTestWorld.B],
             passages: []);
@@ -41,8 +38,7 @@ public sealed class GraphSpatialStateTests
     }
 
     [Fact]
-    public void LocationValues_RejectImpossibleSnapshots()
-    {
+    public void LocationValues_RejectImpossibleSnapshots() {
         Assert.Throws<ArgumentException>(() => new AtPlaceLocation(default));
         Assert.Throws<ArgumentOutOfRangeException>(() => new SpatialEntity(
             new EntityId("actor"),
@@ -65,8 +61,7 @@ public sealed class GraphSpatialStateTests
     }
 
     [Fact]
-    public void Validator_RejectsMalformedAnchoredTraversalSnapshots()
-    {
+    public void Validator_RejectsMalformedAnchoredTraversalSnapshots() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -95,8 +90,7 @@ public sealed class GraphSpatialStateTests
             speedSnapshot: 3,
             GraphTestWorld.Time(3)));
 
-        void AssertInvalidTraversal(TraversingLocation traversal)
-        {
+        void AssertInvalidTraversal(TraversingLocation traversal) {
             GraphSpatialState malformed = state.Rebuild(
                 entities: [new SpatialEntity(actor, movementGeneration: 1, traversal)]);
             Assert.Throws<InvalidOperationException>(() =>
@@ -105,8 +99,7 @@ public sealed class GraphSpatialStateTests
     }
 
     [Fact]
-    public void Restore_SnapshotsAndCanonicalizesACompleteNontrivialState()
-    {
+    public void Restore_SnapshotsAndCanonicalizesACompleteNontrivialState() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(
@@ -204,8 +197,7 @@ public sealed class GraphSpatialStateTests
     }
 
     [Fact]
-    public void Restore_RejectsAConsumedContactForAStaleMovementSegment()
-    {
+    public void Restore_RejectsAConsumedContactForAStaleMovementSegment() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(

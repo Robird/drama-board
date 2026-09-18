@@ -1,13 +1,10 @@
 namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Contains the immutable rules required by occurrence scheduling and progress guards.</summary>
-public sealed record SimulationRules
-{
+public sealed record SimulationRules {
     /// <summary>Initializes simulation rules for one lineage.</summary>
-    public SimulationRules(ulong worldSeed, int maxTransitionsPerModelTime)
-    {
-        if (maxTransitionsPerModelTime <= 0)
-        {
+    public SimulationRules(ulong worldSeed, int maxTransitionsPerModelTime) {
+        if (maxTransitionsPerModelTime <= 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(maxTransitionsPerModelTime),
                 "The transition budget per model time must be positive.");

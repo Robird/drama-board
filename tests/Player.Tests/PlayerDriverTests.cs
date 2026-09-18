@@ -2,11 +2,9 @@ using DramaBoard.Protocol;
 
 namespace DramaBoard.Player.Tests;
 
-public sealed class PlayerDriverTests
-{
+public sealed class PlayerDriverTests {
     [Fact]
-    public async Task NullPlayerDriver_ReturnsCorrelatedWaitIntent()
-    {
+    public async Task NullPlayerDriver_ReturnsCorrelatedWaitIntent() {
         DecisionRequest request = Request();
         var driver = new NullPlayerDriver();
 
@@ -21,8 +19,7 @@ public sealed class PlayerDriverTests
     }
 
     [Fact]
-    public async Task ScriptedPlayerDriver_ConsumesFactoriesInOrderThenThrows()
-    {
+    public async Task ScriptedPlayerDriver_ConsumesFactoriesInOrderThenThrows() {
         DecisionRequest request = Request();
         var driver = new ScriptedPlayerDriver(
         [
@@ -40,8 +37,7 @@ public sealed class PlayerDriverTests
     }
 
     [Fact]
-    public async Task RandomPlayerDriver_RepeatedRequestIsIdempotent()
-    {
+    public async Task RandomPlayerDriver_RepeatedRequestIsIdempotent() {
         DecisionRequest request = Request(
         [
             new(ActionKinds.Travel, CandidateExitIds: ["exit.left", "exit.right", "exit.forward"]),
@@ -52,16 +48,14 @@ public sealed class PlayerDriverTests
         var second = new RandomPlayerDriver(0xC0FFEE);
         Intent expected = (await first.DecideAsync(request, CancellationToken.None)).Intent;
 
-        for (int index = 0; index < 5; index++)
-        {
+        for (int index = 0; index < 5; index++) {
             Assert.Equal(expected, (await first.DecideAsync(request, CancellationToken.None)).Intent);
             Assert.Equal(expected, (await second.DecideAsync(request, CancellationToken.None)).Intent);
         }
     }
 
     [Fact]
-    public async Task RandomPlayerDriver_DecisionIdAddressesDifferentSamples()
-    {
+    public async Task RandomPlayerDriver_DecisionIdAddressesDifferentSamples() {
         var driver = new RandomPlayerDriver(0xC0FFEE);
         AvailableAction[] actions =
         [
@@ -71,8 +65,7 @@ public sealed class PlayerDriverTests
         ];
         var exits = new HashSet<string?>();
 
-        for (long sequence = 1; sequence <= 16; sequence++)
-        {
+        for (long sequence = 1; sequence <= 16; sequence++) {
             exits.Add((await driver.DecideAsync(
                 Request(actions, $"decision-{sequence}"),
                 CancellationToken.None)).Intent.ExitId);
@@ -82,8 +75,7 @@ public sealed class PlayerDriverTests
     }
 
     [Fact]
-    public async Task RandomPlayerDriver_EmptyAffordancesFallsBackToWait()
-    {
+    public async Task RandomPlayerDriver_EmptyAffordancesFallsBackToWait() {
         var driver = new RandomPlayerDriver(1);
 
         PlayerDecision decision = await driver.DecideAsync(
@@ -95,8 +87,7 @@ public sealed class PlayerDriverTests
 
     private static DecisionRequest Request(
         IReadOnlyList<AvailableAction>? actions = null,
-        string decisionId = "decision-1")
-    {
+        string decisionId = "decision-1") {
         IReadOnlyList<AvailableAction> availableActions =
             actions ?? [new AvailableAction(ActionKinds.Wait)];
         ObservedExit[] exits =

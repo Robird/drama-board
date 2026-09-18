@@ -3,11 +3,9 @@ using DramaBoard.Kernel.Scheduling;
 
 namespace DramaBoard.Kernel.Tests.Scheduling;
 
-public sealed class CandidateKeyTests
-{
+public sealed class CandidateKeyTests {
     [Fact]
-    public void Constructor_CopiesInputAndReturnedBytes()
-    {
+    public void Constructor_CopiesInputAndReturnedBytes() {
         byte[] input = [0x10, 0x20, 0x30];
         var key = new CandidateKey(input);
 
@@ -19,16 +17,14 @@ public sealed class CandidateKeyTests
     }
 
     [Fact]
-    public void FromUtf8_UsesExactUtf8Bytes()
-    {
+    public void FromUtf8_UsesExactUtf8Bytes() {
         CandidateKey key = CandidateKey.FromUtf8("timer:Alice/一");
 
         Assert.Equal(Encoding.UTF8.GetBytes("timer:Alice/一"), key.ToByteArray());
     }
 
     [Fact]
-    public void Equality_IsStructuralAcrossIndependentCopies()
-    {
+    public void Equality_IsStructuralAcrossIndependentCopies() {
         var first = new CandidateKey([0x01, 0x80, 0xFF]);
         var equal = CandidateKey.FromBytes([0x01, 0x80, 0xFF]);
         var different = new CandidateKey([0x01, 0x80, 0xFE]);
@@ -40,8 +36,7 @@ public sealed class CandidateKeyTests
     }
 
     [Fact]
-    public void CompareTo_UsesUnsignedLexicographicBytesAndPrefixOrder()
-    {
+    public void CompareTo_UsesUnsignedLexicographicBytesAndPrefixOrder() {
         var lowerUnsigned = new CandidateKey([0x7F]);
         var higherUnsigned = new CandidateKey([0x80]);
         var prefix = new CandidateKey([0x80]);
@@ -52,8 +47,7 @@ public sealed class CandidateKeyTests
     }
 
     [Fact]
-    public void Constructor_NullOrEmptyKey_Throws()
-    {
+    public void Constructor_NullOrEmptyKey_Throws() {
         Assert.Throws<ArgumentNullException>(() => new CandidateKey((byte[])null!));
         Assert.Throws<ArgumentNullException>(() => new CandidateKey((string)null!));
         Assert.Throws<ArgumentException>(() => new CandidateKey([]));

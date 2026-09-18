@@ -5,11 +5,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.Journal;
 
-public sealed class InMemoryOccurrenceHistoryTests
-{
+public sealed class InMemoryOccurrenceHistoryTests {
     [Fact]
-    public void EventPublishesPendingWithoutAdvancingStateAndStateCompletesIt()
-    {
+    public void EventPublishesPendingWithoutAdvancingStateAndStateCompletesIt() {
         var cursor = new KernelCursor(new(3, 0), new(40), null, null);
         var history = new InMemoryOccurrenceHistory<string, int>("old", cursor);
         var occurrence = new OccurrenceEvent<int>(CandidateKey.FromUtf8("event"), new(new(40), 0), [1, 2]);
@@ -27,8 +25,7 @@ public sealed class InMemoryOccurrenceHistoryTests
     }
 
     [Fact]
-    public void RejectsDoubleEventStateWithoutEventAndMismatchedCursor()
-    {
+    public void RejectsDoubleEventStateWithoutEventAndMismatchedCursor() {
         var cursor = new KernelCursor(new(3, 0), ModelTime.Zero, null, null);
         var history = new InMemoryOccurrenceHistory<int, int>(1, cursor);
         var occurrence = new OccurrenceEvent<int>(CandidateKey.FromUtf8("e"), new(ModelTime.Zero, 0), [1]);
@@ -42,8 +39,7 @@ public sealed class InMemoryOccurrenceHistoryTests
     }
 
     [Fact]
-    public void CompletedEventCollectionIsAnOracleNotRequiredHistoryForLoadedCursor()
-    {
+    public void CompletedEventCollectionIsAnOracleNotRequiredHistoryForLoadedCursor() {
         var cursor = new KernelCursor(new(3, 99), ModelTime.Zero, new(new(50), 0), CandidateKey.FromUtf8("previous"));
         var history = new InMemoryOccurrenceHistory<int, int>(123, cursor);
         Assert.Empty(history.CompletedEvents);
@@ -56,8 +52,7 @@ public sealed class InMemoryOccurrenceHistoryTests
     }
 
     [Fact]
-    public void EventOwnsFactArrayAndRejectsEmptyOrNullFacts()
-    {
+    public void EventOwnsFactArrayAndRejectsEmptyOrNullFacts() {
         int[] facts = [1, 2];
         var key = CandidateKey.FromUtf8("e");
         var instant = new LogicalInstant(ModelTime.Zero, 0);

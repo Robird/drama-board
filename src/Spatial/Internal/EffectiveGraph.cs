@@ -1,7 +1,6 @@
 namespace DramaBoard.Spatial;
 
-internal static class EffectiveGraph
-{
+internal static class EffectiveGraph {
     internal static PassageEntryAccess EntryAccess(
         GraphDefinition definition,
         GraphSpatialState state,
@@ -12,17 +11,14 @@ internal static class EffectiveGraph
         PassageDefinition passage,
         PlaceId fromPlaceId,
         out PlaceId toPlaceId,
-        out bool entryAllowed)
-    {
-        if (fromPlaceId == passage.EndpointA)
-        {
+        out bool entryAllowed) {
+        if (fromPlaceId == passage.EndpointA) {
             toPlaceId = passage.EndpointB;
             entryAllowed = false;
             return true;
         }
 
-        if (fromPlaceId == passage.EndpointB)
-        {
+        if (fromPlaceId == passage.EndpointB) {
             toPlaceId = passage.EndpointA;
             entryAllowed = false;
             return true;
@@ -39,10 +35,8 @@ internal static class EffectiveGraph
         PassageDefinition passage,
         PlaceId fromPlaceId,
         out PlaceId toPlaceId,
-        out bool entryAllowed)
-    {
-        if (!TryResolveDirection(passage, fromPlaceId, out toPlaceId, out _))
-        {
+        out bool entryAllowed) {
+        if (!TryResolveDirection(passage, fromPlaceId, out toPlaceId, out _)) {
             entryAllowed = false;
             return false;
         }

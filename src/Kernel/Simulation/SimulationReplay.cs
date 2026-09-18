@@ -4,8 +4,7 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Rebuilds committed world state by folding complete Journal batches only.</summary>
-public static class SimulationReplay
-{
+public static class SimulationReplay {
     /// <summary>Replays a complete current-format transition sequence without Forecast or Plan.</summary>
     public static ReplayResult<TWorld> Replay<TWorld, TFact>(
         TWorld genesisWorld,
@@ -13,10 +12,8 @@ public static class SimulationReplay
         ModelTime genesisTime,
         IEnumerable<JournalBatch<TFact>> batches,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate)
-    {
-        if (genesisWorld is null)
-        {
+        Action<TWorld> validate) {
+        if (genesisWorld is null) {
             throw new ArgumentNullException(nameof(genesisWorld));
         }
 
@@ -27,21 +24,17 @@ public static class SimulationReplay
         TWorld world = genesisWorld;
         LogicalInstant? lastCommittedInstant = null;
         long transitionCount = 0;
-        foreach (JournalBatch<TFact> batch in batches)
-        {
-            if (batch is null)
-            {
+        foreach (JournalBatch<TFact> batch in batches) {
+            if (batch is null) {
                 throw new InvalidOperationException("Replay input cannot contain a null batch.");
             }
 
             ValidateInstant(batch.Instant, genesisTime, lastCommittedInstant);
 
             TWorld scratchWorld = world;
-            foreach (TFact fact in batch.Facts)
-            {
+            foreach (TFact fact in batch.Facts) {
                 scratchWorld = fold(scratchWorld, batch.Instant, fact);
-                if (scratchWorld is null)
-                {
+                if (scratchWorld is null) {
                     throw new InvalidOperationException("The replay fact fold returned a null HostWorld.");
                 }
             }
@@ -62,33 +55,27 @@ public static class SimulationReplay
     internal static void ValidateInstant(
         LogicalInstant instant,
         ModelTime genesisTime,
-        LogicalInstant? previousInstant)
-    {
-        if (previousInstant is not LogicalInstant previous)
-        {
-            if (instant.ModelTime < genesisTime)
-            {
+        LogicalInstant? previousInstant) {
+        if (previousInstant is not LogicalInstant previous) {
+            if (instant.ModelTime < genesisTime) {
                 throw new InvalidOperationException("The first replay batch cannot precede Genesis.");
             }
 
-            if (instant.CausalOrdinal != 0)
-            {
+            if (instant.CausalOrdinal != 0) {
                 throw new InvalidOperationException("The first replay batch must have causal ordinal zero.");
             }
 
             return;
         }
 
-        if (instant.ModelTime < previous.ModelTime)
-        {
+        if (instant.ModelTime < previous.ModelTime) {
             throw new InvalidOperationException("Replay batch model time cannot decrease.");
         }
 
         long expectedOrdinal = instant.ModelTime > previous.ModelTime
             ? 0
             : checked(previous.CausalOrdinal + 1);
-        if (instant.CausalOrdinal != expectedOrdinal)
-        {
+        if (instant.CausalOrdinal != expectedOrdinal) {
             throw new InvalidOperationException(
                 $"Replay batch causal ordinal must be {expectedOrdinal} at model time {instant.ModelTime}.");
         }

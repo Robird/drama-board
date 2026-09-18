@@ -5,11 +5,9 @@ namespace DramaBoard.Protocol;
 
 /// <summary>Identifies one decision exchange across the Player boundary.</summary>
 [JsonConverter(typeof(DecisionIdJsonConverter))]
-public readonly record struct DecisionId
-{
+public readonly record struct DecisionId {
     /// <summary>Initializes a decision identifier from its stable value.</summary>
-    public DecisionId(string value)
-    {
+    public DecisionId(string value) {
         Value = StableIdentifier.Validate(value, nameof(value), "Decision identifier");
     }
 
@@ -22,11 +20,9 @@ public readonly record struct DecisionId
 
 /// <summary>Identifies an action contract by a stable, hand-authored string.</summary>
 [JsonConverter(typeof(ActionKindJsonConverter))]
-public readonly record struct ActionKind
-{
+public readonly record struct ActionKind {
     /// <summary>Initializes an action kind from its stable identifier.</summary>
-    public ActionKind(string id)
-    {
+    public ActionKind(string id) {
         Id = StableIdentifier.Validate(id, nameof(id), "Action kind identifier");
     }
 
@@ -39,11 +35,9 @@ public readonly record struct ActionKind
 
 /// <summary>Identifies a known-fact contract by a stable, hand-authored string.</summary>
 [JsonConverter(typeof(FactKindJsonConverter))]
-public readonly record struct FactKind
-{
+public readonly record struct FactKind {
     /// <summary>Initializes a fact kind from its stable identifier.</summary>
-    public FactKind(string id)
-    {
+    public FactKind(string id) {
         Id = StableIdentifier.Validate(id, nameof(id), "Fact kind identifier");
     }
 
@@ -54,26 +48,21 @@ public readonly record struct FactKind
     public override string ToString() => Id;
 }
 
-internal static class StableIdentifier
-{
+internal static class StableIdentifier {
     private const int MaximumLength = 256;
 
-    public static string Validate(string value, string parameterName, string description)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
+    public static string Validate(string value, string parameterName, string description) {
+        if (string.IsNullOrWhiteSpace(value)) {
             throw new ArgumentException($"{description} cannot be empty.", parameterName);
         }
 
-        if (value.Length > MaximumLength)
-        {
+        if (value.Length > MaximumLength) {
             throw new ArgumentException(
                 $"{description} cannot exceed {MaximumLength} characters.",
                 parameterName);
         }
 
-        if (value.Any(char.IsControl))
-        {
+        if (value.Any(char.IsControl)) {
             throw new ArgumentException($"{description} cannot contain control characters.", parameterName);
         }
 
@@ -81,8 +70,7 @@ internal static class StableIdentifier
     }
 }
 
-internal sealed class DecisionIdJsonConverter : JsonConverter<DecisionId>
-{
+internal sealed class DecisionIdJsonConverter : JsonConverter<DecisionId> {
     public override DecisionId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         new(ReadRequiredString(ref reader, "decision identifier"));
 
@@ -93,8 +81,7 @@ internal sealed class DecisionIdJsonConverter : JsonConverter<DecisionId>
         reader.GetString() ?? throw new JsonException($"The {description} must be a string.");
 }
 
-internal sealed class ActionKindJsonConverter : JsonConverter<ActionKind>
-{
+internal sealed class ActionKindJsonConverter : JsonConverter<ActionKind> {
     public override ActionKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         new(ReadRequiredString(ref reader, "action kind"));
 
@@ -105,8 +92,7 @@ internal sealed class ActionKindJsonConverter : JsonConverter<ActionKind>
         reader.GetString() ?? throw new JsonException($"The {description} must be a string.");
 }
 
-internal sealed class FactKindJsonConverter : JsonConverter<FactKind>
-{
+internal sealed class FactKindJsonConverter : JsonConverter<FactKind> {
     public override FactKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         new(ReadRequiredString(ref reader, "fact kind"));
 

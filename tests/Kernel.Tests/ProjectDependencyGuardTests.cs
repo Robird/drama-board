@@ -2,11 +2,9 @@ using System.Xml.Linq;
 
 namespace DramaBoard.Kernel.Tests;
 
-public sealed class ProjectDependencyGuardTests
-{
+public sealed class ProjectDependencyGuardTests {
     public static TheoryData<string, string[]> AllowedReferences =>
-        new()
-        {
+        new() {
             { "Kernel", [] },
             { "Protocol", [] },
             { "Decision.Validation", ["Protocol"] },
@@ -20,8 +18,7 @@ public sealed class ProjectDependencyGuardTests
     [MemberData(nameof(AllowedReferences))]
     public void CoreProject_HasOnlyAllowedDirectProjectReferences(
         string projectName,
-        string[] expectedReferences)
-    {
+        string[] expectedReferences) {
         string repositoryRoot = FindRepositoryRoot();
         string projectPath = Path.Combine(
             repositoryRoot,
@@ -44,11 +41,9 @@ public sealed class ProjectDependencyGuardTests
             actualReferences);
     }
 
-    private static string FindRepositoryRoot()
-    {
+    private static string FindRepositoryRoot() {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
-        {
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props"))) {
             current = current.Parent;
         }
 

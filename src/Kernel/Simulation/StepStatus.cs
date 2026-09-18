@@ -1,8 +1,7 @@
 namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Describes the normal outcome of one authoritative simulation step.</summary>
-public enum StepStatus
-{
+public enum StepStatus {
     /// <summary>Exactly one complete transition was published and installed.</summary>
     Committed,
 

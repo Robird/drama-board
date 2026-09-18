@@ -10,20 +10,17 @@ namespace DramaBoard.Spatial;
 /// The due time is the start of the model tick containing the intersection, rounded toward negative infinity.
 /// </summary>
 public sealed class SpatialContactOccurrenceRule :
-    IOccurrenceRule<GraphSpatialState, PassageContactOccurrenceData, GraphSpatialFact>
-{
+    IOccurrenceRule<GraphSpatialState, PassageContactOccurrenceData, GraphSpatialFact> {
     private readonly GraphDefinition _definition;
 
-    public SpatialContactOccurrenceRule(GraphDefinition definition)
-    {
+    public SpatialContactOccurrenceRule(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         _definition = definition;
     }
 
     public IReadOnlyList<OccurrenceCandidate<PassageContactOccurrenceData>> Forecast(
         GraphSpatialState world,
-        SimulationRules rules)
-    {
+        SimulationRules rules) {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(rules);
         GraphSpatialStateValidator.ValidateComplete(_definition, world);
@@ -33,14 +30,11 @@ public sealed class SpatialContactOccurrenceRule :
             .Where(entity => entity.Location is TraversingLocation)
             .GroupBy(entity => ((TraversingLocation)entity.Location).PassageId)
             .OrderBy(group => group.Key);
-        foreach (IGrouping<PassageId, SpatialEntity> passageGroup in passageGroups)
-        {
+        foreach (IGrouping<PassageId, SpatialEntity> passageGroup in passageGroups) {
             SpatialEntity[] traversing = [.. passageGroup];
-            for (int leftIndex = 0; leftIndex < traversing.Length; leftIndex++)
-            {
+            for (int leftIndex = 0; leftIndex < traversing.Length; leftIndex++) {
                 SpatialEntity left = traversing[leftIndex];
-                for (int rightIndex = leftIndex + 1; rightIndex < traversing.Length; rightIndex++)
-                {
+                for (int rightIndex = leftIndex + 1; rightIndex < traversing.Length; rightIndex++) {
                     SpatialEntity right = traversing[rightIndex];
                     var contactKey = new PassageContactKey(
                         passageGroup.Key,
@@ -53,8 +47,7 @@ public sealed class SpatialContactOccurrenceRule :
                             _definition,
                             world,
                             contactKey,
-                            out PassageContactCalculation calculation))
-                    {
+                            out PassageContactCalculation calculation)) {
                         continue;
                     }
 
@@ -77,8 +70,7 @@ public sealed class SpatialContactOccurrenceRule :
     public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(
         GraphSpatialState world,
         OccurrenceCandidate<PassageContactOccurrenceData> winner,
-        CancellationToken cancellationToken)
-    {
+        CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(winner);
         cancellationToken.ThrowIfCancellationRequested();
@@ -95,8 +87,7 @@ public sealed class SpatialContactOccurrenceRule :
                 out PassageContactCalculation calculation) ||
             winner.Key != CreateCandidateKey(data.ContactKey) ||
             winner.Due.ModelTime != calculation.Due ||
-            data.Kind != calculation.Kind)
-        {
+            data.Kind != calculation.Kind) {
             throw new InvalidOperationException(
                 "The selected passage contact does not match current segment truth.");
         }
@@ -105,8 +96,7 @@ public sealed class SpatialContactOccurrenceRule :
             [new PassageContactOccurredFact(data.ContactKey, data.Kind)]));
     }
 
-    private static CandidateKey CreateCandidateKey(PassageContactKey key)
-    {
+    private static CandidateKey CreateCandidateKey(PassageContactKey key) {
         var buffer = new ArrayBufferWriter<byte>();
         using var writer = new Utf8JsonWriter(buffer);
         writer.WriteStartArray();

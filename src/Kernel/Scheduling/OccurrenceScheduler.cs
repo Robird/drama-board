@@ -4,8 +4,7 @@ using System.Security.Cryptography;
 namespace DramaBoard.Kernel.Scheduling;
 
 /// <summary>Selects the unique next occurrence using the build's deterministic scheduler law.</summary>
-public static class OccurrenceScheduler
-{
+public static class OccurrenceScheduler {
     private const int RankLength = 32;
 
     // This separator, its terminating zero, the field order, and big-endian integer encoding are
@@ -24,8 +23,7 @@ public static class OccurrenceScheduler
     internal static OccurrenceCandidate<TData> SelectWinner<TData>(
         IEnumerable<OccurrenceCandidate<TData>> candidates,
         ulong worldSeed,
-        Func<ulong, CandidateDue, CandidateKey, byte[]> rankProvider)
-    {
+        Func<ulong, CandidateDue, CandidateKey, byte[]> rankProvider) {
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(rankProvider);
 
@@ -33,51 +31,41 @@ public static class OccurrenceScheduler
         var earliestCandidates = new List<OccurrenceCandidate<TData>>();
         CandidateDue? earliestDue = null;
 
-        foreach (OccurrenceCandidate<TData> candidate in candidates)
-        {
-            if (candidate is null)
-            {
+        foreach (OccurrenceCandidate<TData> candidate in candidates) {
+            if (candidate is null) {
                 throw new ArgumentException("Candidate collections cannot contain null entries.", nameof(candidates));
             }
 
-            if (!knownKeys.Add(candidate.Key))
-            {
+            if (!knownKeys.Add(candidate.Key)) {
                 throw new InvalidOperationException(
                     $"Duplicate candidate key '{candidate.Key}' was forecast in one selection round.");
             }
 
-            if (earliestDue is null || candidate.Due < earliestDue.Value)
-            {
+            if (earliestDue is null || candidate.Due < earliestDue.Value) {
                 earliestDue = candidate.Due;
                 earliestCandidates.Clear();
                 earliestCandidates.Add(candidate);
-            }
-            else if (candidate.Due == earliestDue.Value)
-            {
+            } else if (candidate.Due == earliestDue.Value) {
                 earliestCandidates.Add(candidate);
             }
         }
 
-        if (earliestCandidates.Count == 0)
-        {
+        if (earliestCandidates.Count == 0) {
             throw new InvalidOperationException("Cannot select a winner from an empty candidate set.");
         }
 
-        if (earliestCandidates.Count == 1)
-        {
+        if (earliestCandidates.Count == 1) {
             return earliestCandidates[0];
         }
 
         OccurrenceCandidate<TData> winner = earliestCandidates[0];
         byte[] winnerRank = RequiredRank(rankProvider(worldSeed, winner.Due, winner.Key));
-        for (int index = 1; index < earliestCandidates.Count; index++)
-        {
+        for (int index = 1; index < earliestCandidates.Count; index++) {
             OccurrenceCandidate<TData> contender = earliestCandidates[index];
             byte[] contenderRank = RequiredRank(rankProvider(worldSeed, contender.Due, contender.Key));
             int rankComparison = contenderRank.AsSpan().SequenceCompareTo(winnerRank);
             if (rankComparison < 0 ||
-                (rankComparison == 0 && contender.Key.CompareTo(winner.Key) < 0))
-            {
+                (rankComparison == 0 && contender.Key.CompareTo(winner.Key) < 0)) {
                 winner = contender;
                 winnerRank = contenderRank;
             }
@@ -89,8 +77,7 @@ public static class OccurrenceScheduler
     internal static byte[] ComputeRank(
         ulong worldSeed,
         CandidateDue due,
-        CandidateKey candidateKey)
-    {
+        CandidateKey candidateKey) {
         ArgumentNullException.ThrowIfNull(candidateKey);
 
         Span<byte> hmacKey = stackalloc byte[sizeof(ulong)];
@@ -122,10 +109,8 @@ public static class OccurrenceScheduler
         return HMACSHA256.HashData(hmacKey, messageSpan);
     }
 
-    private static byte[] RequiredRank(byte[] rank)
-    {
-        if (rank is null || rank.Length != RankLength)
-        {
+    private static byte[] RequiredRank(byte[] rank) {
+        if (rank is null || rank.Length != RankLength) {
             throw new InvalidOperationException(
                 $"A scheduler rank provider must return exactly {RankLength} bytes.");
         }

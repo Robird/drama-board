@@ -4,21 +4,16 @@ namespace DramaBoard.Spatial;
 
 public sealed record RouteLeg(PassageId PassageId, PlaceId FromPlaceId, PlaceId ToPlaceId);
 
-public abstract record RouteResult
-{
-    private protected RouteResult()
-    {
+public abstract record RouteResult {
+    private protected RouteResult() {
     }
 }
 
-public sealed record RouteFound : RouteResult
-{
-    public RouteFound(ModelDuration totalDuration, IEnumerable<RouteLeg> legs)
-    {
+public sealed record RouteFound : RouteResult {
+    public RouteFound(ModelDuration totalDuration, IEnumerable<RouteLeg> legs) {
         ArgumentNullException.ThrowIfNull(legs);
         RouteLeg[] array = [.. legs];
-        if (array.Length == 0 || array.Any(leg => leg is null))
-        {
+        if (array.Length == 0 || array.Any(leg => leg is null)) {
             throw new ArgumentException("A found route requires at least one non-null leg.", nameof(legs));
         }
 
@@ -35,12 +30,10 @@ public sealed record RouteFound : RouteResult
         TotalDuration == other.TotalDuration &&
         Legs.SequenceEqual(other.Legs);
 
-    public override int GetHashCode()
-    {
+    public override int GetHashCode() {
         var hash = new HashCode();
         hash.Add(TotalDuration);
-        foreach (RouteLeg leg in Legs)
-        {
+        foreach (RouteLeg leg in Legs) {
             hash.Add(leg);
         }
 

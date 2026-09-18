@@ -4,11 +4,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.Journal;
 
-public sealed class InMemoryJournalTests
-{
+public sealed class InMemoryJournalTests {
     [Fact]
-    public void JournalBatch_CopiesNonEmptyFactsAndExposesOneSharedHeader()
-    {
+    public void JournalBatch_CopiesNonEmptyFactsAndExposesOneSharedHeader() {
         string[] inputFacts = ["first", "second"];
         var instant = new LogicalInstant(new ModelTime(10), causalOrdinal: 3);
         CandidateKey causeKey = CandidateKey.FromUtf8("timer:1");
@@ -22,8 +20,7 @@ public sealed class InMemoryJournalTests
     }
 
     [Fact]
-    public void JournalBatch_EmptyNullOrContainingNullFactsAreRejected()
-    {
+    public void JournalBatch_EmptyNullOrContainingNullFactsAreRejected() {
         LogicalInstant instant = Instant(10, 0);
         CandidateKey key = CandidateKey.FromUtf8("key");
 
@@ -38,8 +35,7 @@ public sealed class InMemoryJournalTests
     }
 
     [Fact]
-    public void AppendBatch_StoresOnlyWholeBatchesAndAllowsManyOrderedFacts()
-    {
+    public void AppendBatch_StoresOnlyWholeBatchesAndAllowsManyOrderedFacts() {
         var journal = new InMemoryJournal<string>(lineageId: 1);
         var batch = new JournalBatch<string>(
             Instant(10, 0),
@@ -56,8 +52,7 @@ public sealed class InMemoryJournalTests
     }
 
     [Fact]
-    public void AppendBatch_RequiresStrictlyIncreasingBatchInstants()
-    {
+    public void AppendBatch_RequiresStrictlyIncreasingBatchInstants() {
         var journal = new InMemoryJournal<string>(lineageId: 1);
         JournalBatch<string> first = Batch(10, 1, "first");
         journal.AppendBatch(first);
@@ -72,8 +67,7 @@ public sealed class InMemoryJournalTests
     }
 
     [Fact]
-    public void ForkPrefix_CopiesOnlyCompleteBatchesIntoIndependentJournal()
-    {
+    public void ForkPrefix_CopiesOnlyCompleteBatchesIntoIndependentJournal() {
         var journal = new InMemoryJournal<string>(lineageId: 1);
         journal.AppendBatch(Batch(10, 0, "a", "b"));
         journal.AppendBatch(Batch(10, 1, "c"));

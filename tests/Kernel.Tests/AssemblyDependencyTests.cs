@@ -1,10 +1,8 @@
 namespace DramaBoard.Kernel.Tests;
 
-public sealed class AssemblyDependencyTests
-{
+public sealed class AssemblyDependencyTests {
     [Fact]
-    public void Kernel_DoesNotReferencePlayerHostOrProtocolAssemblies()
-    {
+    public void Kernel_DoesNotReferencePlayerHostOrProtocolAssemblies() {
         string[] forbidden =
         [
             "DramaBoard.Decision.Validation",

@@ -2,14 +2,12 @@ namespace DramaBoard.Kernel.Time;
 
 /// <summary>Represents a model-time duration as one-millisecond ticks so it shares ModelTime's fixed, calendar-free scale.</summary>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.ModelDuration", 1)]
-public readonly partial struct ModelDuration : IComparable<ModelDuration>, IEquatable<ModelDuration>
-{
+public readonly partial struct ModelDuration : IComparable<ModelDuration>, IEquatable<ModelDuration> {
     [Atelia.DurableGraph.DurableField(1)] private readonly long _ticks;
     private const long TicksPerSecond = 1_000;
 
     /// <summary>Initializes a model-time duration from a number of one-millisecond ticks.</summary>
-    public ModelDuration(long ticks)
-    {
+    public ModelDuration(long ticks) {
         _ticks = ticks;
     }
 

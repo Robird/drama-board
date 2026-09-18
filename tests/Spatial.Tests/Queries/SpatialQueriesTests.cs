@@ -2,11 +2,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Queries;
 
-public sealed class SpatialQueriesTests
-{
+public sealed class SpatialQueriesTests {
     [Fact]
-    public void GetLocation_ProjectsCeilingTraversalAndKeepsBoundaryTraversingUntilArrivalCommits()
-    {
+    public void GetLocation_ProjectsCeilingTraversalAndKeepsBoundaryTraversingUntilArrivalCommits() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -43,8 +41,7 @@ public sealed class SpatialQueriesTests
     }
 
     [Fact]
-    public void GetExits_ReturnsParallelOpenAndClosedDirectionsInStablePassageOrder()
-    {
+    public void GetExits_ReturnsParallelOpenAndClosedDirectionsInStablePassageOrder() {
         PassageDefinition bridge = GraphTestWorld.Passage(
             GraphTestWorld.Bridge,
             GraphTestWorld.A,
@@ -77,8 +74,7 @@ public sealed class SpatialQueriesTests
     }
 
     [Fact]
-    public void CurrentRelations_AreDerivedFromExclusiveLocationAndFutureWorldline()
-    {
+    public void CurrentRelations_AreDerivedFromExclusiveLocationAndFutureWorldline() {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
@@ -91,8 +87,7 @@ public sealed class SpatialQueriesTests
             ("waiting", GraphTestWorld.A));
         var planner = new SpatialPlanner(definition);
         var reducer = new GraphSpatialReducer(definition);
-        foreach (string id in new[] { "target", "companion-z", "companion-a", "opposite" })
-        {
+        foreach (string id in new[] { "target", "companion-z", "companion-a", "opposite" }) {
             state = GraphTestWorld.Fold(
                 reducer,
                 state,
@@ -121,8 +116,7 @@ public sealed class SpatialQueriesTests
     }
 
     [Fact]
-    public void Query_DistinguishesUnknownReferencesFromValidEmptyResults()
-    {
+    public void Query_DistinguishesUnknownReferencesFromValidEmptyResults() {
         GraphDefinition definition = GraphDefinition.Create([GraphTestWorld.A], []);
         GraphSpatialState state = GraphTestWorld.State(definition, ("alone", GraphTestWorld.A));
         var queries = new SpatialQueries(definition);

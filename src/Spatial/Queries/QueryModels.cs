@@ -3,10 +3,8 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Spatial;
 
 /// <summary>Base objective location projected at one requested model time.</summary>
-public abstract record SpatialLocationView
-{
-    private protected SpatialLocationView()
-    {
+public abstract record SpatialLocationView {
+    private protected SpatialLocationView() {
     }
 }
 

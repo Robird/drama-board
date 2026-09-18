@@ -34,7 +34,10 @@ public sealed class FreePlaySession {
         GraphDefinition known = FullMapPlayerSpatialKnowledgeGetter<FreePlayWorld>.Instance
             .GetKnownGraph(genesis, FreePlayScene.Actor.Value, _scene.Definition).KnownGraph;
         var positions = new Dictionary<string, (int X, int Y)> {
-            ["A"] = (80, 70), ["B"] = (320, 70), ["C"] = (80, 230), ["D"] = (320, 230)
+            ["A"] = (80, 70),
+            ["B"] = (320, 70),
+            ["C"] = (80, 230),
+            ["D"] = (320, 230)
         };
         var map = new KnownMap(Freeze(known.Places.Select(place =>
             new MapPlace(place.Value, place.Value, positions[place.Value].X, positions[place.Value].Y))),
@@ -169,13 +172,25 @@ public sealed class FreePlaySession {
             long revision = _player.ViewRevision + 1;
             string location = _scene.Location(_kernel.World);
             long time = _kernel.CurrentModelTime.Ticks;
-            _player = _player with { ViewRevision = revision, ModelTimeMs = time, Location = location,
-                Trajectory = Freeze(trajectory), Status = "advancing", Decision = null };
-            _dev = _dev with { ViewRevision = revision, ModelTimeMs = time, Location = location,
-                TransitionCount = _kernel.Version.TransitionCount, Records = records,
+            _player = _player with {
+                ViewRevision = revision,
+                ModelTimeMs = time,
+                Location = location,
+                Trajectory = Freeze(trajectory),
+                Status = "advancing",
+                Decision = null
+            };
+            _dev = _dev with {
+                ViewRevision = revision,
+                ModelTimeMs = time,
+                Location = location,
+                TransitionCount = _kernel.Version.TransitionCount,
+                Records = records,
                 LastCommittedInstant = _kernel.LastCommittedInstant is { } instant
                     ? new(instant.ModelTime.Ticks, instant.CausalOrdinal) : null,
-                Status = "advancing", PendingDecisionId = null };
+                Status = "advancing",
+                PendingDecisionId = null
+            };
             SignalChange();
         }
     }

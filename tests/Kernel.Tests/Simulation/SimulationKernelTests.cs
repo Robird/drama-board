@@ -5,11 +5,9 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Kernel.Tests.Simulation;
 
-public sealed class SimulationKernelTests
-{
+public sealed class SimulationKernelTests {
     [Fact]
-    public async Task EmptyForecastAndBoundaryDoNotCreateEvents()
-    {
+    public async Task EmptyForecastAndBoundaryDoNotCreateEvents() {
         var history = History(7);
         var rule = new TestRule(_ => []);
         var kernel = Kernel(history, [rule]);
@@ -26,8 +24,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task OneOccurrencePerStepAndFullReforecast()
-    {
+    public async Task OneOccurrencePerStepAndFullReforecast() {
         var history = History();
         var rule = new TestRule(world => world < 2 ? [Candidate($"next:{world}", 5)] : []);
         var kernel = Kernel(history, [rule]);
@@ -43,10 +40,8 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task GlobalWinnerAndRegistrationOrderChooseTheSameOwner()
-    {
-        async Task<(int World, CandidateKey Cause)> Run(bool reverse)
-        {
+    public async Task GlobalWinnerAndRegistrationOrderChooseTheSameOwner() {
+        async Task<(int World, CandidateKey Cause)> Run(bool reverse) {
             var a = new TestRule(_ => [Candidate("a", 10)], (_, _, _) => Planned(11));
             var b = new TestRule(_ => [Candidate("b", 10)], (_, _, _) => Planned(22));
             var history = History();
@@ -62,8 +57,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task DuplicateOrPastCandidateFailsBeforePlan()
-    {
+    public async Task DuplicateOrPastCandidateFailsBeforePlan() {
         var duplicate = new TestRule(_ => [Candidate("same", 10), Candidate("same", 11)]);
         var kernel = Kernel(History(), [duplicate]);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(20)));
@@ -75,8 +69,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task InFlightPlanRejectsConcurrentStepAndRecovery()
-    {
+    public async Task InFlightPlanRejectsConcurrentStepAndRecovery() {
         var completion = new TaskCompletionSource<TransitionDraft<int>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var rule = new TestRule(_ => [Candidate("blocked", 1)], (_, _, _) => new(completion.Task));
         var kernel = Kernel(History(), [rule]);
@@ -88,13 +81,11 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task OrderedFactsShareOneInstantAndHotPathDoesNotFoldTwice()
-    {
+    public async Task OrderedFactsShareOneInstantAndHotPathDoesNotFoldTwice() {
         var history = History();
         var rule = new TestRule(_ => [Candidate("many", 5)], (_, _, _) => Planned(1, 2, 3));
         var calls = new List<LogicalInstant>();
-        var kernel = Kernel(history, [rule], (world, instant, fact) =>
-        {
+        var kernel = Kernel(history, [rule], (world, instant, fact) => {
             calls.Add(instant);
             return world * 10 + fact;
         });
@@ -111,8 +102,7 @@ public sealed class SimulationKernelTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
-    public async Task EveryFactFailureLeavesOldStateAndNoEvent(int failAt)
-    {
+    public async Task EveryFactFailureLeavesOldStateAndNoEvent(int failAt) {
         var history = History();
         var rule = new TestRule(_ => [Candidate("many", 5)], (_, _, _) => Planned(1, 2, 3));
         var kernel = Kernel(history, [rule], (world, _, fact) =>
@@ -126,11 +116,9 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task ValidationFailureDoesNotPublishEvent()
-    {
+    public async Task ValidationFailureDoesNotPublishEvent() {
         var history = History();
-        var kernel = Kernel(history, [new(_ => [Candidate("bad", 0)])], validate: world =>
-        {
+        var kernel = Kernel(history, [new(_ => [Candidate("bad", 0)])], validate: world => {
             if (world != 0) { throw new TestFailure(); }
         });
         await Assert.ThrowsAsync<TestFailure>(async () => await kernel.StepAsync(Time(0)));
@@ -140,12 +128,10 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task CancellationAfterPlanBeforeEventLeavesCompletedBoundaryUnchanged()
-    {
+    public async Task CancellationAfterPlanBeforeEventLeavesCompletedBoundaryUnchanged() {
         using var cancellation = new CancellationTokenSource();
         var history = History();
-        var rule = new TestRule(_ => [Candidate("cancel", 0)], (_, _, _) =>
-        {
+        var rule = new TestRule(_ => [Candidate("cancel", 0)], (_, _, _) => {
             cancellation.Cancel();
             return Planned(1);
         });
@@ -162,8 +148,7 @@ public sealed class SimulationKernelTests
     [InlineData("after-e", true, false)]
     [InlineData("before-s", true, false)]
     [InlineData("after-s", false, true)]
-    public async Task PublicationFailureStopsKernelAndResumeUsesActualBoundary(string failAt, bool hasPending, bool completed)
-    {
+    public async Task PublicationFailureStopsKernelAndResumeUsesActualBoundary(string failAt, bool hasPending, bool completed) {
         var history = new ControlledHistory { FailAt = failAt };
         var rule = new TestRule(_ => [Candidate("write", 1)]);
         var kernel = Kernel(history, [rule]);
@@ -192,8 +177,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task EventPublicationBeginsNonCancelableCompletion()
-    {
+    public async Task EventPublicationBeginsNonCancelableCompletion() {
         using var cancellation = new CancellationTokenSource();
         var history = new ControlledHistory { AfterEvent = cancellation.Cancel };
         var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
@@ -204,8 +188,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task SubstitutedEventStopsBeforeStatePublication()
-    {
+    public async Task SubstitutedEventStopsBeforeStatePublication() {
         var history = new ControlledHistory { SubstituteEvent = true };
         var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
@@ -215,8 +198,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task StateCommitThatDoesNotInstallItsWorldIsRejected()
-    {
+    public async Task StateCommitThatDoesNotInstallItsWorldIsRejected() {
         var history = new ControlledHistory { IgnoreState = true };
         var kernel = Kernel(history, [new(_ => [Candidate("write", 1)])]);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
@@ -226,8 +208,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task HistoryStateMovedWithoutCursorIsRejectedBeforeForecast()
-    {
+    public async Task HistoryStateMovedWithoutCursorIsRejectedBeforeForecast() {
         var history = new ControlledHistory();
         var rule = new TestRule(_ => []);
         var kernel = Kernel(history, [rule]);
@@ -238,8 +219,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task EqualButDifferentReferenceStateCannotReplaceInstalledWorld()
-    {
+    public async Task EqualButDifferentReferenceStateCannotReplaceInstalledWorld() {
         var state = new ValueWorld(7);
         var history = new ReferenceHistory(state);
         var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, _ => { });
@@ -250,8 +230,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task ThrowingPendingGetterReleasesOperationGuard()
-    {
+    public async Task ThrowingPendingGetterReleasesOperationGuard() {
         var history = new ControlledHistory();
         var kernel = Kernel(history, [new(_ => [])]);
         history.ThrowPendingGetter = true;
@@ -262,8 +241,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task PendingMustBeRecoveredExplicitlyAndOnlyOnce()
-    {
+    public async Task PendingMustBeRecoveredExplicitlyAndOnlyOnce() {
         var history = History(7, Cursor(12, 10, 2, "old"));
         history.CommitEvent(Event("pending", 10, 3, 1, 2));
         var rule = new TestRule(_ => throw new TestFailure());
@@ -283,8 +261,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public void CompletedHeadRestoresWithoutAnyHistoricalFold()
-    {
+    public void CompletedHeadRestoresWithoutAnyHistoricalFold() {
         var history = History(123, Cursor(80, 500, 6, "last"));
         var kernel = Kernel(history, [new(_ => throw new TestFailure())], (_, _, _) => throw new TestFailure());
         Assert.Empty(history.CompletedEvents); // No journal count is needed to restore cursor 80.
@@ -298,8 +275,7 @@ public sealed class SimulationKernelTests
     [InlineData("new", 9, 0)]
     [InlineData("new", 10, 4)]
     [InlineData("new", 11, 1)]
-    public void InvalidPendingCauseOrInstantDoesNotFoldOrPublish(string cause, long time, long ordinal)
-    {
+    public void InvalidPendingCauseOrInstantDoesNotFoldOrPublish(string cause, long time, long ordinal) {
         var history = History(7, Cursor(12, 10, 2, "old"));
         history.CommitEvent(Event(cause, time, ordinal, 1));
         var kernel = Kernel(history, [], (_, _, _) => throw new TestFailure());
@@ -310,8 +286,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public void PendingFoldFailureStopsWithoutPublishingPartialState()
-    {
+    public void PendingFoldFailureStopsWithoutPublishingPartialState() {
         var history = History(7);
         history.CommitEvent(Event("pending", 1, 0, 1, 2));
         var kernel = Kernel(history, [], (world, _, fact) => fact == 2 ? throw new TestFailure() : world + fact);
@@ -323,8 +298,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public void PendingRecoveryCanBeCanceledBeforeItBegins()
-    {
+    public void PendingRecoveryCanBeCanceledBeforeItBegins() {
         var history = History();
         history.CommitEvent(Event("pending", 1, 0, 1));
         var kernel = Kernel(history, []);
@@ -336,8 +310,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task SameCauseNoProgressAndSameTimeBudgetStillApply()
-    {
+    public async Task SameCauseNoProgressAndSameTimeBudgetStillApply() {
         var noop = new TestRule(_ => [Candidate("same", 0)], (_, _, _) => Planned(0));
         var history = History(7);
         var kernel = Kernel(history, [noop]);
@@ -354,8 +327,7 @@ public sealed class SimulationKernelTests
     }
 
     [Fact]
-    public async Task VersionOverflowFailsBeforePlan()
-    {
+    public async Task VersionOverflowFailsBeforePlan() {
         var rule = new TestRule(_ => [Candidate("new", 0)]);
         var kernel = Kernel(History(1, Cursor(long.MaxValue, 0, 0, "old")), [rule]);
         await Assert.ThrowsAsync<OverflowException>(async () => await kernel.StepAsync(Time(0)));
@@ -366,22 +338,19 @@ public sealed class SimulationKernelTests
     [InlineData(1L, 1L)]
     [InlineData(1L, 9L)]
     [InlineData(long.MaxValue, long.MaxValue)]
-    public void CursorRejectsCausalOrdinalImpossibleForCompletedCount(long count, long ordinal)
-    {
+    public void CursorRejectsCausalOrdinalImpossibleForCompletedCount(long count, long ordinal) {
         Assert.Throws<ArgumentException>(() => Cursor(count, 10, ordinal, "old"));
     }
 
     [Fact]
-    public void CursorAcceptsLastOrdinalOfACompletedSameTimePrefix()
-    {
+    public void CursorAcceptsLastOrdinalOfACompletedSameTimePrefix() {
         KernelCursor cursor = Cursor(10, 50, 9, "last");
         cursor.Validate();
         Assert.Equal(9, cursor.LastInstant!.Value.CausalOrdinal);
     }
 
     [Fact]
-    public void CursorAndInitialWorldAreValidatedWithoutHistoryCounts()
-    {
+    public void CursorAndInitialWorldAreValidatedWithoutHistoryCounts() {
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(0), null, null));
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 0), Time(0), new(Time(0), 0), Key("bad")));
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(2), new(Time(1), 0), Key("bad")));
@@ -400,11 +369,9 @@ public sealed class SimulationKernelTests
         Func<int, LogicalInstant, int, int>? fold = null, Action<int>? validate = null, SimulationRules? rules = null) =>
         new(history, rules ?? new(42, 100), occurrenceRules, fold ?? ((world, _, fact) => world + fact), validate ?? (_ => { }));
 
-    private sealed class TestRule : IOccurrenceRule<int, int, int>
-    {
+    private sealed class TestRule : IOccurrenceRule<int, int, int> {
         public TestRule(Func<int, IReadOnlyList<OccurrenceCandidate<int>>> forecast,
-            Func<int, OccurrenceCandidate<int>, CancellationToken, ValueTask<TransitionDraft<int>>>? plan = null)
-        {
+            Func<int, OccurrenceCandidate<int>, CancellationToken, ValueTask<TransitionDraft<int>>>? plan = null) {
             Forecast = forecast;
             _plan = plan ?? ((_, _, _) => Planned(1));
         }
@@ -412,14 +379,11 @@ public sealed class SimulationKernelTests
         private readonly Func<int, OccurrenceCandidate<int>, CancellationToken, ValueTask<TransitionDraft<int>>> _plan;
         public int ForecastCalls { get; private set; }
         public int PlanCalls { get; private set; }
-        IReadOnlyList<OccurrenceCandidate<int>> IOccurrenceRule<int, int, int>.Forecast(int world, SimulationRules rules)
-        { ForecastCalls++; return Forecast(world); }
-        public ValueTask<TransitionDraft<int>> PlanSelectedAsync(int world, OccurrenceCandidate<int> winner, CancellationToken cancellationToken)
-        { PlanCalls++; return _plan(world, winner, cancellationToken); }
+        IReadOnlyList<OccurrenceCandidate<int>> IOccurrenceRule<int, int, int>.Forecast(int world, SimulationRules rules) { ForecastCalls++; return Forecast(world); }
+        public ValueTask<TransitionDraft<int>> PlanSelectedAsync(int world, OccurrenceCandidate<int> winner, CancellationToken cancellationToken) { PlanCalls++; return _plan(world, winner, cancellationToken); }
     }
 
-    private sealed class ControlledHistory : IOccurrenceHistory<int, int>
-    {
+    private sealed class ControlledHistory : IOccurrenceHistory<int, int> {
         private OccurrenceEvent<int>? _pending;
         public int State { get; set; }
         public KernelCursor Cursor { get; private set; } = SimulationKernelTests.Cursor();
@@ -430,15 +394,13 @@ public sealed class SimulationKernelTests
         public bool ThrowPendingGetter { get; set; }
         public Action? AfterEvent { get; init; }
         public int StateCalls { get; private set; }
-        public void CommitEvent(OccurrenceEvent<int> occurrence)
-        {
+        public void CommitEvent(OccurrenceEvent<int> occurrence) {
             if (FailAt == "before-e") { throw new IOException(); }
             _pending = SubstituteEvent ? new(occurrence.CauseKey, occurrence.TargetInstant, [99]) : occurrence;
             AfterEvent?.Invoke();
             if (FailAt == "after-e") { throw new IOException(); }
         }
-        public void CommitState(int nextState, KernelCursor nextCursor)
-        {
+        public void CommitState(int nextState, KernelCursor nextCursor) {
             StateCalls++;
             if (FailAt == "before-s") { throw new IOException(); }
             if (!IgnoreState) { State = nextState; }
@@ -449,8 +411,7 @@ public sealed class SimulationKernelTests
     }
 
     private sealed record ValueWorld(int Value);
-    private sealed class ReferenceHistory(ValueWorld state) : IOccurrenceHistory<ValueWorld, int>
-    {
+    private sealed class ReferenceHistory(ValueWorld state) : IOccurrenceHistory<ValueWorld, int> {
         public ValueWorld State { get; set; } = state;
         public KernelCursor Cursor => SimulationKernelTests.Cursor();
         public OccurrenceEvent<int>? PendingEvent => null;

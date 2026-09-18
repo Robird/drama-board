@@ -2,13 +2,10 @@ namespace DramaBoard.Kernel.Time;
 
 /// <summary>Identifies one committed occurrence by model time and its causal order at that time.</summary>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.LogicalInstant", 1)]
-public readonly partial record struct LogicalInstant : IComparable<LogicalInstant>
-{
+public readonly partial record struct LogicalInstant : IComparable<LogicalInstant> {
     /// <summary>Initializes a committed logical instant.</summary>
-    public LogicalInstant(ModelTime modelTime, long causalOrdinal)
-    {
-        if (causalOrdinal < 0)
-        {
+    public LogicalInstant(ModelTime modelTime, long causalOrdinal) {
+        if (causalOrdinal < 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(causalOrdinal),
                 "The causal ordinal cannot be negative.");
@@ -25,8 +22,7 @@ public readonly partial record struct LogicalInstant : IComparable<LogicalInstan
     [field: Atelia.DurableGraph.DurableField(2)] public long CausalOrdinal { get; }
 
     /// <inheritdoc />
-    public int CompareTo(LogicalInstant other)
-    {
+    public int CompareTo(LogicalInstant other) {
         int timeComparison = ModelTime.CompareTo(other.ModelTime);
         return timeComparison != 0
             ? timeComparison

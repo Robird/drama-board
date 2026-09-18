@@ -6,11 +6,9 @@ using DramaBoard.Spatial.Tests.TestSupport;
 
 namespace DramaBoard.Spatial.Tests.Acceptance;
 
-public sealed class SpatialKernelAcceptanceTests
-{
+public sealed class SpatialKernelAcceptanceTests {
     [Fact]
-    public async Task SameTickWinner_CommitsOneBatchAndQueriesReadTheCommittedPrefixWithPeersPending()
-    {
+    public async Task SameTickWinner_CommitsOneBatchAndQueriesReadTheCommittedPrefixWithPeersPending() {
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
         ulong seed = FindSeedSelectingScheduleFirst(context);
         var journal = CreateHistory(context.Genesis, lineageId: 1);
@@ -41,15 +39,13 @@ public sealed class SpatialKernelAcceptanceTests
     }
 
     [Fact]
-    public async Task SameTickCandidates_AreGloballyArbitratedThenFullyReforecastToExhaustion()
-    {
+    public async Task SameTickCandidates_AreGloballyArbitratedThenFullyReforecastToExhaustion() {
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
         var journal = CreateHistory(context.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> kernel =
             CreateKernel(context, worldSeed: 987, journal);
 
-        for (int expectedCount = 1; expectedCount <= 4; expectedCount++)
-        {
+        for (int expectedCount = 1; expectedCount <= 4; expectedCount++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(10)));
             Assert.Equal(expectedCount, kernel.Version.TransitionCount);
             Assert.Equal(expectedCount, journal.CompletedEvents.Count);
@@ -57,8 +53,7 @@ public sealed class SpatialKernelAcceptanceTests
 
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(10)));
         Assert.Equal([0L, 1L, 2L, 3L], journal.CompletedEvents.Select(batch => batch.TargetInstant.CausalOrdinal));
-        Assert.All(journal.CompletedEvents, batch =>
-        {
+        Assert.All(journal.CompletedEvents, batch => {
             Assert.Equal(GraphTestWorld.Time(10), batch.TargetInstant.ModelTime);
             Assert.Single(batch.Facts);
         });
@@ -68,8 +63,7 @@ public sealed class SpatialKernelAcceptanceTests
     }
 
     [Fact]
-    public async Task DefinitionPermutationAndForecastEnumeration_DoNotChangeWinnerSequence()
-    {
+    public async Task DefinitionPermutationAndForecastEnumeration_DoNotChangeWinnerSequence() {
         ContenderWorld first = CreateContenderWorld(reverseInputs: false);
         ContenderWorld second = CreateContenderWorld(reverseInputs: true);
         var firstJournal = CreateHistory(first.Genesis, lineageId: 1);
@@ -79,8 +73,7 @@ public sealed class SpatialKernelAcceptanceTests
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> secondKernel =
             CreateKernel(second, worldSeed: 71, secondJournal);
 
-        for (int index = 0; index < 4; index++)
-        {
+        for (int index = 0; index < 4; index++) {
             Assert.Equal(StepStatus.Committed, await firstKernel.StepAsync(GraphTestWorld.Time(10)));
             Assert.Equal(StepStatus.Committed, await secondKernel.StepAsync(GraphTestWorld.Time(10)));
         }
@@ -95,16 +88,14 @@ public sealed class SpatialKernelAcceptanceTests
     }
 
     [Fact]
-    public async Task Replay_FoldsCompleteSpatialBatchesAndForkContinuesIndependently()
-    {
+    public async Task Replay_FoldsCompleteSpatialBatchesAndForkContinuesIndependently() {
         ContenderWorld context = CreateContenderWorld(reverseInputs: false);
         const ulong Seed = 41;
         var simulationRules = new SimulationRules(Seed, 100);
         var sourceJournal = CreateHistory(context.Genesis, lineageId: 1);
         SimulationKernel<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> source =
             CreateKernel(context, Seed, sourceJournal);
-        for (int index = 0; index < 4; index++)
-        {
+        for (int index = 0; index < 4; index++) {
             Assert.Equal(StepStatus.Committed, await source.StepAsync(GraphTestWorld.Time(10)));
         }
 
@@ -174,16 +165,13 @@ public sealed class SpatialKernelAcceptanceTests
         history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
             value.TargetInstant, value.CauseKey, value.Facts)).ToArray();
 
-    private static ulong FindSeedSelectingScheduleFirst(ContenderWorld context)
-    {
+    private static ulong FindSeedSelectingScheduleFirst(ContenderWorld context) {
         IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> candidates =
             context.Rule.Forecast(context.Genesis, new SimulationRules(0, 100));
-        for (ulong seed = 0; seed < 10_000; seed++)
-        {
+        for (ulong seed = 0; seed < 10_000; seed++) {
             OccurrenceCandidate<SpatialOccurrenceData> winner =
                 OccurrenceScheduler.SelectWinner(candidates, seed);
-            if (winner.Data is PassageEntryChangeOccurrenceData)
-            {
+            if (winner.Data is PassageEntryChangeOccurrenceData) {
                 return seed;
             }
         }
@@ -191,8 +179,7 @@ public sealed class SpatialKernelAcceptanceTests
         throw new InvalidOperationException("Could not find a deterministic schedule-first test seed.");
     }
 
-    private static ContenderWorld CreateContenderWorld(bool reverseInputs)
-    {
+    private static ContenderWorld CreateContenderWorld(bool reverseInputs) {
         var second = new PassageId("second");
         PlaceId[] places = [GraphTestWorld.A, GraphTestWorld.B, GraphTestWorld.C];
         PassageDefinition[] passages =
@@ -200,8 +187,7 @@ public sealed class SpatialKernelAcceptanceTests
             GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10),
             GraphTestWorld.Passage(second, GraphTestWorld.B, GraphTestWorld.C, length: 10),
         ];
-        if (reverseInputs)
-        {
+        if (reverseInputs) {
             Array.Reverse(places);
             Array.Reverse(passages);
         }
@@ -212,8 +198,7 @@ public sealed class SpatialKernelAcceptanceTests
             new(new EntityId("alice"), GraphTestWorld.A),
             new(new EntityId("bob"), GraphTestWorld.C),
         ];
-        if (reverseInputs)
-        {
+        if (reverseInputs) {
             Array.Reverse(placements);
         }
 

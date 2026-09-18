@@ -4,21 +4,18 @@ using DramaBoard.Protocol;
 namespace DramaBoard.Player;
 
 /// <summary>Chooses uniformly from available affordances using stable request-addressed samples.</summary>
-public sealed class RandomPlayerDriver : IPlayerDriver
-{
+public sealed class RandomPlayerDriver : IPlayerDriver {
     private readonly long _seed;
 
     /// <summary>Initializes a deterministic random Player from an explicit seed.</summary>
-    public RandomPlayerDriver(long seed)
-    {
+    public RandomPlayerDriver(long seed) {
         _seed = seed;
     }
 
     /// <inheritdoc />
     public ValueTask<PlayerDecision> DecideAsync(
         DecisionRequest request,
-        CancellationToken cancellationToken)
-    {
+        CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 

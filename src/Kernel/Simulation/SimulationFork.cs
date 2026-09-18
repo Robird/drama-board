@@ -4,8 +4,7 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Creates a new lineage from a complete in-memory Journal transition prefix.</summary>
-public static class SimulationFork
-{
+public static class SimulationFork {
     /// <summary>Copies and replays a batch prefix under a new lineage identity.</summary>
     public static InMemoryForkResult<TWorld, TFact> Create<TWorld, TFact>(
         TWorld genesisWorld,
@@ -15,8 +14,7 @@ public static class SimulationFork
         long newLineageId,
         SimulationRules simulationRules,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate)
-    {
+        Action<TWorld> validate) {
         ArgumentNullException.ThrowIfNull(sourceJournal);
         ArgumentNullException.ThrowIfNull(simulationRules);
 

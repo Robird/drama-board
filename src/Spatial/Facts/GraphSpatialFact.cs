@@ -5,8 +5,7 @@ namespace DramaBoard.Spatial;
 
 /// <summary>Base payload for one authoritative Graph Spatial state change.</summary>
 [DurableType("DramaBoard.Spatial.GraphSpatialFact", 1)]
-public abstract partial class GraphSpatialFact : IDurableObject, IEquatable<GraphSpatialFact>
-{
+public abstract partial class GraphSpatialFact : IDurableObject, IEquatable<GraphSpatialFact> {
     public bool Equals(GraphSpatialFact? other) => other is not null && Equals((object)other);
 
     public abstract override bool Equals(object? obj);
@@ -19,13 +18,11 @@ public abstract partial class GraphSpatialFact : IDurableObject, IEquatable<Grap
 }
 
 [DurableType("DramaBoard.Spatial.EntityPlacedFact", 1)]
-public sealed partial class EntityPlacedFact : GraphSpatialFact, IEquatable<EntityPlacedFact>
-{
+public sealed partial class EntityPlacedFact : GraphSpatialFact, IEquatable<EntityPlacedFact> {
     [DurableField(1)] private readonly EntityId _entityId;
     [DurableField(2)] private readonly PlaceId _placeId;
 
-    public EntityPlacedFact(EntityId EntityId, PlaceId PlaceId)
-    {
+    public EntityPlacedFact(EntityId EntityId, PlaceId PlaceId) {
         _entityId = EntityId;
         _placeId = PlaceId;
     }
@@ -43,8 +40,7 @@ public sealed partial class EntityPlacedFact : GraphSpatialFact, IEquatable<Enti
 }
 
 [DurableType("DramaBoard.Spatial.EntityRemovedFact", 1)]
-public sealed partial class EntityRemovedFact : GraphSpatialFact, IEquatable<EntityRemovedFact>
-{
+public sealed partial class EntityRemovedFact : GraphSpatialFact, IEquatable<EntityRemovedFact> {
     [DurableField(1)] private readonly EntityId _entityId;
 
     public EntityRemovedFact(EntityId EntityId) => _entityId = EntityId;
@@ -59,15 +55,13 @@ public sealed partial class EntityRemovedFact : GraphSpatialFact, IEquatable<Ent
 }
 
 [DurableType("DramaBoard.Spatial.TraversalStartedFact", 1)]
-public sealed partial class TraversalStartedFact : GraphSpatialFact, IEquatable<TraversalStartedFact>
-{
+public sealed partial class TraversalStartedFact : GraphSpatialFact, IEquatable<TraversalStartedFact> {
     [DurableField(1)] private readonly EntityId _entityId;
     [DurableField(2)] private readonly PassageId _passageId;
     [DurableField(3)] private readonly PlaceId _fromPlaceId;
     [DurableField(4)] private readonly long _speedSnapshot;
 
-    public TraversalStartedFact(EntityId EntityId, PassageId PassageId, PlaceId FromPlaceId, long SpeedSnapshot)
-    {
+    public TraversalStartedFact(EntityId EntityId, PassageId PassageId, PlaceId FromPlaceId, long SpeedSnapshot) {
         _entityId = EntityId;
         _passageId = PassageId;
         _fromPlaceId = FromPlaceId;
@@ -93,13 +87,11 @@ public sealed partial class TraversalStartedFact : GraphSpatialFact, IEquatable<
 }
 
 [DurableType("DramaBoard.Spatial.TraversalReversedFact", 1)]
-public sealed partial class TraversalReversedFact : GraphSpatialFact, IEquatable<TraversalReversedFact>
-{
+public sealed partial class TraversalReversedFact : GraphSpatialFact, IEquatable<TraversalReversedFact> {
     [DurableField(1)] private readonly EntityId _entityId;
     [DurableField(2)] private readonly long _expectedMovementGeneration;
 
-    public TraversalReversedFact(EntityId EntityId, long ExpectedMovementGeneration)
-    {
+    public TraversalReversedFact(EntityId EntityId, long ExpectedMovementGeneration) {
         _entityId = EntityId;
         _expectedMovementGeneration = ExpectedMovementGeneration;
     }
@@ -118,13 +110,11 @@ public sealed partial class TraversalReversedFact : GraphSpatialFact, IEquatable
 }
 
 [DurableType("DramaBoard.Spatial.PassageContactOccurredFact", 1)]
-public sealed partial class PassageContactOccurredFact : GraphSpatialFact, IEquatable<PassageContactOccurredFact>
-{
+public sealed partial class PassageContactOccurredFact : GraphSpatialFact, IEquatable<PassageContactOccurredFact> {
     [DurableField(1)] private readonly PassageContactKey _contactKey;
     [DurableField(2)] private readonly PassageContactKind _kind;
 
-    public PassageContactOccurredFact(PassageContactKey ContactKey, PassageContactKind Kind)
-    {
+    public PassageContactOccurredFact(PassageContactKey ContactKey, PassageContactKind Kind) {
         _contactKey = ContactKey;
         _kind = Kind;
     }
@@ -142,13 +132,11 @@ public sealed partial class PassageContactOccurredFact : GraphSpatialFact, IEqua
 }
 
 [DurableType("DramaBoard.Spatial.TraversalArrivedFact", 1)]
-public sealed partial class TraversalArrivedFact : GraphSpatialFact, IEquatable<TraversalArrivedFact>
-{
+public sealed partial class TraversalArrivedFact : GraphSpatialFact, IEquatable<TraversalArrivedFact> {
     [DurableField(1)] private readonly EntityId _entityId;
     [DurableField(2)] private readonly long _expectedMovementGeneration;
 
-    public TraversalArrivedFact(EntityId EntityId, long ExpectedMovementGeneration)
-    {
+    public TraversalArrivedFact(EntityId EntityId, long ExpectedMovementGeneration) {
         _entityId = EntityId;
         _expectedMovementGeneration = ExpectedMovementGeneration;
     }
@@ -167,13 +155,11 @@ public sealed partial class TraversalArrivedFact : GraphSpatialFact, IEquatable<
 }
 
 [DurableType("DramaBoard.Spatial.PassageEntryAccessChangedFact", 1)]
-public sealed partial class PassageEntryAccessChangedFact : GraphSpatialFact, IEquatable<PassageEntryAccessChangedFact>
-{
+public sealed partial class PassageEntryAccessChangedFact : GraphSpatialFact, IEquatable<PassageEntryAccessChangedFact> {
     [DurableField(1)] private readonly PassageId _passageId;
     [DurableField(2)] private readonly PassageEntryAccess _resultAccess;
 
-    public PassageEntryAccessChangedFact(PassageId PassageId, PassageEntryAccess ResultAccess)
-    {
+    public PassageEntryAccessChangedFact(PassageId PassageId, PassageEntryAccess ResultAccess) {
         _passageId = PassageId;
         _resultAccess = ResultAccess;
     }
@@ -191,14 +177,12 @@ public sealed partial class PassageEntryAccessChangedFact : GraphSpatialFact, IE
 }
 
 [DurableType("DramaBoard.Spatial.PassageEntryChangeScheduledFact", 1)]
-public sealed partial class PassageEntryChangeScheduledFact : GraphSpatialFact, IEquatable<PassageEntryChangeScheduledFact>
-{
+public sealed partial class PassageEntryChangeScheduledFact : GraphSpatialFact, IEquatable<PassageEntryChangeScheduledFact> {
     [DurableField(1)] private readonly PassageId _passageId;
     [DurableField(2)] private readonly ModelTime _due;
     [DurableField(3)] private readonly PassageEntryPatch _patch;
 
-    public PassageEntryChangeScheduledFact(PassageId PassageId, ModelTime Due, PassageEntryPatch Patch)
-    {
+    public PassageEntryChangeScheduledFact(PassageId PassageId, ModelTime Due, PassageEntryPatch Patch) {
         _passageId = PassageId;
         _due = Due;
         _patch = Patch;
@@ -219,13 +203,11 @@ public sealed partial class PassageEntryChangeScheduledFact : GraphSpatialFact, 
 }
 
 [DurableType("DramaBoard.Spatial.ScheduledPassageEntryChangeAppliedFact", 1)]
-public sealed partial class ScheduledPassageEntryChangeAppliedFact : GraphSpatialFact, IEquatable<ScheduledPassageEntryChangeAppliedFact>
-{
+public sealed partial class ScheduledPassageEntryChangeAppliedFact : GraphSpatialFact, IEquatable<ScheduledPassageEntryChangeAppliedFact> {
     [DurableField(1)] private readonly PassageId _passageId;
     [DurableField(2)] private readonly ModelTime _due;
 
-    public ScheduledPassageEntryChangeAppliedFact(PassageId PassageId, ModelTime Due)
-    {
+    public ScheduledPassageEntryChangeAppliedFact(PassageId PassageId, ModelTime Due) {
         _passageId = PassageId;
         _due = Due;
     }

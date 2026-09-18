@@ -3,11 +3,9 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.Kernel.Scheduling;
 
 /// <summary>Represents an occurrence candidate's due time as one integer-millisecond model tick.</summary>
-public readonly record struct CandidateDue : IComparable<CandidateDue>
-{
+public readonly record struct CandidateDue : IComparable<CandidateDue> {
     /// <summary>Initializes a due time that is already quantized to a model tick.</summary>
-    public CandidateDue(ModelTime modelTime)
-    {
+    public CandidateDue(ModelTime modelTime) {
         ModelTime = modelTime;
     }
 
@@ -18,11 +16,9 @@ public readonly record struct CandidateDue : IComparable<CandidateDue>
     /// Quantizes an exact millisecond value upward to the first integer model tick that is not
     /// earlier than the supplied value.
     /// </summary>
-    public static CandidateDue FromExactMilliseconds(decimal exactMilliseconds)
-    {
+    public static CandidateDue FromExactMilliseconds(decimal exactMilliseconds) {
         decimal quantizedMilliseconds = decimal.Ceiling(exactMilliseconds);
-        if (quantizedMilliseconds < long.MinValue || quantizedMilliseconds > long.MaxValue)
-        {
+        if (quantizedMilliseconds < long.MinValue || quantizedMilliseconds > long.MaxValue) {
             throw new OverflowException("The quantized candidate due time exceeds the ModelTime range.");
         }
 

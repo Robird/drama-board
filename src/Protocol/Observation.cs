@@ -14,22 +14,19 @@ public sealed record KnownFact(
 /// <param name="DestinationId">The visible destination reached through the exit.</param>
 /// <param name="ExpectedDurationMs">The expected travel duration in model-time milliseconds.</param>
 /// <param name="IsAvailable">Whether the exit can currently be selected.</param>
-public sealed record ObservedExit
-{
+public sealed record ObservedExit {
     /// <summary>Creates one observed exit after validating its stable values.</summary>
     public ObservedExit(
         string exitId,
         string destinationId,
         long expectedDurationMs,
-        bool isAvailable)
-    {
+        bool isAvailable) {
         ExitId = StableIdentifier.Validate(exitId, nameof(exitId), "Exit identifier");
         DestinationId = StableIdentifier.Validate(
             destinationId,
             nameof(destinationId),
             "Exit destination identifier");
-        if (expectedDurationMs < 1)
-        {
+        if (expectedDurationMs < 1) {
             throw new ArgumentOutOfRangeException(
                 nameof(expectedDurationMs),
                 expectedDurationMs,
@@ -61,8 +58,7 @@ public sealed record ObservedExit
 /// <param name="VisibleActorIds">The identifiers of actors currently visible to the observer.</param>
 /// <param name="VisibleObjectIds">The identifiers of objects currently visible to the observer.</param>
 /// <param name="KnownFacts">The facts currently known to the observer.</param>
-public sealed record Observation
-{
+public sealed record Observation {
     /// <summary>Creates one immutable observation snapshot.</summary>
     public Observation(
         string ActorId,
@@ -71,8 +67,7 @@ public sealed record Observation
         IReadOnlyList<ObservedExit> Exits,
         IReadOnlyList<string> VisibleActorIds,
         IReadOnlyList<string> VisibleObjectIds,
-        IReadOnlyList<KnownFact> KnownFacts)
-    {
+        IReadOnlyList<KnownFact> KnownFacts) {
         this.ActorId = ActorId;
         this.LocationId = LocationId;
         this.ModelTimeMs = ModelTimeMs;
@@ -82,8 +77,7 @@ public sealed record Observation
         this.KnownFacts = FrozenList.Snapshot(KnownFacts);
 
         if (this.Exits.Select(exit => exit.ExitId).Distinct(StringComparer.Ordinal).Count() !=
-            this.Exits.Count)
-        {
+            this.Exits.Count) {
             throw new ArgumentException(
                 "Observed exit identifiers must be unique.",
                 nameof(Exits));
