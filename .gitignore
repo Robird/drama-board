@@ -294,6 +294,7 @@ FakesAssemblies/
 node_modules/
 src/WebUI/dist/
 src/WebUI/playwright-report/
+src/Server/wwwroot/
 
 # Visual Studio 6 build log
 *.plg
