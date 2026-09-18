@@ -16,7 +16,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 ## Current work
 
-The [shared Player-runtime principles](design/player-runtime/README.md) now have a [Dynamic-Programmer mechanism model](design/player-runtime/dynamic-programmer.md), refined through [independent review and cross-examination](worksets/dynamic-programmer-review.md). Valid complete programs authorize execution; accepted empty programs become Stay, and a Stay prefix preserves a future program while idling. Active reactivation is deferred. The next step is an engineering work order for the sequential Move/Think/Stay slice; these runtime capabilities are not implemented yet.
+The [shared Player-runtime principles](design/player-runtime/README.md) now have a [Dynamic-Programmer mechanism model](design/player-runtime/dynamic-programmer.md), refined through [independent review and cross-examination](worksets/dynamic-programmer-review.md), and a frozen engineering decomposition: [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) pin the typed instructions, immutable buffer, process state, programmer contract, and component placement. The new mechanism fully replaces the legacy intent decision path; rounds run in order, one fork session each, and these runtime capabilities are not implemented yet.
 
 [Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries.
 
