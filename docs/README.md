@@ -13,7 +13,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 - [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial floor-contact and ceil-arrival semantics.
 - [Player spatial knowledge](research/player-spatial-knowledge.md): the retained known-graph seam; exploration disclosure is deferred.
 - [DurableGraph package source](worksets/durablegraph-package-source.md): fixed package preparation and consumption path.
-- [Server wwwroot static web assets](worksets/server-wwwroot-staticwebassets.md): the .NET 10 dev-manifest directory fix and the rejected alternatives.
+- [Server wwwroot static web assets](worksets/server-wwwroot-staticwebassets.md): root cause of the .NET 10 dev-manifest crash and the final fix (disable the static-web-assets pipeline), with superseded and rejected alternatives.
 
 ## Current work
 

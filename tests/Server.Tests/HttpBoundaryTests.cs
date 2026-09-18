@@ -123,6 +123,24 @@ public sealed class HttpBoundaryTests {
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
+    [Fact]
+    public async Task RootRedirectsAndStaticAssetsFollowOutputWwwroot() {
+        await using var factory = new WebApplicationFactory<Program>();
+        using HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using HttpResponseMessage root = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.Redirect, root.StatusCode);
+        Assert.Equal("/player", root.Headers.Location?.ToString());
+        string entry = Path.Combine(AppContext.BaseDirectory, "wwwroot", "index.html");
+        bool assetsPresent = File.Exists(entry) && new FileInfo(entry).Length > 0;
+        using HttpResponseMessage page = await client.GetAsync("/player");
+        Assert.Equal(assetsPresent ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable, page.StatusCode);
+        using HttpResponseMessage asset = await client.GetAsync("/index.html");
+        Assert.Equal(assetsPresent ? HttpStatusCode.OK : HttpStatusCode.NotFound, asset.StatusCode);
+        if (assetsPresent) {
+            Assert.Equal("text/html", page.Content.Headers.ContentType?.MediaType);
+        }
+    }
+
     private sealed class FaultDriver : IPlayerDriver {
         public ValueTask<PlayerDecision> DecideAsync(DecisionRequest request, CancellationToken cancellationToken) =>
             ValueTask.FromException<PlayerDecision>(new InvalidOperationException("HTTP fault probe"));

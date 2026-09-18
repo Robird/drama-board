@@ -1,4 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <!-- The WebUI dist is plain Content copied into the output/publish wwwroot, and Program.cs pins
+         the web root to AppContext.BaseDirectory, so the static-web-assets pipeline adds nothing.
+         Its .NET 10 dev manifest instead anchors the assets at src/Server/wwwroot and crashes the
+         WebApplicationFactory test host (DirectoryNotFoundException) when that directory is absent. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Kernel/Kernel.csproj" />
     <ProjectReference Include="../Spatial/Spatial.csproj" />
@@ -11,10 +18,4 @@
     <Content Include="../WebUI/dist/**/*" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <!-- .NET 10 static web assets anchor dist assets at $(MSBuildProjectDirectory)\wwwroot and the
-       test host fails with DirectoryNotFoundException when that directory does not exist. An empty
-       directory is enough: dev serving uses bin\wwwroot and publish uses publish\wwwroot. -->
-  <Target Name="EnsureWwwrootDirectory" BeforeTargets="Build">
-    <MakeDir Directories="$(MSBuildThisFileDirectory)wwwroot" />
-  </Target>
 </Project>
