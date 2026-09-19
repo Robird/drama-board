@@ -14,7 +14,7 @@ internal sealed record SpatialFact(GraphSpatialFact Fact) : FreePlayFact;
 internal sealed record ProcessFact(FreePlayProcessFact Fact) : FreePlayFact;
 
 internal sealed record FreePlayWorld(GraphSpatialState Spatial, PlayerProcessState Process, ModelTime EffectiveTime);
-internal sealed record FreePlayCandidate(OccurrenceCandidate<SpatialOccurrenceData>? Spatial);
+internal sealed record FreePlayCandidate(OccurrenceCandidate<SpatialOccurrenceData>? Spatial, FreePlayProcessOccurrenceData? Process = null);
 
 internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCandidate, FreePlayFact> {
     internal static readonly EntityId Actor = new("human");
