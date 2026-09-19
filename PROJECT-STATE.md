@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-19；Dynamic-Programmer 施工 R1–R6 已落地，见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
+> 最近整理：2026-09-19；Dynamic-Programmer 施工 R1–R7 已落地（R7 完成产品切换，e2e 证据在 `artifacts/0026`），见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 最终目标
 
@@ -13,19 +13,19 @@
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Player 与协议**：冻结的 Observation、DecisionRequest、Intent 和稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 Null/Scripted/Random driver，Decision.Validation 负责请求关联和动作校验，Player.Agency 提供已知图快照接缝。
 - **构建依赖**：Kernel/Spatial 使用固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。已提交的 Kernel/Spatial schema history 不因本批改变。Server 前端静态资源的 .NET 10 清单故障（曾致 CI 的 Server.Tests 长期红）已定稿修复：Server.csproj 设 `StaticWebAssetsEnabled=false` 关闭整条静态资源管线，三种宿主一律服务二进制旁物理 wwwroot，测试宿主可真实服务静态文件；根因、验证与被取代方案见 [wwwroot 调查](docs/worksets/server-wwwroot-staticwebassets.md)，本地全量测试与发布冒烟绿。
-- **本地可玩入口**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置与自身轨迹；诊断独立只读取数。发布启动见 [README](README.md)，Windows 实际 apphost/Chromium 证据见 [0025 验收](docs/build-log/0025-verification.md)。
+- **本地可玩入口**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置、轨迹、主观工作区与待执行程序；诊断独立只读取数。发布启动见 [README](README.md)，R7 切换后的 apphost/Chromium 证据在 `artifacts/0026`（0026 验证文档随 R8 落）。
 
 ## 当前焦点与下一步
 
 活跃核心固定为 Kernel、Spatial、Protocol、Player、Decision.Validation、Host、Player.Agency 及各自测试。FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料均已移至 [归档索引](docs/archive/firstboard-llm.md)，不参与默认编译或搜索。
 
-当前应用边界为四点全图已知场景，只提供相邻 `action.travel`；出发/到达均由 Kernel 提交，等待不走模型时间。刷新继续同次运行，服务重启回 genesis；诊断仅展示最近 100 条完成记录，自身轨迹保留整次运行。七核心合同保持不变。
+当前应用边界为四点全图已知场景：经 `POST /api/player/programs` 提交完整 Move/Think/Stay 程序与主观工作区（快捷一步、程序编辑、清空并待机）；接受与开始是两个 transition；Think 固定 1000ms、笔记追加进工作区；合法空程序规范化为 `[Stay]` 并进入 staying 健康静止（GET 继续可用）。刷新继续同次运行，服务重启回 genesis；诊断仅展示最近 100 条完成记录。七核心合同保持不变。
 
 已形成 [Player 运行时与 Plan-Maintainer 关键设计理念](docs/design/player-runtime/README.md)，经[独立审视与交叉质询](docs/worksets/player-runtime-principles-review.md)完善。该文集中维护用户已确认的共享运行时、未来安排与“再想想”方向；当前源码尚未实现这些能力。
 
 已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。
 
-工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1–R3（契约类型、`IDynamicProgrammer` 与响应校验器、Process 领域）、R4（World 扩为 Spatial+Process 并引入 `FreePlayFact` 联合）、R5（`FreePlaySpatialRule` 到达适配）与 R6（`FreePlayProcessRule`：按 Mode 预测 respond/start/think-complete，Material 不泄露动态入口状态，10 个 kernel 级闭环测试覆盖机制文档 §7.2 行为矩阵）已落地，各自测试全绿；新旧两套规则均未注册进 live session，下一步 R7（产品切换：Session/HTTP/WebUI 与测试重写），进度以工单 README 状态表为准。
+工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1–R7 已落地：R7 完成产品切换——`FreePlayScene` 收缩为组合根并激活 Traversing ⇔ RunningMove 跨域不变量，`FreePlaySession(IDynamicProgrammer)` 注册双规则、以 staying 正常收尾，`/api/player/programs` 严格解析替代旧决策端点，WebUI 提供程序编辑、快捷一步与清空并待机；双 solution、发布链与本地 e2e 全绿。旧 Intent 单发路径已无生产引用但保留编译（含其测试），下一步 R8（删旧、守卫、文档与证据），进度以工单 README 状态表为准。
 
 ## 延期与重开条件
 

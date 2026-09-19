@@ -1,6 +1,6 @@
 # R7 · 产品切换：Session、HTTP 与 WebUI
 
-状态：未开始。依赖：R6。产物：`src/Server`、`src/WebUI`、`tests/Server.Tests`、e2e。
+状态：已完成。依赖：R6。产物：`src/Server`、`src/WebUI`、`tests/Server.Tests`、e2e（证据：`artifacts/0026`）。
 
 ## 目标
 
