@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 60_000,
-  outputDir: '../../artifacts/0025/test-results',
+  outputDir: '../../artifacts/0026/test-results',
   use: { browserName: 'chromium', viewport: { width: 1280, height: 1000 }, trace: 'retain-on-failure' },
-  reporter: [['list'], ['html', { open: 'never', outputFolder: '../../artifacts/0025/playwright-report' }]],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: '../../artifacts/0026/playwright-report' }]],
 });

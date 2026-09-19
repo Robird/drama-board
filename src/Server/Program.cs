@@ -15,13 +15,13 @@ builder.Services.AddHostedService<SessionService>();
 var app = builder.Build();
 app.MapGet("/api/player/view", (FreePlaySession session) => session.GetPlayerView());
 app.MapGet("/api/dev/view", (FreePlaySession session) => session.GetDevView());
-app.MapPost("/api/player/decisions", async (HttpRequest request, FreePlaySession session) => {
+app.MapPost("/api/player/programs", async (HttpRequest request, FreePlaySession session) => {
     try {
         using JsonDocument body = await JsonDocument.ParseAsync(request.Body, cancellationToken: request.HttpContext.RequestAborted);
-        if (!DecisionInput.TryRead(body.RootElement, out DecisionInput? input)) {
-            return Results.Json(new { code = "invalid_input", message = "需要 decisionId、actionKind、exitId 三个字符串字段。" }, statusCode: 400);
+        if (!ProgrammingInput.TryRead(body.RootElement, out ProgrammingInput? input)) {
+            return Results.Json(new { code = "invalid_input", message = "需要 activationId、workspace 字符串与 program 指令数组（move/think/stay）。" }, statusCode: 400);
         }
-        var result = session.Submit(input!.DecisionId, input.ActionKind, input.ExitId);
+        var result = session.Submit(input!);
         return Results.Json(new { code = result.Code, message = result.Message }, statusCode: result.StatusCode);
     } catch (JsonException) {
         return Results.Json(new { code = "invalid_json", message = "请求不是有效 JSON。" }, statusCode: 400);

@@ -6,6 +6,7 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .eyebrow { font-size: 11px; letter-spacing: .18em; color: #78cbb2; }
 h1 { font-size: 30px; margin: 5px 0 0; font-weight: 600; }
 h2 { font-size: 18px; margin: 0 0 8px; font-weight: 600; }
+h3 { font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
 nav { display: flex; gap: 10px; }
 nav a { color: #a8b4c3; padding: 8px 15px; text-decoration: none; border-radius: 6px; }
 nav a[aria-current] { color: #dff5ed; background: #253b38; }
@@ -33,6 +34,21 @@ button:hover:not(:disabled) { background: #326554; }
 button:disabled { opacity: .45; cursor: default; }
 button span:last-child { font-size: 13px; }
 a:focus-visible, button:focus-visible { outline: 3px solid #f0ce80; outline-offset: 3px; }
+.program-panel { grid-column: 1 / -1; }
+.program-rows { display: grid; gap: 10px; margin-top: 14px; }
+.program-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; }
+.program-row select, .program-row input, .workspace-box textarea {
+  width: 100%; background: #101720; color: #e6eaf0; border: 1px solid #2e3b49; border-radius: 6px; padding: 10px 12px; font: inherit;
+}
+.program-row select:disabled, .program-row input:disabled, .workspace-box textarea:disabled { opacity: .55; }
+.workspace-box { margin-top: 16px; }
+.workspace-box label { display: block; margin-bottom: 6px; }
+.workspace-box textarea { min-height: 96px; resize: vertical; }
+.editor-actions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+button.secondary { background: #2a3547; border-color: #55647a; color: #ccd7e4; }
+button.secondary:hover:not(:disabled) { background: #37455c; }
+button.compact { padding: 9px 14px; font-size: 13px; }
+.preformatted { white-space: pre-wrap; overflow-wrap: anywhere; background: #101720; border: 1px solid #2e3b49; border-radius: 6px; padding: 12px 14px; margin: 6px 0 0; font-size: 14px; }
 ol { display: flex; gap: 18px; padding-left: 25px; flex-wrap: wrap; }
 li { padding-right: 22px; }
 li span { display: block; font-size: 13px; }

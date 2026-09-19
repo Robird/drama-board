@@ -13,10 +13,11 @@ export function Layout({ children, dev = false }: { children: ReactNode; dev?: b
 
 export function Summary({ view, connectionError }: { view: Snapshot | null; connectionError: boolean }) {
   const status = connectionError ? '连接失败，正在重试；当前画面可能已过时' : !view ? '正在连接…' :
-    view.status === 'waiting' ? '等待你的决策' : view.status === 'advancing' ? '正在处理行动…' : view.status === 'stopped' ? '运行已停止' : '会话故障，已停止接收动作';
+    view.status === 'waiting' ? '等待你的决策' : view.status === 'advancing' ? '正在处理行动…' :
+    view.status === 'staying' ? '待机中：世界继续，等待没有安排' : view.status === 'stopped' ? '运行已停止' : '会话故障，已停止接收动作';
   return <section className="panel summary" aria-label="时间与位置">
     <div><span className="caption">当前位置</span><strong data-testid="location">{view?.location ?? '—'}</strong></div>
     <div><span className="caption">模型时间</span><strong data-testid="model-time">{view ? `${view.modelTimeMs} ms` : '—'}</strong></div>
-    <p role="status" className={connectionError || view?.status === 'faulted' ? 'warning' : 'status'}>{status}</p>
+    <p role="status" data-testid="status" className={connectionError || view?.status === 'faulted' ? 'warning' : 'status'}>{status}</p>
   </section>;
 }

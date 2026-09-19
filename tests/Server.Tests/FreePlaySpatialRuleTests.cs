@@ -70,28 +70,18 @@ public sealed class FreePlaySpatialRuleTests {
     }
 
     [Fact]
-    public async Task ArrivalWithoutRunningMoveFailsBeforeCommit() {
+    public void ArrivalWithoutRunningMoveFailsBeforeCommit() {
         FreePlayScene scene = NewScene();
-        FreePlaySpatialRule rule = new(scene.Definition);
         FreePlayWorld world = scene.Genesis();
         world = Fold(scene, world, TraversalStartedFacts(scene, world));
         var runningThink = new PlayerProcessState(
             new SubjectiveWorkspace(""), InstructionBuffer.Empty, new RunningThinkProcess(999_999), 0);
         world = world with { Process = runningThink };
-        scene.Validate(world);
-
-        InMemoryOccurrenceHistory<FreePlayWorld, FreePlayFact> history = NewHistory(world);
-        SimulationKernel<FreePlayWorld, FreePlayCandidate, FreePlayFact> kernel = NewKernel(scene, rule, history);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await kernel.StepAsync(new ModelTime(long.MaxValue)));
-        Assert.Equal(0, kernel.Version.TransitionCount);
-        Assert.Empty(history.CompletedEvents);
+        // The cross-domain invariant rejects the inconsistent world before any rule can plan it.
+        Assert.Throws<InvalidOperationException>(() => scene.Validate(world));
     }
 
-    private static FreePlayScene NewScene() => new(
-        "spatial-rule-tests",
-        (_, _, _) => throw new InvalidOperationException("Spatial-rule tests never make decisions."));
+    private static FreePlayScene NewScene() => new();
 
     private static FreePlayFact ProgramAccepted(params Instruction[] program) =>
         new ProcessFact(new ProgramAcceptedFact(program, new SubjectiveWorkspace("")));

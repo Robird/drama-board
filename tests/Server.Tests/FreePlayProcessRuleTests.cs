@@ -323,9 +323,7 @@ public sealed class FreePlayProcessRuleTests {
         Assert.Equal(50, harness.Programmer.Requests.Count);
     }
 
-    private static FreePlayScene NewScene() => new(
-        RunId,
-        (_, _, _) => throw new InvalidOperationException("Process-rule tests never use the legacy decision path."));
+    private static FreePlayScene NewScene() => new();
 
     private static KernelHarness NewHarness(params Func<ProgrammingRequest, ProgrammingResponse>[] factories) =>
         NewHarness(Genesis, factories);

@@ -52,7 +52,5 @@ public sealed class FreePlayFactUnionTests {
         Assert.Throws<InvalidOperationException>(() => scene.Validate(world));
     }
 
-    private static FreePlayScene NewScene() => new(
-        "fact-union-tests",
-        (_, _, _) => throw new InvalidOperationException("Fact-union tests never make decisions."));
+    private static FreePlayScene NewScene() => new();
 }

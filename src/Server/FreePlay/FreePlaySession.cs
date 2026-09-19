@@ -1,9 +1,12 @@
+using DramaBoard.Decision.Validation;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Player;
 using DramaBoard.Player.Agency.Spatial;
 using DramaBoard.Protocol;
+using DramaBoard.Server.FreePlay.Runtime;
+using DramaBoard.Server.Web;
 using DramaBoard.Spatial;
 
 namespace DramaBoard.Server.FreePlay;
@@ -13,24 +16,30 @@ public sealed class FreePlaySession {
     private readonly object _gate = new();
     private readonly string _runId = Guid.NewGuid().ToString("N");
     private readonly FreePlayScene _scene;
-    private readonly IPlayerDriver _driver;
-    private readonly bool _webDriver;
+    private readonly IDynamicProgrammer _programmer;
+    private readonly bool _webProgrammer;
     private readonly InMemoryOccurrenceHistory<FreePlayWorld, FreePlayFact> _history;
     private readonly SimulationKernel<FreePlayWorld, FreePlayCandidate, FreePlayFact> _kernel;
     private PlayerView _player;
     private DevView _dev;
-    private PendingDecision? _pending;
+    private PendingProgram? _pending;
     private TaskCompletionSource _changed = NewSignal();
     private CancellationToken _applicationToken;
     private int _started;
 
-    public FreePlaySession(IPlayerDriver? driver = null) {
-        _scene = new(_runId, DecideAsync);
-        _webDriver = driver is null;
-        _driver = driver ?? new WebHumanDriver(WaitForHumanAsync);
+    public FreePlaySession(IDynamicProgrammer? programmer = null) {
+        _scene = new();
+        _webProgrammer = programmer is null;
+        _programmer = programmer ?? new WebHumanProgrammer(WaitForHumanAsync);
         FreePlayWorld genesis = _scene.Genesis();
         _history = new(genesis, new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
-        _kernel = new(_history, new SimulationRules(1, 100), [_scene], _scene.Fold, _scene.Validate);
+        _kernel = new(_history, new SimulationRules(1, 100),
+            [
+                new FreePlaySpatialRule(_scene.Definition),
+                new FreePlayProcessRule(_runId, new SessionProgrammer(InterceptProgramAsync),
+                    _scene.Planner, _scene.Queries, _scene.Definition)
+            ],
+            _scene.Fold, _scene.Validate);
         GraphDefinition known = FullMapPlayerSpatialKnowledgeGetter<FreePlayWorld>.Instance
             .GetKnownGraph(genesis, FreePlayScene.Actor.Value, _scene.Definition).KnownGraph;
         var positions = new Dictionary<string, (int X, int Y)> {
@@ -44,9 +53,10 @@ public sealed class FreePlaySession {
             Freeze(known.Passages.Select(passage =>
                 new MapPassage(passage.Id.Value, passage.EndpointA.Value, passage.EndpointB.Value))));
         _player = new(_runId, 0, 0, "advancing", _scene.Location(genesis), map,
-            Freeze<TrajectoryEntry>([new("A", 0, null)]), null);
+            Freeze<TrajectoryEntry>([new("A", 0, null)]), string.Empty, Freeze<InstructionView>([]), null);
         _dev = new(_runId, 0, 0, "advancing", _player.Location, 0, null,
-            Freeze<OccurrenceView>([]), null, null, null);
+            Freeze<OccurrenceView>([]), DescribeProcessMode(genesis.Process.Mode),
+            genesis.Process.ControlRevision, null, null, null);
     }
 
     public PlayerView GetPlayerView() { lock (_gate) { return _player; } }
@@ -74,11 +84,17 @@ public sealed class FreePlaySession {
         try {
             while (true) {
                 StepStatus result = await _kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
-                if (result != StepStatus.Committed) {
-                    throw new InvalidOperationException($"Unexpected simulation terminal state: {result}.");
+                if (result == StepStatus.Committed) {
+                    // History is projected on its single owning execution path; no live list escapes.
+                    PublishCommitted();
+                    continue;
                 }
-                // History is projected on its single owning execution path; no live list escapes.
-                PublishCommitted();
+                if (result == StepStatus.Exhausted && _kernel.World.Process.Mode is RunningStayProcess) {
+                    // Staying is healthy rest with a kept arrangement; the session keeps serving reads.
+                    lock (_gate) { PublishStatus("staying", null); }
+                    return;
+                }
+                throw new InvalidOperationException($"Unexpected simulation terminal state: {result}.");
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             Finish("stopped", null);
@@ -87,51 +103,61 @@ public sealed class FreePlaySession {
         }
     }
 
-    public SubmitResult Submit(string? decisionId, string? actionKind, string? exitId) {
+    public SubmitResult Submit(ProgrammingInput input) {
+        ArgumentNullException.ThrowIfNull(input);
         lock (_gate) {
             if (_player.Status is "faulted" or "stopped" || _applicationToken.IsCancellationRequested) {
                 return Reject(503, "session-unavailable", "The session is unavailable.");
             }
-            if (string.IsNullOrWhiteSpace(decisionId) || string.IsNullOrWhiteSpace(actionKind) ||
-                string.IsNullOrWhiteSpace(exitId)) {
-                return Reject(400, "invalid-decision", "decisionId, actionKind and exitId are required.");
+            PendingProgram? pending = _pending;
+            if (!_webProgrammer || pending is null || input.ActivationId != pending.Request.ActivationId.Value) {
+                return Reject(409, "stale-program", "This activation is no longer pending.");
             }
-            PendingDecision? pending = _pending;
-            if (!_webDriver || pending is null || pending.Request.DecisionId.Value != decisionId) {
-                return Reject(409, "stale-decision", "This decision is no longer pending.");
+            var program = new List<Instruction>(input.Program.Count);
+            try {
+                foreach (RawInstruction raw in input.Program) {
+                    program.Add(raw.Kind switch {
+                        "move" when raw.Passage is { } passage => new MoveInstruction(new PassageHandle(passage)),
+                        "think" when raw.Note is { } note => new ThinkInstruction(note),
+                        "stay" when raw.Passage is null && raw.Note is null => new StayInstruction(),
+                        _ => throw new ArgumentException(
+                            $"'{raw.Kind}' with the given fields is not a valid instruction.")
+                    });
+                }
+            } catch (ArgumentException) {
+                return Reject(400, "invalid-program",
+                    "Each program entry must be a well-formed move, think or stay instruction.");
             }
-            if (actionKind != ActionKinds.Travel.Id) {
-                return Reject(400, "invalid-action", "Choose an advertised travel exit.");
+            var response = new ProgrammingResponse(
+                new ActivationId(input.ActivationId), program, new SubjectiveWorkspace(input.Workspace));
+            ProgrammingResponseValidationResult validation =
+                ProgrammingResponseValidator.Validate(response, pending.Request);
+            if (!validation.IsValid) {
+                return Reject(400, "invalid-program",
+                    validation.Message ?? "The program is not valid for the pending request.");
             }
-            var answer = new PlayerDecision(pending.Request.DecisionId, new Intent(ActionKinds.Travel, ExitId: exitId));
-            if (!_scene.TryPlan(pending.World, pending.Request, answer, out _)) {
-                return Reject(400, "invalid-action", "Choose an advertised travel exit.");
-            }
-            // Occupy and publish before waking the run loop. No HTTP continuation publishes later.
+            // Consume and publish before waking the run loop. No HTTP continuation publishes later.
             _pending = null;
             PublishStatus("advancing", null);
-            pending.Answer.SetResult(answer);
-            return new(202, "accepted", "Decision received; read the view for the committed result.");
+            pending.Answer.SetResult(response);
+            return new(202, "accepted", "Program received; read the view for the committed result.");
         }
     }
 
-    private async ValueTask<PlayerDecision> DecideAsync(FreePlayWorld world, DecisionRequest request,
-        CancellationToken cancellationToken) {
-        ValueTask<PlayerDecision> webAnswer = default;
+    private async ValueTask<ProgrammingResponse> InterceptProgramAsync(
+        ProgrammingRequest request, CancellationToken cancellationToken) {
+        ValueTask<ProgrammingResponse> webAnswer = default;
         lock (_gate) {
             cancellationToken.ThrowIfCancellationRequested();
-            _pending = new(world, request, new(TaskCreationOptions.RunContinuationsAsynchronously));
-            // Capture the actual driver's waiter before any HTTP caller can occupy it.
-            if (_webDriver) { webAnswer = _driver.DecideAsync(request, cancellationToken); }
-            var decision = new DecisionView(request.DecisionId.Value, ActionKinds.Travel.Id,
-                Freeze(request.Observation.Exits.Select(exit =>
-                    new DecisionExit(exit.ExitId, exit.DestinationId, exit.ExpectedDurationMs))));
-            PublishStatus("waiting", decision);
+            _pending = new(request, new(TaskCreationOptions.RunContinuationsAsynchronously));
+            // Capture the actual programmer's waiter before any HTTP caller can occupy it.
+            if (_webProgrammer) { webAnswer = _programmer.ProgramAsync(request, cancellationToken); }
+            PublishStatus("waiting", ViewOf(request));
         }
-        PlayerDecision answer = _webDriver
+        ProgrammingResponse answer = _webProgrammer
             ? await webAnswer
-            : await _driver.DecideAsync(request, cancellationToken);
-        if (!_webDriver) {
+            : await _programmer.ProgramAsync(request, cancellationToken);
+        if (!_webProgrammer) {
             lock (_gate) {
                 _pending = null;
                 PublishStatus("advancing", null);
@@ -140,9 +166,10 @@ public sealed class FreePlaySession {
         return answer;
     }
 
-    private ValueTask<PlayerDecision> WaitForHumanAsync(DecisionRequest request, CancellationToken cancellationToken) {
+    private ValueTask<ProgrammingResponse> WaitForHumanAsync(
+        ProgrammingRequest request, CancellationToken cancellationToken) {
         lock (_gate) {
-            if (_pending is null || _pending.Request.DecisionId != request.DecisionId) {
+            if (_pending is null || _pending.Request.ActivationId != request.ActivationId) {
                 throw new InvalidOperationException("Human waiter is missing.");
             }
             return new(_pending.Answer.Task.WaitAsync(cancellationToken));
@@ -172,13 +199,16 @@ public sealed class FreePlaySession {
             long revision = _player.ViewRevision + 1;
             string location = _scene.Location(_kernel.World);
             long time = _kernel.CurrentModelTime.Ticks;
+            PlayerProcessState process = _kernel.World.Process;
             _player = _player with {
                 ViewRevision = revision,
                 ModelTimeMs = time,
                 Location = location,
                 Trajectory = Freeze(trajectory),
                 Status = "advancing",
-                Decision = null
+                Workspace = process.Workspace.Text,
+                PendingProgram = Freeze(process.Pending.Items.Select(ViewOf)),
+                Request = null
             };
             _dev = _dev with {
                 ViewRevision = revision,
@@ -189,7 +219,9 @@ public sealed class FreePlaySession {
                 LastCommittedInstant = _kernel.LastCommittedInstant is { } instant
                     ? new(instant.ModelTime.Ticks, instant.CausalOrdinal) : null,
                 Status = "advancing",
-                PendingDecisionId = null
+                ProcessMode = DescribeProcessMode(process.Mode),
+                ControlRevision = process.ControlRevision,
+                PendingActivationId = null
             };
             SignalChange();
         }
@@ -201,9 +233,29 @@ public sealed class FreePlaySession {
         _ => throw new InvalidOperationException($"The FreePlay scene does not support fact type '{fact.GetType().Name}'.")
     };
 
+    private static InstructionView ViewOf(Instruction instruction) => instruction switch {
+        MoveInstruction move => new("move", move.Passage.Value, null),
+        ThinkInstruction think => new("think", null, think.Note),
+        StayInstruction => new("stay", null, null),
+        _ => throw new InvalidOperationException($"Unknown instruction '{instruction.GetType().Name}'.")
+    };
+
+    private static ProgrammingRequestView ViewOf(ProgrammingRequest request) => new(
+        request.ActivationId.Value,
+        request.Reason.ToString(),
+        request.ReasonDetail,
+        request.PlaceId,
+        Freeze(request.KnownPassages.Select(passage => new KnownPassageView(
+            passage.Handle.Value, passage.EndpointA, passage.EndpointB, passage.ExpectedDurationMs,
+            passage.EnterableFromA, passage.EnterableFromB))),
+        request.Workspace.Text,
+        Freeze(request.RemainingProgram.Select(ViewOf)));
+
+    private static string DescribeProcessMode(ProcessMode mode) => mode.GetType().Name;
+
     private SubmitResult Reject(int status, string code, string message) {
         _dev = _dev with { LastRejection = $"{code}: {message}" };
-        PublishStatus(_player.Status, _player.Decision);
+        PublishStatus(_player.Status, _player.Request);
         return new(status, code, message);
     }
 
@@ -216,10 +268,23 @@ public sealed class FreePlaySession {
         }
     }
 
-    private void PublishStatus(string status, DecisionView? decision) {
+    private void PublishStatus(string status, ProgrammingRequestView? request) {
         long revision = _player.ViewRevision + 1;
-        _player = _player with { ViewRevision = revision, Status = status, Decision = decision };
-        _dev = _dev with { ViewRevision = revision, Status = status, PendingDecisionId = decision?.DecisionId };
+        PlayerProcessState process = _kernel.World.Process;
+        _player = _player with {
+            ViewRevision = revision,
+            Status = status,
+            Workspace = process.Workspace.Text,
+            PendingProgram = Freeze(process.Pending.Items.Select(ViewOf)),
+            Request = request
+        };
+        _dev = _dev with {
+            ViewRevision = revision,
+            Status = status,
+            ProcessMode = DescribeProcessMode(process.Mode),
+            ControlRevision = process.ControlRevision,
+            PendingActivationId = request?.ActivationId
+        };
         SignalChange();
     }
 
@@ -231,12 +296,19 @@ public sealed class FreePlaySession {
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static IReadOnlyList<T> Freeze<T>(IEnumerable<T> values) => Array.AsReadOnly(values.ToArray());
-    private sealed record PendingDecision(FreePlayWorld World, DecisionRequest Request,
-        TaskCompletionSource<PlayerDecision> Answer);
+    private sealed record PendingProgram(ProgrammingRequest Request, TaskCompletionSource<ProgrammingResponse> Answer);
+
+    private sealed class SessionProgrammer(
+        Func<ProgrammingRequest, CancellationToken, ValueTask<ProgrammingResponse>> intercept) : IDynamicProgrammer {
+        public ValueTask<ProgrammingResponse> ProgramAsync(
+            ProgrammingRequest request, CancellationToken cancellationToken) =>
+            intercept(request, cancellationToken);
+    }
 }
 
-internal sealed class WebHumanDriver(
-    Func<DecisionRequest, CancellationToken, ValueTask<PlayerDecision>> wait) : IPlayerDriver {
-    public ValueTask<PlayerDecision> DecideAsync(DecisionRequest request, CancellationToken cancellationToken) =>
+internal sealed class WebHumanProgrammer(
+    Func<ProgrammingRequest, CancellationToken, ValueTask<ProgrammingResponse>> wait) : IDynamicProgrammer {
+    public ValueTask<ProgrammingResponse> ProgramAsync(
+        ProgrammingRequest request, CancellationToken cancellationToken) =>
         wait(request, cancellationToken);
 }
