@@ -1,7 +1,7 @@
 # World VM、Player Process 与 Dynamic-Programmer
 
 > 层级：概念模型与最小机制设计。日期：2026-09-17。
-> 状态：基础模型与 Stay 补充均已完成三角色独立审视与交叉质询；采用 Stay 统一待机与默认空程序行为，当前未实现。主动重新唤醒延期。
+> 状态：已按[施工工单](../../implementation/dynamic-programmer-build/README.md) R1–R8 实施并完成产品切换，验收见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)；主动重新唤醒延期。
 > 上位产品语义见[运行时理念](README.md)；来源与取舍见[本轮审查记录](../../worksets/dynamic-programmer-review.md)。
 
 ## 1. 最小模型
@@ -153,7 +153,7 @@ Stay 自身不安排下一次维护，Think 则以正耗时和笔记积累换取
 
 ## 7. 建议采用的首个验证配置
 
-本节是**供后续工程工单采纳的具体配置**，当前未实现。空响应可停驻并结束片段是用户明确裁决；Stay 与统一程序授权是用户允许评估后采纳的机制。同步响应、固定思考耗时及笔记开始时纳入等仍是最小验证建议，工程工单应明确承接，不能倒写成所有游戏都必须如此的产品定律。
+本节是**已由施工工单 R1–R8 采纳并实施的首批验证配置**。空响应可停驻并结束片段是用户明确裁决；Stay 与统一程序授权是用户允许评估后采纳的机制。同步响应、固定思考耗时及笔记开始时纳入等仍是最小验证选择，不能倒写成所有游戏都必须如此的产品定律。
 
 | 项目 | 建议配置与目的 |
 |---|---|
@@ -199,23 +199,19 @@ Stay 自身不安排下一次维护，Think 则以正耗时和笔记积累换取
 | 思考与因果 | 正耗时、中间世界事件、笔记续用均成立；真实响应快慢不改变规定模型耗时 |
 | 信息连续性 | 刷新页面不会重新执行或丢失 Buffer/笔记；Human 与脚本 Programmer 使用同一材料来源与修订规则 |
 
-## 8. 与当前源码的关系及工程边界
+## 8. 实施状态与工程边界
 
-当前 [IPlayerDriver](../../../src/Player/IPlayerDriver.cs)与[PlayerDecision](../../../src/Protocol/PlayerDecision.cs)只表达单次动作意图；[FreePlayScene](../../../src/Server/FreePlay/FreePlayScene.cs)在地点请求移动决定。现有 [FreePlaySession](../../../src/Server/FreePlay/FreePlaySession.cs)提供内存会话、冻结视图与 Human 输入关联。这些证明当前行为，不证明本文能力已经存在。
+本模型已按 [Dynamic-Programmer 施工工单](../../implementation/dynamic-programmer-build/README.md) R1–R8 实施：强类型 Move/Think/Stay 指令与不可变 Buffer、互斥执行状态、`IDynamicProgrammer` 完整修订与 `FreePlaySpatialRule`/`FreePlayProcessRule` 双规则已接入 live Server 与 WebUI，旧单发 Intent 决策路径已删除；验收记录见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)。第 7 节是最小验证配置（固定思考耗时、同步响应、单角色、内存会话），不是产品定律。
 
-具体差距：`FreePlaySession.RunAsync` 当前把所有非 `Committed` 结果视为故障，而 Kernel 的 `Exhausted` 只表示全局没有候选。首批工程必须接受“当前有 Stay，但无未来候选”的正常静止；其他本应推进却缺少候选的规则错误仍应暴露，不能一概吞掉异常。
+已实施并仍然绑定的核心合同：
 
-`FreePlayScene.Forecast` 当前只要角色在地点就产生决策候选；新工程应按执行边界生成需求，当前 Stay 不应因角色仍在地点而继续唤醒。现有 [输入/故障测试](../../../tests/Server.Tests/FreePlaySessionTests.cs)区分非法提交、驱动器故障和应用取消，这些边界不因默认指令而合并。
-
-后续工程需要表达 Buffer、主观工作区、执行与响应进展，并将合法修订及行动纳入同一因果顺序。核心合同至少包括：
-
-- [SimulationKernel](../../../src/Kernel/Simulation/SimulationKernel.cs)仍统一调度与提交；世界规则拥有状态变化，Programmer 返回提议。
-- [TransitionDraft](../../../src/Kernel/Simulation/TransitionDraft.cs)要求非空事实。处理响应、修改主观状态等可以是正式领域进展，不需要伪造一次移动。
+- [SimulationKernel](../../../src/Kernel/Simulation/SimulationKernel.cs)统一调度与提交；世界规则拥有状态变化，Programmer 返回提议。
+- [TransitionDraft](../../../src/Kernel/Simulation/TransitionDraft.cs)要求非空事实；处理响应与修改主观状态是正式领域进展，不伪造移动。
 - candidate 在 Programmer 回答之前确定；仅更换 key 而没有领域进展不能用于规避无进展保护。
-- 不能把影响后续调度的 Buffer/执行状态只藏在 UI 或 driver 的可变队列里；存放类型与依赖由工程方案选择。
+- Buffer 与执行状态保存在提交世界里（`FreePlayWorld.Process`），不藏在 UI 或 driver 的可变队列。
 - GET、刷新与诊断查询只读；Human HTTP 与后续 LLM 输入均不直接修改 World。
 
-首批不需要恢复归档、接入 LLM、引入新 Script VM 或存档格式。角色私有状态的完整续局闭包，等真实持久化任务出现后再设计。
+未实施：主动重新唤醒、LLM Programmer、持久化续局闭包、多角色与途中接管，重开条件见第 9 节。
 
 ## 9. 后续选择与重开条件
 

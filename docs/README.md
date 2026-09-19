@@ -17,7 +17,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 ## Current work
 
-The [shared Player-runtime principles](design/player-runtime/README.md) now have a [Dynamic-Programmer mechanism model](design/player-runtime/dynamic-programmer.md), refined through [independent review and cross-examination](worksets/dynamic-programmer-review.md), and a frozen engineering decomposition: [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) pin the typed instructions, immutable buffer, process state, programmer contract, and component placement. The new mechanism fully replaces the legacy intent decision path; rounds run in order. R1 (Protocol contract types) and R2 (programmer contract and response validation) are implemented with zero production consumers; the runtime capabilities arrive from R3 on.
+The [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) are complete: typed instructions, an immutable buffer, exclusive process state, the programmer contract, and the Session/HTTP/WebUI cutover fully replaced the legacy intent decision path. See the [0026 verification](build-log/0026-dynamic-programmer-cutover.md) for the executed matrix, the behavior-table mapping, and platform boundaries; active re-wake, the LLM programmer, and persistence remain deferred.
 
 [Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries.
 

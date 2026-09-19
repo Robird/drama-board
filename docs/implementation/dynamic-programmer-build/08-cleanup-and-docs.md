@@ -1,6 +1,6 @@
 # R8 · 删除旧路径、守卫与文档收口
 
-状态：未开始。依赖：R7。产物：全仓库源码、测试与文档。
+状态：已完成。依赖：R7。产物：全仓库源码、测试与文档；验收记录见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)。
 
 ## 目标
 
@@ -17,7 +17,7 @@ R7 之后旧决策路径只剩零引用的死代码。本轮删除它们、跑�
 
 - `src/Player`：`IPlayerDriver.cs`、`NullPlayerDriver.cs`、`RandomPlayerDriver.cs`、`ScriptedPlayerDriver.cs`；`tests/Player.Tests/PlayerDriverTests.cs`（保留 R2 的 DynamicProgrammer 测试）。
 - `src/Protocol`：`DecisionRequest.cs`、`Observation.cs`、`PlayerDecision.cs`、`Intent.cs`；`ProtocolKinds.cs` 与 `StableIdentifiers.cs` 中失去引用的类型（`ActionKind/ActionKinds/FactKind/DecisionId` 等——`ActivationId/PassageHandle` 复用的 `StableIdentifier` 机制保留）。
-- `tests/Protocol.Tests`：删除 `DtoJsonRoundTripTests.cs` 与 `IntentJsonTests.cs`（旧类型 JSON 测试）；`StableIdentifierTests.cs` 改写为经 `PassageHandle/ActivationId` 断言同一机制。注：`FrozenList` 已在 R1 迁出 `DecisionRequest.cs`，删除该文件不影响新契约。
+- `tests/Protocol.Tests`：删除 `DtoJsonRoundTripTests.cs` 与 `IntentJsonTests.cs`（旧类型 JSON 测试）；`StableIdentifierTests.cs` 亦直接删除——R1 的 `ProgrammingIdentifierTests.cs` 已用 `PassageHandle/ActivationId` 断言同一机制（等值、空白、超长、256 边界、控制字符），改写只会造成重复。注：`FrozenList` 已在 R1 迁出 `DecisionRequest.cs`，删除该文件不影响新契约。
 - `src/Decision.Validation`：`PlayerDecisionValidator.cs`；`tests/Decision.Validation.Tests` 中对应旧测试（保留 R2 新校验器测试）。
 - `src/Server/Web/DecisionInput.cs`（R7 已被 `ProgrammingInput` 替代）。
 - 零引用的 `using`/注释残留。
@@ -26,7 +26,7 @@ R7 之后旧决策路径只剩零引用的死代码。本轮删除它们、跑�
 
 ```text
 rg -n "IPlayerDriver|PlayerDecision|DecisionRequest|DecisionId|ActionKind|FactKind|Observation|ObservedExit|AvailableAction|Intent|WebHumanDriver|DecisionInput" src tests
-→ 零命中（`ActionKind` 同时覆盖 `ActionKinds`；大小写敏感，不误伤小写普通词）
+→ 零命中（`ActionKind` 同时覆盖 `ActionKinds`；大小写敏感，不误伤小写普通词；`FactKind` 按词边界判读——`OccurrenceView.FactKinds`/`FreePlayFactKind` 是现行视图合同名，非旧类型）
 
 dotnet build DramaBoard.Local.slnx -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
 dotnet test DramaBoard.slnx

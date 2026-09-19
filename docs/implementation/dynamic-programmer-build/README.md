@@ -85,4 +85,6 @@
 - [x] R5 Spatial 适配规则
 - [x] R6 Process 规则与闭环
 - [x] R7 产品切换
-- [ ] R8 清理与文档
+- [x] R8 清理与文档
+
+R1–R8 全部完成：2026-09-19；验收记录见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)。

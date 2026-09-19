@@ -1,13 +1,13 @@
 # Player 运行时与 Plan-Maintainer：关键设计理念
 
-> 层级：关键设计理念。状态：依据用户已确认方向整理，机制与软件工程方案尚未冻结。
+> 层级：关键设计理念。状态：依据用户已确认方向整理；首批机制与工程方案已定稿实施（见第 8 节），后续语义仍可按证据修订。
 > 本目录作为该专题的长期入口；需要展开时再增加机制与工程文档。创建：2026-09-16。
 
 **Human 或 LLM 维护角色的未来计划与规划；共享运行时保留信息、执行已授权的安排，并在需要判断时唤起维护者；游戏规则决定实际发生的结果。**
 
 本文约束后续方案应保持的产品语义。它不指定类、程序集、协议字段、调度步骤或存储格式，也不是施工工单。当前实现差距见第 8 节；推敲依据见[辩证审查记录](../../worksets/player-runtime-principles-review.md)。
 
-**机制设计入口：** [World VM、Player Process 与 Dynamic-Programmer](dynamic-programmer.md)采用顺序 Move/Think/Stay：有效后续程序统一授权执行，合法空程序默认 Stay，待机保留安排可写成 Stay 前缀；[机制审查](../../worksets/dynamic-programmer-review.md)记录来源与取舍。用户已选择待机可结束本次自动推进，主动重新唤醒延期；该机制尚未实现。
+**机制设计入口：** [World VM、Player Process 与 Dynamic-Programmer](dynamic-programmer.md)采用顺序 Move/Think/Stay：有效后续程序统一授权执行，合法空程序默认 Stay，待机保留安排可写成 Stay 前缀；[机制审查](../../worksets/dynamic-programmer-review.md)记录来源与取舍。用户已选择待机可结束本次自动推进，主动重新唤醒延期；该机制已按施工工单 R1–R8 实施（见第 8 节）。
 
 ```mermaid
 flowchart LR
@@ -128,23 +128,12 @@ Human 实际思考多久、LLM 推理或网络用了多久，不直接决定角�
 
 ## 8. 当前实现与待裁决边界
 
-当前 [0025 场景](../../build-log/0025-verification.md)只有四点全图已知、相邻真实移动和双页面。源码中的 [IPlayerDriver](../../../src/Player/IPlayerDriver.cs)仍是单次请求返回一个意图；[FreePlayScene](../../../src/Server/FreePlay/FreePlayScene.cs)在地点上请求移动决定；[Player.Agency](../../../src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs)仅提供静态已知图接缝。计划维护、思考行动和上述注意力机制都尚未实现。
+本文的计划维护与“再想想”方向已由 [Dynamic-Programmer 机制模型](dynamic-programmer.md)落地，并按[施工工单](../../implementation/dynamic-programmer-build/README.md) R1–R8 接入 live Server 与 WebUI：程序化 Buffer、主观工作区、带笔记的正耗时思考、Stay 待机与 staying 健康静止已在本地运行，验收见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)。当前 [0025 场景](../../build-log/0025-verification.md)的四点全图与双页面边界保持不变；[Player.Agency](../../../src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs)仍提供静态已知图接缝。
 
-当前 [Kernel](../simulation-kernel.md)负责统一仲裁与提交，[Spatial](../graph-spatial-world.md)负责客观空间。未来角色控制状态如何映射到程序集、事实及提交步骤，由机制与工程设计决定。
+当前 [Kernel](../simulation-kernel.md)负责统一仲裁与提交，[Spatial](../graph-spatial-world.md)负责客观空间；Programmer 在 `FreePlayProcessRule` 的 respond Plan 内被同步调用，Buffer 与执行状态是提交世界的一部分。
 
-现有 Kernel 合同在等待驱动器回答期间不推进模型时间。它与“执行再想想要耗模型时间”描述的是不同阶段。若未来需要世界在驱动器实际回答期间继续运行，应另行裁决；本文不要求引入并发思考。
+现有 Kernel 合同在等待 Programmer 回答期间不推进模型时间。它与“执行再想想要耗模型时间”描述的是不同阶段。若未来需要世界在 Programmer 实际回答期间继续运行，应另行裁决；本文不要求引入并发思考。
 
 [旧空间知识备忘](../../research/player-spatial-knowledge.md)保留其 Getter 实现边界及历史消费者说明。本文确立更完整的未来方向；旧文中对当时扩展范围的限制，不代表本轮拒绝系统化笔记与计划。客观空间与角色知识分离的原则继续成立。
 
-下一层机制设计至少应裁决：
-
-| 问题 | 本文保留的边界 |
-|---|---|
-| 计划如何表达和推进？ | 先比较足以支持具体场景的表达；不预选队列、树、图或通用脚本 |
-| 唤醒与执行怎样配合？ | 明确维护机会、暂停和继续的关系；同步维护可作为候选 |
-| “再想想”怎样执行？ | 必填笔记、始终可选、正耗时、下次可续思考必须保持；并行、打断、保存时点另定 |
-| 其他维护行为是否收费？ | 思考机会、编辑成本、空计划和保持原样的后续节奏需一起说明 |
-| 知识、笔记怎样供给？ | 保持来源差异与可取用性；容量、召回、整理与保留策略按场景选择 |
-| 计划修改怎样生效？ | 明确哪些未来可编辑及接受边界；再选择版本、协议和提交表达 |
-
-机制比较应先用一个小闭环检验：提交移动计划、自动推进、出现维护机会、修改或保留未来、用“再想想”积累笔记并付出时间、再次维护。它是优先研究的候选切片，不代表同时批准探索迷雾、NPC、购物、通用规划器、存档或异步模型调用。
+机制层对各裁决问题（计划表达、唤醒与执行配合、“再想想”执行、知识供给与生效边界）的选择见[机制模型](dynamic-programmer.md)第 4–7 节与工单 README；其 7.1 小闭环已实施并通过 [0026](../../build-log/0026-dynamic-programmer-cutover.md) 验收。主动重新唤醒、LLM Programmer、持久化与多角色仍按重开条件延期。
