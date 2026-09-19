@@ -15,8 +15,8 @@ public sealed class FreePlaySession {
     private readonly FreePlayScene _scene;
     private readonly IPlayerDriver _driver;
     private readonly bool _webDriver;
-    private readonly InMemoryOccurrenceHistory<FreePlayWorld, GraphSpatialFact> _history;
-    private readonly SimulationKernel<FreePlayWorld, FreePlayCandidate, GraphSpatialFact> _kernel;
+    private readonly InMemoryOccurrenceHistory<FreePlayWorld, FreePlayFact> _history;
+    private readonly SimulationKernel<FreePlayWorld, FreePlayCandidate, FreePlayFact> _kernel;
     private PlayerView _player;
     private DevView _dev;
     private PendingDecision? _pending;
@@ -153,10 +153,10 @@ public sealed class FreePlaySession {
         var trajectory = new List<TrajectoryEntry> { new("A", 0, null) };
         TraversalStartedFact? departure = null;
         foreach (var occurrence in _history.CompletedEvents) {
-            foreach (GraphSpatialFact fact in occurrence.Facts) {
-                if (fact is TraversalStartedFact started && started.EntityId == FreePlayScene.Actor) {
+            foreach (FreePlayFact fact in occurrence.Facts) {
+                if (fact is SpatialFact { Fact: TraversalStartedFact started } && started.EntityId == FreePlayScene.Actor) {
                     departure = started;
-                } else if (fact is TraversalArrivedFact arrived && arrived.EntityId == FreePlayScene.Actor) {
+                } else if (fact is SpatialFact { Fact: TraversalArrivedFact arrived } && arrived.EntityId == FreePlayScene.Actor) {
                     if (departure is null) { throw new InvalidOperationException("Arrival has no departure."); }
                     PassageDefinition passage = _scene.Definition.GetPassage(departure.PassageId);
                     PlaceId target = passage.EndpointA == departure.FromPlaceId ? passage.EndpointB : passage.EndpointA;
@@ -167,7 +167,7 @@ public sealed class FreePlaySession {
         }
         IReadOnlyList<OccurrenceView> records = Freeze(_history.CompletedEvents.TakeLast(100).Select(occurrence =>
             new OccurrenceView(occurrence.TargetInstant.ModelTime.Ticks, occurrence.CauseKey.ToString(),
-                Freeze(occurrence.Facts.Select(fact => fact.GetType().Name)))));
+                Freeze(occurrence.Facts.Select(FreePlayFactKind)))));
         lock (_gate) {
             long revision = _player.ViewRevision + 1;
             string location = _scene.Location(_kernel.World);
@@ -194,6 +194,12 @@ public sealed class FreePlaySession {
             SignalChange();
         }
     }
+
+    private static string FreePlayFactKind(FreePlayFact fact) => fact switch {
+        SpatialFact spatial => spatial.Fact.GetType().Name,
+        ProcessFact process => process.Fact.GetType().Name,
+        _ => throw new InvalidOperationException($"The FreePlay scene does not support fact type '{fact.GetType().Name}'.")
+    };
 
     private SubmitResult Reject(int status, string code, string message) {
         _dev = _dev with { LastRejection = $"{code}: {message}" };

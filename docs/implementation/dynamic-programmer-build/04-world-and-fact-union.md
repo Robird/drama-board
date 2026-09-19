@@ -1,6 +1,6 @@
 # R4 · FreePlayWorld 扩展与 FreePlayFact 联合
 
-状态：未开始。依赖：R3。产物：`src/Server/FreePlay`、`tests/Server.Tests`。
+状态：已完成。依赖：R3。产物：`src/Server/FreePlay`、`tests/Server.Tests`。
 
 ## 目标
 

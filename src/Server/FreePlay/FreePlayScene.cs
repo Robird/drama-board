@@ -4,14 +4,19 @@ using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Protocol;
+using DramaBoard.Server.FreePlay.Runtime;
 using DramaBoard.Spatial;
 
 namespace DramaBoard.Server.FreePlay;
 
-internal sealed record FreePlayWorld(GraphSpatialState Spatial, ModelTime EffectiveTime);
+internal abstract record FreePlayFact;
+internal sealed record SpatialFact(GraphSpatialFact Fact) : FreePlayFact;
+internal sealed record ProcessFact(FreePlayProcessFact Fact) : FreePlayFact;
+
+internal sealed record FreePlayWorld(GraphSpatialState Spatial, PlayerProcessState Process, ModelTime EffectiveTime);
 internal sealed record FreePlayCandidate(OccurrenceCandidate<SpatialOccurrenceData>? Spatial);
 
-internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCandidate, GraphSpatialFact> {
+internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCandidate, FreePlayFact> {
     internal static readonly EntityId Actor = new("human");
     internal GraphDefinition Definition { get; } = GraphDefinition.Create(
         [new("A"), new("B"), new("C"), new("D")],
@@ -35,12 +40,22 @@ internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCan
     }
 
     internal FreePlayWorld Genesis() => new(
-        GraphSpatialState.Create(Definition, [new(Actor, new PlaceId("A"))]), ModelTime.Zero);
+        GraphSpatialState.Create(Definition, [new(Actor, new PlaceId("A"))]),
+        PlayerProcessStateGenesis.Create(),
+        ModelTime.Zero);
 
-    internal FreePlayWorld Fold(FreePlayWorld world, LogicalInstant instant, GraphSpatialFact fact) =>
-        new(_reducer.Apply(world.Spatial, instant, fact), instant.ModelTime);
+    internal FreePlayWorld Fold(FreePlayWorld world, LogicalInstant instant, FreePlayFact fact) => fact switch {
+        SpatialFact spatial => new FreePlayWorld(
+            _reducer.Apply(world.Spatial, instant, spatial.Fact), world.Process, instant.ModelTime),
+        ProcessFact process => new FreePlayWorld(
+            world.Spatial, PlayerProcessReducer.Apply(world.Process, instant, process.Fact), instant.ModelTime),
+        _ => throw new InvalidOperationException($"The FreePlay scene does not support fact type '{fact.GetType().Name}'.")
+    };
 
-    internal void Validate(FreePlayWorld world) => GraphSpatialStateValidator.ValidateComplete(Definition, world.Spatial);
+    internal void Validate(FreePlayWorld world) {
+        GraphSpatialStateValidator.ValidateComplete(Definition, world.Spatial);
+        PlayerProcessValidator.Validate(world.Process);
+    }
 
     public IReadOnlyList<OccurrenceCandidate<FreePlayCandidate>> Forecast(FreePlayWorld world, SimulationRules rules) {
         var candidates = _spatial.Forecast(world.Spatial, rules).Select(candidate =>
@@ -52,10 +67,12 @@ internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCan
         return candidates.AsReadOnly();
     }
 
-    public async ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(FreePlayWorld world,
+    public async ValueTask<TransitionDraft<FreePlayFact>> PlanSelectedAsync(FreePlayWorld world,
         OccurrenceCandidate<FreePlayCandidate> winner, CancellationToken cancellationToken) {
         if (winner.Data.Spatial is { } spatial) {
-            return await _spatial.PlanSelectedAsync(world.Spatial, spatial, cancellationToken);
+            TransitionDraft<GraphSpatialFact> draft =
+                await _spatial.PlanSelectedAsync(world.Spatial, spatial, cancellationToken);
+            return new(draft.Facts.Select(fact => new SpatialFact(fact)));
         }
         SpatialEntity actor = world.Spatial.Entities.Single(entity => entity.Id == Actor);
         if (actor.Location is not AtPlaceLocation place || winner.Key != DecisionKey(actor) ||
@@ -74,7 +91,7 @@ internal sealed class FreePlayScene : IOccurrenceRule<FreePlayWorld, FreePlayCan
         if (!TryPlan(world, request, decision, out SpatialPlanAccepted? plan)) {
             throw new InvalidOperationException("Player driver returned an invalid travel decision.");
         }
-        return new TransitionDraft<GraphSpatialFact>(plan!.Facts);
+        return new TransitionDraft<FreePlayFact>(plan!.Facts.Select(fact => new SpatialFact(fact)));
     }
 
     internal bool TryPlan(FreePlayWorld world, DecisionRequest request, PlayerDecision decision,

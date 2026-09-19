@@ -81,7 +81,7 @@
 - [x] R1 Protocol 契约类型
 - [x] R2 Programmer 与响应校验
 - [x] R3 Process 领域
-- [ ] R4 World 与 Fact 联合
+- [x] R4 World 与 Fact 联合
 - [ ] R5 Spatial 适配规则
 - [ ] R6 Process 规则与闭环
 - [ ] R7 产品切换
