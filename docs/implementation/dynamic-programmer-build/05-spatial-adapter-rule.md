@@ -1,6 +1,6 @@
 # R5 · FreePlaySpatialRule：到达适配
 
-状态：未开始。依赖：R4。产物：`src/Server/FreePlay/Runtime/FreePlaySpatialRule.cs`、`tests/Server.Tests`。
+状态：已完成。依赖：R4。产物：`src/Server/FreePlay/Runtime/FreePlaySpatialRule.cs`、`tests/Server.Tests`。
 
 ## 目标
 
