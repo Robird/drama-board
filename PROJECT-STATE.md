@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-19；Dynamic-Programmer 施工 R1–R5 已落地，见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
+> 最近整理：2026-09-19；Dynamic-Programmer 施工 R1–R6 已落地，见[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
 
 ## 最终目标
 
@@ -25,7 +25,7 @@
 
 已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。
 
-工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1（Protocol 契约类型）、R2（`IDynamicProgrammer`、脚本驱动器与响应校验器）、R3（Server/FreePlay/Runtime 的 Process 领域：不可变 Buffer、互斥执行状态、七种 facts 与单一 reducer，internal 可见）、R4（场景 world 扩为 Spatial+Process+EffectiveTime 并引入 `FreePlayFact` 联合；纯结构轮，旧决策流未变）与 R5（`FreePlaySpatialRule` 到达适配：到达候选同批追加 `MoveArrived` 结束当前 Move；kernel 级测试覆盖，尚未注册进 live session）已落地，各自测试全绿；下一步 R6（FreePlayProcessRule 与闭环验收），进度以工单 README 状态表为准。
+工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。R1–R3（契约类型、`IDynamicProgrammer` 与响应校验器、Process 领域）、R4（World 扩为 Spatial+Process 并引入 `FreePlayFact` 联合）、R5（`FreePlaySpatialRule` 到达适配）与 R6（`FreePlayProcessRule`：按 Mode 预测 respond/start/think-complete，Material 不泄露动态入口状态，10 个 kernel 级闭环测试覆盖机制文档 §7.2 行为矩阵）已落地，各自测试全绿；新旧两套规则均未注册进 live session，下一步 R7（产品切换：Session/HTTP/WebUI 与测试重写），进度以工单 README 状态表为准。
 
 ## 延期与重开条件
 

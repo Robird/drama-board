@@ -1,6 +1,6 @@
 # R6 · FreePlayProcessRule 与闭环验收
 
-状态：未开始。依赖：R2、R5。产物：`src/Server/FreePlay/Runtime/FreePlayProcessRule.cs`、`tests/Server.Tests`。
+状态：已完成。依赖：R2、R5。产物：`src/Server/FreePlay/Runtime/FreePlayProcessRule.cs`、`tests/Server.Tests`。
 
 ## 目标
 

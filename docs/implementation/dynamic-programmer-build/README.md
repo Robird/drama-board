@@ -83,6 +83,6 @@
 - [x] R3 Process 领域
 - [x] R4 World 与 Fact 联合
 - [x] R5 Spatial 适配规则
-- [ ] R6 Process 规则与闭环
+- [x] R6 Process 规则与闭环
 - [ ] R7 产品切换
 - [ ] R8 清理与文档
