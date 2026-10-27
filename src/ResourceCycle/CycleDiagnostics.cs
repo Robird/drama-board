@@ -25,7 +25,7 @@ public static class CycleDiagnostics {
         text.AppendLine();
         text.AppendLine("## Predictors and dependencies");
         text.AppendLine("Fixed coarse subscriptions are filtered by affected child identity; absent outputs remain subscribed.");
-        foreach (string owner in CycleEngine.Owners(world)) {
+        foreach (string owner in CyclePredictionMaintenance.Owners(world.Business)) {
             CyclePrediction? prediction = world.Forecasts.Predictions.SingleOrDefault(p => p.OwnerId == owner);
             text.AppendLine($"- {owner}: {(prediction is null ? "no current prediction" : $"{prediction.Kind}({prediction.TargetId}) at {prediction.Due}")}");
             text.AppendLine($"  - watches: {string.Join(", ", world.Forecasts.Bindings.Where(b => b.OwnerId == owner).Select(b => b.EventKind))}");

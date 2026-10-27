@@ -1,6 +1,6 @@
 # 模块化重构方案：从 ResourceCycle 的真实协作边界开始
 
-> 状态：渐进实施中；依据 2026-10-27 当前源码。A 与 B 的 Console 分片已落地，见[验收](../experiments/modularization-acceptance.md)；下一片为 B 的事实应用与预测维护边界，C/D 尚未实施。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)；尚未确定的公共 API 或程序集名称不视为实施承诺。
+> 状态：渐进实施中；依据 2026-10-27 当前源码。A/B 已落地，见[验收](../experiments/modularization-acceptance.md)；下一片为 C 的总件数容量探针，D 尚待该证据裁决。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)；尚未确定的公共 API 或程序集名称不视为实施承诺。
 
 ## 1. 目标与范围
 
@@ -18,7 +18,7 @@
 | [CycleActions](../../src/ResourceCycle/CycleActions.cs) | 命令形状、控制器入口、接受条件、采集时长公式；受阻结果是中文字符串 | 区分局部规则检查与本游戏命令组合；保留“接受时合法”和“到期能否取得资源”的不同检查时点。 |
 | [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | 同时确定资源替换、背包增加、活动续接、感知与结果文字 | 这是明确存在的跨模块编排；可调用局部能力，但仍由它决定一整个发生项的结果。 |
 | [CycleFact](../../src/ResourceCycle/CycleFact.cs) 与 [CycleBusinessState](../../src/ResourceCycle/CycleModels.cs) | 前者记录跨对象替换事实；后者是具体游戏的业务根，校验跨对象引用 | 当前事实和根保留应用归属；不要求一个模块对应一类通用 Fact 或一个独立提交。 |
-| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | Kernel 接线、候选优先级与角色轮转、Fold、Complete、绑定、预测和验证 | 可逐步分离内部职责，但不能把 same-tick 优先级和角色公平轮转当作通用调度公理。 |
+| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)、[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)、[CyclePredictionMaintenance](../../src/ResourceCycle/CyclePredictionMaintenance.cs) | Engine 保留接线/候选政策/Complete 编排，事实应用与预测维护只接收 Business 及必要缓存 | 三者均为当前游戏职责，不把 same-tick 优先级和角色公平轮转提升成通用调度公理。 |
 | [CycleForecasts](../../src/ResourceCycle/CycleForecasts.cs)、[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) | 运行时预测/绑定及诊断；缓存不落盘 | 保留冷开 Rebuild、增量 Complete 与全量对照，避免模块提取后各自维护世界时间或发布。 |
 | [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs) | 具体场景对象图、默认资源/角色/脚本、起始游标 | 作为组合入口保留；模块工厂最多返回其负责的子图，不另造全世界根。 |
 | [Persistence](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
@@ -30,7 +30,7 @@
 
 - `CycleBackpack.Add` 返回新对象；`CyclePlanning.CompleteGather` 同时选择资源、角色与感知的新值。局部能力不能就地改变已发布对象。
 - 背包 `int.MaxValue` 接纳规则由 `CycleBackpack.CanAdd` 提供，接受命令与采集结算分别调用；预检查不预留，结算仍需重查。
-- `CycleEngine.Affected` 依赖子对象引用变化判断 dirty；`Complete` 还验证折叠结果与记录事实相符。重构若无条件复制子图，可能保持玩法结果却破坏增量行为。
+- `CyclePredictionMaintenance.Affected` 依赖子对象引用变化判断 dirty；`Complete` 还通过事实应用职责验证折叠结果与记录事实相符。重构若无条件复制子图，可能保持玩法结果却破坏增量行为。
 - `CyclePrediction.ToString()` 当前参与候选稳定身份与比较；业务对象的 `ToString()` 也用于诊断轨迹。不能把所有字符串一概当作可任意调整的展示实现。
 - `CycleFact.Result`、`CycleCharacter.LastResult`、`CycleNotice.Reason` 已进入持久对象图，规划代码生成中文文本；`PlayView` 根据结构化信息渲染感知。纯视图已独立，但持久文本尚未全面结构化，调整时必须说明哪些是历史记录，哪些是当前状态投影。
 
@@ -66,21 +66,23 @@
 
 **Console 分片：已实施并验收。** `PlayView` 承担完整观察、命令列表与公共变化；`PlayInput` 只解析语法，IO/EOF/重试和世界合法性检查留在 `PlayConsole`。两个类型仍是 CLI 内部类型，独立 [CLI.Tests](../../tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj) 经单一友元访问，不让领域测试反向引用 exe。文本与现有命令行为保持；没有改变持久历史文字或增加信息隔离 API。行为测试和真实 Console 试玩见[验收](../experiments/modularization-acceptance.md)。
 
-**下一片的具体方案：事实应用与派生预测维护。** 拟新增两个应用内部静态职责，均不成为通用引擎模块：
+**事实应用与派生预测维护：已实施并验收。** 两个应用内部静态职责均不成为通用引擎模块：
 
 | 归属 | 职责 |
 | --- | --- |
-| `CycleFactApplication`（拟新增） | 从 Business 和记录事实得到新 Business，校验事实形状及重折叠一致性；不读取预测或控制器。 |
-| `CyclePredictionMaintenance`（拟新增） | 从 Business 列举 owner、生成预测/订阅、收集 dirty、更新及验证 `CycleForecasts`；不读取历史或发布状态。 |
+| `CycleFactApplication` | 从 Business 和记录事实得到新 Business，校验事实形状及重折叠一致性；不读取预测或控制器。 |
+| `CyclePredictionMaintenance` | 从 Business 列举 owner、生成预测/订阅、收集 dirty、更新及验证 `CycleForecasts`；不读取历史或发布状态。 |
 | `CycleEngine` | 保留现有公共入口和 Kernel 接线、候选政策；Complete 显式串联逐事实应用、dirty 收集、重折叠校验和最终缓存更新。 |
 
 这避免预测维护反调 Engine.Fold 的循环依赖，并让局部规则无需 Kernel/控制器即可验证。必须按**每条事实的前后业务态**收集 dirty，去重后针对最终态各计算一次；保留 consumed owner、没有当前输出的 owner 订阅、Activity/角色两级引用判断和相同预测的实例复用。冷开重建与增量更新继续分开；oracle 仍使用独立公式，不调用新 Predict 来生成期望。当前不支持动态增删角色/资源，生产 Validate 也不承担全量缓存完整性证明；本片不扩大这些合同。内嵌 CycleRule 体量小，暂不另抽一层。
 
-**目标与入口**：
+新增 [CycleMaintenanceBoundaryTests](../../tests/ResourceCycle.Tests/CycleMaintenanceBoundaryTests.cs) 验证无需 World/controller 的事实应用与预测协作，以及批内恢复原引用仍逐事实收集 dirty、最终只重算一次。没有给中间 Business 增加完整校验；Kernel 公共入口、候选政策及独立 oracle 保留。
 
-- 在 `CycleEngine` 内区分 Kernel 接线/候选政策、事实折叠校验、派生预测维护；优先提取可单独检查输入输出的内部职责。现有世界/事实类型继续作为应用组合合同。
+**已形成的边界**：
+
+- `CycleEngine` 区分 Kernel 接线/候选政策、事实折叠校验、派生预测维护。现有世界/事实类型继续作为应用组合合同。
 - 保留 `CyclePlanning` 为跨规则编排；局部规则可以接收所需对象而非完整世界，但不要为每个现有调用引入上下文接口。
-- 从 `PlayConsole` 提取纯渲染与纯命令解析，使角色视图、受阻原因与输入语法可以不驱动真实 Console 而测试；输出仍保留当前 Markdown 行为。
+- `PlayConsole` 使用纯渲染与纯命令解析，使角色视图、受阻原因与输入语法可以不驱动真实 Console 而测试；输出仍保留当前 Markdown 行为。
 
 **保留合同**：增量结果与全量 oracle 等价；不相关预测不重算；活动对象未变时 attention 变化不重新计时；同刻顺序、CandidateKey 和角色轮转不变；视图仍仅显示当前角色的私有技能、活动细节和背包。
 
@@ -92,9 +94,17 @@
 
 ### C. 用另一个真实约束检验库存能力边界
 
-**目标**：验证 A 的能力能否支撑“当前无玩法容量限制”与“某一种有容量约束”两种用法。后者可以先用独立测试组合探针，不改变默认 demo。容量按总件数、重量还是格子计算，仍需在实施前选择；不一次支持所有变体。
+**目标与选定合同（待实施）**：验证 A 的能力能否支撑当前无限制用法与**总件数上限**。同种/不同种物品均按实际数量占用容量，不是种类数；每次仍接纳一件，不预留、不部分接纳。默认 demo 不设置玩法容量，不增加新的 CLI 模式。
+
+最小模型选择在库存快照中保存可选容量：null 表示无玩法容量，0 表示合法零容量；已用总件数以 long 从字典派生，不落盘重复总量。保持单项 int 表示上限；本片不支持运行时调整容量，不引入继承树、策略 delegate 或 IInventory。
+
+接纳查询需要一个无文本的小型结果，区分可接纳、单项数量上限、总容量已满；不能让游戏根据 false 猜理由。具体类型名施工时确定。实际增加操作也须守住接纳约束，不能依赖先前预检查。游戏保留接受/结算两时点并负责文案和批次结束：最后一个容量成功用尽后仍安排下一周期，下一次结算拒收才结束，不顺便改成即时唤醒或提前终止。
 
 **入口**：A 整理出的局部能力、测试夹具与具体游戏组合代码。探针不要求另建 Console 或存档入口，也不凭一个测试夹具宣称已证明完整第二游戏复用。
+
+验收分两层：独立库存测试验证跨物品共享容量、0/无限/单项上限和快照隔离；再利用现有工厂注入有容量的角色，验证“容量 2、目标 3，只取得并扣资源 2 份”、开始已满拒绝、已有另一物品占用容量，以及连续/S 冷开/E-only 恢复一致。库存与容量随根和记录替换一起保存，恢复不能重新判断接纳政策。
+
+新增容量字段前需核实 DG schema 演进规则，保留历史并正常生成/Publish 后 Verify；Schema 与 GameRevision 分别裁决。默认旧状态等价于无限容量，但是否提供该开发存档转换仍须以实际解码路径为依据，不为本探针预建历史迁移框架；确需放弃旧记录时明示并验证新格式的恢复。
 
 **保留合同**：模块只回答自己的状态与约束，游戏决定失败是否耗时、是否结束采集、怎样告知角色。预检查不预留资源；结算再检查；从已经记录的 E 恢复时不重判接纳政策。
 
@@ -105,6 +115,8 @@
 ### D. 有证据后拆程序集，明确游戏组合入口
 
 **进入条件**：至少有一个职责边界能解释清楚、向下依赖成立，且拆出后确实获得独立测试、独立使用或避免反向引用的收益。第二个生产游戏不是硬性门槛，但单纯改目录不算收益。库存是首个候选，资源再生、活动或整套采集是否一起提取仍需单独判断。
+
+当前候选理由：库存表示不依赖角色、时间或世界；C 若通过，独立库存消费者可以只依赖库存与 DG，摆脱 ResourceCycle/Kernel/Persistence 依赖。模块可仿照 Kernel 提供自身模型注册入口，由游戏显式组合；无需扩大生成定义的可见性或新增友元。C 通过后核查实际项目/Schema 归属与最小公开 API，再决定提取，不连带搬出角色/活动/资源点。
 
 **实施意向**：移出的模块拥有其局部状态与规则；具体游戏引用模块并组合根、事实与工厂。模块不引用 `ResourceCycle`、CLI 或具体游戏持久化 adapter，也不拥有独立世界提交入口。游戏负责组合模块模型注册，模块可提供自身注册入口，具体形状在现有 DG 生成器能力下验证后确定。
 
@@ -136,6 +148,6 @@
 
 ## 6. 下一轮建议与待决边界
 
-下一片实施 B 的事实应用与预测维护边界，按上文方案保留明确的 Complete 编排；完成后细化 C 的一个容量用例，再用证据裁决 D 的物理拆分。不是机械拆文件或固定完成 A→D，而是逐片证明职责、依赖和独立使用收益，不能用暂缓文字替代尚未完成的评估。
+下一片实施 C 的总件数容量探针，先核实 schema/修订支持范围，再落地局部能力与真实采集/恢复验证；据此裁决 D 的物理拆分。不是机械拆文件或固定完成 A→D，而是逐片证明职责、依赖和独立使用收益，不能用暂缓文字替代尚未完成的评估。
 
-尚待证据选择：库存变体的容量含义；展示文字中历史记录与当前投影的具体拆分；哪个模块首先值得独立程序集；定义与运行实例是否拆开；后续空间与采集怎样组合。确定前保持普通类型、显式调用与应用层组合，不为这些问题预建公共接口。
+尚待证据选择：容量字段的具体 schema/修订支持范围；库存的物理提取边界及名称；展示文字中历史记录与当前投影的进一步拆分；定义与运行实例是否拆开；后续空间与采集怎样组合。确定前保持普通类型、显式调用与应用层组合，不为这些问题预建公共接口。

@@ -12,7 +12,7 @@
 - **Kernel**：统一 Occurrence 仲裁；Plan → 业务 Fold → 纯 Complete → 带时间 Validate，发布独立 E/S，S 成功才安装；pending/Replay 同样准备派生缓存，不重做 Plan。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：[SpatialSimulation](src/Spatial/Simulation/SpatialSimulation.cs) 按 dirty 通道增量维护运行时 Contacts，genesis/冷开显式 Rebuild；磁盘 S 只保存 Business/cursor，E 只含 GraphSpatialFact。保留 contact floor、arrival ceil、严格内部掉头与 current-segment 消费；见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)和 [Graph 设计](docs/design/graph-spatial-world.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
-- **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 分别维护 activity/attention 与资源再生预测。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 三角色有限采集。见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
+- **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 编排独立事实应用与[预测维护](src/ResourceCycle/CyclePredictionMaintenance.cs)。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 三角色有限采集。见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
 - **构建依赖**：Kernel/Spatial/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
 
 ## 当前焦点与下一步
@@ -25,7 +25,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。背包接纳与 Console 纯视图/解析已形成独立边界，证据见[模块化验收](docs/experiments/modularization-acceptance.md)；下一步推进事实应用与预测维护，具体方案与推进条件只在[渐进重构方案](docs/implementation/modularization-plan.md)维护。库存容量变体仍是待设计的验证候选，不是默认玩法变更承诺。
+**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。背包接纳、Console 纯视图/解析、事实应用与预测维护的逻辑边界已落地，证据见[模块化验收](docs/experiments/modularization-acceptance.md)；下一步用总件数容量探针验证库存变体，之后裁决程序集提取。具体合同、Schema/修订待决项及验收只在[渐进重构方案](docs/implementation/modularization-plan.md)维护，默认 demo 玩法不随探针改变。
 
 重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 
