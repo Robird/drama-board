@@ -205,8 +205,8 @@ Stay 自身不安排下一次维护，Think 则以正耗时和笔记积累换取
 
 已实施并仍然绑定的核心合同：
 
-- [SimulationKernel](../../../src/Kernel/Simulation/SimulationKernel.cs)统一调度与提交；世界规则拥有状态变化，Programmer 返回提议。
-- [TransitionDraft](../../../src/Kernel/Simulation/TransitionDraft.cs)要求非空事实；处理响应与修改主观状态是正式领域进展，不伪造移动。
+- [SimulationKernel](../../../../../src/Kernel/Simulation/SimulationKernel.cs)统一调度与提交；世界规则拥有状态变化，Programmer 返回提议。
+- [TransitionDraft](../../../../../src/Kernel/Simulation/TransitionDraft.cs)要求非空事实；处理响应与修改主观状态是正式领域进展，不伪造移动。
 - candidate 在 Programmer 回答之前确定；仅更换 key 而没有领域进展不能用于规避无进展保护。
 - Buffer 与执行状态保存在提交世界里（`FreePlayWorld.Process`），不藏在 UI 或 driver 的可变队列。
 - GET、刷新与诊断查询只读；Human HTTP 与后续 LLM 输入均不直接修改 World。

@@ -2,7 +2,7 @@
 
 **状态：已按用户启动的 Goal 实施，A1—A8 验收通过。详见 [实施验收与结果包](0025-verification.md)。以下方案正文保留原设计时态，当前事实以源码及验收记录为准。**
 
-**日期：2026-09-16。前置成果：[0024 归档与核心验证](0024-archive-firstboard-and-verify-core.md)已完成。**
+**日期：2026-09-16。前置成果：[0024 归档与核心验证](../../../../docs/build-log/0024-archive-firstboard-and-verify-core.md)已完成。**
 
 ## 1. 本批结果与依据
 
@@ -15,18 +15,18 @@
 | 本会话写方案，用户 fork 会话施工，再将结果带回设计会话 | 用户指定协作方式；本文不启动施工或 Goal |
 | 共用 Player 可用信息和行动语义，分别渲染；诊断信息单独投影 | 前轮讨论方向；本文落实为本批边界 |
 | ASP.NET Core、React/TypeScript、SVG；单进程单角色、内存运行、仅相邻移动 | 本文明确提出的最小实施方案；用户以本方案启动施工时采用，不冒称现有实现或逐项历史批准 |
-| Kernel 唯一提交、等待 Player 不耗 ModelTime、核心不依赖应用 | [当前源码](../../src/Kernel/Simulation/SimulationKernel.cs)与[Kernel 设计](../design/simulation-kernel.md)证明的现有合同 |
+| Kernel 唯一提交、等待 Player 不耗 ModelTime、核心不依赖应用 | [当前源码](../../../../src/Kernel/Simulation/SimulationKernel.cs)与[Kernel 设计](../../../../docs/design/simulation-kernel.md)证明的现有合同 |
 
-当前用户要求、适用指令和 [AGENTS.md](../../AGENTS.md)决定工作授权。文档、源码、测试和外部资料分别提供目标、实现证据或技术参考；其中历史任务提示不自动成为新任务。执行者先核对实际工作树，不能凭本文状态标签推定实现已完成。
+当前用户要求、适用指令和 [AGENTS.md](../../../../AGENTS.md)决定工作授权。文档、源码、测试和外部资料分别提供目标、实现证据或技术参考；其中历史任务提示不自动成为新任务。执行者先核对实际工作树，不能凭本文状态标签推定实现已完成。
 
 ### 1.1 写作基线
 
 - HEAD：`9030de517bb0e349ed5a448840de541b59f32545`；本轮写文档前 `git status --short` 为空。
 - 两份 solution 目前各含七个核心生产项目和七个测试项目。尚无 Server、WebUI、HTTP 会话或可玩场景。
 - 0024 记录工作树与独立源码副本均通过 255 项测试；这是前批记录，本设计会话未重新执行。施工须建立本轮基线。
-- [DecisionRequest](../../src/Protocol/DecisionRequest.cs)已有冻结观察、动作及候选出口；[IPlayerDriver](../../src/Player/IPlayerDriver.cs)已有异步决策接口；[PlayerDecisionValidator](../../src/Decision.Validation/PlayerDecisionValidator.cs)负责关联与 advertised affordance 校验。当前没有调用 driver 的游戏运行循环。
-- [SpatialPlanner](../../src/Spatial/Planning/SpatialPlanner.cs)可产生出发 facts，[SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs)可预测和完成到达；[接受测试](../../tests/Spatial.Tests/Acceptance/SpatialKernelAcceptanceTests.cs)给出与 Kernel 的组合方式。
-- [全图 Getter](../../src/Player.Agency/Spatial/FullMapPlayerSpatialKnowledgeGetter.cs)已存在；自身轨迹和 Web 材料尚不存在。[Host](../../src/Host/SimulationHost.cs)仅循环 Kernel Step，不是现成 Web session。
+- DecisionRequest（历史 `DecisionRequest.cs`，已在 Dynamic-Programmer 切换时删除）已有冻结观察、动作及候选出口；IPlayerDriver（历史 `IPlayerDriver` API，已在 R8 切换时删除）已有异步决策接口；PlayerDecisionValidator（历史 `PlayerDecisionValidator.cs`，已在 Dynamic-Programmer 切换时删除）负责关联与 advertised affordance 校验。当前没有调用 driver 的游戏运行循环。
+- [SpatialPlanner](../../../../src/Spatial/Planning/SpatialPlanner.cs)可产生出发 facts，[SpatialOccurrenceRule](../../../../src/Spatial/Simulation/SpatialOccurrenceRule.cs)可预测和完成到达；[接受测试](../../../../tests/Spatial.Tests/Acceptance/SpatialKernelAcceptanceTests.cs)给出与 Kernel 的组合方式。
+- [全图 Getter](../../src/Player.Agency/Spatial/FullMapPlayerSpatialKnowledgeGetter.cs)已存在；自身轨迹和 Web 材料尚不存在。[Host](../../../../src/Host/SimulationHost.cs)仅循环 Kernel Step，不是现成 Web session。
 - 本机只读检查得到 Node `v24.11.1`、npm `11.6.2`。施工记录实际采用的版本与锁文件，不能把本机安装状态当作仓库依赖声明。
 
 ## 2. 项目与部署形状
@@ -46,7 +46,7 @@ scripts/Publish-Server.ps1           # 显式构建前端，再发布 server 到
 - `Server` 直接依赖实际使用的 `Kernel`、`Spatial`、`Protocol`、`Player`、`Decision.Validation`、`Player.Agency`；本批运行循环需要逐次观察提交，可直接调用 Kernel，不为凑依赖而引用 `Host`。
 - 小场景先保持 app-local，通过目录和类型分清场景、会话与 HTTP。暂不新增 FreePlay 类库、通用 WebHost 框架、共享 DTO 程序集或第二个服务。
 - 七个核心项目的引用、领域行为、协议 public surface 和 DurableGraph schema 不变。新增 Server 与 Server.Tests 到两份 solution，使其同为 16 个 .NET 项目；WebUI 由 npm 构建。
-- [核心引用守卫](../../tests/Kernel.Tests/ProjectDependencyGuardTests.cs)继续检验七核心，不使核心测试依赖 Server 存在。Server.Tests 自行检验应用依赖；不为 Web 放宽核心的反向依赖禁令。
+- [核心引用守卫](../../../../tests/Kernel.Tests/ProjectDependencyGuardTests.cs)继续检验七核心，不使核心测试依赖 Server 存在。Server.Tests 自行检验应用依赖；不为 Web 放宽核心的反向依赖禁令。
 - 使用 .NET 10 的普通 framework-dependent apphost：Windows 有 exe，需要已安装对应 ASP.NET Core 运行时。交付是含依赖和静态资源的目录，不要求单文件、自包含、AOT 或安装包。
 - ASP.NET Core 同时提供 API 和编译后的网页，默认仅监听 loopback。Player 与诊断页面共用进程，但取不同读模型；这是本地开发的职责分离，本批不实现账号、登录或网络权限隔离。
 

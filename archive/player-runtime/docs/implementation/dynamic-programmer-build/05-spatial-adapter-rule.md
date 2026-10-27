@@ -8,7 +8,7 @@
 
 ## 前置阅读
 
-- [Graph Spatial World](../../design/graph-spatial-world.md) §3.1（Host adapter / 外层 rule 投影 inner 候选并追加 Game facts 的既有模式）
+- [Graph Spatial World](../../../../../docs/design/graph-spatial-world.md) §3.1（Host adapter / 外层 rule 投影 inner 候选并追加 Game facts 的既有模式）
 - 现状：`src/Spatial/Simulation/SpatialOccurrenceRule.cs`（inner 规则与候选 data 联合）、`src/Spatial/Facts/GraphSpatialFact.cs`（`TraversalArrivedFact(EntityId, ExpectedMovementGeneration)`）
 
 ## 规格

@@ -15,8 +15,8 @@
 | U5 | “再想想”始终可用，必填一条有助于下次思考的文本，并消耗游戏内时间 | 当前用户明确要求；耗时可关联角色能力 |
 | U6 | 真实思考速度与角色能力脱钩 | 当前用户明确要求 |
 | C1 | 当前消费者只有单角色、单进程内存 Server 与 WebUI；四点全图、相邻移动；没有本轮新模型的持久数据兼容义务 | [场景](../../src/Server/FreePlay/FreePlayScene.cs)、[会话](../../src/Server/FreePlay/FreePlaySession.cs)及[0025 验收](../build-log/0025-verification.md)；本轮未重跑程序 |
-| C2 | driver 是 frozen request → 一个意图；当前 Agency 只提供静态知识 Getter | [IPlayerDriver](../../src/Player/IPlayerDriver.cs)、[知识接口](../../src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs) |
-| C3 | 单时间线最多一个未完成 Step；等待驱动器期间零 ModelTime；世界变化由 Kernel 完成提交，draft 非空 | [Kernel 设计](../design/simulation-kernel.md)及[SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[TransitionDraft](../../src/Kernel/Simulation/TransitionDraft.cs) |
+| C2 | driver 是 frozen request → 一个意图；当前 Agency 只提供静态知识 Getter | IPlayerDriver（历史 `IPlayerDriver` API，已在 R8 切换时删除）、[知识接口](../../src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs) |
+| C3 | 单时间线最多一个未完成 Step；等待驱动器期间零 ModelTime；世界变化由 Kernel 完成提交，draft 非空 | [Kernel 设计](../../../../docs/design/simulation-kernel.md)及[SimulationKernel](../../../../src/Kernel/Simulation/SimulationKernel.cs)、[TransitionDraft](../../../../src/Kernel/Simulation/TransitionDraft.cs) |
 | C4 | HTTP 查询不推进模拟；非法输入不消费决策；运行取消/失败与已提交结果分离 | [会话测试](../../tests/Server.Tests/FreePlaySessionTests.cs)、[HTTP 测试](../../tests/Server.Tests/HttpBoundaryTests.cs)，仅阅读，未作为本轮运行证据 |
 | D1 | 旧 Agency 备忘包含未来 attention 构想与当时限制；其历史 FirstBoard consumer 已归档 | [空间知识备忘](../research/player-spatial-knowledge.md)；派生设计，不能独立证明本轮机制必须如此 |
 

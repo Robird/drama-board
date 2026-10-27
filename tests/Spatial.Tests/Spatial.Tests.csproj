@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Host\Host.csproj" />
     <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
   </ItemGroup>
 

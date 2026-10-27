@@ -8,7 +8,7 @@
 
 ## 前置阅读
 
-- [Simulation Kernel](../../design/simulation-kernel.md) §3.2（一个 batch 表达一个 transition）、§7.1（composite HostWorld）
+- [Simulation Kernel](../../../../../docs/design/simulation-kernel.md) §3.2（一个 batch 表达一个 transition）、§7.1（composite HostWorld）
 - 现状：`src/Server/FreePlay/FreePlayScene.cs`、`src/Server/FreePlay/FreePlaySession.cs`
 
 ## 类型与改动

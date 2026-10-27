@@ -38,7 +38,7 @@
 - 两份入口 [DramaBoard.slnx](../../DramaBoard.slnx)、[DramaBoard.Local.slnx](../../DramaBoard.Local.slnx)各列出十个生产项目与十一个测试项目；[CI](../../.github/workflows/ci.yml)使用 Local 入口。
 - `FirstBoard.Persistence.Tests` 还引用未列入 solution 的 `FirstBoard.Persistence.Process`。这两个项目都链接 `tests/FirstBoard.Tests/EncounterPersistenceOracle.cs`，归档必须覆盖这个辅助进程与源码链接。
 - [ProjectDependencyGuardTests](../../tests/Kernel.Tests/ProjectDependencyGuardTests.cs)会直接打开 `src/Player.Llm/Player.Llm.csproj`。移走目录后，必须调整这项文件存在依赖；[AssemblyDependencyTests](../../tests/Kernel.Tests/AssemblyDependencyTests.cs)中的禁止依赖名称则仍有意义。
-- [Protocol 的 JSON 测试](../../tests/Protocol.Tests/IntentJsonTests.cs)包含 `FirstBoardActions` 等名称，但没有引用 FirstBoard 项目；它证明的是保留协议的序列化行为，不能仅因名称而删除。
+- Protocol 的 JSON 测试（历史 `IntentJsonTests.cs`，已在 Dynamic-Programmer 切换时删除）包含 `FirstBoardActions` 等名称，但没有引用 FirstBoard 项目；它证明的是保留协议的序列化行为，不能仅因名称而删除。
 - 默认文本搜索由根目录 [.ignore](../../.ignore)控制，当前只排除 `docs/archive/legacy/`。本批沿用这个入口，不另建同义配置文件。
 - Kernel、Spatial 仍引用固定 DurableGraph 包；[Directory.Build.props](../../Directory.Build.props)、[包准备脚本](../../scripts/Prepare-DurableGraph.ps1)和[包来源说明](../worksets/durablegraph-package-source.md)是保留构建路径的一部分。
 - 实际落盘 adapter、场景绑定和冷进程续局验证在 FirstBoard 内。归档后保留的是 Kernel 的 [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs)、[InMemoryOccurrenceHistory](../../src/Kernel/Journal/InMemoryOccurrenceHistory.cs)及其合同测试，不是一个已经可用的新游戏存档入口。

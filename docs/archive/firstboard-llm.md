@@ -10,4 +10,4 @@ To recover the original build context, create a separate worktree at the recorde
 git worktree add --detach ..\drama-board-firstboard-archive 5a7de712ad8de0d8c8357832be0d97b13ad11d78
 ```
 
-The active repository retains only the Kernel, Spatial, Protocol, Player, Decision.Validation, Host, and Player.Agency projects plus their tests. It has no active playable scene or disk-resume program.
+The original 2026-09-16 split retained seven core projects. The later Player/Protocol/Server/WebUI experiment now has its own [Player runtime archive](player-runtime.md). See [current project state](../../PROJECT-STATE.md) for the active Kernel, Spatial and Host boundary; this FirstBoard archive and its recovery baseline are unchanged.

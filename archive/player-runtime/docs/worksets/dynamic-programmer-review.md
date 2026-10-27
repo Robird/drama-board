@@ -16,8 +16,8 @@
 | U7 | 允许空响应后停驻，以此结束运行片段；主动重新唤醒留待后续 | 审查期间用户明确选择；替代第一轮关于必须补恢复入口的假设 |
 | U8 | 评估用无自然完成时刻的 `Stay` 指令统一默认停驻；与 subagent 讨论，若确有收益可直接编辑文档 | 本轮用户授权；不是要求实现代码或扩展唤醒机制 |
 | C1 | 当前只有单角色内存 Server、四点静态全图、相邻移动；没有新模型的已发布格式兼容义务 | [场景](../../src/Server/FreePlay/FreePlayScene.cs)、[会话](../../src/Server/FreePlay/FreePlaySession.cs)、[0025 证据](../build-log/0025-verification.md) |
-| C2 | Kernel 一条时间线至多一个未完成 Step；等待 driver 零 ModelTime；draft 非空；完整提交后安装状态 | [Kernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[draft](../../src/Kernel/Simulation/TransitionDraft.cs)、[调度设计](../design/simulation-kernel.md) |
-| C3 | Driver 目前单次 request → 一个 Intent；HTTP 拒绝迟到/重复，查询只读，当前地图/轨迹从系统来源投影 | [driver](../../src/Player/IPlayerDriver.cs)、[HTTP 测试](../../tests/Server.Tests/HttpBoundaryTests.cs)、[会话测试](../../tests/Server.Tests/FreePlaySessionTests.cs)，本轮仅阅读 |
+| C2 | Kernel 一条时间线至多一个未完成 Step；等待 driver 零 ModelTime；draft 非空；完整提交后安装状态 | [Kernel](../../../../src/Kernel/Simulation/SimulationKernel.cs)、[draft](../../../../src/Kernel/Simulation/TransitionDraft.cs)、[调度设计](../../../../docs/design/simulation-kernel.md) |
+| C3 | Driver 目前单次 request → 一个 Intent；HTTP 拒绝迟到/重复，查询只读，当前地图/轨迹从系统来源投影 | driver（历史 `IPlayerDriver` API，已在 R8 切换时删除）、[HTTP 测试](../../tests/Server.Tests/HttpBoundaryTests.cs)、[会话测试](../../tests/Server.Tests/FreePlaySessionTests.cs)，本轮仅阅读 |
 | D1 | 先前有序树与任务方法是设计会话建议；不是已选实现，也不构成本轮保留它们的需求 | 前轮讨论；新提案允许把它们放到指令生成侧 |
 
 ### 尚未冻结的选择

@@ -6,3 +6,6 @@ docs/archive/legacy/
 # FirstBoard and LLM are retained as a recoverable source archive.
 # Search this content explicitly with: rg --no-ignore -n "keyword" archive/firstboard-llm
 /archive/firstboard-llm/
+
+# Frozen Player, Server and UI experiment; recover through docs/archive/player-runtime.md.
+/archive/player-runtime/

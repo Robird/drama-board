@@ -1,6 +1,6 @@
 # 时空引擎独立化 TODO / Task Brief
 
-状态：用户已确认方向，尚未实施；2026-10-27。下一轮从步骤 1 开始。
+状态：步骤 1 已验收；步骤 2 待实施。2026-10-27。
 
 ## 目标与边界
 
@@ -13,25 +13,7 @@
 
 ## 步骤 1：收缩 DramaBoard
 
-本步保留现有 DurableGraph 固定依赖，先让工程边界与行为证据独立成立。
-
-- [ ] 核对工作树、项目依赖及现有构建入口；保留未提交工作，记录拆分前准确基线。旧测试结果仅作历史参考，实际运行结果另记。
-- [ ] 建立拆分前的本地固定 tag，保留完整路径、依赖与构建语境；若有未提交内容，先厘清其归属，不能用 HEAD 冒充完整工作树快照。不推送 tag 或分支。
-- [ ] 按“固定 tag + 仓内归档”保存本次应用实验，沿用 `archive/firstboard-llm/` 的归档方式，为本批另建归档单元；记录原路径、归档范围及恢复方式。
-- [ ] 归档 `Protocol`、`Player`、`Decision.Validation`、`Player.Agency`、`Server`、`WebUI`，连同专属测试、脚本和资料；保留角色运行时与 Plan 设计作为技术储备，不要求归档代码继续适配活跃核心。
-- [ ] 区分展示缓存/播放与引擎历史：呈现投影、事件播放及动画随应用冻结；`IOccurrenceHistory`、E/S 提交、pending 恢复、重放与完成结果等核心合同保留。已有 FirstBoard 归档保持可恢复。
-- [ ] 收缩两个 slnx、CI、默认构建/验证入口与搜索范围。移除活跃流程中的前端安装、Server 发布和 Chromium 要求；调整仍按旧项目路径读取的依赖约束测试。
-- [ ] 补齐或复用一个无 Player、Protocol、Server 的小场景，直接组合 Kernel/Spatial/Host，验证多实体移动、途中相遇、严格内部掉头与到达。优先复用现有测试设施，不为演示引入新 UI 或长期服务。
-- [ ] 更新 README、文档索引、归档索引与 PROJECT-STATE；将旧应用后续工作移出活跃路线，修正受影响链接及设计文档的适用范围说明。
-- [ ] 在旧依赖下构建收缩后的 solution，运行 Kernel、Spatial、Host 相关测试与小场景，复核集成 diff 和依赖方向。
-
-### 验收点
-
-- 两个 solution 的活跃项目仅为三核心及其测试，默认验证不依赖冻结应用。
-- 小场景实际运行，确定性时间顺序、相遇消费、掉头后的运动段与最终到达符合现有合同；保持 contact floor、arrival ceil 和同刻仲裁语义。
-- 核心无需调用 Programmer；`PlanSelectedAsync` 仍表示单次事件的转移规划，不承担角色长期 Plan。
-- 归档源文件与设计可以定位，拆分前完整上下文可以通过固定基线恢复；不以归档项目能在新主线上编译作为验收条件。
-- 实际运行证据与未验证边界有明确记录；先完成本步验收，再进入步骤 2。
+已完成：归档应用层并收缩为三核心；旧固定依赖下的构建、schema Verify 和无 Player 场景及完整核心测试通过。恢复入口见[归档索引](../archive/player-runtime.md)，准确命令、证据与范围见[验收记录](../build-log/0027-spacetime-extraction.md)。核心时空、仲裁、跨领域原子变化、E/S 与 pending 合同保持。
 
 ## 步骤 2：更新核心的 DurableGraph 依赖
 
@@ -61,4 +43,4 @@
 - [Kernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[Spatial](../../src/Spatial/State/GraphSpatialState.cs)、[Host](../../src/Host/SimulationHost.cs)。
 - [空间核心验收](../../tests/Spatial.Tests/Acceptance/SpatialKernelAcceptanceTests.cs)、[接触核心验收](../../tests/Spatial.Tests/Acceptance/SpatialContactKernelAcceptanceTests.cs)、[项目依赖约束](../../tests/Kernel.Tests/ProjectDependencyGuardTests.cs)。
 - [Graph 设计](../design/graph-spatial-world.md)、[E/S 合同](../design/durablegraph-occurrence-persistence.md)、[当前包准备说明](../worksets/durablegraph-package-source.md)。
-- [既有归档范例](../archive/firstboard-llm.md)、[Player 设计储备](../design/player-runtime/README.md)。
+- [既有归档范例](../archive/firstboard-llm.md)、[Player 设计储备](../../archive/player-runtime/docs/design/player-runtime/README.md)。

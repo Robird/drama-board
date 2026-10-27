@@ -6,6 +6,8 @@
 
 **本次修订：2026-08-21**
 
+> 适用范围（2026-10-27）：本文时间推进、全量 Forecast、单 winner、跨领域完整变化与 E/S 提交合同继续约束独立时空引擎。Player/Protocol/Server 已转入[应用归档](../archive/player-runtime.md)；涉及 Player 的段落说明边界或历史消费者，不要求核心依赖 Programmer。`PlanSelectedAsync` 规划一次 occurrence 的领域转移，不承担角色长期 Plan。
+
 > 存储接缝更新（2026-09-12）：当前源码已采用[DurableGraph Occurrence 提交与恢复](durablegraph-occurrence-persistence.md)的独立 E/S 与有限游标。本文时间、全量 Forecast、单 winner 和领域完整提交法则保留；后文旧 `AppendBatch`、expected Journal head、普通 Replay 恢复条款作为上一版设计语境，由该后继方案替代。显式 Replay/Fork 工具仅保留作内存算法对照，不是存档恢复入口。
 
 **定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 为权威。**

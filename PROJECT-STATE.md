@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；已确认先独立时空核心、再升级 DurableGraph，实施尚未开始。施工范围与验收见[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)。
+> 最近整理：2026-10-27；已确认先独立时空核心、再升级 DurableGraph，步骤 1 已验收，下一步升级核心 DurableGraph。施工范围与验收见[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)。
 
 ## 最终目标
 
@@ -12,17 +12,15 @@
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
-- **Player 与协议（待冻结）**：Move/Think/Stay 指令、主观工作区、`ProgrammingRequest/Response` 与稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 `IDynamicProgrammer` 与 Scripted 实现者，Decision.Validation 提供 `ProgrammingResponseValidator`，Player.Agency 提供已知图快照接缝。
-- **构建依赖**：Kernel/Spatial 仍使用旧固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新上游适配与 schema history 验证尚未实施。Server 静态资源的既有修复与历史验证见 [wwwroot 调查](docs/worksets/server-wwwroot-staticwebassets.md)。
-- **本地可玩入口（待冻结）**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置、轨迹、主观工作区与待执行程序；诊断独立只读取数。发布启动见 [README](README.md)，历史验收见 [0026](docs/build-log/0026-dynamic-programmer-cutover.md)。
+- **构建依赖**：Kernel/Spatial 仍使用旧固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新上游适配与 schema history 验证尚未实施。
 
 ## 当前焦点与下一步
 
-用户已确认将时空引擎作为当前主线，角色可维护 Plan 与交互/呈现框架保留为技术储备。下一轮按[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)依次实施：收缩工程并独立验证，再更新核心 DurableGraph 依赖；具体待办与验收仅在该文件维护。
+用户已确认将时空引擎作为当前主线，角色可维护 Plan 与交互/呈现框架保留为技术储备。按[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)继续步骤 2：更新核心 DurableGraph 依赖；具体待办与验收仅在该文件维护。
 
-当前代码尚未收缩，仍有七核心、Server/WebUI 及对应测试。目标活跃范围为 Kernel、Spatial、Host；其余应用层采用固定 tag 与仓内归档保存，退出默认构建和搜索。独立库先留在本仓库，不改变时空与调度语义。
+当前活跃范围已收缩为 Kernel、Spatial、Host；其余应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，退出默认构建和搜索，旧依赖下独立验收已通过。独立库先留在本仓库，不改变时空与调度语义。
 
-Dynamic-Programmer R1–R8 已完成、旧 Intent 路径已删除，既有实现与历史验收见 [0026](docs/build-log/0026-dynamic-programmer-cutover.md)。[Player 运行时理念](docs/design/player-runtime/README.md)与[Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)作为待冻结的设计储备，不再驱动当前施工。
+Dynamic-Programmer R1–R8 的既有实现、验收、Player 运行时理念与长期 Plan 设计统一保留在[Player 归档](docs/archive/player-runtime.md)，不驱动当前施工。
 
 FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料此前已移至[归档索引](docs/archive/firstboard-llm.md)，不参与默认编译或搜索。
 
@@ -37,5 +35,5 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 按需导航与验证
 
-- 拆分前现状：两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 均含七核心、Server 及对应测试。旧依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备，验证与发布见 [README](README.md)；[CI](.github/workflows/ci.yml)仍包含前端与 Chromium。实施步骤 1 时收缩这些入口，步骤 2 时更新依赖复现方式。
+- 两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 只含三核心及其测试。旧依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备；[README](README.md)与 [CI](.github/workflows/ci.yml)只构建验证核心。步骤 2 更新依赖复现方式。
 - 文档入口：[docs/README](docs/README.md)。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

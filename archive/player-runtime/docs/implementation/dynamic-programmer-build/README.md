@@ -6,7 +6,7 @@
 
 ## 执行方式
 
-每轮一个 fork 会话，按编号顺序执行。轮内工单自包含：开工前完整阅读该轮文档与其中"前置阅读"。完成后回传三样东西：运行的验证命令与结果、对工单的偏离及原因、把下方状态表对应行改为"已完成"。R8 前不修改设计文档；PROJECT-STATE 作为长线状态记忆随进度自主维护（见 [AGENTS.md](../../../AGENTS.md)）。
+每轮一个 fork 会话，按编号顺序执行。轮内工单自包含：开工前完整阅读该轮文档与其中"前置阅读"。完成后回传三样东西：运行的验证命令与结果、对工单的偏离及原因、把下方状态表对应行改为"已完成"。R8 前不修改设计文档；PROJECT-STATE 作为长线状态记忆随进度自主维护（见 [AGENTS.md](../../../../../AGENTS.md)）。
 
 ## 已冻结的工程基线
 
@@ -73,7 +73,7 @@
 - 不修改 `src/Kernel`、`src/Spatial`、`src/Player.Agency`、`src/Host` 的任何行为；只消费其 public API。施工中发现必须修改时，停止并在回传中说明。
 - 不新增项目、不改 solution（`ApplicationBoundaryTests` 钉死 8+8 项目与 Server 的六个引用）；不引入兼容层、双路径或 feature flag。
 - K&R 风格（`.editorconfig`）；新增代码 warning-clean（CI 使用 `-warnaserror`）。
-- 每轮完成时 `dotnet test DramaBoard.slnx` 全绿；R7 起另需 `npm --prefix src/WebUI run build` 通过。DurableGraph 包在本地已按[准备说明](../../worksets/durablegraph-package-source.md)就绪时无需重跑。
+- 每轮完成时 `dotnet test DramaBoard.slnx` 全绿；R7 起另需 `npm --prefix src/WebUI run build` 通过。DurableGraph 包在本地已按[准备说明](../../../../../docs/worksets/durablegraph-package-source.md)就绪时无需重跑。
 - 语义疑问以机制文档为准；工单与源码事实冲突时以源码为准修正工单并回传。
 
 ## 状态

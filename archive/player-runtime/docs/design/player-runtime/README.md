@@ -130,7 +130,7 @@ Human 实际思考多久、LLM 推理或网络用了多久，不直接决定角�
 
 本文的计划维护与“再想想”方向已由 [Dynamic-Programmer 机制模型](dynamic-programmer.md)落地，并按[施工工单](../../implementation/dynamic-programmer-build/README.md) R1–R8 接入 live Server 与 WebUI：程序化 Buffer、主观工作区、带笔记的正耗时思考、Stay 待机与 staying 健康静止已在本地运行，验收见 [0026](../../build-log/0026-dynamic-programmer-cutover.md)。当前 [0025 场景](../../build-log/0025-verification.md)的四点全图与双页面边界保持不变；[Player.Agency](../../../src/Player.Agency/Spatial/IPlayerSpatialKnowledgeGetter.cs)仍提供静态已知图接缝。
 
-当前 [Kernel](../simulation-kernel.md)负责统一仲裁与提交，[Spatial](../graph-spatial-world.md)负责客观空间；Programmer 在 `FreePlayProcessRule` 的 respond Plan 内被同步调用，Buffer 与执行状态是提交世界的一部分。
+当前 [Kernel](../../../../../docs/design/simulation-kernel.md)负责统一仲裁与提交，[Spatial](../../../../../docs/design/graph-spatial-world.md)负责客观空间；Programmer 在 `FreePlayProcessRule` 的 respond Plan 内被同步调用，Buffer 与执行状态是提交世界的一部分。
 
 现有 Kernel 合同在等待 Programmer 回答期间不推进模型时间。它与“执行再想想要耗模型时间”描述的是不同阶段。若未来需要世界在 Programmer 实际回答期间继续运行，应另行裁决；本文不要求引入并发思考。
 

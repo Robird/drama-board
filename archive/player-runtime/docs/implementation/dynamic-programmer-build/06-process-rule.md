@@ -9,7 +9,7 @@
 ## 前置阅读
 
 - [机制模型](../../design/player-runtime/dynamic-programmer.md) §4–§6 与 §7.1（最小可观察闭环）、§7.2（行为验收表）
-- [Graph Spatial World](../../design/graph-spatial-world.md) §4.2（pure planner 的拒绝语义）
+- [Graph Spatial World](../../../../../docs/design/graph-spatial-world.md) §4.2（pure planner 的拒绝语义）
 - 本目录 [README](README.md) 的候选映射与提交语义表
 - 现状：`src/Spatial/Planning/SpatialPlanner.cs`（TryStartTraversal 及拒绝原因）、`src/Player.Agency/Spatial/FullMapPlayerSpatialKnowledgeGetter.cs`、`src/Spatial/Queries/SpatialQueries.cs`
 

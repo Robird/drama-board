@@ -6,12 +6,8 @@ public sealed class ProjectDependencyGuardTests {
     public static TheoryData<string, string[]> AllowedReferences =>
         new() {
             { "Kernel", [] },
-            { "Protocol", [] },
-            { "Decision.Validation", ["Protocol"] },
-            { "Player", ["Kernel", "Protocol"] },
             { "Host", ["Kernel"] },
             { "Spatial", ["Kernel"] },
-            { "Player.Agency", ["Spatial"] },
         };
 
     [Theory]

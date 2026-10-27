@@ -1,34 +1,28 @@
 # DramaBoard documentation
 
-Start with the repository's [current project state](../PROJECT-STATE.md). It identifies the active core, validation entry points, and deferred product decisions.
+Start with the repository's [current project state](../PROJECT-STATE.md). The active engine consists of Kernel, Spatial and Host. Player planning, interaction and presentation are retained as a frozen experiment.
 
 ## Current design and core
 
-- [Player runtime and Plan-Maintainer principles](design/player-runtime/README.md): shared Human/LLM control, future plans, attention, and the time-consuming “think again” action; mechanism and engineering choices remain open.
-- [World VM, Player Process, and Dynamic-Programmer](design/player-runtime/dynamic-programmer.md): editable subjective state, sequential Move/Think/Stay programs, execution boundaries, interrupts, and a minimal validation slice.
-- [Simulation Kernel](design/simulation-kernel.md): occurrence, time, publication, and Player boundaries.
-- [Graph Spatial World](design/graph-spatial-world.md): the objective-space model and its Kernel boundary.
-- [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): retained E/S seam and finite recovery contract.
-- [Kernel occurrence baseline](implementation/kernel-occurrence-baseline.md): time and scheduler evidence.
+- [Simulation Kernel](design/simulation-kernel.md): occurrence, time, deterministic arbitration and atomic publication; no Player implementation is required.
+- [Graph Spatial World](design/graph-spatial-world.md): objective locations, passages, motion, contact and arrival.
+- [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): retained E/S seam and finite pending recovery contract; this is not a disk persistence adapter.
+- [Kernel occurrence baseline](implementation/kernel-occurrence-baseline.md): scheduler evidence, with superseded storage clauses identified.
 - [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial floor-contact and ceil-arrival semantics.
-- [Player spatial knowledge](research/player-spatial-knowledge.md): the retained known-graph seam; exploration disclosure is deferred.
 - [DurableGraph package source](worksets/durablegraph-package-source.md): fixed package preparation and consumption path.
-- [Server wwwroot static web assets](worksets/server-wwwroot-staticwebassets.md): root cause of the .NET 10 dev-manifest crash and the final fix (disable the static-web-assets pipeline), with superseded and rejected alternatives.
 
 ## Current work
 
-The approved next work is the [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md): first retain Kernel, Spatial and Host while archiving the application, then update the core DurableGraph dependency. Implementation has not started. MUD integration will be reconsidered after both steps pass acceptance.
+The [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) defines two separately verified steps. The engine/application split has passed the old dependency's build, schema and behavior checks. Updating the core DurableGraph dependency is next; MUD integration remains a later decision.
 
-The [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) are complete and will be retained as technical reserve with the Player/UI experiment. See the [0026 verification](build-log/0026-dynamic-programmer-cutover.md) for historical behavior and platform evidence.
+## Frozen applications and design reserve
 
-[Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries.
+The [Player runtime archive](archive/player-runtime.md) preserves Protocol, Player, Decision.Validation, Player.Agency, Server, WebUI, their tests and dedicated documents. It includes the Player/Plan principles, Dynamic-Programmer design, R1–R8 build orders, spatial knowledge work and historical browser acceptance. These are technical reserves rather than active engine requirements.
 
-[Archive FirstBoard and verify the core](build-log/0024-archive-firstboard-and-verify-core.md) records the completed archival boundary and A1--A7 validation. Disk persistence and LLM integration remain deferred.
+The [FirstBoard and LLM archive](archive/firstboard-llm.md) preserves the earlier scenario, Demo, persistence adapter and LLM implementation. Its [0024 archival record](build-log/0024-archive-firstboard-and-verify-core.md) describes that historical split, not the current project list or a new free-play task.
 
-## Consumer feedback
+## Consumer feedback and older material
 
-[DramaBoard to DurableGraph](feedback/durablegraph/README.md) indexes active API feedback. Its FirstBoard consumer evidence is historical and links to the archive where needed.
+[DramaBoard to DurableGraph](feedback/durablegraph/README.md) indexes version-specific API feedback. Its FirstBoard consumer evidence is historical and does not prove the current dependency upgrade.
 
-## Historical material
-
-[FirstBoard and LLM archive](archive/firstboard-llm.md) is the recovery index for the retired source, tests, Demo, LLM implementation, and dedicated documents. [Archive](archive/README.md) also indexes older retained material. Both `legacy/` and the repository-root `archive/firstboard-llm/` bodies are excluded from default local text search; inspect them explicitly with `rg --no-ignore`.
+The [archive index](archive/README.md) lists recovery paths and older records. Historical bodies under `docs/archive/legacy/` and repository-root `archive/` units are excluded from default local text search; inspect them explicitly with `rg --no-ignore`.

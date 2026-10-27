@@ -31,4 +31,4 @@
 
 ## 启动与边界
 
-仓库根执行 `pwsh -File scripts/Publish-Server.ps1`，运行 `artifacts/server/DramaBoard.Server.exe`，入口 `http://127.0.0.1:5080/player` 与 `/dev`；完整命令见[根 README](../../README.md)。本批不含 LLM Programmer、持久化续局闭包、主动重新唤醒、多角色与途中接管，重开条件见 [PROJECT-STATE](../../PROJECT-STATE.md)。
+仓库根执行 `pwsh -File scripts/Publish-Server.ps1`，运行 `artifacts/server/DramaBoard.Server.exe`，入口 `http://127.0.0.1:5080/player` 与 `/dev`；完整命令见[根 README](../../../../README.md)。本批不含 LLM Programmer、持久化续局闭包、主动重新唤醒、多角色与途中接管，重开条件见 [PROJECT-STATE](../../../../PROJECT-STATE.md)。

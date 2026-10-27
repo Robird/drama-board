@@ -1,5 +1,7 @@
 # DurableGraph 下的 Occurrence 提交与恢复
 
+> 适用范围（2026-10-27）：独立时空引擎继续保留 `IOccurrenceHistory`、E/S 发布、pending 完成与重放合同。Player 交互历史、呈现投影和事件播放随[应用归档](../archive/player-runtime.md)冻结，两者不混为同一责任。下文旧 DurableGraph API 与 FirstBoard adapter 叙述保留其历史版本语境；核心依赖升级须另经当前 task brief 的步骤 2 验证，不据本文宣称新版本磁盘恢复能力。
+
 > 状态：2026-09-16。活跃核心保留独立 E/S、`IOccurrenceHistory` 与有限 [KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs) 的合同；FirstBoard adapter、完整世界与跨进程恢复是已归档的消费者映射，见[归档索引](../archive/firstboard-llm.md)。
 > 本文的 Kernel 合同仍是当前依据；涉及具体 FirstBoard 模型、Ruleset 和 adapter 的段落保留历史语境，原始消费者合同与施工顺序均在归档中。
 

@@ -38,7 +38,7 @@
 ## 可带回设计会话的结果包
 
 1. **工作树**：HEAD 仍为上述基线，未提交。新增 Server、WebUI、Server.Tests、发布脚本与本验收记录；修改两份 solution、CI、ignore、README、PROJECT-STATE 和文档导航。既有 0025 设计正文保留，仅更新状态与证据链接。
-2. **启动**：仓库中执行 `pwsh -File scripts/Prepare-DurableGraph.ps1`、`pwsh -File scripts/Publish-Server.ps1`、`& ./artifacts/server/DramaBoard.Server.exe`。地址为 `http://127.0.0.1:5080/player` 与 `http://127.0.0.1:5080/dev`。完整命令见[根 README](../../README.md)。
-3. **证据**：Server 测试位于 [tests/Server.Tests](../../tests/Server.Tests)，浏览器用例位于 [movement.spec.ts](../../src/WebUI/e2e/movement.spec.ts)。本机生成证据在 `artifacts/0025/`：`dotnet/*.trx`、`movement-evidence.json`、`server.log`、`playwright-report/index.html`。产物和证据被 Git 忽略，可通过上述命令重建。
-4. **截图与例子**：[Player](../../artifacts/0025/player.png)、[诊断](../../artifacts/0025/dev.png)。A(0) → B(1000) → D(4000)，历史为 Started(0)、Arrived(1000)、Started(1000)、Arrived(4000)，共四次 Kernel 提交；刷新及关闭重开仍在 D，保留 A/B/D 轨迹与同次运行身份。
+2. **启动**：仓库中执行 `pwsh -File scripts/Prepare-DurableGraph.ps1`、`pwsh -File scripts/Publish-Server.ps1`、`& ./artifacts/server/DramaBoard.Server.exe`。地址为 `http://127.0.0.1:5080/player` 与 `http://127.0.0.1:5080/dev`。完整命令见[根 README](../../../../README.md)。
+3. **证据**：Server 测试位于 [tests/Server.Tests](../../../../tests/Server.Tests)，浏览器用例位于 [movement.spec.ts](../../src/WebUI/e2e/movement.spec.ts)。本机生成证据在 `artifacts/0025/`：`dotnet/*.trx`、`movement-evidence.json`、`server.log`、`playwright-report/index.html`。产物和证据被 Git 忽略，可通过上述命令重建。
+4. **截图与例子**：[Player](../../../../artifacts/0025/player.png)、[诊断](../../../../artifacts/0025/dev.png)。A(0) → B(1000) → D(4000)，历史为 Started(0)、Arrived(1000)、Started(1000)、Arrived(4000)，共四次 Kernel 提交；刷新及关闭重开仍在 D，保留 A/B/D 轨迹与同次运行身份。
 5. **实施细化**：应用退出使用额外 `stopped` 状态并返回 503；诊断只列最近 100 条记录，而自身轨迹保留完整运行历史。均未扩展领域合同。无待裁决的阻塞问题；下一机制由设计会话选择。本批未实现 LLM、持久化或任何新增交互机制。
