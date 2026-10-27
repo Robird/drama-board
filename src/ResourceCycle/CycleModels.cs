@@ -3,10 +3,10 @@ using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 1)]
-public enum CycleEventKind { PlantMatured, LightChanged, PlantDestroyed }
-[DurableType("DramaBoard.ResourceCycle.PredictionKind", 1)]
-public enum CyclePredictionKind { MaturePlant, ChangeLight, DestroyPlant }
+[DurableType("DramaBoard.ResourceCycle.EventKind", 2)]
+public enum CycleEventKind { PlantMatured, LightChanged, PlantDestroyed, WaitStarted, WaitCompleted, PlantGathered }
+[DurableType("DramaBoard.ResourceCycle.PredictionKind", 2)]
+public enum CyclePredictionKind { MaturePlant, ChangeLight, DestroyPlant, CompleteWait, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
 public static class CycleTime {
@@ -77,7 +77,7 @@ public sealed partial class CycleScript : IDurableObject {
 }
 
 /// <summary>A durable data binding, interpreted by the application's fixed dispatch table.</summary>
-[DurableType("DramaBoard.ResourceCycle.Binding", 1)]
+[DurableType("DramaBoard.ResourceCycle.Binding", 2)]
 public sealed partial class CycleBinding : IDurableObject {
     [DurableField(1)] private string _ownerId;
     public string OwnerId => _ownerId;
@@ -91,7 +91,7 @@ public sealed partial class CycleBinding : IDurableObject {
     public override string ToString() => $"{OwnerId}:{EventKind}:{TargetId}";
 }
 
-[DurableType("DramaBoard.ResourceCycle.Prediction", 1)]
+[DurableType("DramaBoard.ResourceCycle.Prediction", 2)]
 public sealed partial class CyclePrediction : IDurableObject {
     [DurableField(1)] private string _ownerId;
     public string OwnerId => _ownerId;
@@ -127,7 +127,7 @@ public sealed partial class CycleForecasts : IDurableObject {
     public override string ToString() => $"predictions[{string.Join(';', _predictions)}]bindings[{string.Join(';', _bindings)}]";
 }
 
-[DurableType("DramaBoard.ResourceCycle.World", 1)]
+[DurableType("DramaBoard.ResourceCycle.World", 2)]
 public sealed partial class CycleWorld : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public ModelTime Time => _time;
@@ -138,20 +138,22 @@ public sealed partial class CycleWorld : IDurableObject {
     public CycleScript Script => _script;
     [DurableField(5)] private CycleForecasts _forecasts;
     public CycleForecasts Forecasts => _forecasts;
+    [DurableField(6)] private CycleCharacter? _character;
+    public CycleCharacter? Character => _character;
     public IReadOnlyList<CyclePlant> Plants => _plants.AsReadOnly();
     public static ModelTime DefaultStart => new(16 * CycleTime.Hour);
-    internal CycleWorld(ModelTime time, CycleLight light, List<CyclePlant> plants, CycleScript script, CycleForecasts forecasts) {
-        _time = time; _light = light; _plants = plants; _script = script; _forecasts = forecasts;
+    internal CycleWorld(ModelTime time, CycleLight light, List<CyclePlant> plants, CycleScript script, CycleForecasts forecasts, CycleCharacter? character = null) {
+        _time = time; _light = light; _plants = plants; _script = script; _forecasts = forecasts; _character = character;
     }
     public CyclePlant GetPlant(string id) => _plants.Single(p => p.Id == id);
     internal CycleWorld Replace(ModelTime time, CycleLight? light = null, IEnumerable<CyclePlant>? changedPlants = null,
-        CycleScript? script = null, CycleForecasts? forecasts = null) {
+        CycleScript? script = null, CycleForecasts? forecasts = null, CycleCharacter? character = null) {
         List<CyclePlant> plants = _plants;
         if (changedPlants is not null) {
             Dictionary<string, CyclePlant> changes = changedPlants.ToDictionary(p => p.Id, StringComparer.Ordinal);
             if (changes.Count > 0) { plants = _plants.Select(p => changes.GetValueOrDefault(p.Id, p)).ToList(); }
         }
-        return new(time, light ?? Light, plants, script ?? Script, forecasts ?? Forecasts);
+        return new(time, light ?? Light, plants, script ?? Script, forecasts ?? Forecasts, character ?? Character);
     }
     public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) {
         ModelTime time = start ?? DefaultStart;
@@ -173,6 +175,22 @@ public sealed partial class CycleWorld : IDurableObject {
         }
         var world = new CycleWorld(time, new(isDay, CycleTime.NextLightChange(time)), plants, new(entries), new([], bindings));
         world = world.Replace(time, forecasts: world.Forecasts.WithPredictions(CycleEngine.Owners(world).Select(owner => CycleEngine.Predict(world, owner)).OfType<CyclePrediction>()));
+        world.Validate();
+        return world;
+    }
+    public static CycleWorld CreatePlayable(ModelTime? start = null, string actorId = "gardener") {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        CycleWorld world = Create(start, []);
+        var bindings = world.Forecasts.Bindings.ToList();
+        foreach (CyclePlant plant in world.Plants) {
+            bindings.Add(new($"plant:{plant.Id}", CycleEventKind.PlantGathered, plant.Id));
+        }
+        string owner = $"actor:{actorId}";
+        bindings.Add(new(owner, CycleEventKind.WaitStarted, actorId));
+        bindings.Add(new(owner, CycleEventKind.WaitCompleted, actorId));
+        bindings.Add(new(owner, CycleEventKind.PlantGathered, "*"));
+        world = world.Replace(world.Time, character: new(actorId, new()), forecasts: new([], bindings));
+        world = world.Replace(world.Time, forecasts: world.Forecasts.WithPredictions(CycleEngine.Owners(world).Select(id => CycleEngine.Predict(world, id)).OfType<CyclePrediction>()));
         world.Validate();
         return world;
     }
@@ -204,6 +222,8 @@ public sealed partial class CycleWorld : IDurableObject {
         if (Forecasts.Predictions.Any(p => p.Due < Time) || Forecasts.Predictions.Select(p => p.OwnerId).Distinct(StringComparer.Ordinal).Count() != Forecasts.Predictions.Count) {
             throw new InvalidOperationException("Invalid prediction set.");
         }
+        Character?.Validate(Time);
     }
-    public string DescribeState() => $"time={Time.Ticks};light={Light};plants=[{string.Join(';', _plants)}];script={Script};{Forecasts}";
+    public string DescribeState() => $"time={Time.Ticks};light={Light};plants=[{string.Join(';', _plants)}];script={Script};{Forecasts}" +
+        (Character is null ? "" : $";character={Character}");
 }

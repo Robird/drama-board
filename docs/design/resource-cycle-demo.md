@@ -2,6 +2,8 @@
 
 日期：2026-10-27。状态：实验原型已实施；范围见[施工契约](../implementation/resource-cycle-prototype.md)，结果见[验收](../experiments/resource-cycle-acceptance.md)。实验规则不视为最终引擎 API。
 
+本文保留首片批处理实验的范围。后续同一应用已增加[单角色采集 Console](resource-cycle-play.md)；核心下一阶段方向见[预测对象草稿](prediction-objects-roadmap.md)。
+
 ## 已定范围
 
 首片只有昼夜系统、太阳花（白天 3 小时成熟）、月光草（夜晚 4 小时成熟）和程序化销毁。昼夜变化会打断不适时段的资源刷新。不需要角色、采集所得、物品、背包、空间或 Player 输入。

@@ -7,14 +7,18 @@ using DramaBoard.Kernel.Time;
 using DramaBoard.ResourceCycle;
 
 Console.OutputEncoding = Encoding.UTF8;
+Console.InputEncoding = Encoding.UTF8;
+bool hasStore = false;
 try {
     var options = Options.Parse(args);
+    hasStore = options.Store is not null;
     if (options.Help) {
         Console.WriteLine("""
             ResourceCycle — 昼夜、植物生长与依赖驱动预测实验
 
             dotnet run --project src/ResourceCycle.Cli -- [options]
               --store PATH          创建或恢复单根存档；省略则仅内存运行
+              --play                单角色采集；可配合 --store 续玩，不接受批处理选项
               --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
               --steps N             本次最多推进 N 次转换（默认 10000）
               --full-recompute      每次重算全部预测者，用于对照
@@ -36,6 +40,9 @@ try {
     };
     Console.CancelKeyPress += cancelHandler;
     try {
+        if (options.Play) {
+            return await PlayConsole.RunAsync(options.Store, cancellation.Token);
+        }
         using CycleDurableHistory? durable = options.Store is { } store
             ? Directory.Exists(store)
                 ? CycleDurableHistory.Open(store)
@@ -49,6 +56,7 @@ try {
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial, InitialCursor(initial));
         }
 
+        PlayConsole.RequireBatchWorld(history.State);
         var metrics = new CycleMetrics();
         var kernel = CycleEngine.CreateKernel(history,
             options.FullRecompute ? PredictionMode.Full : PredictionMode.Incremental, metrics);
@@ -89,7 +97,9 @@ try {
     }
     return 0;
 } catch (OperationCanceledException) {
-    Console.Error.WriteLine("已停止。使用同一 --store 路径可继续。");
+    Console.Error.WriteLine(hasStore
+        ? "已停止。已完成的进度已保存，使用同一 --store 路径可继续。"
+        : "已停止。内存中的进度未保存。");
     return 130;
 } catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or OverflowException) {
     Console.Error.WriteLine($"ResourceCycle: {error.Message}");
@@ -104,13 +114,13 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help) {
+    bool Trace, string? Snapshot, bool Help, bool Play) {
     public static Options Parse(string[] args) {
         string? store = null;
         string? snapshot = null;
         long hour = 88;
         int steps = 10_000;
-        bool full = false, trace = false, help = false;
+        bool full = false, trace = false, help = false, play = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int index = 0; index < args.Length; index++) {
             string option = args[index];
@@ -133,10 +143,14 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--full-recompute": full = true; break;
                 case "--trace": trace = true; break;
                 case "--help": help = true; break;
+                case "--play": play = true; break;
                 default: throw new ArgumentException($"未知参数：{option}；使用 --help 查看用法。");
             }
         }
+        if (!help && play && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
+            throw new ArgumentException("--play 仅能配合 --store；批处理参数不适用于交互采集。");
+        }
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
-        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help);
+        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play);
     }
 }

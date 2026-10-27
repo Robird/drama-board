@@ -14,6 +14,13 @@ public static class CycleDiagnostics {
             text.AppendLine($"- {plant.Id}: {state}; grows during {(plant.GrowsInDaylight ? "day" : "night")}; effective growth {plant.ProgressAt(world.Time) / (double)CycleTime.Hour:0.###}/{plant.RequiredTicks / (double)CycleTime.Hour:0.###} h; cycle {plant.Generation}");
         }
         text.AppendLine();
+        if (world.Character is { } actor) {
+            text.AppendLine("## Character");
+            text.AppendLine($"- {actor.Id}: {(actor.WaitUntil is { } until ? $"waiting until {until}" : "ready for decision")}; request generation {actor.DecisionGeneration}");
+            text.AppendLine($"- backpack: {actor.Backpack}");
+            if (actor.LastResult is { } result) { text.AppendLine($"- last action: {result}"); }
+            text.AppendLine();
+        }
         text.AppendLine("## Predictors and dependencies");
         text.AppendLine("Predictions assume current conditions; watched events can invalidate them. Dependencies remain active even with no current prediction.");
         foreach (string owner in CycleEngine.Owners(world)) {

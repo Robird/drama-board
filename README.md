@@ -2,7 +2,7 @@
 
 DramaBoard is an experimental spacetime engine composed of three libraries: **Kernel** arbitrates and commits deterministic occurrences, **Spatial** models places, passages, moving entities and contacts, and **Host** drives Kernel steps. The core does not require a Player or an application server.
 
-Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred decisions, and [docs/README.md](docs/README.md) for design and evidence. [AGENTS.md](AGENTS.md) defines repository collaboration rules. The application-layer ResourceCycle example explores persistent predictions and dependency-driven invalidation without changing the spacetime core.
+Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred decisions, and [docs/README.md](docs/README.md) for design and evidence. [AGENTS.md](AGENTS.md) defines repository collaboration rules. The application-layer ResourceCycle example explores persistent predictions and dependency-driven invalidation, with a playable single-character Console mode, without changing the spacetime core.
 
 ## Build and test
 
@@ -34,7 +34,21 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1
 
 The default world starts at D0 16:00 and runs through events up to absolute hour 88 (D3 16:00), without wall-clock delays. If no event lands on that boundary, the clock stays at the last committed event. Use `--help` for options, or `--snapshot PATH` for a final Markdown diagnostic. An existing store is resumed, never reset; use a new path to start again.
 
-This example has one DurableGraph root for the world subgraphs, predictions, bindings and Kernel cursor. Recorded events contain concrete changes; pending recovery does not rerun business planning. There are no characters, items, Player calls or spatial integration. See [the design](docs/design/resource-cycle-demo.md) and [acceptance evidence](docs/experiments/resource-cycle-acceptance.md) for the limits of this prototype.
+This example has one DurableGraph root for the world subgraphs, predictions, bindings and Kernel cursor. Recorded events contain concrete changes; pending recovery does not rerun business planning. The batch experiment has no character or inventory. See [the design](docs/design/resource-cycle-demo.md) and [acceptance evidence](docs/experiments/resource-cycle-acceptance.md) for its original scope.
+
+## Play the gathering scene
+
+```powershell
+dotnet run --project src/ResourceCycle.Cli -c Release -- --play
+dotnet run --project src/ResourceCycle.Cli -c Release -- --play --store artifacts/my-garden
+pwsh -NoProfile -File scripts/Smoke-ResourceCyclePlay.ps1
+```
+
+One gardener shares a nursery with sunflower and moongrass. The Console shows the full current state, inventory and blocked-action reasons. Enter `look`, `help`, `wait <1–24 hours>`, `gather sunflower`, `gather moongrass`, or `quit`. Logical time pauses while waiting for input; a scheduled wait lets natural events run until its completion. Only mature plants can be gathered, each producing one item and starting a new growth cycle. For a first outing, try `wait 6`, `gather moongrass`, `wait 9`, then gather both plants.
+
+With `--store`, completed changes are saved automatically and the same command resumes the scene. Without it, progress exists only in memory. Play and batch stores are deliberately distinct; neither mode silently advances the other's store. This mode has no scripted destruction, movement, NPCs, LLM calls or GUI. Older ResourceCycle saves are not a compatibility target; use a fresh directory.
+
+See [the playable slice](docs/design/resource-cycle-play.md) and [its acceptance evidence](docs/experiments/resource-cycle-play-acceptance.md). Before expanding to a richer world, the next core direction is [persistent prediction processes and outputs](docs/design/prediction-objects-roadmap.md); its interface details remain a design draft.
 
 ## Small world scenario
 

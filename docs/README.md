@@ -13,9 +13,15 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The first application-layer example implements day/night changes, plant growth and scripted destruction, using Mud as a reference rather than migrating it in place. See [the resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md) and [execution evidence](experiments/resource-cycle-acceptance.md). It demonstrates persistent predictions, dependency-driven invalidation and single-root recovery. Characters, multiplayer gathering and spatial changes remain deferred.
+The application-layer ResourceCycle example implements day/night changes, plant growth and scripted destruction, using Mud as a reference rather than migrating it in place. See [the resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md) and [execution evidence](experiments/resource-cycle-acceptance.md). Its [playable Console extension](design/resource-cycle-play.md) adds one character, an inventory, waiting and gathering in the same application; see [play acceptance](experiments/resource-cycle-play-acceptance.md).
+
+The next core direction is [persistent prediction processes and outputs](design/prediction-objects-roadmap.md), unifying lifecycle and invalidation before constructing a richer world. This is a design draft, not an implemented Kernel/Spatial refactor. Multiple characters controlled through one Human Console are an accepted later interaction model; movement and multi-character scheduling remain deferred.
 
 The previous [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) is complete; see the [executed evidence](build-log/0027-spacetime-extraction.md).
+
+## Application research
+
+- [Bringing Mud's player experience to a new DemoApp](research/mud-experience-portability.md): source-backed feasibility, reusable presentation and action contracts, application gaps, time/persistence integration boundaries, and suggested slices. This is an investigation, not an approved implementation plan.
 
 ## Frozen applications and design reserve
 
