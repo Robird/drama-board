@@ -3,9 +3,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
+/// <summary>Current needs and earliest depletion including known day/night changes, assuming current shelter,
+/// no supplies, and no random weather. A null FatalAt means no depletion within representable time.</summary>
 public sealed record CycleSurvivalObservation(decimal Food, decimal Water, decimal Warmth,
     int FoodPerHour, int WaterPerHour, int WarmthPerHour, bool Sheltered,
-    IReadOnlyList<string> PendingWarnings, ModelTime? FatalAt);
+    IReadOnlyList<string> PendingWarnings, ModelTime? FatalAt, bool WarmthWarningPending = false);
 
 /// <summary>Application survival policy. Prediction and projection are pure; planning records concrete replacements.</summary>
 public static class CycleSurvivalRules {
@@ -22,9 +24,10 @@ public static class CycleSurvivalRules {
         foreach ((int mask, string name) in new[] { (1, "饱食"), (2, "水分"), (4, "温暖") }) {
             if ((body.PendingMask & mask) != 0) { warnings.Add($"{name}曾降至警戒线（本组最早提醒于 {body.PendingSince}）。"); }
         }
+        bool sheltered = IsSheltered(world.Expedition?.Spatial, actorId);
         return new((decimal)body.FoodUnits / CycleSurvival.Scale, (decimal)body.WaterUnits / CycleSurvival.Scale,
             (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodPerHour, body.WaterPerHour, body.WarmthPerHour,
-            IsSheltered(world.Expedition?.Spatial, actorId), warnings.AsReadOnly(), FatalTime(body, world.Time));
+            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0);
     }
 
     /// <summary>Known deterministic risk over a proposed activity, including scheduled day/night boundaries.</summary>
@@ -56,24 +59,41 @@ public static class CycleSurvivalRules {
                 : $" 期间有天气窗口（下一次 {weatherAt}）；每次可能额外损失 {CycleEnvironmentRules.ExposureLoss} 点温暖。"
             : "";
         string basis = weather is null ? "按已知昼夜与当前补给" : "不计随机寒风，按已知昼夜与当前补给";
-        CycleSurvival body = anchor.Project(world.Time);
-        ModelTime cursor = world.Time;
-        ModelTime? firstWarning = null;
+        var forecast = Forecast(anchor, world.Time, end, sheltered);
         string response = command.Kind == CycleCommandKind.Go
-            ? "途中可在警告时补给，但不能中止本段移动。" : "警告会暂停时间，可补给或取消活动。";
-        while (cursor < end) {
+            ? "警告时可补充食物/饮水，但不能中止本段移动；补给不恢复温暖。"
+            : "警告时可补充食物/饮水或取消活动；温暖需靠庇护或白天恢复。";
+        if (forecast.FatalAt is { } fatal) {
+            return $"危险：{basis}，身体将在 {fatal} 耗尽。{response}{weatherRisk}";
+        }
+        return forecast.WarningAt is { } at ? $"注意：{basis}，预计 {at} 触发身体警告。{response}{weatherRisk}"
+            : weatherRisk.Length > 0 ? weatherRisk.TrimStart() : null;
+    }
+
+    /// <summary>Read-only estimate assuming unchanged shelter, no supplies, and no random weather.</summary>
+    private static (ModelTime? FatalAt, ModelTime? WarningAt) Forecast(CycleSurvival body, ModelTime start, ModelTime end, bool sheltered) {
+        ModelTime cursor = start;
+        ModelTime? firstWarning = null;
+        // Shelter needs one segment. Outdoors, at most a residual night, a day, and a full night:
+        // even maximum warmth (100) cannot survive the full 12-hour night at -12 per hour.
+        for (int segment = 0; segment < 3; segment++) {
             body = body.WithRates(cursor, body.FoodPerHour, body.WaterPerHour, WarmthRate(sheltered, CycleTime.IsDay(cursor)));
-            ModelTime nextLight = CycleTime.NextLightChange(cursor);
-            ModelTime next = nextLight < end ? nextLight : end;
-            if (FatalTime(body, cursor) is { } fatal && fatal <= next) {
-                return $"危险：{basis}，身体将在 {fatal} 耗尽。{response}{weatherRisk}";
+            ModelTime next = end;
+            if (!sheltered) {
+                // Ask the same calendar using a day-relative instant, then clip before converting back to long.
+                long phase = cursor.Ticks % CycleTime.Day;
+                Int128 nextLight = (Int128)(cursor.Ticks - phase) + CycleTime.NextLightChange(new(phase)).Ticks;
+                next = new((long)Int128.Min(end.Ticks, nextLight));
             }
-            if (firstWarning is null && NextThreshold(body, cursor) is { Fatal: false } warning && warning.Due <= next) { firstWarning = warning.Due; }
+            if (firstWarning is null && NextThreshold(body, cursor) is { Fatal: false } warning && warning.Due <= next) {
+                firstWarning = warning.Due;
+            }
+            if (FatalTime(body, cursor) is { } fatal && fatal <= next) { return (fatal, firstWarning); }
+            if (next == end) { return (null, firstWarning); }
             body = body.Project(next);
             cursor = next;
         }
-        return firstWarning is { } at ? $"注意：{basis}，预计 {at} 触发身体警告。{response}{weatherRisk}"
-            : weatherRisk.Length > 0 ? weatherRisk.TrimStart() : null;
+        throw new InvalidOperationException("The survival forecast must exhaust warmth within a full exposed night.");
     }
 
     internal static (ModelTime Due, bool Fatal)? NextThreshold(CycleSurvival survival, ModelTime at) {

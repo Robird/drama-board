@@ -20,6 +20,10 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("当前趋势", text);
         Assert.Contains("当前暴露在野外", text);
         Assert.Contains("预计最早致命时刻", text);
+        Assert.Contains("保持当前暴露或庇护状态、不补给，计入已知昼夜变化", text);
+        Assert.Contains("也不预知抵达后的环境", text);
+        Assert.DoesNotContain("维持当前趋势", text);
+        Assert.DoesNotContain("干木", text);
         Assert.Contains("use item.water", text);
         Assert.Contains(CycleSurvivalRules.UseDescription("item.water")!.TrimEnd('。'), text);
         Assert.Contains("风险提示（不禁止）", text);
@@ -71,6 +75,25 @@ public sealed class SurvivalNeedsViewTests {
     }
 
     [Fact]
+    public async Task Cold_warning_during_travel_does_not_offer_food_or_water_as_warming() {
+        ModelTime start = new(19 * CycleTime.Hour);
+        var initial = PreparedNeeds(new CycleSurvival(start, 65 * CycleSurvival.Scale,
+            65 * CycleSurvival.Scale, 37 * CycleSurvival.Scale, warmthPerHour: -12));
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: new Commands(CycleCommand.Go("trail-2")));
+        await Until(kernel, world => CycleDecisionContext.Create(world, "a").Observation.Survival!.WarmthWarningPending);
+        CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
+        Assert.NotNull(observation.ArrivalDue);
+        string text = PlayView.Render(observation);
+        Assert.Contains("use 只补充食物或饮水", text);
+        Assert.Contains("现有物品不能恢复温暖", text);
+        Assert.Contains("途中没有主动保暖操作，抵达前不能安排庇护停留", text);
+        Assert.DoesNotContain("可以先 use 补给", text);
+        Assert.DoesNotContain("- `cancel`", text);
+        Assert.DoesNotContain("废弃林屋", text);
+    }
+
+    [Fact]
     public async Task Warning_during_wait_does_not_claim_the_character_is_idle() {
         var initial = PreparedNeeds();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
@@ -98,8 +121,24 @@ public sealed class SurvivalNeedsViewTests {
         string text = PlayView.Render(observation);
         Assert.Contains("当前有庇护，可避风回暖", text);
         Assert.Contains("食物和饮水仍会消耗", text);
+        Assert.Contains("干木目前不能生火或直接取暖", text);
         Assert.Contains("use item.food", text);
         Assert.Contains(CycleSurvivalRules.UseDescription("item.food")!.TrimEnd('。'), text);
+        Assert.DoesNotContain("- `use item.wood`", text);
+    }
+
+    [Fact]
+    public async Task Carried_wood_keeps_its_usage_limit_visible_after_leaving_its_resource_point() {
+        var initial = PreparedNeeds();
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: new Commands(CycleCommand.Go("trail-2"), CycleCommand.Go("trail-5"),
+                CycleCommand.Use("item.water"), CycleCommand.Gather("wood"), CycleCommand.Go("trail-5")));
+        await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "ridge" && world.GetCharacter("a").Backpack.Count("item.wood") > 0);
+        CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
+        Assert.DoesNotContain(observation.Resources, resource => resource.ItemId == "item.wood");
+        string text = PlayView.Render(observation);
+        Assert.Contains("干木（`item.wood`）×1", text);
+        Assert.Contains("干木目前不能生火或直接取暖", text);
         Assert.DoesNotContain("- `use item.wood`", text);
     }
 
@@ -153,7 +192,7 @@ public sealed class SurvivalNeedsViewTests {
 
     // Fixed needs keep observation contracts independent of new-game balancing.
     private static (CycleWorld World, KernelCursor Cursor) PreparedNeeds(CycleSurvival? survival = null) {
-        var initial = CycleGameFactory.CreateSurvival(new ModelTime(15 * CycleTime.Hour), enableWeather: false);
+        var initial = CycleGameFactory.CreateSurvival(survival?.BaselineAt ?? new ModelTime(15 * CycleTime.Hour), enableWeather: false);
         CycleCharacter actor = new("a", "阿青", backpack: new(new Dictionary<string, int> {
             ["item.food"] = 1, ["item.water"] = 1
         }), survival: survival ?? CycleSurvival.Create(initial.World.Time, food: 65, water: 65, warmth: 60));

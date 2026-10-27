@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-28；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期空间、生存需求与随机天气已接通，下一片进行独立完整试玩与验收收敛；二期双角色与 LLM 同伴尚未启动。
+> 最近整理：2026-10-28；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已通过[工程与独立试玩验收](docs/experiments/survival-demo-acceptance.md)；二期双角色与 LLM 同伴尚未启动。
 
 ## 最终目标
 
@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：按[生存一期实施方案](docs/implementation/survival-demo-plan.md)推进 D 独立完整试玩：仅凭玩家可见信息完成两条不同路线及补给策略的成功逃离，并完成一次可解释失败；记录困惑、关键选择和修复，补足未自然覆盖的机制。A/B/C 的空间、消费、庇护、危险响应与随机结果恢复已有[工程验收](docs/experiments/survival-demo-acceptance.md)，但已知路线 smoke 不替代独立试玩。分段积分见[生存需求](docs/design/survival-needs.md)，Plan-only 抽样、实际影响与到达先于天气的边界见[天气合同](docs/design/survival-weather.md)。最终逐项核对[里程碑](docs/design/survival-demo-milestone.md) §2.6 后才能结束一期 Goal。
+**当前焦点**：生存一期按[实施方案](docs/implementation/survival-demo-plan.md)完成并逐项通过里程碑 §2.6；不同路线独立通关、失败、修正后复查、组合再生与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。下一步可据此细化二期：双角色胜负与唤醒政策、零时间对话/赠与的轮转、按角色构造上下文及 LLM 调用恢复；未自动启动实施。分段积分与只读昼夜估计见[生存需求](docs/design/survival-needs.md)，Plan-only 抽样和到达先于天气见[天气合同](docs/design/survival-weather.md)。完整 Markdown 重复较多、移动不可取消、干木暂无燃料用途，均为当前明确限制；是否继续扩展依真实体验决定。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -47,7 +47,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **Player 与玩法扩展**：多地点与消费进入生存一期；LLM、对话、赠与和简单笔记留给二期，旧实现保持归档并按需调查复用。长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包仍按实际需求重开。真实重新加入仍可再次提醒；出现激活过多的试玩证据后再设计通知过滤。
+- **Player 与玩法扩展**：多地点、生存与消费已在一期组合；LLM、对话、赠与和简单笔记留给二期，旧实现保持归档并按需调查复用。长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包仍按实际需求重开。真实重新加入仍可再次提醒；出现激活过多的试玩证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。

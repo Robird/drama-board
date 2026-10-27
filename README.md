@@ -58,7 +58,7 @@ See [the multiplayer gathering rules](docs/design/resource-cycle-multiplayer-gat
 
 ## Play the survival prototype
 
-The exploration, survival-needs and weather slices of the [survival milestone](docs/design/survival-demo-milestone.md) are playable:
+Phase one of the [survival milestone](docs/design/survival-demo-milestone.md) is complete: a single-character Console escape with exploration, supplies, shelter and weather risks.
 
 ```powershell
 dotnet run --project src/ResourceCycle.Cli -c Release -- --survival
@@ -70,9 +70,9 @@ Explore a small mountain map and find either exit. Use `go <trail-id>` from the 
 
 Food and water decline with model time; exposure cools you at night, while shelter restores warmth. Use `use item.food` or `use item.water` to consume one supply without advancing time. A low-body warning pauses the world even during travel: replenish if possible, then `continue` to acknowledge it without restarting the original journey or activity. At a location, `cancel` can end gathering or waiting. Any need reaching zero ends the journey; reaching a safe exit first wins. Wood currently has no fuel use.
 
-Every two model hours a weather window can be calm or bring a cold wind. An exposed character loses up to 10 warmth; shelter prevents this loss. The UI shows the next opportunity and the latest actual result, without revealing future random outcomes. Body/action time estimates exclude future cold winds. Weather uses a fixed default seed for reproducible experiments; the game factory accepts a different seed, and saved games retain their own stream state.
+Every two model hours a weather window can be calm or bring a cold wind. An exposed character loses up to 10 warmth; shelter prevents this loss. The UI shows the next opportunity and the latest actual result, without revealing future random outcomes. Body/action time estimates include known day/night changes, assume no replenishment and unchanged exposure or shelter, and exclude future cold winds; travel estimates assume exposure. Weather uses a fixed default seed for reproducible experiments; the game factory accepts a different seed, and saved games retain their own stream state.
 
-Independent full playtests are still pending; this is not yet the completed phase-one milestone. GameRevision is now 4; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. Current evidence and limitations are tracked in [survival acceptance](docs/experiments/survival-demo-acceptance.md).
+Two independent Console playtesters reached different exits with different supply strategies; natural hypothermia and deliberate dehydration failures were also recorded. These were agent playtests, not external human user research. Full Markdown screens remain verbose, wood has no fuel use, and travel cannot be cancelled. GameRevision is 4; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. See [survival acceptance](docs/experiments/survival-demo-acceptance.md) for tests, transcripts and limits. Phase two's LLM companion, dialogue and gifts have not started.
 
 ## Small world scenario
 

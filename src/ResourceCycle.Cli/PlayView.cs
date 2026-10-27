@@ -6,6 +6,7 @@ using DramaBoard.ResourceCycle;
 /// <summary>Pure Markdown projection for one character; does not acknowledge notices or mutate state.</summary>
 /// <remarks>Only the game-produced observation is available here; rendering cannot query hidden world state.</remarks>
 internal static class PlayView {
+    private const string WoodNote = "干木目前不能生火或直接取暖；在庇护中停留可以回暖，仍会消耗食物和饮水。";
     /// <summary>Only public world changes belong between actor-specific observations.</summary>
     public static string? RenderPublicChange(CycleFact fact, bool expedition = false) {
         if (expedition && fact.Kind == CycleEventKind.WeatherResolved) {
@@ -65,7 +66,13 @@ internal static class PlayView {
             foreach (string warning in needs.PendingWarnings) { text.AppendLine($"  - {warning}"); }
             text.AppendLine("- 这些警告记录已经发生的危险；即使已经补给也会保留，当前余量以“身体状态”为准。" +
                 (observation.Outcome == CycleExpeditionOutcome.Exploring
-                    ? "可以先 use 补给，再 continue 确认；原活动和行程期限保持不变。" : "旅程已经结束，无需再确认。"));
+                    ? "use 只补充食物或饮水；continue 确认警告，保留原活动和行程期限。" : "旅程已经结束，无需再确认。"));
+            if (!ended && needs.WarmthWarningPending) {
+                text.AppendLine("- 温暖警告：现有物品不能恢复温暖。" + (observation.ArrivalDue is not null
+                    ? "途中没有主动保暖操作，抵达前不能安排庇护停留；请留意温暖趋势与剩余行程。"
+                    : needs.Sheltered ? "当前已有庇护，停留可以回暖；食物和饮水仍会消耗。"
+                    : "已知的庇护中停留可以回暖，白天野外也会回暖；夜间暴露会继续降温。"));
+            }
         }
         if (character.LastResult is { } result) { text.AppendLine($"- 上次结果（记录当时状态）：{result}"); }
         text.AppendLine();
@@ -119,6 +126,8 @@ internal static class PlayView {
             text.AppendLine($"| {resource.Name} `{resource.Id}` | {resource.Stock} / {resource.Capacity} | {(resource.GrowsInDaylight ? "白天" : "夜晚")}每 {Hours(resource.RegenerationTicks)} 小时补 1；{phase} | 每份产出 {ItemName(observation, resource.ItemId)} ×1；你需 {Minutes(duration)} 分钟；要求采药等级 {resource.RequiredLevel} |" +
                 (observation.IsExpedition ? "" : $" {members} |"));
         }
+        bool visibleWood = observation.Resources.Any(resource => resource.ItemId == "item.wood");
+        if (observation.IsExpedition && !ended && visibleWood) { text.AppendLine($"- {WoodNote}"); }
         text.AppendLine();
         if (!observation.IsExpedition || observation.OtherCharacters.Count > 0) {
             text.AppendLine("## 其他角色");
@@ -140,6 +149,9 @@ internal static class PlayView {
             foreach (var item in character.Backpack.Items.OrderBy(pair => pair.Key, StringComparer.Ordinal)) {
                 text.AppendLine($"- {ItemName(observation, item.Key)}（`{item.Key}`）×{item.Value}。");
             }
+        }
+        if (observation.IsExpedition && !ended && !visibleWood && character.Backpack.Count("item.wood") > 0) {
+            text.AppendLine($"- {WoodNote}");
         }
         text.AppendLine();
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) {
@@ -245,7 +257,8 @@ internal static class PlayView {
         }
         text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
         text.AppendLine("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
-        if (hasWeather) { text.AppendLine("以下趋势及致命时刻估计未包含未来随机天气，实际危险可能更早发生。"); }
+        text.AppendLine("致命时刻估计假设保持当前暴露或庇护状态、不补给，计入已知昼夜变化；未包含未来随机天气，也不预知抵达后的环境。");
+        if (hasWeather) { text.AppendLine("寒风可能让危险比估计更早发生。"); }
         text.AppendLine();
         text.AppendLine("| 指标 | 当前余量 | 当前趋势（点 / 小时） |");
         text.AppendLine("| --- | --- | --- |");
@@ -253,8 +266,8 @@ internal static class PlayView {
         text.AppendLine($"| 饮水 | {Number(survival.Water)} | {Trend(survival.WaterPerHour)} |");
         text.AppendLine($"| 温暖 | {Number(survival.Warmth)} | {Trend(survival.WarmthPerHour)} |");
         text.AppendLine(survival.FatalAt is { } fatal
-            ? $"- 维持当前趋势且不补给，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。环境改变后需重新评估。"
-            : "- 当前趋势没有可预计的致命时刻；环境改变后需重新评估。");
+            ? $"- 在上述条件下，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。暴露或庇护状态改变后需重新评估。"
+            : "- 在上述条件下，可表示的时间内没有预计致命时刻；暴露或庇护状态改变后需重新评估。");
         text.AppendLine();
     }
 

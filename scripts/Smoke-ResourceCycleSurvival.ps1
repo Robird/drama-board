@@ -299,6 +299,6 @@ $null = Run-Cli 'invalid-survival-options' @('--survival', '--steps', '1') '' 1
     sameWeatherWindowHasNoLossInsideShelter = $true
     randomResultAndWarningSurviveReadOnlyColdOpen = $true
     noSupplyFailureMatchesColdContinuation = $true
-    remainingMilestoneEvidence = @('independent full survival playtests')
+    notCoveredByThisSmoke = @('independent full survival playtests; see docs/experiments/survival-demo-acceptance.md')
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outputRoot 'acceptance.json') -Encoding utf8
 Write-Output "ResourceCycle spatial exploration, survival needs and weather smoke passed: $outputRoot"
