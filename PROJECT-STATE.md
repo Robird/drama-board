@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-09-19；Dynamic-Programmer R1–R8 全部完成，旧 Intent 单发路径已删除，见[0026 验收](docs/build-log/0026-dynamic-programmer-cutover.md)与[工单索引](docs/implementation/dynamic-programmer-build/README.md)；上一里程碑为 [0025 验收](docs/build-log/0025-verification.md)。
+> 最近整理：2026-10-27；已确认先独立时空核心、再升级 DurableGraph，实施尚未开始。施工范围与验收见[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)。
 
 ## 最终目标
 
@@ -11,25 +11,25 @@
 
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
-- **Player 与协议**：Move/Think/Stay 指令、主观工作区、`ProgrammingRequest/Response` 与稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 `IDynamicProgrammer` 与 Scripted 实现者，Decision.Validation 提供 `ProgrammingResponseValidator`，Player.Agency 提供已知图快照接缝。
-- **构建依赖**：Kernel/Spatial 使用固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。已提交的 Kernel/Spatial schema history 不因本批改变。Server 前端静态资源的 .NET 10 清单故障（曾致 CI 的 Server.Tests 长期红）已定稿修复：Server.csproj 设 `StaticWebAssetsEnabled=false` 关闭整条静态资源管线，三种宿主一律服务二进制旁物理 wwwroot，测试宿主可真实服务静态文件；根因、验证与被取代方案见 [wwwroot 调查](docs/worksets/server-wwwroot-staticwebassets.md)，本地全量测试与发布冒烟绿。
-- **本地可玩入口**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置、轨迹、主观工作区与待执行程序；诊断独立只读取数。发布启动见 [README](README.md)，apphost/Chromium 证据见 [0026 验收](docs/build-log/0026-dynamic-programmer-cutover.md)与 `artifacts/0026`。
+- **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
+- **Player 与协议（待冻结）**：Move/Think/Stay 指令、主观工作区、`ProgrammingRequest/Response` 与稳定身份由 [Protocol](src/Protocol) 持有；[Player](src/Player) 提供 `IDynamicProgrammer` 与 Scripted 实现者，Decision.Validation 提供 `ProgrammingResponseValidator`，Player.Agency 提供已知图快照接缝。
+- **构建依赖**：Kernel/Spatial 仍使用旧固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新上游适配与 schema history 验证尚未实施。Server 静态资源的既有修复与历史验证见 [wwwroot 调查](docs/worksets/server-wwwroot-staticwebassets.md)。
+- **本地可玩入口（待冻结）**：[Server](src/Server/Program.cs)持有单角色内存 [FreePlaySession](src/Server/FreePlay/FreePlaySession.cs)，[WebUI](src/WebUI/src)显示地图、时间、位置、轨迹、主观工作区与待执行程序；诊断独立只读取数。发布启动见 [README](README.md)，历史验收见 [0026](docs/build-log/0026-dynamic-programmer-cutover.md)。
 
 ## 当前焦点与下一步
 
-活跃核心固定为 Kernel、Spatial、Protocol、Player、Decision.Validation、Host、Player.Agency 及各自测试。FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料均已移至 [归档索引](docs/archive/firstboard-llm.md)，不参与默认编译或搜索。
+用户已确认将时空引擎作为当前主线，角色可维护 Plan 与交互/呈现框架保留为技术储备。下一轮按[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)依次实施：收缩工程并独立验证，再更新核心 DurableGraph 依赖；具体待办与验收仅在该文件维护。
 
-当前应用边界为四点全图已知场景：经 `POST /api/player/programs` 提交完整 Move/Think/Stay 程序与主观工作区（快捷一步、程序编辑、清空并待机）；接受与开始是两个 transition；Think 固定 1000ms、笔记追加进工作区；合法空程序规范化为 `[Stay]` 并进入 staying 健康静止（GET 继续可用）。刷新继续同次运行，服务重启回 genesis；诊断仅展示最近 100 条完成记录。七核心合同保持不变。
+当前代码尚未收缩，仍有七核心、Server/WebUI 及对应测试。目标活跃范围为 Kernel、Spatial、Host；其余应用层采用固定 tag 与仓内归档保存，退出默认构建和搜索。独立库先留在本仓库，不改变时空与调度语义。
 
-已形成 [Player 运行时与 Plan-Maintainer 关键设计理念](docs/design/player-runtime/README.md)，经[独立审视与交叉质询](docs/worksets/player-runtime-principles-review.md)完善。该文集中维护用户已确认的共享运行时、未来安排与“再想想”方向；其核心语义已由下述机制实现。
+Dynamic-Programmer R1–R8 已完成、旧 Intent 路径已删除，既有实现与历史验收见 [0026](docs/build-log/0026-dynamic-programmer-cutover.md)。[Player 运行时理念](docs/design/player-runtime/README.md)与[Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)作为待冻结的设计储备，不再驱动当前施工。
 
-已形成 [World VM / Player Process / Dynamic-Programmer 模型](docs/design/player-runtime/dynamic-programmer.md)，基础模型与 Stay 补充均经[辩证审查](docs/worksets/dynamic-programmer-review.md)收敛。采用顺序 Move/Think/Stay：完整合法程序统一授权执行，合法空响应同次接受为 `[Stay]`；`[Stay, ...尾部]` 表示保留安排而待机，替代独立继续/停驻处置。普通耗尽仍先请求 Programmer，非法输入和故障不默认 Stay；解除待机与失败降级延期。
-
-工程设计已定稿并形成 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md)（R1–R8，每轮一个 fork 会话按序施工，逐轮 build-green）。已定基线：强类型 Move/Think/Stay 指令与不可变 Buffer；互斥执行状态，RunningStay 为唯一待机权威、运动真相读 Spatial；Programmer 完整修订原子接受，合法空程序同次规范为 `[Stay]`；到达与进程状态同批提交。候选映射、ControlRevision、组件落点与无效响应分通道等裁决见工单 README。新机制整体替换旧 Intent 单发决策路径（R7 切换、R8 删旧）。该机制已按 [Dynamic-Programmer 施工工单](docs/implementation/dynamic-programmer-build/README.md) R1–R8 实施完毕并接入本地运行：强类型指令与不可变 Buffer、互斥执行状态（RunningStay 为唯一待机权威、运动真相读 Spatial）、`IDynamicProgrammer` 完整修订原子接受、双规则经同一 Kernel 提交；旧 Intent 单发路径删除。验证矩阵、机制文档 §7.2 行为表对应与已知语义见 [0026 验收](docs/build-log/0026-dynamic-programmer-cutover.md)。下一步依据 Human 游玩与诊断证据，按延期与重开条件逐项选择（主动唤醒、LLM Programmer、持久化、多角色）。
+FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料此前已移至[归档索引](docs/archive/firstboard-llm.md)，不参与默认编译或搜索。
 
 ## 延期与重开条件
 
-- **后续交互机制**：首个移动闭环验收后，依据 Human 游玩与诊断证据逐项选择。探索披露、途中操作、默认行为协议、自动导航、NPC/剧情/物品不进入 0025。
+- **MUD 接入**：完成两步并验收后，结合 `durable-graph-mud` 最新状态另行评估；当前不实施，也不预定其时空与持久化接合方案。
+- **角色规划与交互**：长期 Plan、主动唤醒、LLM Programmer、探索披露、途中操作及呈现机制暂缓；获得新的设计证据或明确消费者需求时重开，冻结部分不要求随核心编译。
 - **持久化消费者**：核心保留 E/S 接缝和内存合同；新场景需要落盘时，从其真实闭包重新设计 adapter、恢复与 Player 同步边界。归档 FirstBoard 的结果只是历史证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：调速/途中停留、Area、ViewLink、关系变化与 contact 索引按实际玩法和性能证据触发。
@@ -37,5 +37,5 @@
 
 ## 按需导航与验证
 
-- 两份等价入口：[DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx)，均含七核心、Server 及对应测试。先运行 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1)，再按 [README](README.md)串行构建/测试及[发布](scripts/Publish-Server.ps1)；[CI](.github/workflows/ci.yml)先准备前端，再验证 .NET 与发布产物的 Chromium 行为。
+- 拆分前现状：两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 均含七核心、Server 及对应测试。旧依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备，验证与发布见 [README](README.md)；[CI](.github/workflows/ci.yml)仍包含前端与 Chromium。实施步骤 1 时收缩这些入口，步骤 2 时更新依赖复现方式。
 - 文档入口：[docs/README](docs/README.md)。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

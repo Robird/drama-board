@@ -17,7 +17,9 @@ Start with the repository's [current project state](../PROJECT-STATE.md). It ide
 
 ## Current work
 
-The [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) are complete: typed instructions, an immutable buffer, exclusive process state, the programmer contract, and the Session/HTTP/WebUI cutover fully replaced the legacy intent decision path. See the [0026 verification](build-log/0026-dynamic-programmer-cutover.md) for the executed matrix, the behavior-table mapping, and platform boundaries; active re-wake, the LLM programmer, and persistence remain deferred.
+The approved next work is the [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md): first retain Kernel, Spatial and Host while archiving the application, then update the core DurableGraph dependency. Implementation has not started. MUD integration will be reconsidered after both steps pass acceptance.
+
+The [Dynamic-Programmer build orders R1–R8](implementation/dynamic-programmer-build/README.md) are complete and will be retained as technical reserve with the Player/UI experiment. See the [0026 verification](build-log/0026-dynamic-programmer-cutover.md) for historical behavior and platform evidence.
 
 [Server, two WebUI pages, and the first movement loop](build-log/0025-server-webui-first-movement.md) is implemented: a local executable, a small fully known map, Human movement, and separate Player/diagnostic views. See the [verification and design handback](build-log/0025-verification.md) for executed checks and platform boundaries.
 
