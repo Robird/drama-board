@@ -1,9 +1,10 @@
 # DramaBoard documentation
 
-Start with the repository's [current project state](../PROJECT-STATE.md). The active engine consists of Kernel, Spatial and Host. Player planning, interaction and presentation are retained as a frozen experiment.
+Start with the repository's [current project state](../PROJECT-STATE.md). The active engine consists of Kernel, Spatial and Host. ResourceCycle provides the current Console interaction; the earlier Player planning and presentation stack remains a frozen experiment.
 
 ## Current design and core
 
+- [Terminology](glossary.md): shared Chinese/English vocabulary and current code mappings for characters/controllers, time, predictions, publication and space.
 - [Simulation Kernel](design/simulation-kernel.md): occurrence, time, deterministic arbitration and atomic publication; no Player implementation is required.
 - [Graph Spatial World](design/graph-spatial-world.md): objective locations, passages, motion, contact and arrival.
 - [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): retained E/S seam and finite pending recovery contract; this is not a disk persistence adapter.
