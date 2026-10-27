@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；ResourceCycle 单角色 Console 采集已贯通；下一阶段优先统一核心预测对象形状。见[采集验收](docs/experiments/resource-cycle-play-acceptance.md)与[核心草稿](docs/design/prediction-objects-roadmap.md)。
+> 最近整理：2026-10-27；当前核心分支聚焦预测对象与新组合发现，ResourceCycle 多角色化由另一会话并行推进。见[核心草稿](docs/design/prediction-objects-roadmap.md)与[发现算法综述](docs/research/prediction-discovery/README.md)。
 
 ## 最终目标
 
@@ -21,9 +21,9 @@
 
 资源周期实例已有批处理预测对照与单角色、单地点、两种植物、背包、等待/即时采集的 Console 闭环，均保持单根恢复；证据见[批处理验收](docs/experiments/resource-cycle-acceptance.md)与[采集验收](docs/experiments/resource-cycle-play-acceptance.md)。没有空间接线、GUI 或 LLM。
 
-用户已选定：在扩大世界前，优先将时间/空间核心统一为子系统创建预测对象、事件后筛出 dirty 集合并重算；第一版允许判断恒 true，先统一形状。当前实现仍是 ResourceCycle 固定预测绑定与 Spatial 扫描式 Forecast，核心尚未改造。下一步按[预测对象草稿](docs/design/prediction-objects-roadmap.md)裁决过程/输出寿命、创建/撤销及批次边界，再分片迁移；须保留暂停唤醒、contact 新组合发现、仲裁与 E/S 恢复语义，并以独立全量参考验证无漏预测。
+用户已选定：在扩大世界前，优先将时间/空间核心统一为子系统创建预测对象、事件后筛出 dirty 集合并重算；第一版允许判断恒 true，先统一形状。当前实现仍是 ResourceCycle 固定预测绑定与 Spatial 扫描式 Forecast，核心尚未改造。[发现算法综述](docs/research/prediction-discovery/README.md)建议先用通道局部发现，再缩为变化段 join；若进一步排除候选，须保证重新发现早于其可能被选中。现有 floor＋同 tick 仲裁使几何邻接不能直接替换全配对；它是当前基线而非不可变兼容要求。下一步按[预测对象草稿](docs/design/prediction-objects-roadmap.md)裁决发现覆盖、过程/输出寿命、时间语义与批次边界，以独立全量参考和 E/S 恢复验收；索引/API 细节仍属建议。
 
-Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户随后选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。近期不增加移动；复杂 Markdown 事件窗口、AgentCore 子状态发布和多角色同刻顺序按后续切片裁决。
+Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话并行推进 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。当前核心分支不改该应用片；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
 当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
@@ -34,7 +34,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **多角色与 Player**：一个 HumanPlayer 复用同一 Console 轮流控制多个世界角色；轮到某角色时暂停世界、显示观察并等待合法操作。当前仅一个角色，未来同刻轮转/资源竞争规则仍待裁决。先统一核心预测形状，再扩展多角色/地点；长期 Plan 等旧实现保持归档。
+- **多角色与 Player**：无移动的 ResourceCycle 多角色片已由用户分到另一会话并行推进，同刻轮转/资源竞争规则在该片裁决；本分支不以核心重构阻断它。更多地点、LLM Player 与长期 Plan 尚未重开，旧实现保持归档。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例的单分支闭包；其他游戏、分支或空间持久化依据真实需求扩展，不把它视为通用 host。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：预测对象迁移已进入当前核心方向；空间拓扑、运动数学和更多途中互动不随之自动重设计，需独立需求再重开。

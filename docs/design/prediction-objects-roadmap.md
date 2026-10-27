@@ -1,6 +1,6 @@
 # 持久预测对象：核心演进草稿
 
-> 2026-10-27。源码调查与后续切片建议；本文件没有对应的核心实现提交。本轮未运行构建、测试或性能实验。主线程正在进行的单角色、单地点采集仍可独立完成，不由本草稿阻断。
+> 2026-10-27。源码调查与后续切片建议；本文件没有对应的核心实现提交。单角色采集已完成，多角色应用片由另一会话并行推进，不由本草稿阻断。新增[发现算法综述](../research/prediction-discovery/README.md)补充局部发现、覆盖维护与时间语义约束；本次文档研究未运行产品构建、测试或性能实验。
 
 ## 方向与结论
 
@@ -100,7 +100,7 @@ PlanSelected(prediction, committedWorld) -> 业务事实与过程生命周期变
 
 当前 [GraphSpatialReducer](../../src/Spatial/Facts/GraphSpatialReducer.cs) 在掉头、到达、移除时清理旧段的 ConsumedContacts；新预测对象的清理须与同一业务事实协作，不能只删除队列项却留下永不回收的人对过程。
 
-以下现有语义应单独锁定后迁移，不能在换表示时顺手改变：
+以下是现有语义的迁移对照基线，不能在换表示时无意改变。没有兼容性负担，若算法设计需要改变时间或仲裁语义，可以独立裁决并更新验收，不要求永久保留：
 
 - arrival 使用 ceil；contact 使用 floor；掉头仅允许严格内部时间和位置。
 - contact 身份为当前两个运动段及其 generation，消费后同一段对不再触发。
@@ -110,6 +110,8 @@ PlanSelected(prediction, committedWorld) -> 业务事实与过程生命周期变
 - 同刻赢家仍遵循已选择的业务规则与 Kernel 稳定仲裁；不能因更换 candidate 编码而悄悄改变旧基线轨迹。
 
 证据入口：[SpatialPlannerReducerTests](../../tests/Spatial.Tests/Planning/SpatialPlannerReducerTests.cs)、[SpatialKernelAcceptanceTests](../../tests/Spatial.Tests/Acceptance/SpatialKernelAcceptanceTests.cs)、[contact floor 说明](../worksets/passage-contact-floor.md)。
+
+并行[发现算法综述](../research/prediction-discovery/README.md)进一步提出覆盖要求：任何可能成为下一次合法交互的关系，要么已有候选覆盖，要么保证在其可能被选中前完成发现。当前通道成员变化可作为首版充分触发；若以后采用较小邻域或时间窗，则须维护覆盖失效时刻。当前 floor 与同 tick 仲裁下，非几何邻接的人对也可能先胜出，不能直接用相邻换序替代全配对；见[可复现反例](../research/prediction-discovery/dramaboard-constraints.md#三邻接方案的可复现反例)。具体覆盖 API 和内部维护事件阶段仍待裁决。
 
 ## 统一形状与性能优化分开验收
 
@@ -140,7 +142,7 @@ P1/P2 的具体代码归属需结合 API 验证：共同身份/维护约定可�
 
 可以先用一个薄 adapter 将持久输出接入现有 IOccurrenceRule，从而小步验证共同维护代码；随后把 Kernel 默认入口命名和职责改为读取预测。若最终仍保留 Forecast 这个名字，应明确它只是只读投影，不允许消费者继续把所有业务计算塞回其中。早期 adapter 是施工手段，不是永久保留两套权威的兼容目标。
 
-当前无移动采集片不必等待 P2/P3。待其完成后，建议优先推进 P0–P3，再建设多人/多地点世界；这更符合用户希望先统一核心形状的方向。
+无移动的 ResourceCycle 多角色片由另一会话独立推进，不必等待 P2/P3。本核心分支聚焦 P0–P3；更多地点和移动相关业务仍宜在发现契约明确后展开。
 
 ## 核心不变量与独立验收
 
@@ -184,5 +186,6 @@ P1/P2 的具体代码归属需结合 API 验证：共同身份/维护约定可�
 3. 通知批次直接使用领域事实投影，还是引入最小 `Kind + Target` 记录；避免两份手写信息长期漂移。
 4. 统一维护代码位于规划组合器还是 Kernel 的受控 pre-publication 接缝；无论位置如何，都不得把重算推迟到 S 之后。
 5. Spatial candidate key 初片是否保持现有字节编码，以便用当前轨迹精确对照；若有意改变仲裁身份，应单独声明并验收。
+6. 首片是否保持当前 floor 与同 tick 仲裁；后续若引入邻域/证书维护，其覆盖期限、同刻阶段及是否占用业务 occurrence 如何定义。先裁决语义，再选择索引算法。
 
 用户已定的是优先统一核心预测对象方向；以上接口细节尚待后续小片设计与实现证据确定。
