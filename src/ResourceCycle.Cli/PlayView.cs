@@ -7,8 +7,13 @@ using DramaBoard.ResourceCycle;
 /// <remarks>Only the game-produced observation is available here; rendering cannot query hidden world state.</remarks>
 internal static class PlayView {
     /// <summary>Only public world changes belong between actor-specific observations.</summary>
-    public static string? RenderPublicChange(CycleFact fact, bool expedition = false) => fact.Kind == CycleEventKind.LightChanged
-        ? expedition ? $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了。" : "天黑了。")}" : $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了；太阳花满足再生光照条件，月光草暂停再生。" : "天黑了；月光草满足再生光照条件，太阳花暂停再生。")}" : null;
+    public static string? RenderPublicChange(CycleFact fact, bool expedition = false) {
+        if (expedition && fact.Kind == CycleEventKind.WeatherResolved) {
+            return $"\n天气变化 · {FormatTime(fact.At)}：{fact.Result}";
+        }
+        return fact.Kind == CycleEventKind.LightChanged
+            ? expedition ? $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了。" : "天黑了。")}" : $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了；太阳花满足再生光照条件，月光草暂停再生。" : "天黑了；月光草满足再生光照条件，太阳花暂停再生。")}" : null;
+    }
 
     public static string Render(CycleObservation observation) {
         CycleActorObservation character = observation.Actor;
@@ -22,7 +27,8 @@ internal static class PlayView {
         text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
             $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
         text.AppendLine();
-        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended); }
+        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended, observation.Weather is not null); }
+        if (observation.Weather is { } weather) { RenderWeather(text, weather, ended); }
         if (observation.IsExpedition) {
             text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
             text.AppendLine(observation.ArrivalDue is { } arrival
@@ -169,6 +175,9 @@ internal static class PlayView {
         text.AppendLine(observation.IsExpedition
             ? "输入完整命令和标识，区分大小写。查询、非法输入和退出不确认消息、不消耗时间。"
             : "输入完整命令和标识，区分大小写。查询、非法输入和退出不确认消息、不消耗时间，也不交棒。");
+        if (observation.Weather is not null) {
+            text.AppendLine("行动风险提示仅计算已知趋势与昼夜变化，未包含未来随机天气；没有提示不代表没有天气风险。");
+        }
         text.AppendLine("- `look`：重新显示完整画面。`help`：显示命令与当前受阻原因。");
         text.AppendLine("- `quit`：退出；EOF 同样退出。已提交的活动和未确认消息可随存档恢复。");
         if (observation.IsExpedition) {
@@ -221,7 +230,7 @@ internal static class PlayView {
         }
     }
 
-    private static void RenderSurvival(StringBuilder text, ModelTime time, CycleSurvivalObservation survival, bool ended) {
+    private static void RenderSurvival(StringBuilder text, ModelTime time, CycleSurvivalObservation survival, bool ended, bool hasWeather) {
         text.AppendLine("## 身体状态");
         if (ended) {
             text.AppendLine(survival.Sheltered ? "结束时处于庇护中。" : "结束时暴露在野外。");
@@ -236,6 +245,7 @@ internal static class PlayView {
         }
         text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
         text.AppendLine("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
+        if (hasWeather) { text.AppendLine("以下趋势及致命时刻估计未包含未来随机天气，实际危险可能更早发生。"); }
         text.AppendLine();
         text.AppendLine("| 指标 | 当前余量 | 当前趋势（点 / 小时） |");
         text.AppendLine("| --- | --- | --- |");
@@ -245,6 +255,28 @@ internal static class PlayView {
         text.AppendLine(survival.FatalAt is { } fatal
             ? $"- 维持当前趋势且不补给，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。环境改变后需重新评估。"
             : "- 当前趋势没有可预计的致命时刻；环境改变后需重新评估。");
+        text.AppendLine();
+    }
+
+    internal static void RenderWeather(StringBuilder text, CycleWeatherObservation weather, bool ended) {
+        text.AppendLine("## 天气与暴露");
+        if (!ended) {
+            text.AppendLine(weather.NextWindow is { } next
+                ? $"天气窗口每 {Hours(weather.IntervalTicks)} 小时出现一次；下次窗口：{FormatTime(next)}。结果尚未发生，可能平静，也可能遭遇寒风。"
+                : "没有后续天气窗口。");
+            text.AppendLine($"寒风使暴露者的温暖最多减少 {Number(weather.ExposedWarmthLoss)} 点；处于庇护内则免受这次损失。移动途中视为暴露。");
+            text.AppendLine(weather.Sheltered ? "当前有庇护保护；离开后不再受保护。" : "当前没有庇护保护。");
+        }
+        if (weather.LastAt is { } at && weather.LastKind is { } kind) {
+            string name = kind == CycleWeatherKind.ColdWind ? "寒风" : "平静";
+            string impact = kind == CycleWeatherKind.Calm ? "没有天气造成的温暖损失" :
+                weather.LastWasSheltered ? "当时受到庇护保护，温暖损失 0 点" :
+                    $"当时暴露在外，温暖实际减少 {Number(weather.LastActualWarmthLoss)} 点";
+            text.AppendLine($"- 最近实际天气：{FormatTime(at)}，{name}；{impact}。");
+            text.AppendLine("  这是当时已经结算的影响，不代表现在仍受影响，也不预示下一次结果。");
+        } else {
+            text.AppendLine("- 尚无已发生的天气记录。");
+        }
         text.AppendLine();
     }
 

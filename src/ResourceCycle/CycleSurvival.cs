@@ -68,6 +68,13 @@ public sealed partial class CycleSurvival : IDurableObject {
         CycleSurvival value = Project(at);
         return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, FoodPerHour, WaterPerHour, WarmthPerHour, value.WarnedMask);
     }
+    /// <summary>Plans an instantaneous exposure loss after integrating the preceding segment.</summary>
+    internal CycleSurvival LoseWarmth(ModelTime at, long units) {
+        ArgumentOutOfRangeException.ThrowIfNegative(units);
+        CycleSurvival value = Project(at);
+        return new(at, value.FoodUnits, value.WaterUnits, Math.Max(0, value.WarmthUnits - units),
+            value.FoodPerHour, value.WaterPerHour, value.WarmthPerHour, value.WarnedMask, value.PendingMask, value.PendingSince);
+    }
     public CycleSurvival Warn(ModelTime at) {
         CycleSurvival value = Project(at);
         int low = (value.FoodUnits <= WarningUnits ? 1 : 0) | (value.WaterUnits <= WarningUnits ? 2 : 0) | (value.WarmthUnits <= WarningUnits ? 4 : 0);

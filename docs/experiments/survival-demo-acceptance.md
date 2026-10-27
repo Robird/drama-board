@@ -6,12 +6,12 @@
 
 | 里程碑要求 | 当前证据 | 判定 |
 | --- | --- | --- |
-| Console 新游戏、续局和完整胜负循环 | A/B 具备探索、补给、庇护与胜负结局 | 已有局部闭环；随机风险及整体试玩待做 |
+| Console 新游戏、续局和完整胜负循环 | A/B/C 具备探索、补给、庇护、随机天气与胜负结局 | 工程闭环完成；独立整体试玩待做 |
 | 两路线成功与一次失败独立试玩 | 待生存与风险规则落地后执行 | 未完成 |
-| 采集/再生、移动、消费、寒冷、唤醒、随机风险 | A/B 已组合需求与庇护；随机风险待做 | 部分完成 |
+| 采集/再生、移动、消费、寒冷、唤醒、随机风险 | A/B/C 已组合需求、庇护和随机风险，见分片证据 | D 仍需核对独立试玩的自然覆盖及定向补证 |
 | 当前/历史观察与未知世界隔离 | A 的 DTO、校验探针、历史库存与 Console 通过 | A 范围完成；后续新增信息继续验证 |
-| 固定随机状态复现、移动/阈值/随机 E-only 恢复 | 移动/阈值 S-only，以及移动/警告/消费/死亡 E-only 通过；尚无随机 | 部分完成 |
-| Schema、相关测试与原 Console 回归 | A/B 的 Verify、整套测试和三种 Console smoke 通过 | 当前范围完成；后续持续回归 |
+| 固定随机状态复现、移动/阈值/随机 E-only 恢复 | 移动/阈值/天气 S-only，以及移动/警告/消费/死亡/天气 E-only 通过 | 当前范围完成；D 最终核对 |
+| Schema、相关测试与原 Console 回归 | A/B/C 的 Verify、整套测试和三种 Console smoke 通过 | 当前范围完成；后续持续回归 |
 | 运行说明与剩余限制清晰 | README 已说明探索、生存操作与剩余工作 | 当前范围完成 |
 
 ## 2. 当前局部证据
@@ -93,6 +93,41 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 使用与 A 相同的 SDK/DG/Storage 源码版本；两个上游工作树仍干净，本片未改上游。当前改动文档的 165 个本地文件链接通过存在性检查，`git diff --check` 通过。
 
+### C 随机天气：2026-10-28
+
+源码入口：[CycleEnvironment](../../src/ResourceCycle/CycleEnvironment.cs)、`CycleExpedition.Environment`、`CyclePredictionMaintenance`、`CycleFactApplication` 与 [天气 UI 测试](../../tests/ResourceCycle.Cli.Tests/SurvivalWeatherViewTests.cs)。[天气合同](../design/survival-weather.md)明确到达先于天气、连续耗尽最先、天气致死同事实，以及随机只在选中 Plan 时计算。
+
+复用 Kernel `DeterministicRandom`，持久 seed/sequence/NextDue 与最近个人影响。每两小时二元结果，寒风使暴露者损失 10 点温暖，庇护免损；平静或庇护窗口仍推进序号。最近记录保存当时的实际损失和庇护状态，不按新位置重算。独立审阅发现并修正了普通时刻 `NextDue=null` 会静默停天气的漏洞，现在仅允许时间或序号耗尽时停止预测。
+
+[WeatherTests](../../tests/ResourceCycle.Tests/WeatherTests.cs) 的实际运行证据包括：
+
+- 固定 seed 0 的四窗向量为寒风/平静/平静/寒风，seed 1 首窗平静；庇护与暴露抽到相同结果，效果不同。
+- 观察、重建、校验与非法命令不推进随机地址；同一输入的增量/full 轨迹、cursor 和空间一致。
+- 庇护/出口到达与天气相差 ±1 tick / 同刻；连续耗尽抢先；天气→活动完成→警告→输入的顺序。
+- 天气窗口前一 tick 与恰好到期的 S-only 冷开保持同一下一机会。
+- 真实 E-only 截断用 seed 0：非致死 29→19、致死 9→0。恢复禁止 Forecast/Plan/控制器，序号恰推进一次，实际损失不重复，二次冷开一致；致死仍 `Exhausted`。平静和受庇护的记录有正常 Kernel 测试，不将它们冒充已单独做过 E-only 截断。
+- 原始 DG 发布的普通时刻无 NextDue 状态能还原 Schema，但正常 Open 拒绝；合法时间/序号耗尽边界允许没有下一窗口。
+
+主线程实际检查新开画面与终局画面：未知地点不泄漏，初始不同 seed 的观察相同，窗口提示与已发生结果分开；行动的确定性估计注明不包含未来寒风；终局不再提示下一窗口。实时播报使用已提交事实，冷开完整观察从状态恢复最近记录。
+
+生产默认 seed `20261028` 的工程脚本现在实际经历 17:00 寒风、19:00 平静、21:00 寒风、23:00 平静：
+
+| 路线 | C 实测变化与结局 |
+| --- | --- |
+| 溪流—旧桥—公路 | 17 点暴露损失 10；21 点再次受风后温暖 22，行程仍定于 21:45；确认后获救 |
+| 山脊—林屋—信号站 | 19:30 到林屋时温暖 50，停留改为两小时；21 点同一阵寒风被庇护挡住，21:30 温暖 74，次日 00:30 获救 |
+| 原地不补给 | 天气仍开启，忽略食水警告后在 20:37:30 脱水失败 |
+
+脚本比较天气结果后的只读冷开、警告/行程保持、两路线与失败的连续/续局最终观察及存档 hash。主线程重跑最终版本的三组 smoke：
+
+| 入口 | 成功工件 |
+| --- | --- |
+| 原批处理 | `artifacts/resource-cycle-smoke/c32171e42a0149e9b96e86dfaa1fa962/` |
+| 原多人采集 | `artifacts/resource-cycle-play-smoke/0cdbc11c0ad549efa5d697e414425fd0/` |
+| 生存 A/B/C | `artifacts/resource-cycle-survival-smoke/f3b0091a564b4b4a8fa4adda4bcf8982/` |
+
+最终 Schema Verify 构建零警告/错误；全 solution **503 项通过、无跳过**（Host 2、Inventory 27、Kernel 131、ResourceCycle 175、CLI 77、Spatial 91）。ResourceCycle 19 个当前模型、36 条历史；新增 Environment v1、Expedition v2、EventKind v6、Fact v5。应用 GameRevision 为 4。SDK/DG/Storage 与前片一致，上游仍干净，未作修改。
+
 ## 3. 一期仍需完成
 
-随机环境事件及其确定性/恢复；两条路线在完整生存约束下的独立通关、失败试玩与平衡调整。A/B 工程验收不代表一期完成。二期 LLM、双角色交流和赠与尚未启动。
+两条路线在完整生存约束下的独立通关、失败试玩与平衡调整；对机制覆盖逐项核对并补定向证据，完成里程碑最终验收。A/B/C 工程脚本仍是已知路线，不代表独立可玩性验收。二期 LLM、双角色交流和赠与尚未启动。

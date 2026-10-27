@@ -12,7 +12,7 @@ namespace DramaBoard.ResourceCycle.Tests;
 public sealed class ExpeditionTests {
     [Fact]
     public void Initial_observation_and_command_checks_do_not_disclose_remote_resources_or_exits() {
-        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
         CycleDecisionContext context = CycleDecisionContext.Create(initial.World, "a");
         string before = initial.World.DescribeState();
         Assert.Empty(context.Observation.Resources);
@@ -33,7 +33,7 @@ public sealed class ExpeditionTests {
 
     [Fact]
     public async Task Movement_uses_one_spatial_deadline_and_does_not_allow_concurrent_timed_actions() {
-        var initial = CycleGameFactory.CreateSurvival(Hour(10), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(10), enableNeeds: false, enableWeather: false);
         var source = Commands(CycleCommand.Go(Passage("camp", "stream")));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: source);
@@ -64,7 +64,7 @@ public sealed class ExpeditionTests {
 
     [Fact]
     public async Task Light_change_at_arrival_is_settled_before_arrival_and_next_character_input() {
-        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false, enableWeather: false);
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var source = Commands(CycleCommand.Go(Passage("camp", "stream")), CycleCommand.Wait(1));
         var kernel = CycleEngine.CreateKernel(history, characterController: source);
@@ -85,7 +85,7 @@ public sealed class ExpeditionTests {
     [InlineData("camp,stream,ravine,road", "road")]
     [InlineData("camp,ridge,cabin,signal", "signal")]
     public async Task Both_routes_reach_an_exit_and_terminal_world_stops_without_more_input(string passages, string destination) {
-        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
         string[] places = passages.Split(',');
         var source = Commands(places.Zip(places.Skip(1), (from, to) => CycleCommand.Go(Passage(from, to))).ToArray());
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
@@ -105,7 +105,7 @@ public sealed class ExpeditionTests {
 
     [Fact]
     public async Task Departed_place_keeps_historical_resources_while_remote_regeneration_continues() {
-        var initial = CycleGameFactory.CreateSurvival(Hour(6), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(6), enableNeeds: false, enableWeather: false);
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: Commands(CycleCommand.Go(Passage("camp", "stream")), CycleCommand.Gather("berries"),
                 CycleCommand.Go(Passage("stream", "cabin"))));
@@ -132,7 +132,7 @@ public sealed class ExpeditionTests {
     [Fact]
     public async Task Mid_movement_state_cold_open_keeps_deadline_and_continues_same_trace_without_decision() {
         using var store = new TemporaryStore();
-        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false, enableWeather: false);
         TraversingLocation expectedLocation;
         KernelCursor savedCursor;
         var baseline = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
@@ -168,8 +168,8 @@ public sealed class ExpeditionTests {
         static StubCharacterController Driver() => Commands(CycleCommand.Go(Passage("camp", "stream")),
             CycleCommand.Gather("berries", 2), CycleCommand.Wait(1), CycleCommand.Go(Passage("stream", "ravine")),
             CycleCommand.Go(Passage("ravine", "road")));
-        var first = CycleGameFactory.CreateSurvival(Hour(16), enableNeeds: false);
-        var second = CycleGameFactory.CreateSurvival(Hour(16), enableNeeds: false);
+        var first = CycleGameFactory.CreateSurvival(Hour(16), enableNeeds: false, enableWeather: false);
+        var second = CycleGameFactory.CreateSurvival(Hour(16), enableNeeds: false, enableWeather: false);
         var incremental = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(first.World, first.Cursor),
             PredictionMode.Incremental, characterController: Driver());
         var full = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(second.World, second.Cursor),
@@ -195,7 +195,7 @@ public sealed class ExpeditionTests {
     [InlineData(CycleEventKind.MoveArrived, true)]
     public async Task Movement_event_only_cold_recovery_applies_spatial_and_observation_effects_once(CycleEventKind stopAt, bool exitArrival) {
         using var store = new TemporaryStore();
-        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(17), enableNeeds: false, enableWeather: false);
         static StubCharacterController Driver() => Commands(CycleCommand.Go(Passage("camp", "stream")),
             CycleCommand.Go(Passage("stream", "ravine")), CycleCommand.Go(Passage("ravine", "road")));
         var baseline = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),

@@ -345,7 +345,7 @@ public sealed class SurvivalTests {
         Assert.Single(kernel.LastCompletion!.Event.Facts).Kind;
     private static CycleWorld World(ModelTime time, CycleSurvival needs, CycleActivity? activity = null,
         string place = "camp", Dictionary<string, int>? items = null) {
-        var initial = CycleGameFactory.CreateSurvival(time, enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(time, enableNeeds: false, enableWeather: false);
         var spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new(place))]);
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
             [new("a", place, time, initial.World.Resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == place))]);

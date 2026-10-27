@@ -11,7 +11,8 @@ namespace DramaBoard.ResourceCycle;
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
     /// <summary>Creates a fixed, revision-bound mountain scenario with one explorer and no revealed distant truth.</summary>
-    public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true) {
+    public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true,
+        bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed) {
         ModelTime time = start ?? new ModelTime(15 * CycleTime.Hour);
         CycleResource[] resources = [
             new("berries", "野浆果", "item.food", true, 3 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
@@ -20,7 +21,9 @@ public static class CycleGameFactory {
             new("ridge-herbs", "山脊野菜", "item.food", true, 4 * CycleTime.Hour, 4, 4, harvestTicks: CycleTime.Hour / 2)
         ];
         GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("camp"))]);
-        var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [new("a", "camp", time, [])]);
+        var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [new("a", "camp", time, [])],
+            environment: enableNeeds && enableWeather ? new(weatherSeed, 0,
+                time.Ticks > long.MaxValue - CycleEnvironmentRules.IntervalTicks ? null : new(time.Ticks + CycleEnvironmentRules.IntervalTicks)) : null);
         return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
             new([]), [new("a", "阿青", backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
                 ["item.water"] = 1

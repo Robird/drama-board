@@ -18,7 +18,7 @@ internal static class CycleFactApplication {
             foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
                 spatial = CycleExpeditionMap.Reducer.Apply(spatial, instant, spatialFact);
             }
-            expedition = expedition.Change(spatial, fact.Visits, fact.Outcome, fact.EndingReason);
+            expedition = expedition.Change(spatial, fact.Visits, fact.Outcome, fact.EndingReason, fact.Environment);
         }
         return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
             fact.ChangedCharacters, fact.LastServedActorId, expedition);
@@ -58,7 +58,7 @@ internal static class CycleFactApplication {
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
-            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed =>
+            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed or CycleEventKind.WeatherResolved =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedCharacters[0].Survival is not null &&
                 fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             _ => false
@@ -73,7 +73,7 @@ internal static class CycleFactApplication {
                 throw new InvalidOperationException("Movement requires a matching recorded spatial fact.");
             }
         } else if (fact.SpatialFacts.Count != 0) { throw new InvalidOperationException("Unexpected spatial facts."); }
-        if (fact.Kind is not (CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed) && (fact.Outcome is not null || fact.EndingReason is not null) ||
+        if (fact.Kind is not (CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved) && (fact.Outcome is not null || fact.EndingReason is not null) ||
             business.Expedition is null && fact.Visits.Count != 0 ||
             fact.Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != fact.Visits.Count) {
             throw new InvalidOperationException("Unexpected expedition observation or ending.");
@@ -81,5 +81,14 @@ internal static class CycleFactApplication {
         if (fact.Kind == CycleEventKind.SurvivalFailed && (fact.Outcome != CycleExpeditionOutcome.Dead || string.IsNullOrWhiteSpace(fact.EndingReason))) {
             throw new InvalidOperationException("A fatal survival fact must record the ending.");
         }
+        if (fact.Kind == CycleEventKind.WeatherResolved) {
+            CycleEnvironment previous = business.Expedition?.Environment ?? throw new InvalidOperationException("Weather is not enabled.");
+            CycleEnvironment next = fact.Environment ?? throw new InvalidOperationException("Weather must record its next state.");
+            if (previous.NextDue != fact.At || next.Seed != previous.Seed || next.Sequence != checked(previous.Sequence + 1) || next.LastAt != fact.At ||
+                (fact.Outcome == CycleExpeditionOutcome.Dead) != fact.ChangedCharacters[0].Survival!.Project(fact.At).IsFatal ||
+                (fact.Outcome is null ? fact.EndingReason is not null : fact.Outcome != CycleExpeditionOutcome.Dead || string.IsNullOrWhiteSpace(fact.EndingReason))) {
+                throw new InvalidOperationException("Weather must advance its stream once and preserve its concrete result and ending.");
+            }
+        } else if (fact.Environment is not null) { throw new InvalidOperationException("Only weather can replace the environment stream."); }
     }
 }

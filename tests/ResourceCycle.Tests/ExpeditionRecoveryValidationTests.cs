@@ -12,7 +12,7 @@ public sealed class ExpeditionRecoveryValidationTests {
     [InlineData("escape-while-working")]
     [InlineData("scheduled-passage-change")]
     public void Cold_open_rejects_restorable_but_unrunnable_expedition_boundaries_without_repairing_disk(string invalidBoundary) {
-        var initial = CycleGameFactory.CreateSurvival(Hour(8), enableNeeds: false);
+        var initial = CycleGameFactory.CreateSurvival(Hour(8), enableNeeds: false, enableWeather: false);
         CycleBusinessState business = initial.World.Business;
         CycleExpedition expedition = initial.World.Expedition!;
         CycleCharacter actor = initial.World.GetCharacter("a");

@@ -1,6 +1,6 @@
 param([string]$Configuration = 'Release', [string]$OutputDirectory)
 
-# Spatial exploration and survival-needs engineering smoke, not full milestone/playtest acceptance.
+# Spatial exploration, survival needs and weather engineering smoke, not independent playtest acceptance.
 # Uses the real Console process and never rebuilds, resets stores, or removes prior evidence.
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -66,7 +66,7 @@ function Assert-Legal([string]$OutputText) {
 
 function Assert-Ending([string]$Frame, [string]$Place) {
     if (-not $Frame.Contains($Place) -or $Frame -notmatch '## 结局\s+获救。' -or
-        $Frame -notmatch '本局已经结束，不再推进普通活动。' -or $Frame -match '## 可用命令') {
+        $Frame -notmatch '本局已经结束，不再推进普通活动。' -or $Frame -match '## 可用命令|下次窗口') {
         throw "Expected the completed rescue ending at $Place."
     }
 }
@@ -91,6 +91,10 @@ if ($initialFrame -notmatch '迷途营地' -or $initialFrame -notmatch 'go trail
 }
 if ($initial -match '溪流湾|狭谷旧桥|山脚公路|风口山脊|废弃林屋|巡山信号站|ridge-herbs|野浆果|干木|go trail-[3-7]') {
     throw 'The initial observation disclosed an unvisited place, distant resource, or nonlocal route.'
+}
+if ($initialFrame -notmatch '## 天气与暴露' -or $initialFrame -notmatch '下次窗口：第 0 天 17:00' -or
+    $initialFrame -notmatch '尚无已发生的天气记录' -or $initialFrame -match '最近实际天气：|20261028|RandomSeed|Sequence') {
+    throw 'Initial weather observation omitted the known risk window or exposed a future result/internal random state.'
 }
 $before = Store-Fingerprint $roadStore
 $invalid = Run-Cli 'readonly-invalid-eof' @('--survival', '--store', $roadStore) "look`nhelp`ngather berries 0`nwait 0`ncontinue`ncancel`nuse item.food`nuse nonexistent`nunknown`nlook`n"
@@ -145,6 +149,10 @@ Assert-Legal $warning
 $warningFrame = Last-Frame $warning
 Assert-WarningInTransit $warningFrame
 if ((Vital $warningFrame '饮水') -ne 25) { throw 'The water warning was not delivered at its threshold.' }
+if ((Vital $warningFrame '温暖') -ne 65 -or
+    $warningFrame -notmatch '最近实际天气：第 0 天 17:00，寒风；当时暴露在外，温暖实际减少 10 点。') {
+    throw 'The first recorded cold wind did not apply its actual ten-point loss to the exposed traveller.'
+}
 $before = Store-Fingerprint $roadStore
 $warningReopen = Run-Cli 'moving-warning-readonly-invalid' @('--survival', '--store', $roadStore) "look`nhelp`nwait 1`ncancel`ngather berries 1`nuse nonexistent`nlook`n"
 if ($warningFrame -ne (Last-Frame $warningReopen) -or $before -ne (Store-Fingerprint $roadStore)) {
@@ -178,8 +186,23 @@ if ($resourceSection.Length -eq 0 -or $resourceSection -match 'berries|water|野
     $ravineFrame -match 'gather berries|gather water|山脚公路|巡山信号站') {
     throw 'The remote stream or an undiscovered exit leaked into current facts/actions.'
 }
-$road = Run-Cli 'road-resumed-ending' @('--survival', '--store', $roadStore) "go trail-4`n"
-$roadContinuous = Run-Cli 'road-continuous-ending' @('--survival') ($roadPrefix + "go trail-3`nuse item.water`ncontinue`ngo trail-4`n")
+# A second cold wind crosses the warmth warning at 21:00 while arrival remains 21:45.
+# Save after the random result and compare reopening before acknowledging its consequence.
+$cold = Run-Cli 'road-coldwind-warning-save' @('--survival', '--store', $roadStore) "go trail-4`nquit`n"
+Assert-Legal $cold
+$coldFrame = Last-Frame $cold
+if ((Vital $coldFrame '温暖') -ne 22 -or $coldFrame -notmatch '生存警告（历史记录，待确认）' -or
+    $coldFrame -notmatch '正在途中；预计 第 0 天 21:45 到达' -or
+    $coldFrame -notmatch '最近实际天气：第 0 天 21:00，寒风；当时暴露在外，温暖实际减少 10 点。') {
+    throw 'The later cold wind did not cause the observed warmth warning without changing the journey.'
+}
+$before = Store-Fingerprint $roadStore
+$coldReopen = Run-Cli 'road-coldwind-readonly-reopen' @('--survival', '--store', $roadStore) "look`nhelp`nlook`nquit`n"
+if ($coldFrame -ne (Last-Frame $coldReopen) -or $before -ne (Store-Fingerprint $roadStore)) {
+    throw 'Reading after a random result changed its saved outcome, warning, or remaining journey.'
+}
+$road = Run-Cli 'road-resumed-ending' @('--survival', '--store', $roadStore) "continue`n"
+$roadContinuous = Run-Cli 'road-continuous-ending' @('--survival') ($roadPrefix + "go trail-3`nuse item.water`ncontinue`ngo trail-4`ncontinue`n")
 Assert-Legal $road
 Assert-Legal $roadContinuous
 $roadFrame = Last-Frame $road
@@ -198,20 +221,27 @@ $cabin = Run-Cli 'cabin-save' @('--survival', '--store', $signalStore) ($signalP
 Assert-Legal $cabin
 $cabinFrame = Last-Frame $cabin
 if ($cabinFrame -notmatch '废弃林屋' -or $cabinFrame -notmatch '当前有庇护' -or
-    (Vital $cabinFrame '温暖') -ne 60 -or (Vital $cabinFrame '食物') -ne 42.5) {
+    (Vital $cabinFrame '温暖') -ne 50 -or (Vital $cabinFrame '食物') -ne 42.5 -or
+    $cabinFrame -notmatch '最近实际天气：第 0 天 19:00，平静') {
     throw 'The high route did not reach shelter after gathering and consuming its local food.'
 }
-$warmed = Run-Cli 'cabin-warming-save' @('--survival', '--store', $signalStore) "wait 1`nquit`n"
+$warmed = Run-Cli 'cabin-warming-save' @('--survival', '--store', $signalStore) "wait 2`nquit`n"
 Assert-Legal $warmed
 $warmedFrame = Last-Frame $warmed
-if ((Vital $warmedFrame '温暖') -ne 72 -or (Vital $warmedFrame '食物') -ne 37.5 -or
-    (Vital $warmedFrame '饮水') -ne 46 -or $warmedFrame -notmatch '第 0 天 20:30') {
-    throw 'One sheltered hour did not warm the character while still consuming food and water.'
+if ((Vital $warmedFrame '温暖') -ne 74 -or (Vital $warmedFrame '食物') -ne 32.5 -or
+    (Vital $warmedFrame '饮水') -ne 38 -or $warmedFrame -notmatch '第 0 天 21:30' -or
+    $warmedFrame -notmatch '最近实际天气：第 0 天 21:00，寒风；当时受到庇护保护，温暖损失 0 点。') {
+    throw 'Two sheltered hours did not warm the character and prevent the same cold-wind loss while consuming supplies.'
+}
+$before = Store-Fingerprint $signalStore
+$shelteredReopen = Run-Cli 'cabin-weather-readonly-reopen' @('--survival', '--store', $signalStore) "help`nlook`nquit`n"
+if ($warmedFrame -ne (Last-Frame $shelteredReopen) -or $before -ne (Store-Fingerprint $signalStore)) {
+    throw 'The recorded sheltered weather outcome changed on a read-only cold open.'
 }
 # Both later warnings are consciously accepted with enough reserves to finish the fixed journey.
 $signalTail = "go trail-6`ncontinue`ncontinue`n"
 $signal = Run-Cli 'signal-resumed-ending' @('--survival', '--store', $signalStore) $signalTail
-$signalContinuous = Run-Cli 'signal-continuous-ending' @('--survival') ($signalPrefix + "wait 1`n" + $signalTail)
+$signalContinuous = Run-Cli 'signal-continuous-ending' @('--survival') ($signalPrefix + "wait 2`n" + $signalTail)
 Assert-Legal $signal
 Assert-Legal $signalContinuous
 $signalFrame = Last-Frame $signal
@@ -234,7 +264,7 @@ $failureContinuous = Run-Cli 'no-supply-continuous-ending' @('--survival') "wait
 Assert-Legal $failure
 Assert-Legal $failureContinuous
 $failureFrame = Last-Frame $failure
-if ($failureFrame -notmatch '## 结局' -or $failureFrame -notmatch '脱水耗尽' -or $failureFrame -match '获救|## 可用命令' -or
+if ($failureFrame -notmatch '## 结局' -or $failureFrame -notmatch '脱水耗尽' -or $failureFrame -match '获救|## 可用命令|下次窗口' -or
     (Vital $failureFrame '饮水') -ne 0 -or $failureFrame -notmatch '第 0 天 20:37:30.000' -or
     $failureFrame -ne (Last-Frame $failureContinuous)) {
     throw 'Ignoring supply/warnings did not yield the same explained fatal boundary after cold continuation.'
@@ -254,7 +284,7 @@ $null = Run-Cli 'invalid-survival-options' @('--survival', '--steps', '1') '' 1
 [IO.File]::WriteAllText((Join-Path $outputRoot 'signal-ending.md'), $signalFrame)
 [IO.File]::WriteAllText((Join-Path $outputRoot 'failure-ending.md'), $failureFrame)
 @{
-    scope = 'A+B: spatial exploration and survival-needs engineering smoke; not full milestone/playtest acceptance'
+    scope = 'A+B+C: spatial exploration, survival needs and weather engineering smoke; not independent playtest acceptance'
     readOnlyInvalidEofAndWrongModePreserveStoreBytes = $true
     hiddenAndNonexistentTargetsHaveSameRejection = $true
     localGatheringAndDatedRemoteMemoryVerified = $true
@@ -265,7 +295,10 @@ $null = Run-Cli 'invalid-survival-options' @('--survival', '--steps', '1') '' 1
     pendingWarningSurvivesReadOnlyAndSupplyUntilContinue = $true
     inFlightSupplyAndContinuePreserveArrivalDeadline = $true
     shelterWarmsWhileConsumingFoodAndWater = $true
+    recordedColdWindReducesExposedWarmth = $true
+    sameWeatherWindowHasNoLossInsideShelter = $true
+    randomResultAndWarningSurviveReadOnlyColdOpen = $true
     noSupplyFailureMatchesColdContinuation = $true
-    remainingMilestoneEvidence = @('random environment risk', 'independent full survival playtests')
+    remainingMilestoneEvidence = @('independent full survival playtests')
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outputRoot 'acceptance.json') -Encoding utf8
-Write-Output "ResourceCycle spatial exploration and survival-needs smoke passed: $outputRoot"
+Write-Output "ResourceCycle spatial exploration, survival needs and weather smoke passed: $outputRoot"

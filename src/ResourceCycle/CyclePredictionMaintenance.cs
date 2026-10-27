@@ -41,6 +41,7 @@ internal static class CyclePredictionMaintenance {
     private static bool Affected(string owner, CycleBusinessState before, CycleBusinessState after) {
         if (owner == "light") { return !ReferenceEquals(before.Light, after.Light); }
         if (owner == "script") { return !ReferenceEquals(before.Script, after.Script); }
+        if (owner == "environment") { return !ReferenceEquals(before.Expedition?.Environment, after.Expedition?.Environment); }
         if (owner.StartsWith("resource:", StringComparison.Ordinal)) {
             string id = owner["resource:".Length..^":regen".Length];
             return !ReferenceEquals(before.GetResource(id), after.GetResource(id));
@@ -57,6 +58,7 @@ internal static class CyclePredictionMaintenance {
     private static IEnumerable<CycleBinding> CreateBindings(CycleBusinessState business) {
         yield return new("light", CycleEventKind.LightChanged, "*");
         yield return new("script", CycleEventKind.ResourceDestroyed, "*");
+        if (business.Expedition?.Environment is not null) { yield return new("environment", CycleEventKind.WeatherResolved, "*"); }
         foreach (CycleResource resource in business.Resources) {
             string owner = $"resource:{resource.Id}:regen";
             yield return new(owner, CycleEventKind.LightChanged, "*");
@@ -70,7 +72,7 @@ internal static class CyclePredictionMaintenance {
                     yield return new($"actor:{actor.Id}:survival", kind, "*");
                 }
                 foreach (CycleEventKind kind in new[] { CycleEventKind.LightChanged, CycleEventKind.SurvivalWarning,
-                    CycleEventKind.SurvivalFailed, CycleEventKind.ItemUsed }) {
+                    CycleEventKind.SurvivalFailed, CycleEventKind.ItemUsed, CycleEventKind.WeatherResolved }) {
                     yield return new($"actor:{actor.Id}:attention", kind, "*");
                 }
             }
@@ -121,6 +123,9 @@ internal static class CyclePredictionMaintenance {
                     prediction.Generation == deciding.DecisionGeneration && prediction.Sequence == 0 && prediction.Due == business.Time;
             case CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning:
                 return Predict(business, prediction.OwnerId)?.ToString() == prediction.ToString();
+            case CyclePredictionKind.Weather:
+                return prediction.OwnerId == "environment" && prediction.TargetId == "world" && prediction.Sequence == 0 &&
+                    business.Expedition?.Environment is { } environment && prediction.Generation == environment.Sequence && prediction.Due == environment.NextDue;
             default: return false;
         }
     }
@@ -128,6 +133,7 @@ internal static class CyclePredictionMaintenance {
         CycleEventKind.LightChanged => "light",
         CycleEventKind.ResourceDestroyed => "script",
         CycleEventKind.ResourceRegenerated => $"resource:{fact.ResourceId}:regen",
+        CycleEventKind.WeatherResolved => "environment",
         CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed => $"actor:{fact.ActorId}:survival",
         CycleEventKind.GatherYielded or CycleEventKind.GatherFinished or CycleEventKind.WaitCompleted => $"actor:{fact.ActorId}:activity",
         _ => $"actor:{fact.ActorId}:attention"
@@ -135,8 +141,13 @@ internal static class CyclePredictionMaintenance {
     internal static IEnumerable<string> Owners(CycleBusinessState business) => new[] { "light", "script" }
         .Concat(business.Resources.Select(r => $"resource:{r.Id}:regen"))
         .Concat(business.Characters.SelectMany(c => new[] { $"actor:{c.Id}:activity", $"actor:{c.Id}:attention" }))
-        .Concat(business.Characters.Where(c => c.Survival is not null).Select(c => $"actor:{c.Id}:survival"));
+        .Concat(business.Characters.Where(c => c.Survival is not null).Select(c => $"actor:{c.Id}:survival"))
+        .Concat(business.Expedition?.Environment is not null ? new[] { "environment" } : []);
     internal static CyclePrediction? Predict(CycleBusinessState business, string owner) {
+        if (owner == "environment") {
+            CycleEnvironment environment = business.Expedition!.Environment!;
+            return environment.NextDue is { } due ? new(owner, CyclePredictionKind.Weather, "world", due, environment.Sequence) : null;
+        }
         if (owner.EndsWith(":survival", StringComparison.Ordinal)) {
             if (business.Expedition?.Outcome != CycleExpeditionOutcome.Exploring) { return null; }
             CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":survival".Length]);

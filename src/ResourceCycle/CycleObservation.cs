@@ -37,6 +37,7 @@ public sealed class CycleObservation {
     public CycleExpeditionOutcome Outcome { get; init; } = CycleExpeditionOutcome.Exploring;
     public string? EndingReason { get; init; }
     public CycleSurvivalObservation? Survival { get; init; }
+    public CycleWeatherObservation? Weather { get; init; }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
 }
@@ -134,7 +135,8 @@ public sealed class CycleDecisionContext {
                 new CyclePlaceMemory(CycleExpeditionMap.GetPlace(visit.PlaceId).Name, visit.At,
                     Array.AsReadOnly(visit.Resources.ToArray()))).ToArray()),
             Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason,
-            Survival = CycleSurvivalRules.Observe(world, actorId)
+            Survival = CycleSurvivalRules.Observe(world, actorId),
+            Weather = CycleEnvironmentRules.Observe(world, actorId)
         };
         return new(observation, Check, Warning);
     }

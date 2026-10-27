@@ -153,7 +153,7 @@ public sealed class SurvivalNeedsViewTests {
 
     // Fixed needs keep observation contracts independent of new-game balancing.
     private static (CycleWorld World, KernelCursor Cursor) PreparedNeeds(CycleSurvival? survival = null) {
-        var initial = CycleGameFactory.CreateSurvival(new ModelTime(15 * CycleTime.Hour));
+        var initial = CycleGameFactory.CreateSurvival(new ModelTime(15 * CycleTime.Hour), enableWeather: false);
         CycleCharacter actor = new("a", "阿青", backpack: new(new Dictionary<string, int> {
             ["item.food"] = 1, ["item.water"] = 1
         }), survival: survival ?? CycleSurvival.Create(initial.World.Time, food: 65, water: 65, warmth: 60));

@@ -50,6 +50,12 @@ public static class CycleSurvivalRules {
         }
         ModelTime end = new(checked(world.Time.Ticks + duration));
         bool sheltered = command.Kind != CycleCommandKind.Go && IsSheltered(world.Expedition?.Spatial, actorId);
+        CycleEnvironment? weather = world.Expedition?.Environment;
+        string weatherRisk = weather?.NextDue is { } weatherAt && weatherAt <= end
+            ? sheltered ? $" 期间有天气窗口（下一次 {weatherAt}）；留在庇护中可免除寒风损失。"
+                : $" 期间有天气窗口（下一次 {weatherAt}）；每次可能额外损失 {CycleEnvironmentRules.ExposureLoss} 点温暖。"
+            : "";
+        string basis = weather is null ? "按已知昼夜与当前补给" : "不计随机寒风，按已知昼夜与当前补给";
         CycleSurvival body = anchor.Project(world.Time);
         ModelTime cursor = world.Time;
         ModelTime? firstWarning = null;
@@ -60,13 +66,14 @@ public static class CycleSurvivalRules {
             ModelTime nextLight = CycleTime.NextLightChange(cursor);
             ModelTime next = nextLight < end ? nextLight : end;
             if (FatalTime(body, cursor) is { } fatal && fatal <= next) {
-                return $"危险：按已知昼夜与当前补给，身体将在 {fatal} 耗尽。{response}";
+                return $"危险：{basis}，身体将在 {fatal} 耗尽。{response}{weatherRisk}";
             }
             if (firstWarning is null && NextThreshold(body, cursor) is { Fatal: false } warning && warning.Due <= next) { firstWarning = warning.Due; }
             body = body.Project(next);
             cursor = next;
         }
-        return firstWarning is { } at ? $"注意：按已知昼夜与当前补给，预计 {at} 触发身体警告。{response}" : null;
+        return firstWarning is { } at ? $"注意：{basis}，预计 {at} 触发身体警告。{response}{weatherRisk}"
+            : weatherRisk.Length > 0 ? weatherRisk.TrimStart() : null;
     }
 
     internal static (ModelTime Due, bool Fatal)? NextThreshold(CycleSurvival survival, ModelTime at) {
@@ -129,7 +136,7 @@ public static class CycleSurvivalRules {
             }
         }
     }
-    private static bool IsSheltered(GraphSpatialState? spatial, string actorId) =>
+    internal static bool IsSheltered(GraphSpatialState? spatial, string actorId) =>
         spatial?.Entities.Single(e => e.Id.Value == actorId).Location is AtPlaceLocation place && CycleExpeditionMap.GetPlace(place.PlaceId.Value).Sheltered;
     private static int WarmthRate(bool sheltered, bool day) => sheltered ? 12 : day ? 6 : -12;
     private static ModelTime? FatalTime(CycleSurvival body, ModelTime at) => new[] {

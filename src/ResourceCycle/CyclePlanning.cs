@@ -12,6 +12,7 @@ internal static class CyclePlanning {
         CyclePredictionKind.DestroyResource => Destroy(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.CompleteActivity => CompleteActivity(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning => CycleSurvivalRules.Boundary(world, prediction),
+        CyclePredictionKind.Weather => CycleEnvironmentRules.Plan(world, prediction.Due),
         _ => throw new InvalidOperationException("This occurrence requires a Player decision.")
     };
 

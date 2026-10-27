@@ -5,7 +5,7 @@ using DramaBoard.Spatial;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 4)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 5)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -21,6 +21,7 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(12)] private List<CycleVisit> _visits;
     [DurableField(13)] private CycleExpeditionOutcome? _outcome;
     [DurableField(14)] private string? _endingReason;
+    [DurableField(15)] private CycleEnvironment? _environment;
     public CycleEventKind Kind => _kind;
     public ModelTime At => _at;
     public string? ActorId => _actorId;
@@ -35,21 +36,24 @@ public sealed partial class CycleFact : IDurableObject {
     public IReadOnlyList<CycleVisit> Visits => _visits.AsReadOnly();
     public CycleExpeditionOutcome? Outcome => _outcome;
     public string? EndingReason => _endingReason;
+    public CycleEnvironment? Environment => _environment;
     public CycleFact(CycleEventKind kind, ModelTime at, string? actorId = null, string? resourceId = null,
         CycleLight? light = null, IEnumerable<CycleResource>? changedResources = null, CycleScript? script = null,
         IEnumerable<CycleCharacter>? changedCharacters = null, string? lastServedActorId = null, string? result = null,
         IEnumerable<GraphSpatialFact>? spatialFacts = null, IEnumerable<CycleVisit>? visits = null,
-        CycleExpeditionOutcome? outcome = null, string? endingReason = null) {
+        CycleExpeditionOutcome? outcome = null, string? endingReason = null, CycleEnvironment? environment = null) {
         _kind = kind; _at = at; _actorId = actorId; _resourceId = resourceId; _light = light;
         _changedResources = changedResources?.ToList() ?? []; _script = script;
         _changedCharacters = changedCharacters?.ToList() ?? []; _lastServedActorId = lastServedActorId; _result = result;
         _spatialFacts = spatialFacts?.ToList() ?? []; _visits = visits?.ToList() ?? []; _outcome = outcome; _endingReason = endingReason;
+        _environment = environment;
     }
     internal CycleFact WithVisits(IEnumerable<CycleVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Outcome, EndingReason);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Outcome, EndingReason, Environment);
     internal CycleFact WithCharacters(IEnumerable<CycleCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason);
-    public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}];outcome={Outcome}:{EndingReason}";
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment);
+    public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}];outcome={Outcome}:{EndingReason}" +
+        (Environment is null ? "" : $";environment={Environment}");
 }
 
 /// <summary>Runtime diagnostics, deliberately outside business snapshots.</summary>

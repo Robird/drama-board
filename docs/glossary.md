@@ -42,6 +42,7 @@
 | 候选枚举（Forecast） | 规则读取当前世界、产出候选的操作。不要把方法名 Forecast 理解成每次必须全量重算预测。 | [IOccurrenceRule.Forecast](../src/Kernel/Simulation/IOccurrenceRule.cs) |
 | 发生项（Occurrence） | Kernel 一次选择并处理的单位；可能是自然过程到期，也可能是请求角色决策。一次发生项可产生多个业务事实。 | 候选经 Plan 形成转换；记录形式为 `OccurrenceEvent<TFact>`。明确“候选”或“已记录”阶段，避免统称已发生事件。 |
 | 调度与仲裁（Scheduling / Arbitration） | 从规则提交的候选中选择下一项；同 Due 按世界 seed、稳定 key 确定性破平局。 | [OccurrenceScheduler](../src/Kernel/Scheduling/OccurrenceScheduler.cs)；ResourceCycle 的自然事件、活动完成、输入优先级由应用筛选实现。 |
+| 随机机会（Random opportunity） | 已安排的抽样机会，候选本身不包含结果；被选中规划时才决定实际影响。机会序号与 seed 随业务状态保存，独立于调度破平局的 seed。 | `CycleEnvironment.NextDue/Sequence/Seed`；`CycleEnvironmentRules.Plan` 复用 [DeterministicRandom](../src/Kernel/Random/DeterministicRandom.cs)，结果随 Fact 记录，见[天气合同](design/survival-weather.md)。 |
 | 预测所属单元（Prediction owner） | 负责某类预测的应用单元；更新时可以暂时没有候选。不是物品所有权。 | `CyclePrediction.OwnerId`、`CycleBinding.OwnerId`，例如 `actor:a:activity` 与 `actor:a:attention`。没有通用 Owner 接口。 |
 | 依赖绑定（Binding） | 把事实种类和目标映射到可能受影响的预测单元，先粗筛再检查是否需要重算。 | `CycleBinding`；当前运行时数据，不是持久化 delegate 或通用事件总线。 |
 | 待重算集合（Dirty set） | 本次转换中可能失效的单元/空间范围的去重集合；在最终业务态上更新。 | ResourceCycle 的 owner 集合、Spatial 的 passage 集合；实现层概念。 |
