@@ -107,6 +107,17 @@ ResourceCycle 当前“单地点”是玩法范围说明，尚未接入这些空
 | 内核（Kernel） | 通用发生项调度、转换与发布协议。 | `src/Kernel` |
 | 空间层（Spatial） | 客观图空间、运动及交会规则。 | `src/Spatial` |
 | 宿主（Host） | 驱动 Kernel 运行的程序层职责，不等同于角色控制器。 | [SimulationHost](../src/Host/SimulationHost.cs)、应用 Console 入口 |
-| 规则包（Rule suite） | 经过多个玩法验证后可提取的领域规则组合，如采集、战斗等。不是 Kernel 的 `SimulationRules` 配置对象。 | 后续方向；当前规则在 ResourceCycle 应用层，尚无通用 RuleSuite 框架。 |
+| 规则包（Rule suite） | 可组合的领域规则集合，如采集、战斗等；提取需具体用例证据，不强制等待多个完整游戏。不是 Kernel 的 `SimulationRules` 配置对象。 | 当前规则在 ResourceCycle 应用层，尚无通用 RuleSuite 框架；方向见[分层设计](design/layering-and-composition.md)。 |
 
 采集规则详见[多人有限批次采集](design/resource-cycle-multiplayer-gathering.md)。新增术语优先解释真实代码/业务边界，不为凑齐名词而建立抽象类型。
+
+## 模块与游戏组合
+
+| 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
+| --- | --- | --- |
+| 领域模块（Domain module） | 具有明确状态、局部规则及协作合同的一项领域能力；不要求独立程序集、统一组件基类或独立提交。 | Spatial 已独立；ResourceCycle 内的库存、资源与活动尚未提取为复用模块。 |
+| 组件（Component） | 模块内可组合的对象或能力的宽泛称呼；使用时说明具体职责，不默认指 ECS 或某个 `IComponent`。 | 尚无通用组件协议；设计讨论优先使用具体领域名称。 |
+| 游戏组合（Game composition） | 选择并连接模块，协调跨模块行为、世界根、初始化及整体修订的职责。 | 当前分布在 `CycleGameFactory`、`CyclePlanning`、`CycleEngine` 和游戏持久化入口，不对应一个新接口。 |
+| 扩展内容 / 模组（Mod） | 内容、规则或完整游戏的一种来源，按其职责接入，并非固定的最上层。 | 方向为源码引用、共同编译与显式接线；尚无 mod 加载器或稳定扩展 API。 |
+
+职责与依赖决策以[分层与组合设计](design/layering-and-composition.md)为准；文件/程序集调整次序见[重构方案](implementation/modularization-plan.md)。

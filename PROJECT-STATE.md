@@ -25,7 +25,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用已可玩的有限批次、独立活动和感知机制继续收集玩法经验，再由真实需求选择下一切片。`all` 冻结接受时库存；加入/耗尽会暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。进一步规则变化继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。出现第二个独立玩法并验证共性后再评估基础规则包，不先扩建引擎框架。
+**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。下一步从[渐进重构方案](docs/implementation/modularization-plan.md)的首片开始，验收职责边界、依赖及原有行为；库存容量变体仍是待设计的验证候选，不是玩法变更承诺。具体切片与推进条件只在方案中维护。
+
+重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
