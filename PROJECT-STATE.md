@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；Kernel/Spatial 与 ResourceCycle 均按[缓存方案](docs/design/runtime-derived-predictions.md)分离持久业务状态与运行时派生预测。ResourceCycle 已具备三角色库存竞争及感知唤醒，规则留在应用层。
+> 最近整理：2026-10-28；下一目标为[生存逃离 Demo](docs/design/survival-demo-milestone.md)，一期单角色 Human Console，二期双角色与 LLM 同伴；当前仅完成目标文档，尚未启动实施。
 
 ## 最终目标
 
@@ -26,11 +26,13 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)，形成应用内明确职责、以约束变体验证局部规则、再提取独立 Inventory 的实例。后续内容按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)先在游戏层组合，保留单根事实与发布；出现真实新玩法后再选下一片，不按目录清单自动抽通用组件。默认 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
+**当前焦点**：已确定[生存逃离两期里程碑](docs/design/survival-demo-milestone.md)。一期默认就地演进 ResourceCycle，组合空间移动、有限信息探索、食物/水/保暖、资源与环境随机事件；二期再引入双角色、LLM、对话与赠与。下一轮显式 Goal 启动后，先完成空间与游戏单根组合的可玩切片，再逐步增加生存取舍与风险；一期完成标准含不同路线的两次成功试玩、失败试玩、信息边界及真实冷恢复。具体数值和局部设计允许按证据调整，不自动扩张到二期。
+
+[渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
 重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 
-Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
+Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；现有采集场景使用同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。空间移动已由生存一期重开；复杂 Markdown 事件窗口和 AgentCore 子状态发布仍按后续切片裁决。
 
 **控制器方向已定**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态并构造上下文，本次局部会话与共享运行设施分开，文本/工具遵守角色可见性，pending E 不重做决定。当前接口为 `ICycleCharacterController.ChooseCommandAsync`；上下文 API、LLM 与工具持久化尚未施工。
 
@@ -45,7 +47,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **Player 与玩法扩展**：更多地点、LLM Player 与长期 Plan 尚未重开，旧实现保持归档。当前仅采药技能和单项产出；概率产出、即时笔记/物品、主动后台插话、唯一目标失效和通用规则包按实际需求重开。真实重新加入仍可再次提醒；出现激活过多的试玩证据后再设计通知过滤。
+- **Player 与玩法扩展**：多地点与消费进入生存一期；LLM、对话、赠与和简单笔记留给二期，旧实现保持归档并按需调查复用。长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包仍按实际需求重开。真实重新加入仍可再次提醒；出现激活过多的试玩证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。

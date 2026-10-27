@@ -17,6 +17,8 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
+The next [Survival escape milestone](design/survival-demo-milestone.md) defines two phases: a single-character Human Console game, then a two-character experience with an LLM companion, dialogue and gifts. Phase one combines movement, limited-information exploration, survival needs and environmental risks, with explicit playtest and recovery acceptance. This is a target document; implementation has not started. Its final section supplies a bounded goal prompt for the next implementation run.
+
 The [gradual modularization plan](implementation/modularization-plan.md) A–D is implemented: application boundaries, the total-unit capacity probe, and an independent Inventory assembly with explicit model registration and local tests; see [acceptance evidence](experiments/modularization-acceptance.md). Further extraction follows concrete gameplay needs. The default demo remains unlimited; saves containing Backpack schema v1/v2 are not supported by the v3 model.
 
 The application-layer ResourceCycle example implements shared resource stock, day/night regeneration and three characters with independent timed gathering through one Console, using Mud as a reference rather than migrating it in place. See [the multiplayer rules](design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](experiments/resource-cycle-multiplayer-acceptance.md). The original [resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md), [batch acceptance](experiments/resource-cycle-acceptance.md) and [single-character slice](design/resource-cycle-play.md) describe preceding experiments.
