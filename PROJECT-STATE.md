@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；当前核心分支聚焦预测对象与新组合发现，ResourceCycle 多角色化由另一会话并行推进。见[核心草稿](docs/design/prediction-objects-roadmap.md)与[发现算法综述](docs/research/prediction-discovery/README.md)。
+> 最近整理：2026-10-27；局部预测重构提案已完成两轮辩证审阅，尚未实施；ResourceCycle 多角色化由另一会话并行推进。见[实施方案](docs/design/local-prediction-refactor.md)与[审阅裁决](docs/research/local-prediction-design-review.md)。
 
 ## 最终目标
 
@@ -21,7 +21,7 @@
 
 资源周期实例已有批处理预测对照与单角色、单地点、两种植物、背包、等待/即时采集的 Console 闭环，均保持单根恢复；证据见[批处理验收](docs/experiments/resource-cycle-acceptance.md)与[采集验收](docs/experiments/resource-cycle-play-acceptance.md)。没有空间接线、GUI 或 LLM。
 
-用户已选定：在扩大世界前，优先将时间/空间核心统一为子系统创建预测对象、事件后筛出 dirty 集合并重算；第一版允许判断恒 true，先统一形状。当前实现仍是 ResourceCycle 固定预测绑定与 Spatial 扫描式 Forecast，核心尚未改造。[发现算法综述](docs/research/prediction-discovery/README.md)建议先用通道局部发现，再缩为变化段 join；若进一步排除候选，须保证重新发现早于其可能被选中。现有 floor＋同 tick 仲裁使几何邻接不能直接替换全配对；它是当前基线而非不可变兼容要求。下一步按[预测对象草稿](docs/design/prediction-objects-roadmap.md)裁决发现覆盖、过程/输出寿命、时间语义与批次边界，以独立全量参考和 E/S 恢复验收；索引/API 细节仍属建议。
+用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现，随后可缩为变化段配对。当前实现仍是 ResourceCycle 固定预测绑定与 Spatial 扫描式 Forecast，核心尚未改造。[重构方案](docs/design/local-prediction-refactor.md)经两轮审阅建议采用独立 Contacts 子图、Kernel 唯一 Complete 委托和带模型时间的完整校验；arrival/schedule 复用既有 Due，不新增通用过程注册表。下一实施阶段以方案 S1/S2 的空间纵向切片与单根恢复为边界，用独立全量参考验收漏项；S3 再完成第二消费者的共同执行契约。现有 floor＋同 tick 仲裁保留作首片基线，不是永久兼容约束；更强索引仍按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话并行推进 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。当前核心分支不改该应用片；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
