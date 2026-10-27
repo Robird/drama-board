@@ -1,6 +1,6 @@
 # Player runtime and interaction archive
 
-This is a recovery index for the frozen Player, planning and presentation experiment. The active engine is Kernel, Spatial and Host. The split has passed the old dependency's build, schema and behavior checks; the dependency upgrade remains the next step of the [current task brief](../implementation/spacetime-engine-todo.md).
+This is a recovery index for the frozen Player, planning and presentation experiment. The active engine is Kernel, Spatial and Host. The split and the subsequent core dependency upgrade have passed the [task brief's](../implementation/spacetime-engine-todo.md) separate acceptance checks. This archive continues to use its original baseline and dependencies.
 
 ## Contents
 

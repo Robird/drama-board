@@ -6,7 +6,7 @@ Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred d
 
 ## Build and test
 
-Requires .NET 10, PowerShell 7, and the fixed sibling `durable-graph` / `atelia` source revisions. Prepare the package feed, then build and test either equivalent solution entry point:
+Requires .NET SDK **10.0.201**, PowerShell 7, and the fixed sibling `durable-graph` / `atelia-storage` source revisions. Prepare the package feed, then build and test either equivalent solution entry point:
 
 ```powershell
 pwsh -File scripts/Prepare-DurableGraph.ps1

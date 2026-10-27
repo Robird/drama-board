@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；已确认先独立时空核心、再升级 DurableGraph，步骤 1 已验收，下一步升级核心 DurableGraph。施工范围与验收见[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)。
+> 最近整理：2026-10-27；时空核心独立化与 DurableGraph 升级均已验收。施工范围与验收见[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)。
 
 ## 最终目标
 
@@ -12,13 +12,13 @@
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
-- **构建依赖**：Kernel/Spatial 仍使用旧固定 DurableGraph 包；来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新上游适配与 schema history 验证尚未实施。
+- **构建依赖**：Kernel/Spatial 使用固定 `c549124` 普通包，来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新包生成、schema 与真实模型资格见[验收记录](docs/build-log/0027-spacetime-extraction.md)。
 
 ## 当前焦点与下一步
 
-用户已确认将时空引擎作为当前主线，角色可维护 Plan 与交互/呈现框架保留为技术储备。按[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)继续步骤 2：更新核心 DurableGraph 依赖；具体待办与验收仅在该文件维护。
+用户已确认将时空引擎作为当前主线，角色可维护 Plan 与交互/呈现框架保留为技术储备。[两步 TODO / Task Brief](docs/implementation/spacetime-engine-todo.md)已完成，当前无剩余施工待办。后续按真实消费者需求选择增量；MUD 接合需另行讨论，不自动进入实施。
 
-当前活跃范围已收缩为 Kernel、Spatial、Host；其余应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，退出默认构建和搜索，旧依赖下独立验收已通过。独立库先留在本仓库，不改变时空与调度语义。
+当前活跃范围已收缩为 Kernel、Spatial、Host；其余应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，退出默认构建和搜索，独立场景与新旧依赖对照验收已通过。独立库先留在本仓库，不改变时空与调度语义。
 
 Dynamic-Programmer R1–R8 的既有实现、验收、Player 运行时理念与长期 Plan 设计统一保留在[Player 归档](docs/archive/player-runtime.md)，不驱动当前施工。
 
@@ -35,5 +35,5 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 按需导航与验证
 
-- 两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 只含三核心及其测试。旧依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备；[README](README.md)与 [CI](.github/workflows/ci.yml)只构建验证核心。步骤 2 更新依赖复现方式。
+- 两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 只含三核心及其测试。固定依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备；[README](README.md)与 [CI](.github/workflows/ci.yml)只构建验证核心。使用精确 SDK 10.0.201 与仓内隔离包源。
 - 文档入口：[docs/README](docs/README.md)。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

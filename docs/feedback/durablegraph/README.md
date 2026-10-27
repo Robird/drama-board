@@ -2,13 +2,15 @@
 
 这里保存 DramaBoard 作为 DurableGraph 消费者的反馈，供两个项目持续讨论。FirstBoard 的接入判断和消费者验证均已进入[归档索引](../../archive/firstboard-llm.md)；本目录只维护具体问题及处理结果。
 
+下列记录均是各自注明版本的历史证据，不能作为新上游 API 或新版包验收的依据。当前依赖版本、准备方式与本次升级验证统一见[包来源说明](../../worksets/durablegraph-package-source.md)。本轮只升级 Kernel、Spatial、Host 的实际依赖，归档磁盘 adapter 不迁移；没有新增磁盘恢复产品能力或旧实验存档兼容承诺。
+
 ## 反馈索引
 
-| 文档 | 涉及版本 | 当前状态 |
+| 文档 | 涉及版本 | 历史结论与当前适用范围 |
 |---|---|---|
-| [004 · DB-071 命名空间重组试用](004-db071-namespace-adaptation.md) | `4cea773` / DB-071 | 消费适配与跨包冷恢复通过，未发现 API 缺口；已固定正式源码来源。 |
-| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DB-065 / `79be2c2` | A/B/C 与枚举文档已落地；历史定位/局部浏览 API 按真实需求触发，实际游戏消费见 003。 |
-| [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | DB-066 / `f68388f` | 编码依赖已移除、Transient 合同已明确；已静态复核，本轮未重跑测试。 |
+| [004 · DB-071 命名空间重组试用](004-db071-namespace-adaptation.md) | `4cea773` / DB-071 | 当时消费适配与跨包冷恢复通过；不是当前依赖 pin 或新版冷恢复证据。 |
+| [001 · EventHistory API 首轮反馈](001-eventhistory-api.md) | DB-065 / `79be2c2`，复核至 `f68388f` | 当时 A/B/C 与枚举文档已落地；旧 EventHistorySession 外观已退出，延期问题重开时先核对新版合同。 |
+| [002 · ReadPair 共享读取边界](002-readpair-sharing-contract.md) | DB-066 / `f68388f` | 当时编码依赖已移除、Transient 合同已明确；DB-098 已退役 ReadPair，保留设计证据。 |
 | [003 · 真实领域模型接入](003-real-model-integration.md) | `1c6083c` / DB-068 | record class 支持已回应，消费方迁移至 IDurableObject；保留旧包首轮写入成本及快照建模边界。 |
 
 ## 持续维护

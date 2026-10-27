@@ -13,7 +13,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) defines two separately verified steps. The engine/application split has passed the old dependency's build, schema and behavior checks. Updating the core DurableGraph dependency is next; MUD integration remains a later decision.
+The [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) defines two separately verified steps. Both the engine/application split and the DurableGraph upgrade have passed acceptance; see the [executed evidence](build-log/0027-spacetime-extraction.md). There are no remaining implementation tasks in that brief. MUD integration remains a later decision.
 
 ## Frozen applications and design reserve
 

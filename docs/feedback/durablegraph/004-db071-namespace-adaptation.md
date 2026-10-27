@@ -1,5 +1,7 @@
 # DB-071 命名空间重组试用
 
+> 历史适用范围：本页记录 2026-09-12 的旧包与归档 FirstBoard adapter 验收。下文“正式依赖”是当时的 pin，当前版本和升级证据统一见[包来源说明](../../worksets/durablegraph-package-source.md)；本次核心升级不迁移归档 adapter，也不继承其冷恢复结论。
+
 2026-09-12：DramaBoard 从 `30cafe0ed075281bf424e19d71ae00d845cfeac9` 适配上游 DB-071。未发现需要调整的 API 或持久化行为问题；正式依赖已固定到上游 `4cea773e3eac7a2df2d57e518f45e90459d53cf3`，默认包版本为 `0.0.0-dramaboard.20260912.4cea773.1`。
 
 ## 来源与适配范围

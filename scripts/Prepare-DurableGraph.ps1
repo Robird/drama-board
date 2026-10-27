@@ -2,19 +2,31 @@
 [CmdletBinding()]
 param(
     [string] $DurableGraphSource = (Join-Path $PSScriptRoot '../../durable-graph'),
-    [string] $AteliaSource = (Join-Path $PSScriptRoot '../../atelia'),
-    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-4cea773'),
-    [string] $Feed = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/feed'),
-    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.4cea773\.[1-9][0-9]*$')]
-    [string] $PackageVersion = '0.0.0-dramaboard.20260912.4cea773.1'
+    [string] $StorageSource = (Join-Path $PSScriptRoot '../../atelia-storage'),
+    [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-c549124'),
+    [string] $CandidateDirectory = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/core-candidate'),
+    [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.gc549124\.[1-9][0-9]*$')]
+    [string] $PackageVersion = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Directory.Build.props') -Raw)).Project.PropertyGroup.DurableGraphPackageVersion
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$durableGraphRevision = '4cea773e3eac7a2df2d57e518f45e90459d53cf3'
-$ateliaRevision = '742fcd62e691b6b6acca4113a3ac3638bc7275ba'
+$durableGraphRevision = 'c549124f1db53fe028f4640ddcafd8f338bb076b'
+$storageRevision = '70b406cd8d1117733eee81a33e7f978399aa98b2'
+$storageVersion = '0.1.3-dev.20261019.g70b406c'
+$requiredSdk = '10.0.201'
 $CheckoutRoot = [IO.Path]::GetFullPath($CheckoutRoot)
-$Feed = [IO.Path]::GetFullPath($Feed)
+$CandidateDirectory = [IO.Path]::GetFullPath($CandidateDirectory)
+$feed = Join-Path $CandidateDirectory 'feed'
+$receiptPath = Join-Path $CandidateDirectory 'source.json'
+$expectedPackages = [ordered]@{}
+foreach ($name in @('Primitives', 'Data', 'Rbf', 'Binary', 'FrameStore', 'HeadStore')) {
+    $expectedPackages.Add("Atelia.$name", $storageVersion)
+}
+foreach ($name in @('DurableGraph.Serialization', 'DurableGraph', 'DurableGraph.Storage', 'DurableGraph.Persistence')) {
+    $expectedPackages.Add("Atelia.$name", $PackageVersion)
+}
+$expectedPackages.Add('K4os.Compression.LZ4', '1.3.8')
 
 function Invoke-Git {
     param([string[]] $Arguments)
@@ -24,116 +36,160 @@ function Invoke-Git {
 }
 
 function Assert-Checkout {
-    param([string] $Path, [string] $Revision)
+    param([string] $Path, [string] $Revision, [string] $Repository)
     $actualRoot = [IO.Path]::GetFullPath((Invoke-Git @('-C', $Path, 'rev-parse', '--show-toplevel')))
-    if ($actualRoot -ne $Path) { throw "Expected a repository root at $Path; found $actualRoot." }
-    $actualRevision = Invoke-Git @('-C', $Path, 'rev-parse', 'HEAD')
-    if ($actualRevision -ne $Revision) { throw "Wrong HEAD at ${Path}: $actualRevision; expected $Revision. No checkout/reset performed." }
-    $dirty = @(Invoke-Git @('-C', $Path, 'status', '--porcelain', '--untracked-files=no'))
-    if ($dirty.Count -ne 0) { throw "Tracked changes at $Path. Preserve them and use another -CheckoutRoot." }
-    if (-not (Test-Path -LiteralPath (Join-Path $Path 'Directory.Build.props') -PathType Leaf)) {
-        throw "Missing repository Directory.Build.props at $Path; ancestor build settings could leak in."
+    if ($actualRoot -ne $Path) { throw "Expected repository root $Path; found $actualRoot." }
+    if ((Invoke-Git @('-C', $Path, 'rev-parse', 'HEAD')) -cne $Revision) {
+        throw "Wrong HEAD at $Path. No checkout/reset performed; use another -CheckoutRoot."
+    }
+    $origin = (Invoke-Git @('-C', $Path, 'remote', 'get-url', 'origin')) -replace '\.git$', ''
+    if ($origin -cne $Repository) { throw "Unexpected origin at ${Path}: $origin." }
+    if (@(Invoke-Git @('-C', $Path, 'status', '--porcelain', '--untracked-files=normal')).Count -ne 0) {
+        throw "Dirty checkout at $Path. Preserve it and use another -CheckoutRoot."
+    }
+    if (!(Test-Path -LiteralPath (Join-Path $Path 'Directory.Build.props') -PathType Leaf)) {
+        throw "Missing build boundary at $Path."
     }
 }
 
 function Prepare-Checkout {
-    param([string] $Name, [string] $Source, [string] $Revision)
+    param([string] $Name, [string] $Source, [string] $Revision, [string] $Repository)
     $path = [IO.Path]::GetFullPath((Join-Path $CheckoutRoot $Name))
-    $rootPrefix = $CheckoutRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    if (-not $path.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Checkout path escaped -CheckoutRoot: $path."
-    }
-    if (-not (Test-Path -LiteralPath $path)) {
+    if (!(Test-Path -LiteralPath $path)) {
         $Source = (Resolve-Path -LiteralPath $Source).Path
         $null = Invoke-Git @('-C', $Source, 'cat-file', '-e', "$Revision^{commit}")
         $null = New-Item -ItemType Directory -Path $CheckoutRoot -Force
         Invoke-Git @('-C', $Source, 'worktree', 'add', '--detach', $path, $Revision) | Out-Host
     }
-    Assert-Checkout $path $Revision
+    Assert-Checkout $path $Revision $Repository
     return $path
 }
 
-$durableGraphRoot = Prepare-Checkout 'durable-graph' $DurableGraphSource $durableGraphRevision
-$ateliaRoot = Prepare-Checkout 'atelia' $AteliaSource $ateliaRevision
-
-# Same package closure and order as the pinned Run-EventHistoryRecoveryProbe.ps1.
-# DG's relative ProjectReferences require these two checkouts to be siblings.
-$projects = @(
-    @{ Root = $ateliaRoot; Name = 'Data' },
-    @{ Root = $ateliaRoot; Name = 'Primitives' },
-    @{ Root = $ateliaRoot; Name = 'Rbf' },
-    @{ Root = $ateliaRoot; Name = 'RbfSegmentStore' },
-    @{ Root = $ateliaRoot; Name = 'EventJournal' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Serialization' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Storage' },
-    @{ Root = $durableGraphRoot; Name = 'DurableGraph.Persistence' }
-)
-$packageFiles = @($projects | ForEach-Object { "Atelia.$($_.Name).$PackageVersion.nupkg" })
-$manifestPath = Join-Path $Feed "source-$PackageVersion.json"
-
-if (Test-Path -LiteralPath $manifestPath) {
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.version -ne $PackageVersion -or $manifest.durableGraphRevision -ne $durableGraphRevision -or
-        $manifest.ateliaRevision -ne $ateliaRevision -or @($manifest.packages).Count -ne $packageFiles.Count) {
-        throw "Package source manifest does not match the frozen inputs: $manifestPath. Use a fresh -PackageVersion."
+function Read-CandidatePackages {
+    $files = @(Get-ChildItem -LiteralPath $feed -Filter '*.nupkg' -File)
+    if ($files.Count -ne $expectedPackages.Count) { throw 'Expected exactly eleven candidate packages.' }
+    foreach ($id in $expectedPackages.Keys) {
+        $version = $expectedPackages[$id]
+        $filename = "$id.$version.nupkg"
+        $path = Join-Path $feed $filename
+        $archive = [IO.Compression.ZipFile]::OpenRead($path)
+        try {
+            $entries = @($archive.Entries | Where-Object { $_.FullName.EndsWith('.nuspec', [StringComparison]::OrdinalIgnoreCase) })
+            if ($entries.Count -ne 1) { throw "Expected one nuspec: $filename." }
+            $reader = [IO.StreamReader]::new($entries[0].Open())
+            try { $nuspec = [xml]$reader.ReadToEnd() } finally { $reader.Dispose() }
+            $metadata = $nuspec.SelectSingleNode('/*[local-name()="package"]/*[local-name()="metadata"]')
+            if ($metadata.SelectSingleNode('*[local-name()="id"]').InnerText -cne $id -or
+                $metadata.SelectSingleNode('*[local-name()="version"]').InnerText -cne $version) {
+                throw "Unexpected package identity: $filename."
+            }
+            if ($id.StartsWith('Atelia.', [StringComparison]::Ordinal)) {
+                $isGraph = $id.StartsWith('Atelia.DurableGraph', [StringComparison]::Ordinal)
+                $revision = if ($isGraph) { $durableGraphRevision } else { $storageRevision }
+                $repository = $metadata.SelectSingleNode('*[local-name()="repository"]')
+                if (!$repository -or $repository.GetAttribute('commit') -ine $revision) {
+                    throw "Unexpected package source commit: $filename."
+                }
+            } elseif (!$archive.GetEntry('.signature.p7s')) {
+                throw 'Expected the original signed K4os package.'
+            }
+        } finally { $archive.Dispose() }
+        [pscustomobject]@{ id = $id; version = $version; file = $filename; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
     }
-    foreach ($file in $packageFiles) {
-        $entry = @($manifest.packages | Where-Object { $_.file -ceq $file })
-        $path = Join-Path $Feed $file
-        if ($entry.Count -ne 1 -or -not (Test-Path -LiteralPath $path) -or
-            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $entry[0].sha256) {
-            throw "Missing or changed package $file. Never overwrite a published version; use a fresh -PackageVersion."
+}
+
+function Assert-Receipt {
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    if ($receipt.schemaVersion -ne 1 -or $receipt.version -cne $PackageVersion -or
+        $receipt.durableGraphRevision -cne $durableGraphRevision -or $receipt.storageRevision -cne $storageRevision -or
+        $receipt.storageVersion -cne $storageVersion -or $receipt.sdkVersion -cne $requiredSdk -or
+        @($receipt.packages).Count -ne $expectedPackages.Count) {
+        throw 'Candidate receipt does not match the pinned inputs. Use a fresh version and directory.'
+    }
+    foreach ($package in @(Read-CandidatePackages)) {
+        $recorded = @($receipt.packages | Where-Object { $_.id -ceq $package.id })
+        if ($recorded.Count -ne 1 -or $recorded[0].version -cne $package.version -or
+            $recorded[0].file -cne $package.file -or $recorded[0].sha256 -cne $package.sha256) {
+            throw "Missing or changed package $($package.id). Never overwrite existing versions."
         }
     }
-    Write-Host "Verified and reused nine frozen packages: $Feed ($PackageVersion)."
+    $hashFile = Join-Path $CandidateDirectory 'packages.sha256'
+    if ((Get-FileHash -LiteralPath $hashFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $receipt.packageListSha256) {
+        throw 'The upstream package hash list changed.'
+    }
+}
+
+# Completed immutable delivery is reusable without touching producer checkouts or caches.
+if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
+    Assert-Receipt
+    Write-Host "Verified and reused eleven pinned packages: $feed ($PackageVersion)."
     return
 }
-
-# A partial earlier pack is also immutable: do not silently replace packages which
-# NuGet may already have cached. A new attempt uses a fresh version across all nine.
-foreach ($file in $packageFiles) {
-    if (Test-Path -LiteralPath (Join-Path $Feed $file)) {
-        throw "Package already exists without a complete source manifest: $file. Use a fresh -PackageVersion."
-    }
+if (Test-Path -LiteralPath $CandidateDirectory) {
+    throw 'Candidate directory exists without a complete receipt. Preserve it; choose a fresh version and directory.'
 }
-$packageCache = if ([string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
-    Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget/packages'
-} else { $env:NUGET_PACKAGES }
-foreach ($project in $projects) {
-    $cachedVersion = Join-Path $packageCache "atelia.$($project.Name.ToLowerInvariant())/$PackageVersion"
+# A new checkout/output path cannot make an already consumed G reusable for packing.
+# Directory.Build.props fixes this consumer cache independently of NUGET_PACKAGES.
+$consumerCache = Join-Path $PSScriptRoot '../artifacts/nuget-packages'
+foreach ($id in $expectedPackages.Keys | Where-Object { $_.StartsWith('Atelia.DurableGraph', [StringComparison]::Ordinal) }) {
+    $cachedVersion = Join-Path $consumerCache "$($id.ToLowerInvariant())/$PackageVersion"
     if (Test-Path -LiteralPath $cachedVersion) {
-        throw "Version already exists in NuGet cache: $cachedVersion. Use a fresh -PackageVersion."
+        throw "Version already exists in the consumer cache: $cachedVersion. Choose a fresh G; cached bytes are never replaced."
     }
 }
-
-$null = New-Item -ItemType Directory -Path $Feed -Force
-$logRoot = Join-Path $Feed "logs/$PackageVersion"
-$null = New-Item -ItemType Directory -Path $logRoot -Force
-foreach ($project in $projects) {
-    $projectPath = Join-Path $project.Root "src/$($project.Name)/$($project.Name).csproj"
-    $logPath = Join-Path $logRoot "$($project.Name).log"
-    Write-Host "Packing $($project.Name) $PackageVersion; log: $logPath"
-    Push-Location $project.Root
-    try {
-        & dotnet pack $projectPath --configuration Release --output $Feed "-p:PackageVersion=$PackageVersion" -m:1 *> $logPath
-        if ($LASTEXITCODE -ne 0) {
-            Get-Content -LiteralPath $logPath -Tail 30 | Out-Host
-            throw "Pack failed for $($project.Name) ($LASTEXITCODE); see $logPath. Use a fresh version for the next attempt."
-        }
-    } finally { Pop-Location }
+$durableGraphRoot = Prepare-Checkout 'durable-graph' $DurableGraphSource $durableGraphRevision 'https://github.com/Atelia-org/durable-graph'
+$storageRoot = Prepare-Checkout 'atelia-storage' $StorageSource $storageRevision 'https://github.com/Atelia-org/atelia-storage'
+$pin = [xml](Get-Content -LiteralPath (Join-Path $durableGraphRoot 'eng/StorageDependency.props') -Raw)
+if ($pin.Project.PropertyGroup.StoragePackageVersion.InnerText -cne $storageVersion -or
+    $pin.Project.PropertyGroup.StorageSourceRevision -cne $storageRevision) { throw 'Upstream storage pin changed.' }
+$attemptPath = Join-Path $CheckoutRoot "attempt-$PackageVersion.json"
+if (Test-Path -LiteralPath $attemptPath) {
+    throw 'This G was previously attempted without a completed receipt. Choose a fresh version and directory.'
 }
-Assert-Checkout $durableGraphRoot $durableGraphRevision
-Assert-Checkout $ateliaRoot $ateliaRevision
-$packages = @($packageFiles | ForEach-Object {
-    $path = Join-Path $Feed $_
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Expected package was not produced: $path." }
-    @{ file = $_; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
-})
+$logRoot = Join-Path $CheckoutRoot "logs/$PackageVersion"
+$null = New-Item -ItemType Directory -Path $logRoot -Force
+$storageFeed = Join-Path $CheckoutRoot "storage-feed/$storageVersion"
+# The producer worktrees inherit configuration from this directory. Clear the consumer
+# feed mapping: its candidate does not exist yet, and storage must obtain K4os publicly.
+# This file is outside both upstream worktrees, preserving their clean-source checks.
+@'
+<configuration>
+  <packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
+  <packageSourceMapping><clear /><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
+  <fallbackPackageFolders><clear /></fallbackPackageFolders>
+</configuration>
+'@ | Set-Content -LiteralPath (Join-Path $CheckoutRoot 'NuGet.Config') -Encoding utf8NoBOM
+$previousCache = $env:NUGET_PACKAGES
+try {
+    $env:NUGET_PACKAGES = Join-Path $CheckoutRoot 'producer-packages'
+    Push-Location $storageRoot
+    try {
+        $sdk = (& dotnet --version | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $sdk -cne $requiredSdk) { throw "Exact SDK $requiredSdk is required." }
+        Write-Host "Preparing storage $storageVersion; log: $logRoot/storage.log"
+        & (Join-Path $storageRoot 'eng/Pack.ps1') -Version $storageVersion -OutputDirectory $storageFeed *> (Join-Path $logRoot 'storage.log')
+    } finally { Pop-Location }
+    @{ version = $PackageVersion; durableGraphRevision = $durableGraphRevision } | ConvertTo-Json |
+        Set-Content -LiteralPath $attemptPath -Encoding utf8NoBOM
+    Write-Host "Preparing DG $PackageVersion; log: $logRoot/durablegraph.log"
+    # Candidate/ProbeSupport use absolute project paths and retain the caller's cwd.
+    # Select DramaBoard's exact SDK instead of DG's latestFeature roll-forward.
+    Push-Location (Join-Path $PSScriptRoot '..')
+    try {
+        $sdk = (& dotnet --version | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $sdk -cne $requiredSdk) { throw "DG packing requires exact SDK $requiredSdk." }
+        & (Join-Path $durableGraphRoot 'eng/Prepare-DurableGraphCandidate.ps1') -Version $PackageVersion `
+            -OutputDirectory $CandidateDirectory -StoragePackageSource $storageFeed *> (Join-Path $logRoot 'durablegraph.log')
+    } finally { Pop-Location }
+} finally { $env:NUGET_PACKAGES = $previousCache }
+Assert-Checkout $durableGraphRoot $durableGraphRevision 'https://github.com/Atelia-org/durable-graph'
+Assert-Checkout $storageRoot $storageRevision 'https://github.com/Atelia-org/atelia-storage'
+$packages = @(Read-CandidatePackages)
 @{
-    version = $PackageVersion
-    durableGraphRevision = $durableGraphRevision
-    ateliaRevision = $ateliaRevision
+    schemaVersion = 1; version = $PackageVersion; durableGraphRevision = $durableGraphRevision
+    storageVersion = $storageVersion; storageRevision = $storageRevision; sdkVersion = $requiredSdk
     packages = $packages
-} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
-Write-Host "Prepared nine frozen packages: $Feed ($PackageVersion). Source manifest: $manifestPath"
+    packageListSha256 = (Get-FileHash -LiteralPath (Join-Path $CandidateDirectory 'packages.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()
+} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
+Assert-Receipt
+Write-Host "Prepared eleven pinned packages: $feed ($PackageVersion). Receipt: $receiptPath"

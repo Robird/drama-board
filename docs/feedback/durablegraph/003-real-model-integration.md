@@ -2,6 +2,8 @@
 
 状态：2026-09-12，record class 易用性反馈已由上游 DB-068（`1c6083c`）落实，DramaBoard 已采用 `IDurableObject` 包。[当前包来源与迁移证据](../../worksets/durablegraph-package-source.md)。下述首轮功能和成本观察使用旧包 `f68388f`，不代表新版性能测量。
 
+> 历史适用范围：本文的“当前游戏”指当时的 FirstBoard 消费者；其 adapter 与恢复实验已归档。下文 CreateBranch/CommitDomainEvent/Resume 是旧接口语境，DB-068 示例固定到当时提交；不将这些调用迁入活跃时空核心，也不以本文证明本次新依赖的磁盘恢复能力。
+
 ## 已满足的需求
 
 `CreateBranch → CommitDomainEvent → CommitDomainState(nextState) → Resume` 足够实现当前游戏持久化。完整 S 包含世界、有限调度游标、精确内容和规则绑定；E 是小型强类型事实图。正常重开不执行历史业务 reducing，pending 只处理一次已记录 occurrence，不重问 Player。
@@ -16,7 +18,7 @@
 
 这不是单纯的写法偏好：cold E/S 的 contact key 必须按值比较；事件文本可以包含任意字符，不能用分隔符拼接代替结构相等；`readonly List<T>` 只禁止替换引用，仍然允许修改内容。迁移中这些错误都需要额外审查。当前消费方已修正，不需要为此暂停玩法开发。
 
-上游 [DB-068 消费示例](../../../../durable-graph/experiments/PackageConsumerProbe/RecordClassConsumer/README.md)现已支持普通/positional `record class`、泛型跨库继承以及 class→record 同版 Schema history；以 `IDurableObject` 替代框架基类。DramaBoard 本次先迁移 marker 并重编译，保留原字段、构造与相等行为。后续遇到具体模型时再用 record 删除样板代码：`with` 仍是浅复制，集合内容相等与事件快照纪律仍由应用负责。
+上游 [DB-068 消费示例](https://github.com/Atelia-org/durable-graph/blob/1c6083c578426b3b098b4df2144bed448723d5ac/experiments/PackageConsumerProbe/RecordClassConsumer/README.md)现已支持普通/positional `record class`、泛型跨库继承以及 class→record 同版 Schema history；以 `IDurableObject` 替代框架基类。DramaBoard 本次先迁移 marker 并重编译，保留原字段、构造与相等行为。后续遇到具体模型时再用 record 删除样板代码：`with` 仍是浅复制，集合内容相等与事件快照纪律仍由应用负责。
 
 ## 首次成本观察
 
