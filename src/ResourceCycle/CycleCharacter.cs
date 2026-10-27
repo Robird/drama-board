@@ -1,4 +1,5 @@
 using Atelia.DurableGraph;
+using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
@@ -79,7 +80,7 @@ public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(1)] private string _id;
     [DurableField(2)] private string _name;
     [DurableField(3)] private int _skillLevel;
-    [DurableField(4)] private CycleBackpack _backpack;
+    [DurableField(4)] private ItemInventory _backpack;
     [DurableField(5)] private CycleActivity? _activity;
     [DurableField(6)] private List<CycleNotice> _notices;
     [DurableField(7)] private long _decisionGeneration;
@@ -88,20 +89,20 @@ public sealed partial class CycleCharacter : IDurableObject {
     public string Id => _id;
     public string Name => _name;
     public int SkillLevel => _skillLevel;
-    public CycleBackpack Backpack => _backpack;
+    public ItemInventory Backpack => _backpack;
     public CycleActivity? Activity => _activity;
     public IReadOnlyList<CycleNotice> Notices => _notices.AsReadOnly();
     public long DecisionGeneration => _decisionGeneration;
     public string? LastResult => _lastResult;
     public long NextActivityId => _nextActivityId;
     public bool NeedsDecision => Activity is null || _notices.Count > 0;
-    public CycleCharacter(string id, string name, int skillLevel = 0, CycleBackpack? backpack = null,
+    public CycleCharacter(string id, string name, int skillLevel = 0, ItemInventory? backpack = null,
         CycleActivity? activity = null, IEnumerable<CycleNotice>? notices = null, long decisionGeneration = 0,
         string? lastResult = null, long nextActivityId = 1) {
         _id = id; _name = name; _skillLevel = skillLevel; _backpack = backpack ?? new(); _activity = activity;
         _notices = notices?.ToList() ?? []; _decisionGeneration = decisionGeneration; _lastResult = lastResult; _nextActivityId = nextActivityId;
     }
-    internal CycleCharacter Change(CycleActivity? activity, CycleBackpack? backpack = null,
+    internal CycleCharacter Change(CycleActivity? activity, ItemInventory? backpack = null,
         IEnumerable<CycleNotice>? notices = null, string? result = null, long? nextActivityId = null) =>
         new(Id, Name, SkillLevel, backpack ?? Backpack, activity, notices ?? _notices,
             checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId);

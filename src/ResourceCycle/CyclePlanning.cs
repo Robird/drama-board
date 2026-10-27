@@ -1,3 +1,4 @@
+using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
@@ -99,8 +100,8 @@ internal static class CyclePlanning {
     private static CycleFact CompleteGather(CycleWorld world, CycleCharacter actor, CycleActivity activity, ModelTime time) {
         CycleResource previous = world.GetResource(activity.ResourceId!);
         string? failure = previous.Stock == 0 ? "本周期结算时资源已空" : actor.Backpack.CheckAdd(previous.ItemId) switch {
-            BackpackAddResult.ItemQuantityLimit => "背包该物品数量已达上限",
-            BackpackAddResult.CapacityLimit => "背包总件数已达容量上限",
+            InventoryAdmission.ItemQuantityLimit => "背包该物品数量已达上限",
+            InventoryAdmission.CapacityLimit => "背包总件数已达容量上限",
             _ => null
         };
         if (failure is not null) {
@@ -112,7 +113,7 @@ internal static class CyclePlanning {
         CycleResource resource = previous.Stock == previous.Capacity
             ? previous.Change(previous.Stock - 1, 0, previous.GrowsInDaylight == world.Light.IsDay ? time : null)
             : previous.Change(previous.Stock - 1, previous.AccumulatedTicks, previous.ActiveSince);
-        CycleBackpack backpack = actor.Backpack.Add(resource.ItemId);
+        ItemInventory backpack = actor.Backpack.Add(resource.ItemId);
         CycleActivity? next = null;
         string finish = "已达到目标";
         if (completed < activity.TargetCount) {

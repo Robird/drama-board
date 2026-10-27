@@ -13,7 +13,9 @@ dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaH
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains Kernel, Spatial, Host, ResourceCycle, its Console entrypoint and their tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
+Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains Kernel, Spatial, Host, Inventory, ResourceCycle, its Console entrypoint and their tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
+
+[Inventory](src/Inventory/ItemInventory.cs) is a small domain module for immutable item counts and optional total-unit capacity. It depends on DurableGraph, independently of the spacetime core and the game. ResourceCycle composes it with gathering rules and registers its models under the same game root; see [layering and composition](docs/design/layering-and-composition.md).
 
 ## Day/night resource cycle experiment
 

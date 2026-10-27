@@ -12,8 +12,9 @@
 - **Kernel**：统一 Occurrence 仲裁；Plan → 业务 Fold → 纯 Complete → 带时间 Validate，发布独立 E/S，S 成功才安装；pending/Replay 同样准备派生缓存，不重做 Plan。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：[SpatialSimulation](src/Spatial/Simulation/SpatialSimulation.cs) 按 dirty 通道增量维护运行时 Contacts，genesis/冷开显式 Rebuild；磁盘 S 只保存 Business/cursor，E 只含 GraphSpatialFact。保留 contact floor、arrival ceil、严格内部掉头与 current-segment 消费；见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)和 [Graph 设计](docs/design/graph-spatial-world.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
+- **Inventory**：[ItemInventory](src/Inventory/ItemInventory.cs) 提供不可变物品数量与可选总件数上限，只依赖 DG；局部接纳/增加/校验由模块负责，跨模块采集效果及单根发布仍由游戏编排。
 - **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 编排独立事实应用与[预测维护](src/ResourceCycle/CyclePredictionMaintenance.cs)。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 三角色有限采集。见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
-- **构建依赖**：Kernel/Spatial/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
+- **构建依赖**：Kernel/Spatial/Inventory/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
 
 ## 当前焦点与下一步
 
@@ -25,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)推进模块化，逻辑边界与总件数容量探针已通过[验收](docs/experiments/modularization-acceptance.md)，默认 demo 仍使用无限背包。下一步提取独立 Inventory 程序集及局部测试，由游戏显式组合模型注册；符号映射、持久身份及旧开发存档支持范围集中在[渐进重构方案](docs/implementation/modularization-plan.md)。完成后审计 A–D 全部要求，不预建通用组件框架。
+**当前焦点**：[渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)，形成应用内明确职责、以约束变体验证局部规则、再提取独立 Inventory 的实例。后续内容按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)先在游戏层组合，保留单根事实与发布；出现真实新玩法后再选下一片，不按目录清单自动抽通用组件。默认 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
 重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 
@@ -35,7 +36,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **初始化与修订首片已落地**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写盘。State 转换独立于 pending，混合版本先对齐再逐步转换，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖真实磁盘与中断窗口。生产只接受修订 1，跨版本转换仅为夹具；首个真实规则修订出现后再定义转换政策和支持范围。事件持久替代、多模块版本和通用框架按真实需求重开。
 
-当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
+当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
 Dynamic-Programmer R1–R8 的既有实现、验收、Player 运行时理念与长期 Plan 设计统一保留在[Player 归档](docs/archive/player-runtime.md)，不驱动当前施工。
 

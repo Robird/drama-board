@@ -1,3 +1,4 @@
+using DramaBoard.Inventory;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -8,7 +9,7 @@ namespace DramaBoard.ResourceCycle.Tests;
 public sealed class CapacityGatheringTests {
     [Fact]
     public async Task Full_capacity_rejects_start_even_when_the_requested_item_is_absent() {
-        CycleBackpack backpack = new(new Dictionary<string, int> { ["item.wood"] = 2 }, unitCapacity: 2);
+        ItemInventory backpack = new(new Dictionary<string, int> { ["item.wood"] = 2 }, unitCapacity: 2);
         CycleWorld initial = LimitedWorld(backpack);
         var history = Memory(initial);
         KernelCursor cursor = history.Cursor;
@@ -34,7 +35,7 @@ public sealed class CapacityGatheringTests {
     [InlineData(1, 1, 8)]
     public async Task Capacity_is_shared_across_items_and_failed_cycle_does_not_debit_resource(
         int initialOtherItems, int successfulYields, int finishHour) {
-        CycleBackpack backpack = new(initialOtherItems == 0 ? null :
+        ItemInventory backpack = new(initialOtherItems == 0 ? null :
             new Dictionary<string, int> { ["item.wood"] = initialOtherItems }, unitCapacity: 2);
         CycleWorld initial = LimitedWorld(backpack);
         var history = Memory(initial);
@@ -105,7 +106,7 @@ public sealed class CapacityGatheringTests {
         }
 
         using (var reopened = CycleDurableHistory.Open(directory.StorePath)) {
-            CycleBackpack restored = reopened.State.GetCharacter("a").Backpack;
+            ItemInventory restored = reopened.State.GetCharacter("a").Backpack;
             Assert.Equal(2L, restored.UnitCapacity);
             Assert.Equal(completeState ? 2L : 1L, restored.TotalCount);
             if (!completeState) {
@@ -113,7 +114,7 @@ public sealed class CapacityGatheringTests {
                 Assert.Equal(priorCursor, reopened.Cursor);
                 // The recorded full inventory must be restored, not run through admission again.
                 CycleFact pending = Assert.Single(Assert.IsType<OccurrenceEvent<CycleFact>>(reopened.PendingEvent).Facts);
-                CycleBackpack recorded = Assert.Single(pending.ChangedCharacters).Backpack;
+                ItemInventory recorded = Assert.Single(pending.ChangedCharacters).Backpack;
                 Assert.Equal(2L, recorded.UnitCapacity);
                 Assert.Equal(2L, recorded.TotalCount);
             }
@@ -153,7 +154,7 @@ public sealed class CapacityGatheringTests {
         Assert.Equal(expected.Cursor, final.Cursor);
     }
 
-    private static CycleWorld LimitedWorld(CycleBackpack backpack) => CycleWorld.CreatePlayable(Hour(6),
+    private static CycleWorld LimitedWorld(ItemInventory backpack) => CycleWorld.CreatePlayable(Hour(6),
         [new("a", "Alice", backpack: backpack)],
         [Sun(Hour(6), stock: 5, capacity: 5, regenerationTicks: 100 * CycleTime.Hour)]);
 

@@ -1,6 +1,6 @@
 # 模块化重构方案：从 ResourceCycle 的真实协作边界开始
 
-> 状态：渐进实施中；依据 2026-10-27 当前源码。A/B/C 已落地，见[验收](../experiments/modularization-acceptance.md)；库存已满足 D 的提取条件，下一片落实独立程序集。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)。
+> 状态：A–D 已实施并完成集成验收；依据 2026-10-27 当前源码，证据见[验收](../experiments/modularization-acceptance.md)。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)。
 
 ## 1. 目标与范围
 
@@ -13,7 +13,7 @@
 | 当前入口 | 已承担职责与可用边界 | 后续整理时的重点 |
 | --- | --- | --- |
 | [Kernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[Spatial](../../src/Spatial/Simulation/SpatialSimulation.cs)、[Host](../../src/Host/SimulationHost.cs) | 通用发生项执行、可选空间机制、驱动循环；已有独立程序集 | 保留分界；不把采集顺序、昼夜规则或控制器轮转提升为 Kernel 默认政策。 |
-| [CycleBackpack](../../src/ResourceCycle/CycleBackpack.cs)、[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) | 背包独立承载物品数量与单份接纳查询，不读取整个世界；角色文件保留活动、感知和角色 | 库存能力先留在原程序集；角色的活动、感知与服务代数仍是本游戏组合的一部分，不能随背包一起提走。 |
+| [ItemInventory](../../src/Inventory/ItemInventory.cs)、[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) | Inventory 独立承载物品数量与单份接纳查询，不读取整个世界；角色文件保留活动、感知和角色 | 库存仅依赖 DG；角色的活动、感知与服务代数仍是本游戏组合的一部分，没有随背包一起提走。 |
 | [CycleResource](../../src/ResourceCycle/CycleResource.cs) | 资源定义与运行状态同对象；包含余量、容量、单项产出、光照约束、进度和采集要求 | 不预设“定义/实例”必须分图；当前只接受 `herbalism`，不能直接宣称为通用资源框架。 |
 | [CycleActions](../../src/ResourceCycle/CycleActions.cs) | 命令形状、控制器入口、接受条件、采集时长公式；受阻结果是中文字符串 | 区分局部规则检查与本游戏命令组合；保留“接受时合法”和“到期能否取得资源”的不同检查时点。 |
 | [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | 同时确定资源替换、背包增加、活动续接、感知与结果文字 | 这是明确存在的跨模块编排；可调用局部能力，但仍由它决定一整个发生项的结果。 |
@@ -24,12 +24,12 @@
 | [Persistence](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[PlayInput](../../src/ResourceCycle.Cli/PlayInput.cs) | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；现有控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
 
-当前项目引用也提供了边界：[ResourceCycle](../../src/ResourceCycle/ResourceCycle.csproj) 引用 Kernel 与 DG Persistence；[CLI](../../src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
+当前项目引用也提供了边界：[ResourceCycle](../../src/ResourceCycle/ResourceCycle.csproj) 引用 Inventory、Kernel 与 DG Persistence；[Inventory](../../src/Inventory/Inventory.csproj) 只引用 DG；[CLI](../../src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
 
 需要特别保留的事实：
 
-- `CycleBackpack.Add` 返回新对象；`CyclePlanning.CompleteGather` 同时选择资源、角色与感知的新值。局部能力不能就地改变已发布对象。
-- 背包单项 `int.MaxValue` 与可选总件数接纳规则由 `CycleBackpack.CheckAdd` 提供，接受命令与采集结算分别调用；预检查不预留，结算仍需重查。
+- `ItemInventory.Add` 返回新对象；`CyclePlanning.CompleteGather` 同时选择资源、角色与感知的新值。局部能力不能就地改变已发布对象。
+- 背包单项 `int.MaxValue` 与可选总件数接纳规则由 `ItemInventory.CheckAdd` 提供，接受命令与采集结算分别调用；预检查不预留，结算仍需重查。
 - `CyclePredictionMaintenance.Affected` 依赖子对象引用变化判断 dirty；`Complete` 还通过事实应用职责验证折叠结果与记录事实相符。重构若无条件复制子图，可能保持玩法结果却破坏增量行为。
 - `CyclePrediction.ToString()` 当前参与候选稳定身份与比较；业务对象的 `ToString()` 也用于诊断轨迹。不能把所有字符串一概当作可任意调整的展示实现。
 - `CycleFact.Result`、`CycleCharacter.LastResult`、`CycleNotice.Reason` 已进入持久对象图，规划代码生成中文文本；`PlayView` 根据结构化信息渲染感知。纯视图已独立，但持久文本尚未全面结构化，调整时必须说明哪些是历史记录，哪些是当前状态投影。
@@ -48,11 +48,11 @@
 
 ### A. 先整理库存接纳边界，留在原程序集
 
-**状态：已实施并验收。** 开始和结算两处复用背包局部查询，`Add` 返回新快照；失败文案、批次续接与资源效果仍归原编排。A 先抽出了布尔 `CanAdd`，C 已将其演进为区分拒收原因的 `CheckAdd`，当前 API 以 C 为准。[BackpackTests](../../tests/ResourceCycle.Tests/BackpackTests.cs) 覆盖接纳边界与快照隔离；实际测试及恢复证据见[验收](../experiments/modularization-acceptance.md)。
+**状态：已实施并验收。** 开始和结算两处复用背包局部查询，`Add` 返回新快照；失败文案、批次续接与资源效果仍归原编排。A 先抽出了布尔 `CanAdd`，C 将其演进为区分拒收原因的 `CheckAdd`，D 迁入 Inventory，当前符号以 D 为准。[ItemInventoryTests](../../tests/Inventory.Tests/ItemInventoryTests.cs) 覆盖接纳边界与快照隔离；实际测试及恢复证据见[验收](../experiments/modularization-acceptance.md)。
 
 **目标**：以一个实际重复的规则为起点，明确“库存表示及接纳结果”与“采集后如何改变世界”的分工。把背包从角色相关大文件中分离只是附属整理，主要收益是接受与结算复用同一个接纳规则，以及局部规则能够单独测试。
 
-**入口**：`CycleBackpack`、`CycleActions.Check` 的 Gather 分支、`CyclePlanning.CompleteGather`，以及 [GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)。具体方法签名在实施时决定；不预设 `IInventory`、策略注册表或统一结果泛型。
+**入口**：`ItemInventory`（原 `CycleBackpack`）、`CycleActions.Check` 的 Gather 分支、`CyclePlanning.CompleteGather`，以及 [GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)。没有引入 `IInventory`、策略注册表或统一结果泛型。
 
 **保留合同**：开始前检查与结算时检查都存在；背包拒收时资源不扣减、无物品增加；成功后产生新背包，原快照不变；批次停止/续接及通知仍由采集编排决定。当前所谓无限背包仍有整数表示上限。
 
@@ -98,11 +98,11 @@
 
 最小模型选择在库存快照中保存可选容量：null 表示无玩法容量，0 表示合法零容量；已用总件数以 long 从字典派生，不落盘重复总量。保持单项 int 表示上限；本片不支持运行时调整容量，不引入继承树、策略 delegate 或 IInventory。
 
-`CheckAdd` 返回无文本的 `BackpackAddResult`，区分 Allowed / ItemQuantityLimit / CapacityLimit，单项表示上限优先。`Add` 自行守住相同约束，成功保留容量并产生新快照；构造与就绪校验拒绝负容量、超容量初始内容及无效条目。游戏保留接受/结算两时点并负责文案和批次结束：最后一个容量成功用尽后仍安排下一周期，下一次结算拒收才结束，不改成即时唤醒或提前终止。Console 仅向所属角色显示有限容量，默认无限画面不变。
+`CheckAdd` 返回无文本的 `InventoryAdmission`（C 时名为 `BackpackAddResult`），区分 Allowed / ItemQuantityLimit / CapacityLimit，单项表示上限优先。`Add` 自行守住相同约束，成功保留容量并产生新快照；构造与就绪校验拒绝负容量、超容量初始内容及无效条目。游戏保留接受/结算两时点并负责文案和批次结束：最后一个容量成功用尽后仍安排下一周期，下一次结算拒收才结束，不改成即时唤醒或提前终止。Console 仅向所属角色显示有限容量，默认无限画面不变。
 
 **入口**：A 整理出的局部能力、测试夹具与具体游戏组合代码。探针不要求另建 Console 或存档入口，也不凭一个测试夹具宣称已证明完整第二游戏复用。
 
-验收分两层：[独立库存测试](../../tests/ResourceCycle.Tests/BackpackTests.cs) 验证跨物品共享容量、0/无限/单项上限和快照隔离；[真实采集探针](../../tests/ResourceCycle.Tests/CapacityGatheringTests.cs) 通过现有工厂注入有容量角色，验证“容量 2、目标 3，只取得并扣资源 2 份”、开始已满拒绝、已有另一物品占用容量，以及连续/S 冷开/E-only 恢复一致。库存与容量随根和记录替换一起保存，恢复不重新判断接纳政策。
+验收分两层：[独立库存测试](../../tests/Inventory.Tests/ItemInventoryTests.cs) 验证跨物品共享容量、0/无限/单项上限和快照隔离；[真实采集探针](../../tests/ResourceCycle.Tests/CapacityGatheringTests.cs) 通过现有工厂注入有容量角色，验证“容量 2、目标 3，只取得并扣资源 2 份”、开始已满拒绝、已有另一物品占用容量，以及连续/S 冷开/E-only 恢复一致。库存与容量随根和记录替换一起保存，恢复不重新判断接纳政策。
 
 **Schema/修订裁决**：Backpack 升为 v3，field 1 保留数量字典，field 2 为 nullable long 容量；历史 v1/v2 保留，新增 v3 经 Publish/Verify。DG 没有缺字段自动补 null 的 editable upgrade，本片不新增转换，**包含旧 v1/v2 背包的开发存档不受支持**。实际用修改前二进制生成的 v2 存档验证了拒绝，CLI 返回 1、简短错误且不改变存档字节。`GameRevision` 保持 1：原有可表达的无限状态规则不变，不制造空的全图语义迁移；相同 GameRevision 不代表 Schema 兼容。
 
@@ -116,13 +116,13 @@
 
 **进入条件**：至少有一个职责边界能解释清楚、向下依赖成立，且拆出后确实获得独立测试、独立使用或避免反向引用的收益。第二个生产游戏不是硬性门槛，但单纯改目录不算收益。库存是首个候选，资源再生、活动或整套采集是否一起提取仍需单独判断。
 
-**已裁决进入 D，待实施。** C 已证明无限/有限两种用法共享局部状态与操作，且实际采集/恢复能够组合。独立库存消费者与局部测试将只依赖库存和 DG，摆脱 ResourceCycle/Kernel/Persistence；程序集引用可防止未来库存逻辑反向获取游戏世界。这是实际的依赖隔离收益，不只是搬目录。
+**已实施并验收。** C 已证明无限/有限两种用法共享局部状态与操作，且实际采集/恢复能够组合。独立库存消费者与局部测试只依赖库存和 DG，摆脱 ResourceCycle/Kernel/Persistence；程序集引用可防止未来库存逻辑反向获取游戏世界。这是实际的依赖隔离收益，不只是搬目录。
 
 具体范围：新增 `src/Inventory` 和 `tests/Inventory.Tests`；仅迁库存类型与局部测试，不连带搬出角色/活动/资源点。模块只引用 DG，公开当前真实消费者所需的构造、查询、单份 Add 与 Validate；不加 IInventory/策略框架。`InventoryDurableModels.Register` 封装本模块生成定义，由 `CycleDurableModels.Register` 显式组合。游戏保留根、事实、工厂、整体修订与存档提交。
 
-施工符号映射（尚未执行，使用符号级工具）：
+施工符号映射（已通过 Roslyn 符号级重命名执行，后续采用右列名称）：
 
-| 当前声明 | 目标声明 / 归属 | 不变内容 |
+| 原声明 | 当前声明 / 归属 | 不变内容 |
 | --- | --- | --- |
 | `DramaBoard.ResourceCycle.CycleBackpack` | `DramaBoard.Inventory.ItemInventory` / Inventory | 不可变数量快照、字段号/类型与操作语义；角色属性 `Backpack` 仍表示用途，不改名 |
 | `DramaBoard.ResourceCycle.BackpackAddResult` | `DramaBoard.Inventory.InventoryAdmission` / Inventory | 三项运行时结果及优先级；随 CheckAdd 跨程序集公开 |
@@ -130,7 +130,7 @@
 
 CLR 命名/项目归属与持久身份分开：保留 `DurableType("DramaBoard.ResourceCycle.Backpack", 3)` 这个已有逻辑身份，三份历史文件只迁归属、不改内容或并存注册。名称保留在存储身份不构成对游戏程序集的依赖。纯符号/文件迁移和程序集接线可分提交，最终必须验证生产引用无环、模型注册完整、Schema Verify 以及迁出类型真实 S/E-only 冷开。
 
-**实施意向**：移出的模块拥有其局部状态与规则；具体游戏引用模块并组合根、事实与工厂。模块不引用 `ResourceCycle`、CLI 或具体游戏持久化 adapter，也不拥有独立世界提交入口。游戏负责组合模块模型注册，模块可提供自身注册入口，具体形状在现有 DG 生成器能力下验证后确定。
+**实际边界**：移出的模块拥有其局部状态与规则；具体游戏引用模块并组合根、事实与工厂。模块不引用 `ResourceCycle`、CLI 或具体游戏持久化 adapter，也不拥有独立世界提交入口。[InventoryDurableModels.Register](../../src/Inventory/InventoryDurableModels.cs) 仅注册本模块，由游戏统一接线；不使用友元绕过程序集边界。
 
 **入口**：候选模块源码、`ResourceCycle.csproj`、[CycleDurableModels.Register](../../src/ResourceCycle/Persistence/CycleDurableModels.cs)、[DG 源码接线](../source-dependencies.md)、[solution](../../DramaBoard.slnx)、相关测试项目。
 
@@ -158,8 +158,8 @@ CLR 命名/项目归属与持久身份分开：保留 `DurableType("DramaBoard.R
 
 影响项目引用、公共模型或生成器时，串行构建以免相邻 DG 共享输出竞争，并执行当前 solution 的 Schema Verify 构建与测试；涉及 Console 则补内存运行、磁盘新建及续局脚本。每片记录实际运行结果，不把上片或文档中的历史测试数量作为新基线。
 
-## 6. 下一轮建议与待决边界
+## 6. 后续推进方式与重开条件
 
-下一片实施 D 的库存程序集提取与显式模型组合，按上文符号映射施工并逐项验证引用、Schema、注册和冷开。完成后按整个 A–D 目标审计，不把仅构建通过当作完成。
+A–D 已完成，不再按目录或概念清单自动拆模块。后续先在游戏层形成具体玩法，局部状态/规则以窄参数协作，由游戏规划跨模块事实并单根发布；真实变体能验证边界后，再评估独立测试与程序集收益。库存是这一模式的现成示例，而非要求其他系统复制同一 API。
 
 后续需求才重开的边界：展示文字中历史记录与当前投影的进一步拆分；定义与运行实例是否拆开；后续空间与采集怎样组合。这些不阻塞本次已具体化的 A–D 重构，确定前不预建公共接口。

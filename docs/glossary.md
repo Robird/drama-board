@@ -103,9 +103,9 @@ ResourceCycle 当前“单地点”是玩法范围说明，尚未接入这些空
 | 再生（Regeneration） | 累积有效生长时间后补充资源点库存；与角色采集过程独立。 | `RegenerationTicks`、`ActiveSince`、`AccumulatedTicks` |
 | 采集批次（Gathering batch） | 一次接受的有限成功目标，内部可以连续执行多个周期；`all` 固定为接受时库存快照，不是预留。 | Gather 种类的 `CycleActivity`：`TargetCount`、`CompletedCount`、`SelectedAll` |
 | 采集周期（Gathering cycle） | 尝试取得一份资源的耗时过程；到期成功才扣一份库存并给一件物品，失败可结束批次。 | `CycleActivity.DurationTicks`、`Due`、`CycleIndex`；成功事件 `GatherYielded`。 |
-| 背包（Backpack） | 角色已经获得的物品数量，独立于资源点库存。 | `CycleBackpack` |
-| 总件数容量（Unit capacity） | 所有物品数量之和的可选上限，不是物品种类数或资源点容量；null 表示无玩法限制，0 表示零容量。 | `CycleBackpack.UnitCapacity` 持久化；`TotalCount` 派生；默认 demo 不设置上限。 |
-| 库存接纳（Inventory admission） | 当前快照能否接纳单份物品的局部查询；不预留，成功/失败如何改变活动由游戏决定。 | `CheckAdd` / `BackpackAddResult`；单项表示上限优先于总容量上限。 |
+| 物品库存（Item inventory）与背包（Backpack） | 物品 ID 到数量的不可变快照；背包是角色对它的一种用途，独立于资源点余量。 | `DramaBoard.Inventory.ItemInventory`；角色属性仍为 `CycleCharacter.Backpack`。 |
+| 总件数容量（Unit capacity） | 所有物品数量之和的可选上限，不是物品种类数或资源点容量；null 表示无玩法限制，0 表示零容量。 | `ItemInventory.UnitCapacity` 持久化；`TotalCount` 派生；默认 demo 不设置上限。 |
+| 库存接纳（Inventory admission） | 当前快照能否接纳单份物品的局部查询；不预留，成功/失败如何改变活动由游戏决定。 | `ItemInventory.CheckAdd` / `InventoryAdmission`；单项表示上限优先于总容量上限。 |
 | 内核（Kernel） | 通用发生项调度、转换与发布协议。 | `src/Kernel` |
 | 空间层（Spatial） | 客观图空间、运动及交会规则。 | `src/Spatial` |
 | 宿主（Host） | 驱动 Kernel 运行的程序层职责，不等同于角色控制器。 | [SimulationHost](../src/Host/SimulationHost.cs)、应用 Console 入口 |
@@ -117,7 +117,7 @@ ResourceCycle 当前“单地点”是玩法范围说明，尚未接入这些空
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 领域模块（Domain module） | 具有明确状态、局部规则及协作合同的一项领域能力；不要求独立程序集、统一组件基类或独立提交。 | Spatial 已独立；ResourceCycle 内的库存、资源与活动尚未提取为复用模块。 |
+| 领域模块（Domain module） | 具有明确状态、局部规则及协作合同的一项领域能力；不要求独立程序集、统一组件基类或独立提交。 | Spatial、Inventory 已独立；ResourceCycle 的资源、活动和跨模块采集编排仍归游戏。 |
 | 组件（Component） | 模块内可组合的对象或能力的宽泛称呼；使用时说明具体职责，不默认指 ECS 或某个 `IComponent`。 | 尚无通用组件协议；设计讨论优先使用具体领域名称。 |
 | 游戏组合（Game composition） | 选择并连接模块，协调跨模块行为、世界根、初始化及整体修订的职责。 | 当前分布在 `CycleGameFactory`、`CyclePlanning`、`CycleEngine` 和游戏持久化入口，不对应一个新接口。 |
 | 扩展内容 / 模组（Mod） | 内容、规则或完整游戏的一种来源，按其职责接入，并非固定的最上层。 | 方向为源码引用、共同编译与显式接线；尚无 mod 加载器或稳定扩展 API。 |

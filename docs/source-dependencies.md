@@ -20,7 +20,8 @@ dotnet build src/ResourceCycle.Cli/ResourceCycle.Cli.csproj -c Release -m:1 -war
 ## 接线和边界
 
 - `Directory.Build.props` 指定默认 DG 根；`Directory.Build.rsp` 为还原与构建同时设置 `UseStorageSources=true`、`StorageSourceRoot` 与 `ShouldUnsetParentConfigurationAndPlatform=false`。响应文件中的默认路径相对文件自身，从其他工作目录调用也有效。
-- Kernel、Spatial 和 ResourceCycle 导入 `eng/DurableGraph.Source.props` / `.targets`，直接引用 runtime、Generator 与 Build 工具，并导入上游 schema 配置。Generator 作为 analyzer 加载；Build 工具通过项目的 `GetTargetPath` 取得当前配置输出，不依赖包内工具路径。
+- Kernel、Spatial、Inventory 和 ResourceCycle 导入 `eng/DurableGraph.Source.props` / `.targets`，直接引用 runtime、Generator 与 Build 工具，并导入上游 schema 配置。Generator 作为 analyzer 加载；Build 工具通过项目的 `GetTargetPath` 取得当前配置输出，不依赖包内工具路径。
+- Inventory 不引用 Kernel、Persistence 或具体游戏；它拥有库存类型的三份 Schema 历史及自身注册入口。ResourceCycle 引用 Inventory，并在 `CycleDurableModels.Register` 显式组合 Kernel、Inventory 与游戏模型；只有游戏 adapter 负责整个根的磁盘发布。
 - Schema 模式沿用上游默认，本地普通构建会 Publish；验收和 CI 显式选择 Verify，不用自动发布历史掩盖 schema 差异。
 - Spatial.Tests 单独引用 Persistence 源码，用于真实模型捕获与冷读资格检查。生产三核心没有新增磁盘 adapter 或 Repository 依赖。
 - DG 校验 Storage HEAD 必须匹配其 `eng/StorageDependency.props` 的 `StorageSourceRevision`；Storage 提交前进时先协调 DG 声明。未提交的源码变化可直接联调，验收须记录两仓提交和工作树状态。

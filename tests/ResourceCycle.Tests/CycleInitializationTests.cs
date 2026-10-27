@@ -1,3 +1,4 @@
+using DramaBoard.Inventory;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
@@ -30,7 +31,7 @@ public sealed class CycleInitializationTests {
             Assert.NotSame(pair.First, pair.Second);
         }
         if (playable) {
-            CycleBackpack[] backpacks = first.World.Characters.Select(actor => actor.Backpack).ToArray();
+            ItemInventory[] backpacks = first.World.Characters.Select(actor => actor.Backpack).ToArray();
             Assert.Equal(backpacks.Length, backpacks.Distinct(ReferenceEqualityComparer.Instance).Count());
         }
     }

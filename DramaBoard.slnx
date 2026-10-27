@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Host/Host.csproj" />
+    <Project Path="src/Inventory/Inventory.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
     <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
@@ -8,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
+    <Project Path="tests/Inventory.Tests/Inventory.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj" />
