@@ -7,7 +7,7 @@ namespace DramaBoard.Kernel.Simulation;
 /// <summary>Checks committed causes against the current build's Forecast and scheduler semantics.</summary>
 public static class SchedulerConformance {
     /// <summary>
-    /// Rebuilds from Genesis, recomputes each winner, and folds recorded facts without invoking Plan or Complete.
+    /// Rebuilds from Genesis, recomputes each winner, and folds recorded facts without invoking Plan. Pure Complete prepares each folded batch.
     /// </summary>
     public static ReplayResult<TWorld> Verify<TWorld, TCandidateData, TFact>(
         TWorld genesisWorld,
@@ -17,6 +17,7 @@ public static class SchedulerConformance {
         IEnumerable<IOccurrenceRule<TWorld, TCandidateData, TFact>> rules,
         IEnumerable<JournalBatch<TFact>> batches,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
+        Func<TWorld, LogicalInstant, IReadOnlyList<TFact>, TWorld, TWorld> complete,
         Action<TWorld, ModelTime> validate) {
         if (genesisWorld is null) {
             throw new ArgumentNullException(nameof(genesisWorld));
@@ -26,6 +27,7 @@ public static class SchedulerConformance {
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(batches);
         ArgumentNullException.ThrowIfNull(fold);
+        ArgumentNullException.ThrowIfNull(complete);
         ArgumentNullException.ThrowIfNull(validate);
 
         IOccurrenceRule<TWorld, TCandidateData, TFact>[] ruleArray = [.. rules];
@@ -84,6 +86,8 @@ public static class SchedulerConformance {
                 }
             }
 
+            scratchWorld = complete(world, batch.Instant, batch.Facts, scratchWorld);
+            if (scratchWorld is null) { throw new InvalidOperationException("The completion delegate returned a null HostWorld."); }
             validate(scratchWorld, batch.Instant.ModelTime);
             world = scratchWorld;
             lastCommittedInstant = batch.Instant;

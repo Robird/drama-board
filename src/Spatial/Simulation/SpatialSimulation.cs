@@ -19,22 +19,22 @@ public sealed class SpatialSimulation {
         _onRecompute = onRecompute;
     }
 
-    /// <summary>Predicts every passage exactly once for a new world; never use this to reopen an existing snapshot.</summary>
-    public SpatialSimulationState CreateGenesis(GraphSpatialState business, ModelTime genesisTime) {
+    /// <summary>Rebuilds derived contacts for genesis or a completed durable business snapshot.</summary>
+    public SpatialSimulationState Rebuild(GraphSpatialState business, ModelTime boundaryTime) {
         GraphSpatialStateValidator.ValidateComplete(_definition, business);
         var contacts = new SpatialContactPredictions(
             _definition.Passages.SelectMany(passage => PredictPassage(business, passage.Id)));
         var world = new SpatialSimulationState(business, contacts);
-        Validate(world, genesisTime);
+        Validate(world, boundaryTime);
         return world;
     }
 
     /// <summary>All occurrence sources share the same completion seam, including additional business rules.</summary>
-    public SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> CreateKernel(
+    public SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> CreateKernel(
         SimulationRules simulationRules,
-        IOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> history,
-        IEnumerable<IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact>>? additionalRules = null) {
-        IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact>[] rules = [
+        IOccurrenceHistory<SpatialSimulationState, GraphSpatialFact> history,
+        IEnumerable<IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>>? additionalRules = null) {
+        IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>[] rules = [
             new SpatialOccurrenceRule(_definition),
             new SpatialContactOccurrenceRule(_definition),
             .. additionalRules ?? [],
@@ -43,43 +43,44 @@ public sealed class SpatialSimulation {
     }
 
     /// <summary>Folds recorded results only. Intermediate business states may temporarily invalidate old predictions.</summary>
-    public SpatialSimulationState Fold(SpatialSimulationState world, LogicalInstant instant, SpatialSimulationFact fact) {
+    public SpatialSimulationState Fold(SpatialSimulationState world, LogicalInstant instant, GraphSpatialFact fact) {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(fact);
-        return fact switch {
-            SpatialBusinessFact business => new(_reducer.Apply(world.Business, instant, business.Fact), world.Contacts),
-            ContactPredictionsReplaced replaced => ApplyReplacement(world, replaced),
-            _ => throw new InvalidOperationException($"Unsupported spatial simulation fact '{fact.GetType().Name}'."),
-        };
+        return new SpatialSimulationState(_reducer.Apply(world.Business, instant, fact), world.Contacts);
     }
 
-    /// <summary>Maintains each affected passage once, after all business decisions have been folded in order.</summary>
-    public TransitionDraft<SpatialSimulationFact> Complete(
+    /// <summary>Purely derives each affected passage once after business Fold, preserving the supplied final Business.</summary>
+    public SpatialSimulationState Complete(
         SpatialSimulationState before,
         LogicalInstant instant,
-        TransitionDraft<SpatialSimulationFact> businessDraft) {
+        IReadOnlyList<GraphSpatialFact> facts,
+        SpatialSimulationState folded) {
         ArgumentNullException.ThrowIfNull(before);
-        ArgumentNullException.ThrowIfNull(businessDraft);
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(folded);
         GraphSpatialState business = before.Business;
         var dirty = new HashSet<PassageId>();
-        foreach (SpatialSimulationFact fact in businessDraft.Facts) {
-            if (fact is not SpatialBusinessFact wrapper) {
-                throw new InvalidOperationException("Business planners must not supply prediction maintenance facts.");
-            }
-            GraphSpatialState after = _reducer.Apply(business, instant, wrapper.Fact);
-            CollectDirty(business, after, wrapper.Fact, dirty);
+        foreach (GraphSpatialFact fact in facts) {
+            GraphSpatialState after = _reducer.Apply(business, instant, fact);
+            CollectDirty(business, after, fact, dirty);
             business = after;
         }
+        if (!business.Equals(folded.Business)) {
+            throw new InvalidOperationException("The folded spatial business does not match the recorded fact sequence.");
+        }
 
-        if (dirty.Count == 0) { return businessDraft; }
-        PassageId[] passages = [.. dirty.Order()];
-        ContactPrediction[] outputs = [.. passages.SelectMany(passage => PredictPassage(business, passage))];
-        ContactPrediction[] previous = [.. before.Contacts.Entries.Where(entry => dirty.Contains(entry.ContactKey.PassageId))];
-        if (previous.SequenceEqual(outputs)) { return businessDraft; }
-        return new TransitionDraft<SpatialSimulationFact>([
-            .. businessDraft.Facts,
-            new ContactPredictionsReplaced(passages, outputs),
-        ]);
+        SpatialContactPredictions contacts = before.Contacts;
+        if (dirty.Count > 0) {
+            ContactPrediction[] outputs = [.. dirty.Order().SelectMany(passage => PredictPassage(folded.Business, passage))];
+            ContactPrediction[] previous = [.. contacts.Entries.Where(entry => dirty.Contains(entry.ContactKey.PassageId))];
+            if (!previous.SequenceEqual(outputs)) {
+                contacts = new SpatialContactPredictions(
+                    contacts.Entries.Where(entry => !dirty.Contains(entry.ContactKey.PassageId)).Concat(outputs));
+            }
+        }
+        return ReferenceEquals(contacts, folded.Contacts)
+            ? folded
+            : new SpatialSimulationState(folded.Business, contacts);
     }
 
     /// <summary>Checks existing outputs structurally, not completeness. Independent full-discovery tests prove coverage.</summary>
@@ -108,25 +109,6 @@ public sealed class SpatialSimulation {
         foreach (ScheduledPassageEntryChange schedule in world.Business.ScheduledPassageEntryChanges) {
             RequireNotPast(schedule.Due, at);
         }
-    }
-
-    private SpatialSimulationState ApplyReplacement(SpatialSimulationState world, ContactPredictionsReplaced replaced) {
-        var passages = new HashSet<PassageId>();
-        PassageId? previous = null;
-        foreach (PassageId passage in replaced.Passages) {
-            GraphSpatialStateValidator.RequirePassage(_definition, passage);
-            if (previous is PassageId prior && prior.CompareTo(passage) >= 0) {
-                throw new InvalidOperationException("Replacement passages must be unique and canonically ordered.");
-            }
-            previous = passage;
-            passages.Add(passage);
-        }
-        if (passages.Count == 0 || replaced.Predictions.Any(entry => !passages.Contains(entry.ContactKey.PassageId))) {
-            throw new InvalidOperationException("Replacement outputs must belong to nonempty declared passage scope.");
-        }
-        return new SpatialSimulationState(world.Business, new SpatialContactPredictions(
-            world.Contacts.Entries.Where(entry => !passages.Contains(entry.ContactKey.PassageId))
-                .Concat(replaced.Predictions)));
     }
 
     private IReadOnlyList<ContactPrediction> PredictPassage(GraphSpatialState business, PassageId passage) {

@@ -13,17 +13,18 @@ public sealed class SpatialPredictionPersistenceTests {
     public async Task Every_completed_state_cold_reopens_and_continues_the_same_trace() {
         using var store = new TemporaryStore();
         var (simulation, initial) = Fixture();
-        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(initial, Cursor());
+        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(initial, Cursor());
         var baseline = simulation.CreateKernel(Rules, memory);
-        using (SpatialDurableHistory.Create(store.Path, initial, Cursor())) { }
+        using (SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) { }
 
         int completed = 0;
         for (; completed < 10; completed++) {
-            using var reopened = SpatialDurableHistory.Open(store.Path);
+            using var reopened = SpatialDurableHistory.Open(store.Path, simulation);
             Assert.Null(reopened.PendingEvent);
             Assert.NotSame(initial, reopened.State);
             Assert.NotSame(initial.Business, reopened.State.Business);
             Assert.NotSame(initial.Contacts, reopened.State.Contacts);
+            Assert.Same(reopened.State, reopened.State);
             EqualWorld(baseline.World, reopened.State);
             Assert.Equal(baseline.Cursor, reopened.Cursor);
             var resumed = simulation.CreateKernel(Rules, reopened);
@@ -31,6 +32,7 @@ public sealed class SpatialPredictionPersistenceTests {
 
             StepStatus expected = await baseline.StepAsync(GraphTestWorld.Time(20));
             Assert.Equal(expected, await resumed.StepAsync(GraphTestWorld.Time(20)));
+            Assert.Same(resumed.World, reopened.State);
             EqualWorld(baseline.World, resumed.World);
             Assert.Equal(baseline.Cursor, resumed.Cursor);
             if (expected != StepStatus.Committed) { break; }
@@ -50,17 +52,17 @@ public sealed class SpatialPredictionPersistenceTests {
     [InlineData(3, false)]
     [InlineData(0, true)]
     [InlineData(2, true)]
-    public async Task Event_only_cold_recovery_uses_saved_predictions_without_complete_or_player(
+    public async Task Event_only_cold_recovery_rebuilds_predictions_without_planning_or_player(
         int priorSteps, bool failState) {
         using var store = new TemporaryStore();
         var (simulation, initial) = Fixture();
-        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(initial, Cursor());
+        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(initial, Cursor());
         var baseline = simulation.CreateKernel(Rules, memory);
-        OccurrenceEvent<SpatialSimulationFact> saved;
+        OccurrenceEvent<GraphSpatialFact> saved;
         SpatialSimulationState before;
         KernelCursor beforeCursor;
 
-        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor())) {
+        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) {
             var running = simulation.CreateKernel(Rules, history);
             for (int index = 0; index < priorSteps; index++) {
                 Assert.Equal(StepStatus.Committed, await running.StepAsync(GraphTestWorld.Time(20)));
@@ -75,29 +77,36 @@ public sealed class SpatialPredictionPersistenceTests {
             Assert.True(interrupted.IsFaulted);
             Assert.Same(before, history.State);
             Assert.Equal(beforeCursor, history.Cursor);
-            saved = Assert.IsType<OccurrenceEvent<SpatialSimulationFact>>(history.PendingEvent);
+            saved = Assert.IsType<OccurrenceEvent<GraphSpatialFact>>(history.PendingEvent);
             Assert.Equal(StepStatus.Committed, await baseline.StepAsync(GraphTestWorld.Time(20)));
             EqualEvent(baseline.LastCompletion!.Event, saved);
         }
 
-        using (var reopened = SpatialDurableHistory.Open(store.Path)) {
+        using (var reopened = SpatialDurableHistory.Open(store.Path, simulation)) {
             EqualWorld(before, reopened.State);
             Assert.Equal(beforeCursor, reopened.Cursor);
-            EqualEvent(saved, Assert.IsType<OccurrenceEvent<SpatialSimulationFact>>(reopened.PendingEvent));
+            EqualEvent(saved, Assert.IsType<OccurrenceEvent<GraphSpatialFact>>(reopened.PendingEvent));
             Assert.NotSame(saved, reopened.PendingEvent);
             Assert.NotSame(saved.Facts[0], reopened.PendingEvent!.Facts[0]);
             var forbidden = new ForbiddenPlanning();
-            var recovering = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact>(
+            int completions = 0;
+            var recovering = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>(
                 reopened, Rules, [forbidden], simulation.Fold,
-                (_, _, _) => throw new InvalidOperationException("Recovery called Complete."), simulation.Validate);
+                (beforeState, instant, facts, folded) => {
+                    completions++;
+                    return simulation.Complete(beforeState, instant, facts, folded);
+                }, simulation.Validate);
 
             Assert.True(recovering.RecoverPending());
             EqualEvent(saved, recovering.LastCompletion!.Event);
             Assert.False(recovering.RecoverPending());
+            Assert.Equal(1, completions);
             Assert.Equal(0, forbidden.Calls);
             EqualWorld(baseline.World, recovering.World);
             Assert.Equal(baseline.Cursor, recovering.Cursor);
             Assert.Null(reopened.PendingEvent);
+            Assert.Same(recovering.World, reopened.State);
+            Assert.Same(reopened.State, reopened.State);
 
             var resumed = simulation.CreateKernel(Rules, reopened);
             for (int remaining = priorSteps + 1; remaining < 4; remaining++) {
@@ -108,7 +117,7 @@ public sealed class SpatialPredictionPersistenceTests {
             }
         }
 
-        using var final = SpatialDurableHistory.Open(store.Path);
+        using var final = SpatialDurableHistory.Open(store.Path, simulation);
         Assert.Null(final.PendingEvent);
         EqualWorld(baseline.World, final.State);
         Assert.Equal(baseline.Cursor, final.Cursor);
@@ -118,17 +127,17 @@ public sealed class SpatialPredictionPersistenceTests {
     public async Task Rejected_state_commit_faults_adapter_and_leaves_durable_event_recoverable() {
         using var store = new TemporaryStore();
         var (simulation, initial) = Fixture();
-        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(initial, Cursor());
+        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(initial, Cursor());
         var expected = simulation.CreateKernel(Rules, memory);
         Assert.Equal(StepStatus.Committed, await expected.StepAsync(GraphTestWorld.Time(20)));
 
-        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor())) {
+        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) {
             history.CommitEvent(expected.LastCompletion!.Event);
             Assert.Throws<ArgumentException>(() => history.CommitState(expected.World, Cursor()));
             Assert.True(history.IsFaulted);
             Assert.Throws<InvalidOperationException>(() => history.State);
         }
-        using var reopened = SpatialDurableHistory.Open(store.Path);
+        using var reopened = SpatialDurableHistory.Open(store.Path, simulation);
         var recovered = simulation.CreateKernel(Rules, reopened);
         Assert.True(recovered.RecoverPending());
         EqualWorld(expected.World, recovered.World);
@@ -136,7 +145,7 @@ public sealed class SpatialPredictionPersistenceTests {
     }
 
     [Fact]
-    public async Task Newcomer_event_cold_recovers_its_nonempty_prediction_replacement_without_rediscovery() {
+    public async Task Newcomer_event_cold_recovers_business_and_rederives_its_nonempty_predictions() {
         using var store = new TemporaryStore();
         var definition = GraphDefinition.Create([GraphTestWorld.A, GraphTestWorld.B],
             [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 20)]);
@@ -144,9 +153,9 @@ public sealed class SpatialPredictionPersistenceTests {
         business = new GraphSpatialReducer(definition).Apply(business, GraphTestWorld.Instant(0),
             new TraversalStartedFact(new EntityId("alice"), GraphTestWorld.Bridge, GraphTestWorld.A, 1));
         var simulation = new SpatialSimulation(definition);
-        SpatialSimulationState initial = simulation.CreateGenesis(business, ModelTime.Zero);
+        SpatialSimulationState initial = simulation.Rebuild(business, ModelTime.Zero);
         Assert.Empty(initial.Contacts.Entries);
-        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(initial, Cursor());
+        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(initial, Cursor());
         var baseline = simulation.CreateKernel(Rules, memory, [new NewcomerRule()]);
         Assert.Equal(StepStatus.Committed, await baseline.StepAsync(GraphTestWorld.Time(30)));
         ContactPrediction expected = Assert.Single(baseline.World.Contacts.Entries);
@@ -157,7 +166,7 @@ public sealed class SpatialPredictionPersistenceTests {
         Assert.Equal(GraphTestWorld.Time(10), expected.Due);
         Assert.Equal(PassageContactKind.HeadOnMeeting, expected.Kind);
 
-        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor())) {
+        using (var history = SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) {
             var interrupted = simulation.CreateKernel(Rules, new PublicationFailure(history, true), [new NewcomerRule()]);
             SpatialSimulationState beforePublication = interrupted.World;
             EqualWorld(initial, beforePublication);
@@ -166,27 +175,31 @@ public sealed class SpatialPredictionPersistenceTests {
             Assert.Same(beforePublication, history.State);
             EqualWorld(initial, beforePublication);
             Assert.Empty(initial.Contacts.Entries);
-            var published = Assert.IsType<ContactPredictionsReplaced>(history.PendingEvent!.Facts[^1]);
-            Assert.Equal(expected, Assert.Single(published.Predictions));
+            var published = Assert.IsType<TraversalStartedFact>(Assert.Single(history.PendingEvent!.Facts));
+            Assert.Equal(new EntityId("bob"), published.EntityId);
+            EqualEvent(baseline.LastCompletion!.Event, history.PendingEvent);
         }
 
-        using (var reopened = SpatialDurableHistory.Open(store.Path)) {
+        using (var reopened = SpatialDurableHistory.Open(store.Path, simulation)) {
             SpatialSimulationState beforeRecovery = reopened.State;
             Assert.Empty(reopened.State.Contacts.Entries);
-            var published = Assert.IsType<ContactPredictionsReplaced>(reopened.PendingEvent!.Facts[^1]);
-            ContactPrediction restoredOutput = Assert.Single(published.Predictions);
-            Assert.NotSame(expected, restoredOutput);
-            Assert.Equal(expected, restoredOutput);
+            Assert.IsType<TraversalStartedFact>(Assert.Single(reopened.PendingEvent!.Facts));
             var forbidden = new ForbiddenPlanning();
-            var recovering = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact>(
+            int completions = 0;
+            var recovering = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>(
                 reopened, Rules, [forbidden], simulation.Fold,
-                (_, _, _) => throw new InvalidOperationException("Recovery called Complete."), simulation.Validate);
+                (beforeState, instant, facts, folded) => {
+                    completions++;
+                    return simulation.Complete(beforeState, instant, facts, folded);
+                }, simulation.Validate);
             Assert.True(recovering.RecoverPending());
+            Assert.Equal(1, completions);
             Assert.Equal(0, forbidden.Calls);
             EqualWorld(baseline.World, recovering.World);
             Assert.Equal(expected, Assert.Single(recovering.World.Contacts.Entries));
+            Assert.NotSame(expected, Assert.Single(recovering.World.Contacts.Entries));
             Assert.Equal(baseline.Cursor, recovering.Cursor);
-            // The old published root must remain unchanged even after the replacement is folded.
+            // Derivation creates a new runtime cache; previously published snapshots remain unchanged.
             EqualWorld(initial, beforeRecovery);
             Assert.NotSame(beforeRecovery, recovering.World);
             Assert.Empty(initial.Contacts.Entries);
@@ -200,9 +213,63 @@ public sealed class SpatialPredictionPersistenceTests {
                 EqualWorld(baseline.World, resumed.World);
             }
         }
-        using var final = SpatialDurableHistory.Open(store.Path);
+        using var final = SpatialDurableHistory.Open(store.Path, simulation);
         EqualWorld(baseline.World, final.State);
         Assert.Equal(baseline.Cursor, final.Cursor);
+    }
+
+    [Fact]
+    public async Task Same_tick_cold_rebuild_keeps_unconsumed_contact_and_does_not_resurrect_consumed_one() {
+        using var store = new TemporaryStore();
+        var definition = GraphDefinition.Create([GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        var business = GraphTestWorld.State(definition, ("a", GraphTestWorld.A),
+            ("b", GraphTestWorld.B), ("c", GraphTestWorld.B));
+        var reducer = new GraphSpatialReducer(definition);
+        foreach (var entry in new[] { ("a", GraphTestWorld.A, 3L), ("b", GraphTestWorld.B, 2L), ("c", GraphTestWorld.B, 1L) }) {
+            business = reducer.Apply(business, GraphTestWorld.Instant(0),
+                new TraversalStartedFact(new EntityId(entry.Item1), GraphTestWorld.Bridge, entry.Item2, entry.Item3));
+        }
+        var simulation = new SpatialSimulation(definition);
+        SpatialSimulationState initial = simulation.Rebuild(business, ModelTime.Zero);
+        Assert.Equal(2, initial.Contacts.Entries.Count);
+        Assert.All(initial.Contacts.Entries, prediction => Assert.Equal(GraphTestWorld.Time(2), prediction.Due));
+        var memory = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(initial, Cursor());
+        var baseline = simulation.CreateKernel(Rules, memory);
+        Assert.Equal(StepStatus.Committed, await baseline.StepAsync(GraphTestWorld.Time(2)));
+
+        using (var created = SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) {
+            var first = simulation.CreateKernel(Rules, created);
+            Assert.Equal(StepStatus.Committed, await first.StepAsync(GraphTestWorld.Time(2)));
+            EqualWorld(baseline.World, first.World);
+        }
+        Assert.Equal(StepStatus.Committed, await baseline.StepAsync(GraphTestWorld.Time(2)));
+
+        using (var reopened = SpatialDurableHistory.Open(store.Path, simulation)) {
+            Assert.Single(reopened.State.Business.ConsumedContacts);
+            Assert.Equal(GraphTestWorld.Time(2), Assert.Single(reopened.State.Contacts.Entries).Due);
+            Assert.DoesNotContain(reopened.State.Contacts.Entries,
+                entry => reopened.State.Business.ConsumedContacts.Contains(entry.ContactKey));
+            var interrupted = simulation.CreateKernel(Rules, new PublicationFailure(reopened, true));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => interrupted.StepAsync(GraphTestWorld.Time(2)).AsTask());
+            EqualEvent(baseline.LastCompletion!.Event, reopened.PendingEvent!);
+            Assert.Equal(GraphTestWorld.Instant(2, 1), reopened.PendingEvent!.TargetInstant);
+        }
+        using (var reopened = SpatialDurableHistory.Open(store.Path, simulation)) {
+            Assert.Single(reopened.State.Business.ConsumedContacts);
+            Assert.Single(reopened.State.Contacts.Entries);
+            var forbidden = new ForbiddenPlanning();
+            var recovered = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>(
+                reopened, Rules, [forbidden], simulation.Fold, simulation.Complete, simulation.Validate);
+            Assert.True(recovered.RecoverPending());
+            Assert.Equal(0, forbidden.Calls);
+            EqualWorld(baseline.World, recovered.World);
+            Assert.Equal(baseline.Cursor, recovered.Cursor);
+        }
+        using var final = SpatialDurableHistory.Open(store.Path, simulation);
+        Assert.Equal(2, final.State.Business.ConsumedContacts.Count);
+        Assert.Empty(final.State.Contacts.Entries);
+        EqualWorld(baseline.World, final.State);
     }
 
     internal static (SpatialSimulation Simulation, SpatialSimulationState World) Fixture() {
@@ -218,7 +285,7 @@ public sealed class SpatialPredictionPersistenceTests {
             new PassageEntryChangeScheduledFact(GraphTestWorld.Bridge, GraphTestWorld.Time(7),
                 new PassageEntryPatch(false, null)));
         var simulation = new SpatialSimulation(definition);
-        return (simulation, simulation.CreateGenesis(business, ModelTime.Zero));
+        return (simulation, simulation.Rebuild(business, ModelTime.Zero));
     }
 
     internal static KernelCursor Cursor() => new(new WorldVersion(17, 0), ModelTime.Zero, null, null);
@@ -229,32 +296,21 @@ public sealed class SpatialPredictionPersistenceTests {
             actual.Contacts.Entries.Select(value => (value.ContactKey, value.Due, value.Kind)));
     }
 
-    private static void EqualEvent(OccurrenceEvent<SpatialSimulationFact> expected,
-        OccurrenceEvent<SpatialSimulationFact> actual) {
+    private static void EqualEvent(OccurrenceEvent<GraphSpatialFact> expected,
+        OccurrenceEvent<GraphSpatialFact> actual) {
         Assert.Equal(expected.CauseKey, actual.CauseKey);
         Assert.Equal(expected.TargetInstant, actual.TargetInstant);
-        Assert.Equal(expected.Facts.Count, actual.Facts.Count);
-        for (int index = 0; index < expected.Facts.Count; index++) {
-            if (expected.Facts[index] is SpatialBusinessFact business) {
-                Assert.Equal(business.Fact, Assert.IsType<SpatialBusinessFact>(actual.Facts[index]).Fact);
-            } else {
-                var replacement = Assert.IsType<ContactPredictionsReplaced>(expected.Facts[index]);
-                var restored = Assert.IsType<ContactPredictionsReplaced>(actual.Facts[index]);
-                Assert.Equal(replacement.Passages, restored.Passages);
-                Assert.Equal(replacement.Predictions.Select(value => (value.ContactKey, value.Due, value.Kind)),
-                    restored.Predictions.Select(value => (value.ContactKey, value.Due, value.Kind)));
-            }
-        }
+        Assert.Equal(expected.Facts, actual.Facts);
     }
 
-    internal sealed class ForbiddenPlanning : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
+    internal sealed class ForbiddenPlanning : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
         public int Calls { get; private set; }
         public IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> Forecast(SpatialSimulationState world,
             SimulationRules rules) {
             Calls++;
             throw new InvalidOperationException("Recovery read candidates.");
         }
-        public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(SpatialSimulationState world,
+        public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(SpatialSimulationState world,
             OccurrenceCandidate<SpatialOccurrenceData> winner, CancellationToken cancellationToken) {
             Calls++;
             throw new InvalidOperationException("Recovery planned an action or called its Player.");
@@ -265,26 +321,26 @@ public sealed class SpatialPredictionPersistenceTests {
 
     private sealed record NewcomerData : SpatialOccurrenceData;
 
-    private sealed class NewcomerRule : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
+    private sealed class NewcomerRule : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
         public IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> Forecast(SpatialSimulationState world,
             SimulationRules rules) => world.Business.Entities.Single(entity => entity.Id == new EntityId("bob")).MovementGeneration == 0
             ? [new OccurrenceCandidate<SpatialOccurrenceData>(CandidateKey.FromUtf8("test/newcomer"),
                 new CandidateDue(GraphTestWorld.Time(1)), new NewcomerData())]
             : [];
 
-        public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(SpatialSimulationState world,
+        public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(SpatialSimulationState world,
             OccurrenceCandidate<SpatialOccurrenceData> winner, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>([
-                new SpatialBusinessFact(new TraversalStartedFact(new EntityId("bob"), GraphTestWorld.Bridge, GraphTestWorld.B, 1)),
+            ValueTask.FromResult(new TransitionDraft<GraphSpatialFact>([
+                new TraversalStartedFact(new EntityId("bob"), GraphTestWorld.Bridge, GraphTestWorld.B, 1),
             ]));
     }
 
     private sealed class PublicationFailure(SpatialDurableHistory inner, bool failState)
-        : IOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> {
+        : IOccurrenceHistory<SpatialSimulationState, GraphSpatialFact> {
         public SpatialSimulationState State => inner.State;
         public KernelCursor Cursor => inner.Cursor;
-        public OccurrenceEvent<SpatialSimulationFact>? PendingEvent => inner.PendingEvent;
-        public void CommitEvent(OccurrenceEvent<SpatialSimulationFact> occurrence) {
+        public OccurrenceEvent<GraphSpatialFact>? PendingEvent => inner.PendingEvent;
+        public void CommitEvent(OccurrenceEvent<GraphSpatialFact> occurrence) {
             inner.CommitEvent(occurrence);
             if (!failState) { throw new InjectedFailure(); }
         }

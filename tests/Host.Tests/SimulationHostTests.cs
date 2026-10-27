@@ -43,7 +43,7 @@ public sealed class SimulationHostTests {
             new SimulationRules(42, 100),
             [new CounterRule(limit, firstDue)],
             (world, _, fact) => new CounterWorld(checked(world.Count + fact)),
-            (_, _, draft) => draft,
+            (_, _, _, folded) => folded,
             (_, _) => { });
     }
 

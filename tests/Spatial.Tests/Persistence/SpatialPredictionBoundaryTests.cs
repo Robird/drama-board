@@ -13,14 +13,20 @@ public sealed class SpatialPredictionBoundaryTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Cold_state_open_rejects_wrong_generation_or_expired_contact_without_a_step(bool staleGeneration) {
+    public void Cold_open_discards_old_runtime_cache_and_rebuilds_from_valid_business(bool staleGeneration) {
         using var store = new TemporaryStore();
         var (simulation, initial) = Fixture();
         SpatialSimulationState invalid = WithInvalidContact(initial, staleGeneration, GraphTestWorld.Time(-1));
-        using (SpatialDurableHistory.Create(store.Path, invalid, Cursor())) { }
+        // This deliberately represents an obsolete cache. Only its valid Business can reach disk.
+        using (var created = SpatialDurableHistory.Create(store.Path, invalid, Cursor(), simulation)) {
+            EqualWorld(initial, created.State);
+        }
 
-        using var reopened = SpatialDurableHistory.Open(store.Path);
-        Assert.Throws<InvalidOperationException>(() => simulation.CreateKernel(Rules, reopened));
+        using var reopened = SpatialDurableHistory.Open(store.Path, simulation);
+        EqualWorld(initial, reopened.State);
+        Assert.NotSame(initial.Contacts, reopened.State.Contacts);
+        Assert.NotSame(invalid.Contacts, reopened.State.Contacts);
+        simulation.CreateKernel(Rules, reopened);
         Assert.Equal(Cursor(), reopened.Cursor);
         Assert.Null(reopened.PendingEvent);
     }
@@ -32,8 +38,11 @@ public sealed class SpatialPredictionBoundaryTests {
         var (simulation, initial) = Fixture();
         SpatialSimulationState invalid = WithInvalidContact(initial, staleGeneration, GraphTestWorld.Time(-1));
 
-        Assert.Throws<InvalidOperationException>(() => SimulationReplay.Replay<SpatialSimulationState, SpatialSimulationFact>(
-            invalid, 17, ModelTime.Zero, [], simulation.Fold, simulation.Validate));
+        Assert.Throws<InvalidOperationException>(() => SimulationReplay.Replay<SpatialSimulationState, GraphSpatialFact>(
+            invalid, 17, ModelTime.Zero, [], simulation.Fold, simulation.Complete, simulation.Validate));
+        Assert.Throws<InvalidOperationException>(() => SimulationFork.Create(
+            invalid, ModelTime.Zero, new InMemoryJournal<GraphSpatialFact>(17), 0, 18, Rules,
+            simulation.Fold, simulation.Complete, simulation.Validate));
     }
 
     [Theory]
@@ -42,19 +51,18 @@ public sealed class SpatialPredictionBoundaryTests {
     public void Pending_cold_recovery_validates_the_target_time_and_generation_before_state_publication(bool staleGeneration) {
         using var store = new TemporaryStore();
         var (simulation, initial) = Fixture();
-        OccurrenceEvent<SpatialSimulationFact> invalid = InvalidEvent(initial, staleGeneration);
-        using (var created = SpatialDurableHistory.Create(store.Path, initial, Cursor())) {
-            // Deliberately malformed external E: bypass production Complete to test the recovery boundary.
+        OccurrenceEvent<GraphSpatialFact> invalid = InvalidEvent(initial, staleGeneration);
+        using (var created = SpatialDurableHistory.Create(store.Path, initial, Cursor(), simulation)) {
+            // Deliberately malformed business E: recovery must reject the facts or their final boundary.
             created.CommitEvent(invalid);
         }
 
-        using (var reopened = SpatialDurableHistory.Open(store.Path)) {
+        using (var reopened = SpatialDurableHistory.Open(store.Path, simulation)) {
             var forbidden = new ForbiddenPlanning();
-            var kernel = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact>(
+            var kernel = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>(
                 reopened, Rules, [forbidden], simulation.Fold,
-                (_, _, _) => throw new InvalidOperationException("Recovery called Complete."), simulation.Validate);
-            var error = Assert.Throws<InvalidOperationException>(() => kernel.RecoverPending());
-            Assert.DoesNotContain("Complete", error.Message);
+                simulation.Complete, simulation.Validate);
+            Assert.Throws<InvalidOperationException>(() => kernel.RecoverPending());
             Assert.True(kernel.IsFaulted);
             Assert.Equal(0, forbidden.Calls);
             EqualWorld(initial, kernel.World);
@@ -62,7 +70,7 @@ public sealed class SpatialPredictionBoundaryTests {
             Assert.NotNull(reopened.PendingEvent);
         }
 
-        using var stillPending = SpatialDurableHistory.Open(store.Path);
+        using var stillPending = SpatialDurableHistory.Open(store.Path, simulation);
         Assert.NotNull(stillPending.PendingEvent);
         EqualWorld(initial, stillPending.State);
         Assert.Equal(Cursor(), stillPending.Cursor);
@@ -73,11 +81,11 @@ public sealed class SpatialPredictionBoundaryTests {
     [InlineData(true)]
     public void Replay_validates_each_full_batch_at_its_own_time(bool staleGeneration) {
         var (simulation, initial) = Fixture();
-        OccurrenceEvent<SpatialSimulationFact> invalid = InvalidEvent(initial, staleGeneration);
-        var batch = new JournalBatch<SpatialSimulationFact>(invalid.TargetInstant, invalid.CauseKey, invalid.Facts);
+        OccurrenceEvent<GraphSpatialFact> invalid = InvalidEvent(initial, staleGeneration);
+        var batch = new JournalBatch<GraphSpatialFact>(invalid.TargetInstant, invalid.CauseKey, invalid.Facts);
 
         Assert.Throws<InvalidOperationException>(() => SimulationReplay.Replay(
-            initial, 17, ModelTime.Zero, [batch], simulation.Fold, simulation.Validate));
+            initial, 17, ModelTime.Zero, [batch], simulation.Fold, simulation.Complete, simulation.Validate));
     }
 
     [Fact]
@@ -86,7 +94,7 @@ public sealed class SpatialPredictionBoundaryTests {
         Assert.Single(initial.Contacts.Entries);
         Assert.Equal(GraphTestWorld.Time(5), initial.Contacts.Entries[0].Due);
 
-        Assert.Throws<InvalidOperationException>(() => simulation.CreateGenesis(initial.Business, GraphTestWorld.Time(6)));
+        Assert.Throws<InvalidOperationException>(() => simulation.Rebuild(initial.Business, GraphTestWorld.Time(6)));
     }
 
     [Theory]
@@ -101,9 +109,9 @@ public sealed class SpatialPredictionBoundaryTests {
             ? new PassageEntryChangeScheduledFact(GraphTestWorld.Bridge, GraphTestWorld.Time(10), new PassageEntryPatch(false, null))
             : new TraversalStartedFact(new EntityId("alice"), GraphTestWorld.Bridge, GraphTestWorld.A, 2));
         var simulation = new SpatialSimulation(definition);
-        Assert.Empty(simulation.CreateGenesis(business, ModelTime.Zero).Contacts.Entries);
+        Assert.Empty(simulation.Rebuild(business, ModelTime.Zero).Contacts.Entries);
 
-        Assert.Throws<InvalidOperationException>(() => simulation.CreateGenesis(business, GraphTestWorld.Time(11)));
+        Assert.Throws<InvalidOperationException>(() => simulation.Rebuild(business, GraphTestWorld.Time(11)));
     }
 
     private static SpatialSimulationState WithInvalidContact(SpatialSimulationState initial,
@@ -117,15 +125,16 @@ public sealed class SpatialPredictionBoundaryTests {
         return new SpatialSimulationState(initial.Business, new SpatialContactPredictions([replacement]));
     }
 
-    private static OccurrenceEvent<SpatialSimulationFact> InvalidEvent(SpatialSimulationState initial, bool staleGeneration) {
-        // The expired-Due case intentionally has no replacement fact: an unrelated business event
+    private static OccurrenceEvent<GraphSpatialFact> InvalidEvent(SpatialSimulationState initial, bool staleGeneration) {
+        // The expired-Due case intentionally has no movement fact: an unrelated business event
         // leaves the old contact at t=5, so only validation against the batch's t=6 catches it.
-        SpatialSimulationFact fact = staleGeneration
-            ? new ContactPredictionsReplaced([GraphTestWorld.Bridge],
-                WithInvalidContact(initial, true, ModelTime.Zero).Contacts.Entries)
-            : new SpatialBusinessFact(new PassageEntryAccessChangedFact(GraphTestWorld.Bridge,
-                new PassageEntryAccess(false, true)));
-        return new OccurrenceEvent<SpatialSimulationFact>(CandidateKey.FromUtf8("malformed-test-event"),
-            GraphTestWorld.Instant(staleGeneration ? 1 : 6), [fact]);
+        ContactPrediction original = Assert.Single(initial.Contacts.Entries);
+        PassageContactKey key = original.ContactKey;
+        GraphSpatialFact fact = staleGeneration
+            ? new PassageContactOccurredFact(new PassageContactKey(key.PassageId, key.EntityA,
+                key.MovementGenerationA + 1, key.EntityB, key.MovementGenerationB), original.Kind)
+            : new PassageEntryAccessChangedFact(GraphTestWorld.Bridge, new PassageEntryAccess(false, true));
+        return new OccurrenceEvent<GraphSpatialFact>(CandidateKey.FromUtf8("malformed-test-event"),
+            GraphTestWorld.Instant(staleGeneration ? 5 : 6), [fact]);
     }
 }

@@ -1,8 +1,8 @@
-# 持久预测对象：方向与实施入口
+# 预测对象：方向与实施入口
 
-> 2026-10-27。早期草稿已经由[局部预测重构方案](local-prediction-refactor.md)取代；此页仅保留方向与导航，不维护第二份切片清单。空间首阶段 S1/S2 已实施，见[验收记录](../experiments/local-prediction-acceptance.md)。
+> 2026-10-27。早期草稿已经由[局部预测重构](local-prediction-refactor.md)及后续[运行时缓存方案](runtime-derived-predictions.md)取代；此页仅保留方向与导航，不维护第二份切片清单。
 
-最新裁决：运行中继续局部维护，但纯派生预测改为冷开重建，不再强制持久化。下一轮先实施[运行时缓存重构](runtime-derived-predictions.md)，再接第二消费者；当前代码仍保留上一轮的持久 Contacts。
+当前空间实现：运行中局部维护，纯派生预测冷开重建，不再持久化 Contacts；见[缓存验收](../experiments/runtime-derived-predictions-acceptance.md)。下一步协调 ResourceCycle 第二消费者，保留应用优先级与角色唤醒。
 
 用户已定方向是在扩大世界之前，让子系统维护预测过程与输出，通过事件筛出受影响范围，再重算这部分预测。第一版允许粗粒度或恒 true；没有旧存档兼容负担。
 

@@ -1,6 +1,6 @@
 # 局部预测重构：空间首阶段验收
 
-> 本记录对应 `21379a1` 的持久预测实现。后续用户已选定[运行时预测缓存重构](../design/runtime-derived-predictions.md)；“恢复不运行 Complete”和“E 保存预测替换”是本基线的证据，不再是下一轮目标。新方案目前未实施。
+> 历史记录：本文对应 `21379a1` 的持久预测实现。当前已改为[运行时预测缓存](../design/runtime-derived-predictions.md)，见[新验收记录](runtime-derived-predictions-acceptance.md)；下文“恢复不运行 Complete”和“E 保存预测替换”仅为旧基线证据，源码链接指向继续演化后的文件。
 
 本记录对应[实施方案](../design/local-prediction-refactor.md)的 S1/S2。空间候选读取已改为持久接触输出的投影；业务变化通过 Kernel 的唯一 Complete 接缝重算受影响通道，并把结果与业务事实一起发布。ResourceCycle 本轮仅适配共享签名；其预测维护迁入 Complete 和 Forecast 命名收敛仍是 S3。
 
@@ -8,7 +8,7 @@
 
 - [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs)：`CreateGenesis` 初始化预测；`CreateKernel` 安装全部空间规则和同一个 Complete；自定义发生源经 `additionalRules` 加入，返回 `SpatialBusinessFact` 包装的业务决定。
 - [SpatialSimulationState](../../src/Spatial/State/SpatialSimulationState.cs)：Business 与 Contacts 为同根下独立不可变子图。Arrival/schedule 继续使用业务记录中的 Due，不复制权威数据。
-- [SpatialSimulationFact](../../src/Spatial/Facts/SpatialSimulationFact.cs)：Complete 在完整业务批次末尾至多追加一次通道输出替换；空输出清空指定通道，其他通道保持原输出。没有持久 dirty 队列或通用过程注册表。
+- `SpatialSimulationFact`（仅存在于 `21379a1`）：Complete 在完整业务批次末尾至多追加一次通道输出替换；空输出清空指定通道，其他通道保持原输出。没有持久 dirty 队列或通用过程注册表。
 - [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)：显式 Complete 位于 Plan 与完整 Fold/Validate 之间；校验接收完成边界 ModelTime。恢复只 Fold 已记录 facts。
 
 新游戏先调用 `CreateGenesis(business, genesisTime)`，再把结果与初始 cursor 放入 history。重开已有 S 时直接加载保存的组合根，经工厂创建 Kernel；有 pending E 则调用 `RecoverPending`，不得重新调用 CreateGenesis。实际游戏存档产品不在本片范围，测试使用[专属 DG adapter](../../tests/Spatial.Tests/TestSupport/SpatialDurableHistory.cs)验证单根发布。

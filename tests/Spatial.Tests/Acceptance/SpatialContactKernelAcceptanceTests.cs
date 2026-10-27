@@ -38,13 +38,13 @@ public sealed class SpatialContactKernelAcceptanceTests {
                 speedSnapshot: 3,
                 GraphTestWorld.Time(0)));
         var simulation = new SpatialSimulation(definition);
-        var root = simulation.CreateGenesis(genesis, ModelTime.Zero);
-        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(
+        var root = simulation.Rebuild(genesis, ModelTime.Zero);
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(
             root, new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         var kernel = new SimulationKernel<
             SpatialSimulationState,
             SpatialOccurrenceData,
-            SpatialSimulationFact>(
+            GraphSpatialFact>(
                 history,
                 new SimulationRules(worldSeed: 17, maxTransitionsPerModelTime: 100),
                 [new SpatialContactOccurrenceRule(definition)],
@@ -57,7 +57,7 @@ public sealed class SpatialContactKernelAcceptanceTests {
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(1)));
         Assert.Single(kernel.World.Business.ConsumedContacts);
         Assert.Single(history.CompletedEvents);
-        Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts.OfType<SpatialBusinessFact>()).Fact);
+        Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts));
 
         ReplayResult<SpatialSimulationState> replay = SimulationReplay.Replay(
             root,
@@ -65,6 +65,7 @@ public sealed class SpatialContactKernelAcceptanceTests {
             genesisTime: ModelTime.Zero,
             Batches(history),
             simulation.Fold,
+            simulation.Complete,
             simulation.Validate);
 
         Assert.Equal(kernel.World, replay.World);
@@ -72,8 +73,8 @@ public sealed class SpatialContactKernelAcceptanceTests {
         Assert.Equal(kernel.LastCommittedInstant, replay.LastCommittedInstant);
     }
 
-    private static IReadOnlyList<JournalBatch<SpatialSimulationFact>> Batches(
-        InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> history) =>
-        history.CompletedEvents.Select(value => new JournalBatch<SpatialSimulationFact>(
+    private static IReadOnlyList<JournalBatch<GraphSpatialFact>> Batches(
+        InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact> history) =>
+        history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
             value.TargetInstant, value.CauseKey, value.Facts)).ToArray();
 }

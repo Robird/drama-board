@@ -92,6 +92,6 @@ internal static class TimerModel {
             simulationRules ?? new SimulationRules(worldSeed: 42, maxTransitionsPerModelTime: 100),
             [rule],
             Fold,
-            (_, _, draft) => draft,
+            (_, _, _, folded) => folded,
             Validate);
 }

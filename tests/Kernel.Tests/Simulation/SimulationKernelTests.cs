@@ -222,7 +222,7 @@ public sealed class SimulationKernelTests {
     public async Task EqualButDifferentReferenceStateCannotReplaceInstalledWorld() {
         var state = new ValueWorld(7);
         var history = new ReferenceHistory(state);
-        var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, (_, _, draft) => draft, (_, _) => { });
+        var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, (_, _, _, folded) => folded, (_, _) => { });
         history.State = new ValueWorld(7);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
         Assert.Same(state, kernel.World);
@@ -367,9 +367,9 @@ public sealed class SimulationKernelTests {
     private static ValueTask<TransitionDraft<int>> Planned(params int[] facts) => ValueTask.FromResult(new TransitionDraft<int>(facts));
     private static SimulationKernel<int, int, int> Kernel(IOccurrenceHistory<int, int> history, IEnumerable<TestRule> occurrenceRules,
         Func<int, LogicalInstant, int, int>? fold = null, Action<int, ModelTime>? validate = null, SimulationRules? rules = null,
-        Func<int, LogicalInstant, TransitionDraft<int>, TransitionDraft<int>>? complete = null) =>
+        Func<int, LogicalInstant, IReadOnlyList<int>, int, int>? complete = null) =>
         new(history, rules ?? new(42, 100), occurrenceRules, fold ?? ((world, _, fact) => world + fact),
-            complete ?? ((_, _, draft) => draft), validate ?? ((_, _) => { }));
+            complete ?? ((_, _, _, folded) => folded), validate ?? ((_, _) => { }));
 
     private sealed class TestRule : IOccurrenceRule<int, int, int> {
         public TestRule(Func<int, IReadOnlyList<OccurrenceCandidate<int>>> forecast,

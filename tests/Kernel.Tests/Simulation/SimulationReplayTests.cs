@@ -22,6 +22,7 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             fold: (world, instant, fact) => world + fact,
+            complete: (_, _, _, folded) => folded,
             validate: (world, _) => validatedWorlds.Add(world));
 
         Assert.Equal("ABC", result.World);
@@ -39,6 +40,7 @@ public sealed class SimulationReplayTests {
             genesisTime: new ModelTime(3),
             batches: [],
             fold: (world, _, _) => world,
+            complete: (_, _, _, folded) => folded,
             validate: (_, _) => { });
 
         Assert.Equal(5, result.World);
@@ -56,6 +58,7 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             fold: (world, _, fact) => world + fact,
+            complete: (_, _, _, folded) => folded,
             validate: (_, _) => { }));
     }
 
@@ -100,6 +103,7 @@ public sealed class SimulationReplayTests {
             newLineageId: 99,
             simulationRules,
             TimerModel.Fold,
+            (_, _, _, folded) => folded,
             TimerModel.Validate);
 
         Assert.Equal(new WorldVersion(99, 2), fork.Replay.Version);
@@ -130,6 +134,7 @@ public sealed class SimulationReplayTests {
             newLineageId: 1,
             simulationRules,
             TimerModel.Fold,
+            (_, _, _, folded) => folded,
             TimerModel.Validate));
     }
 
@@ -157,6 +162,7 @@ public sealed class SimulationReplayTests {
             [forwardAuditRule],
             AuditBatches(journal),
             TimerModel.Fold,
+            (_, _, _, folded) => folded,
             TimerModel.Validate);
         ReplayResult<TimerWorld> reverse = SchedulerConformance.Verify(
             genesis,
@@ -166,6 +172,7 @@ public sealed class SimulationReplayTests {
             [reverseAuditRule],
             AuditBatches(journal),
             TimerModel.Fold,
+            (_, _, _, folded) => folded,
             TimerModel.Validate);
 
         Assert.Equal(kernel.World.FiredTimers, forward.World.FiredTimers);
@@ -201,10 +208,10 @@ public sealed class SimulationReplayTests {
 
         Assert.Throws<InvalidOperationException>(() => SchedulerConformance.Verify(
             genesis, 1, ModelTime.Zero, rules, [new TimerRule()], [wrongCause],
-            TimerModel.Fold, TimerModel.Validate));
+            TimerModel.Fold, (_, _, _, folded) => folded, TimerModel.Validate));
         Assert.Throws<InvalidOperationException>(() => SchedulerConformance.Verify(
             genesis, 1, ModelTime.Zero, rules, [new TimerRule()], [wrongDue],
-            TimerModel.Fold, TimerModel.Validate));
+            TimerModel.Fold, (_, _, _, folded) => folded, TimerModel.Validate));
     }
 
     [Fact]
@@ -229,6 +236,7 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             TimerModel.Fold,
+            complete: (_, _, _, folded) => folded,
             validate: (_, _) => { });
         InvalidOperationException conformanceError = Assert.Throws<InvalidOperationException>(() =>
             SchedulerConformance.Verify(
@@ -239,6 +247,7 @@ public sealed class SimulationReplayTests {
                 [new TimerRule(throwIfPlanCalled: true)],
                 batches,
                 TimerModel.Fold,
+                complete: (_, _, _, folded) => folded,
                 validate: (_, _) => { }));
 
         Assert.Equal(["A", "A"], ordinary.World.FiredTimers);

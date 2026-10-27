@@ -1,17 +1,17 @@
 # 派生预测改为运行时缓存
 
-> 2026-10-27。用户已认可“基础真相与已作出的决定持久化，纯派生预测在加载后重建”的方向。本轮只形成实施方案，代码尚未改变。本文接替[上一轮方案](local-prediction-refactor.md)中预测落盘、预测替换 facts 及恢复禁止重算的选择；局部发现算法、时间语义和 E/S 发布边界继续保留。
+> 2026-10-27，Kernel/Spatial 已实施，见[验收记录](../experiments/runtime-derived-predictions-acceptance.md)。基础真相与已作出的决定持久化，纯派生预测在加载后重建。本文接替[上一轮方案](local-prediction-refactor.md)中预测落盘、预测替换 facts 及恢复禁止重算的选择；局部发现算法、时间语义和 E/S 发布边界继续保留。
 
 ## 1. 目标与当前事实
 
 把两个独立决策分开：**运行中增量维护**，**冷开时全量重建**。不回到每次读取候选都全量求交，也不要求未来预测属于持久世界真相。
 
-当前基线为 `21379a1`：Spatial 的 `Business + Contacts` 同根持久化，Complete 在业务 facts 后追加 `ContactPredictionsReplaced`；E/S 冷开与全量参考已验收，见[原验收记录](../experiments/local-prediction-acceptance.md)。本次调整保留其有价值的局部维护与测试，只改变派生数据的存储和完成边界。没有旧存档兼容要求，不设计双格式或迁移器。
+重构前基线为 `21379a1`：Spatial 的 `Business + Contacts` 同根持久化，Complete 在业务 facts 后追加 `ContactPredictionsReplaced`；E/S 冷开与全量参考曾验收，见[原验收记录](../experiments/local-prediction-acceptance.md)。本次调整保留局部维护与测试，只改变派生数据的存储和完成边界。没有旧存档兼容要求，不设计双格式或迁移器。
 
-当前实现需特别注意：
+迁移涉及的接缝：
 
-- [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs) 的 genesis 已有全量发现，Complete 已有逐 fact 旧/新范围收集；两者可提取复用。
-- [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的 Complete 当前返回 facts；新目标需要它在业务 Fold 后返回准备好的运行时世界。
+- [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs) 通过 Rebuild 全量发现，Complete 保留逐 fact 旧/新范围收集与局部维护。
+- [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的 Complete 在业务 Fold 后返回准备好的运行时世界。
 - [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs) 要求 State 返回已安装实例；不能把 State getter 改为每次创建 wrapper。
 - ResourceCycle 仍把 Forecasts 存进世界及 facts，且另一个会话正在做多角色化。本片只机械适配共享 Kernel 签名，随后再协调迁移。
 
@@ -47,7 +47,7 @@
 
 删除 Contacts、ContactPrediction、SpatialSimulationState 的 durable 标记；删除 `SpatialSimulationFact` 包装层和 `ContactPredictionsReplaced`。两空间 rule 使用 `<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>`。缓存结构继续保持快照不可变，读取只投影候选。
 
-建议把现有 Complete 改为以下单一接缝，名称可随实现调整，**不保留两条完成流水线**：
+Complete 采用以下单一接缝，**不保留两条完成流水线**：
 
 ```csharp
 Func<TWorld, LogicalInstant, IReadOnlyList<TFact>, TWorld, TWorld> complete
@@ -116,7 +116,7 @@ Replay 每批同样 Fold → Complete → Validate；其初始输入必须已经
 
 ## 7. 实施顺序与委派边界
 
-下一轮先重新读取 PROJECT-STATE、本文、工作树与 ResourceCycle 现状，确认另一会话变更；旧方案的 S3 不再按“预测结果继续落盘”推进。
+以下为本片的实施分工。后续迁移 ResourceCycle 时重新读取 PROJECT-STATE、工作树与应用现状，确认另一会话变更；旧方案的 S3 不再按“预测结果继续落盘”推进。
 
 1. **Kernel 接缝**：把 Complete 移至 Fold 后并返回运行时世界；normal/pending/replay/conformance/fork 统一调用；Host、测试与 ResourceCycle 先机械接线。验证 E/S 失败、取消、重入、同 tick 和带时间校验不退化。
 2. **Spatial 运行时模型**：保留局部发现，移除持久预测及替换事实；提供 Rebuild/Complete/Validate，候选只读；迁移所有真实调用点。同步删除旧测试适配中多余包装。
@@ -140,4 +140,4 @@ ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原
 7. 调整派生计算但保持业务事实语义有效的定向测试，证明冷开用当前算法重建而非读取旧缓存；不要把它称为任意平衡版本兼容。SpeedSnapshot/RequiredTicks 的既有语义有明确说明。
 8. 运行 solution Release 构建、Schema Verify 与全套测试；记录本轮实际结果，不能沿用基线的通过数量作为新证据。
 
-本轮文档阶段只核对当前代码、恢复合同和本地链接，没有运行或修改产品代码。独立复核确认运行时 wrapper/持久 Business 分离可以保留现有三泛型 Kernel，且先重建旧 S 再恢复 pending 无需新增未就绪状态协议。
+实施与验证结果见[缓存验收记录](../experiments/runtime-derived-predictions-acceptance.md)。第 7 项采用缺失/陈旧运行时缓存重新落盘并冷开的定向实验，证明读取当前业务重新发现；没有为测试增设产品算法注入接口，也不声称验证了任意跨算法版本兼容。

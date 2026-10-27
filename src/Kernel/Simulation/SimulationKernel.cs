@@ -10,20 +10,21 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
     private readonly IReadOnlyList<IOccurrenceRule<TWorld, TCandidateData, TFact>> _rules;
     private readonly IOccurrenceHistory<TWorld, TFact> _history;
     private readonly Func<TWorld, LogicalInstant, TFact, TWorld> _fold;
-    private readonly Func<TWorld, LogicalInstant, TransitionDraft<TFact>, TransitionDraft<TFact>> _complete;
+    private readonly Func<TWorld, LogicalInstant, IReadOnlyList<TFact>, TWorld, TWorld> _complete;
     private readonly Action<TWorld, ModelTime> _validate;
     private TWorld _world;
     private KernelCursor _cursor;
     private int _stepInFlight;
 
     /// <summary>Loads a completed boundary. Complete pending work explicitly with RecoverPending.</summary>
-    /// <param name="complete">Pure synchronous completion of a business draft before Event publication.
-    /// Must preserve business decisions and fact order, and must not mutate the published world.
-    /// Called once after normal planning; never called during pending recovery or replay.</param>
+    /// <param name="complete">Pure synchronous preparation of derived state after business facts have been folded.
+    /// Must preserve the folded business state and recorded facts, preparing only derived state;
+    /// must not mutate published worlds.
+    /// Called once per normal or recovered batch; replay also repeats this side-effect-free computation.</param>
     public SimulationKernel(IOccurrenceHistory<TWorld, TFact> history, SimulationRules simulationRules,
         IEnumerable<IOccurrenceRule<TWorld, TCandidateData, TFact>> rules,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Func<TWorld, LogicalInstant, TransitionDraft<TFact>, TransitionDraft<TFact>> complete,
+        Func<TWorld, LogicalInstant, IReadOnlyList<TFact>, TWorld, TWorld> complete,
         Action<TWorld, ModelTime> validate) {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(simulationRules);
@@ -62,7 +63,7 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
         return StepCoreAsync(notAfter, cancellationToken);
     }
 
-    /// <summary>Completes only the published pending Event without Forecast, Plan, Complete or Player calls.
+    /// <summary>Completes only the published pending Event without Forecast, Plan or Player calls; pure Complete runs after Fold.
     /// Returns false if none exists. Cancellation is checked before recovery begins.</summary>
     public bool RecoverPending(CancellationToken cancellationToken = default) {
         BeginOperation();
@@ -113,8 +114,6 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
             TransitionDraft<TFact> draft = await selection.Owner
                 .PlanSelectedAsync(_world, winner, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The selected occurrence rule returned a null draft.");
-            draft = _complete(_world, nextInstant, draft)
-                ?? throw new InvalidOperationException("The completion delegate returned a null draft.");
             TWorld scratch = FoldAndValidate(nextInstant, draft.Facts);
             var occurrence = new OccurrenceEvent<TFact>(winner.Key, nextInstant, draft.Facts);
             cancellationToken.ThrowIfCancellationRequested();
@@ -136,6 +135,8 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
             scratch = _fold(scratch, instant, fact);
             if (scratch is null) { throw new InvalidOperationException("The fact fold returned a null HostWorld."); }
         }
+        scratch = _complete(_world, instant, facts, scratch);
+        if (scratch is null) { throw new InvalidOperationException("The completion delegate returned a null HostWorld."); }
         _validate(scratch, instant.ModelTime);
         return scratch;
     }

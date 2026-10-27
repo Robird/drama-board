@@ -10,7 +10,7 @@ namespace DramaBoard.Spatial;
 /// The due time is the start of the model tick containing the intersection, rounded toward negative infinity.
 /// </summary>
 public sealed class SpatialContactOccurrenceRule :
-    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
+    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
     private readonly GraphDefinition _definition;
 
     public SpatialContactOccurrenceRule(GraphDefinition definition) {
@@ -30,7 +30,7 @@ public sealed class SpatialContactOccurrenceRule :
                 new PassageContactOccurrenceData(prediction.ContactKey, prediction.Kind))).ToArray());
     }
 
-    public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(
+    public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(
         SpatialSimulationState snapshot,
         OccurrenceCandidate<SpatialOccurrenceData> winner,
         CancellationToken cancellationToken) {
@@ -58,8 +58,8 @@ public sealed class SpatialContactOccurrenceRule :
                 "The selected passage contact does not match current segment truth.");
         }
 
-        return ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(
-            [new SpatialBusinessFact(new PassageContactOccurredFact(data.ContactKey, data.Kind))]));
+        return ValueTask.FromResult(new TransitionDraft<GraphSpatialFact>(
+            [new PassageContactOccurredFact(data.ContactKey, data.Kind)]));
     }
 
     internal static CandidateKey CreateCandidateKey(PassageContactKey key) {

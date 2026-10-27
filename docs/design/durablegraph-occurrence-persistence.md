@@ -5,7 +5,7 @@
 > 状态：2026-09-16。活跃核心保留独立 E/S、`IOccurrenceHistory` 与有限 [KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs) 的合同；FirstBoard adapter、完整世界与跨进程恢复是已归档的消费者映射，见[归档索引](../archive/firstboard-llm.md)。
 > 本文的 Kernel 合同仍是当前依据；涉及具体 FirstBoard 模型、Ruleset 和 adapter 的段落保留历史语境，原始消费者合同与施工顺序均在归档中。
 
-> 完成接缝更新（2026-10-27）：[局部预测重构](local-prediction-refactor.md)在 Plan 与完整 scratch-fold 之间加入纯同步 Complete；E 包含业务 facts 与已算好的预测替换。S/pending 的完整校验显式使用 cursor/目标 ModelTime；冷恢复不调用 Complete。空间测试专用 adapter 的实际同根冷开验收见[新记录](../experiments/local-prediction-acceptance.md)，不依赖归档 FirstBoard 的证据。
+> 完成接缝更新（2026-10-27）：[运行时预测缓存](runtime-derived-predictions.md)将 Complete 放在业务 Fold 之后、带时间 Validate 之前，返回准备好的运行时世界。Spatial 的 E 只含业务 facts，S 只保存 Business/cursor，Contacts 冷开重建；pending 和 Replay 允许纯 Complete，禁止重新 Plan/调用 Player。实际冷开证据见[缓存验收记录](../experiments/runtime-derived-predictions-acceptance.md)。
 
 ## 1. 保留什么，改变什么
 
@@ -67,8 +67,8 @@ FirstBoard 首片曾复用 `ScenarioInstance` 的 canonical 内容与 hash：保
 从已完成 S 取得 frozen World 和游标
 → Forecast / 选 winner / 检查 notAfter 与预算
 → PlanSelectedAsync（必要时调用 Player）
-→ Complete（补入预测维护结果，不再次调用 Player）
-→ 按顺序纯 fold 完整 facts，在目标 ModelTime 验证 scratch World
+→ 按顺序纯 fold 业务 facts
+→ Complete 准备派生缓存，在目标 ModelTime 验证 scratch World
 → 构造 E、next S，完成最后一次取消检查
 → CommitDomainEvent(E)
 → CommitDomainState(next S)       // 热路径直接复用 scratch
@@ -79,8 +79,8 @@ E 发布后至 S 发布之间不重新 Forecast，不再观察普通取消请求
 
 恢复入口先 `OpenExisting / Resume`，然后：
 
-- **S-head**：校验绑定与 S，直接交付；不 fold 历史、不调用 Player，也不自动创建新 E。
-- **E-head**：取得 DG 配对的前 S 与 pending E；校验 cause/目标时刻/预算与前 S 的关系，按 E 的 facts 纯 fold、验证并提交一个 S。既不重新选择 winner，也不调用 Plan/Player。
+- **S-head**：校验绑定与 S，重建运行时派生缓存后交付；不 fold 历史、不调用 Player，也不自动创建新 E。
+- **E-head**：取得 DG 配对的前 S 与 pending E，先重建前 S 的运行时世界；校验 cause/目标时刻/预算与前 S 的关系，按 E 的业务 facts 纯 fold、Complete、验证并提交一个 S。既不重新选择 winner，也不调用 Plan/Player。
 - E-head 的完成是已有工作的恢复，不受一次新的 `Step(notAfter)` 所选上界重新裁决。恢复可以在开始前取消而保持 E；开始提交后遵守相同不可取消区间。
 - 读取、绑定、纯 fold 或验证失败时报告并停止，未执行新的提交；不跳过 E、不自动回退、不生成伪成功 S。提交报错则可能已经推进 head，必须按下一节重开判定。跨版本的 pending 处理须满足声明的 Ruleset/Schema 兼容规则。
 

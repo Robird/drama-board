@@ -1,14 +1,12 @@
-using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>One authoritative future contact between current movement segments.</summary>
-[DurableType("DramaBoard.Spatial.ContactPrediction", 1)]
-public sealed partial class ContactPrediction : IDurableObject, IEquatable<ContactPrediction> {
-    [DurableField(1)] private readonly PassageContactKey _contactKey;
-    [DurableField(2)] private readonly ModelTime _due;
-    [DurableField(3)] private readonly PassageContactKind _kind;
+/// <summary>One derived future contact between current movement segments; never persisted.</summary>
+public sealed class ContactPrediction : IEquatable<ContactPrediction> {
+    private readonly PassageContactKey _contactKey;
+    private readonly ModelTime _due;
+    private readonly PassageContactKind _kind;
 
     public ContactPrediction(PassageContactKey contactKey, ModelTime due, PassageContactKind kind) {
         ArgumentNullException.ThrowIfNull(contactKey);
@@ -27,10 +25,9 @@ public sealed partial class ContactPrediction : IDurableObject, IEquatable<Conta
     public override int GetHashCode() => HashCode.Combine(ContactKey, Due, Kind);
 }
 
-/// <summary>Immutable contact output subtree. Empty passages still exist in GraphDefinition.</summary>
-[DurableType("DramaBoard.Spatial.SpatialContactPredictions", 1)]
-public sealed partial class SpatialContactPredictions : IDurableObject, IEquatable<SpatialContactPredictions> {
-    [DurableField(1)] private readonly List<ContactPrediction> _entries = [];
+/// <summary>Immutable runtime contact cache. Empty passages still exist in GraphDefinition.</summary>
+public sealed class SpatialContactPredictions : IEquatable<SpatialContactPredictions> {
+    private readonly List<ContactPrediction> _entries = [];
 
     public SpatialContactPredictions(IEnumerable<ContactPrediction> entries) {
         ArgumentNullException.ThrowIfNull(entries);
@@ -56,13 +53,12 @@ public sealed partial class SpatialContactPredictions : IDurableObject, IEquatab
     }
 }
 
-/// <summary>Single publication root for business state and its maintained contact outputs.</summary>
-[DurableType("DramaBoard.Spatial.SpatialSimulationState", 1)]
-public sealed partial class SpatialSimulationState : IDurableObject, IEquatable<SpatialSimulationState> {
-    [DurableField(1)] private readonly GraphSpatialState _business;
-    [DurableField(2)] private readonly SpatialContactPredictions _contacts;
+/// <summary>Immutable runtime wrapper joining durable business state and its derived contact cache.</summary>
+public sealed class SpatialSimulationState : IEquatable<SpatialSimulationState> {
+    private readonly GraphSpatialState _business;
+    private readonly SpatialContactPredictions _contacts;
 
-    /// <summary>Assembles a snapshot without predicting. New games use SpatialSimulation.CreateGenesis.</summary>
+    /// <summary>Assembles a runtime snapshot without predicting. Genesis and cold-open use SpatialSimulation.Rebuild.</summary>
     public SpatialSimulationState(GraphSpatialState business, SpatialContactPredictions contacts) {
         ArgumentNullException.ThrowIfNull(business);
         ArgumentNullException.ThrowIfNull(contacts);

@@ -14,6 +14,7 @@ public static class SimulationFork {
         long newLineageId,
         SimulationRules simulationRules,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
+        Func<TWorld, LogicalInstant, IReadOnlyList<TFact>, TWorld, TWorld> complete,
         Action<TWorld, ModelTime> validate) {
         ArgumentNullException.ThrowIfNull(sourceJournal);
         ArgumentNullException.ThrowIfNull(simulationRules);
@@ -26,6 +27,7 @@ public static class SimulationFork {
             genesisTime,
             prefixJournal.Batches,
             fold,
+            complete,
             validate);
         return new InMemoryForkResult<TWorld, TFact>(replay, simulationRules, prefixJournal);
     }

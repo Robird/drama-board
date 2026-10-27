@@ -3,25 +3,25 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.Spatial.Tests.TestSupport;
 
-/// <summary>Test-only publication root: business, predictions and the completed cursor share one State.</summary>
+/// <summary>Test-only disk root. Derived contacts are deliberately outside the persisted object graph.</summary>
 [DurableType("DramaBoard.Spatial.Tests.PublicationRoot", 1)]
 internal sealed partial class SpatialDurableRoot : IDurableObject {
-    [DurableField(1)] private readonly SpatialSimulationState _world;
+    [DurableField(1)] private readonly GraphSpatialState _business;
     [DurableField(2)] private readonly KernelCursor _cursor;
 
-    internal SpatialDurableRoot(SpatialSimulationState world, KernelCursor cursor) {
-        _world = world;
+    internal SpatialDurableRoot(GraphSpatialState business, KernelCursor cursor) {
+        _business = business;
         _cursor = cursor;
         Validate();
     }
 
-    internal SpatialSimulationState World => _world;
+    internal GraphSpatialState Business => _business;
     internal KernelCursor Cursor => _cursor;
 
     internal void Validate() {
-        ArgumentNullException.ThrowIfNull(_world);
+        ArgumentNullException.ThrowIfNull(_business);
         _cursor.Validate();
         // The externally supplied graph definition belongs to the simulation factory.
-        // Kernel opening validates the full world against Cursor.CurrentModelTime.
+        // The adapter rebuilds runtime predictions against Cursor.CurrentModelTime once on opening.
     }
 }

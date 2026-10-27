@@ -7,7 +7,7 @@ namespace DramaBoard.Spatial;
 
 /// <summary>Projects every stored entry change and traversal arrival independently.</summary>
 public sealed class SpatialOccurrenceRule :
-    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
+    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
     private readonly GraphDefinition _definition;
 
     public SpatialOccurrenceRule(GraphDefinition definition) {
@@ -52,7 +52,7 @@ public sealed class SpatialOccurrenceRule :
         return candidates.AsReadOnly();
     }
 
-    public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(
+    public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(
         SpatialSimulationState snapshot,
         OccurrenceCandidate<SpatialOccurrenceData> winner,
         CancellationToken cancellationToken) {
@@ -69,8 +69,7 @@ public sealed class SpatialOccurrenceRule :
             _ => throw new InvalidOperationException(
                 $"Unsupported Graph Spatial occurrence data '{winner.Data.GetType().Name}'."),
         };
-        return ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(
-            draft.Facts.Select(fact => (SpatialSimulationFact)new SpatialBusinessFact(fact))));
+        return ValueTask.FromResult(draft);
     }
 
     private static TransitionDraft<GraphSpatialFact> PlanEntryChange(

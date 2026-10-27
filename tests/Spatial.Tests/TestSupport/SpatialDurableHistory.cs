@@ -5,37 +5,41 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.Spatial.Tests.TestSupport;
 
-/// <summary>Single-branch E/S history. Every State replaces one complete immutable world/cursor root.</summary>
+/// <summary>Single-branch test history: disk saves business/cursor, a session keeps one ready runtime world.</summary>
 /// <remarks>
 /// Exclusively owned by one Kernel. Any failed commit attempt retires this adapter; dispose and reopen
 /// before inspecting durable progress. Disposing never completes pending work or saves memory changes.
 /// </remarks>
-internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>, IDisposable {
+internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>, IDisposable {
     private readonly Repository _repository;
     private readonly WorkingCopy _work;
-    private OccurrenceEvent<SpatialSimulationFact>? _pending;
+    private SpatialSimulationState _state;
+    private OccurrenceEvent<GraphSpatialFact>? _pending;
     private bool _faulted;
     private bool _disposed;
 
-    private SpatialDurableHistory(Repository repository, WorkingCopy work) {
+    private SpatialDurableHistory(Repository repository, WorkingCopy work, SpatialSimulation simulation) {
         _repository = repository;
         _work = work;
         ReadRoot().Validate();
+        _state = simulation.Rebuild(ReadRoot().Business, ReadRoot().Cursor.CurrentModelTime);
         LoadPending();
     }
 
-    public SpatialSimulationState State { get { RequireUsable(); return ReadRoot().World; } }
+    public SpatialSimulationState State { get { RequireUsable(); return _state; } }
     public KernelCursor Cursor { get { RequireUsable(); return ReadRoot().Cursor; } }
-    public OccurrenceEvent<SpatialSimulationFact>? PendingEvent { get { RequireUsable(); return _pending; } }
+    public OccurrenceEvent<GraphSpatialFact>? PendingEvent { get { RequireUsable(); return _pending; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
 
     /// <summary>Creates a new repository at a previously nonexistent path and publishes its initial State.</summary>
-    public static SpatialDurableHistory Create(string path, SpatialSimulationState world, KernelCursor cursor) {
-        var root = new SpatialDurableRoot(world, cursor);
+    public static SpatialDurableHistory Create(string path, SpatialSimulationState world, KernelCursor cursor,
+        SpatialSimulation simulation) {
+        ArgumentNullException.ThrowIfNull(simulation);
+        var root = new SpatialDurableRoot(world.Business, cursor);
         Repository repository = Repository.CreateNew(path, CreateModels());
         try {
             BranchId branch = repository.CreateRootBranchFromState("spatial-test", root).Id;
-            return Attach(repository, branch);
+            return Attach(repository, branch, simulation);
         } catch {
             repository.Dispose();
             throw;
@@ -43,21 +47,22 @@ internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulati
     }
 
     /// <summary>Opens exactly one root branch. Pending E is exposed; the Kernel explicitly recovers it.</summary>
-    public static SpatialDurableHistory Open(string path) {
+    public static SpatialDurableHistory Open(string path, SpatialSimulation simulation) {
+        ArgumentNullException.ThrowIfNull(simulation);
         Repository repository = Repository.OpenExisting(path, CreateModels());
         try {
             BranchInfo[] branches = repository.ListBranches();
             if (branches.Length != 1 || branches[0].ForkedFromCommitId is not null) {
                 throw new InvalidDataException("Spatial test requires exactly one root branch and no forks.");
             }
-            return Attach(repository, branches[0].Id);
+            return Attach(repository, branches[0].Id, simulation);
         } catch {
             repository.Dispose();
             throw;
         }
     }
 
-    public void CommitEvent(OccurrenceEvent<SpatialSimulationFact> occurrence) {
+    public void CommitEvent(OccurrenceEvent<GraphSpatialFact> occurrence) {
         RequireUsable();
         try {
             if (_pending is not null) {
@@ -76,14 +81,15 @@ internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulati
     public void CommitState(SpatialSimulationState nextState, KernelCursor nextCursor) {
         RequireUsable();
         try {
-            OccurrenceEvent<SpatialSimulationFact> pending = _pending
+            OccurrenceEvent<GraphSpatialFact> pending = _pending
                 ?? throw new InvalidOperationException("A State must complete a pending Event.");
             KernelCursor expected = ReadRoot().Cursor.Advance(pending.CauseKey, pending.TargetInstant);
             if (nextCursor != expected) {
                 throw new ArgumentException("The State cursor must complete exactly the pending occurrence.", nameof(nextCursor));
             }
-            var nextRoot = new SpatialDurableRoot(nextState, nextCursor);
+            var nextRoot = new SpatialDurableRoot(nextState.Business, nextCursor);
             _work.CommitState(nextRoot);
+            _state = nextState;
             _pending = null;
         } catch {
             _faulted = true;
@@ -98,9 +104,9 @@ internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulati
         finally { _repository.Dispose(); }
     }
 
-    private static SpatialDurableHistory Attach(Repository repository, BranchId branch) {
+    private static SpatialDurableHistory Attach(Repository repository, BranchId branch, SpatialSimulation simulation) {
         WorkingCopy work = repository.OpenWorkingCopy(branch);
-        try { return new SpatialDurableHistory(repository, work); }
+        try { return new SpatialDurableHistory(repository, work, simulation); }
         catch {
             work.Dispose();
             throw;
@@ -136,12 +142,12 @@ internal sealed class SpatialDurableHistory : IOccurrenceHistory<SpatialSimulati
             _repository.GetPreviousState(head.Id) != _work.StateSourceCommitId) {
             throw new InvalidDataException("A pending Event must immediately follow the restored State.");
         }
-        _pending = _repository.LoadEvent(head.Id) as OccurrenceEvent<SpatialSimulationFact>
+        _pending = _repository.LoadEvent(head.Id) as OccurrenceEvent<GraphSpatialFact>
             ?? throw new InvalidDataException("The pending Event is not a Spatial test occurrence.");
         ValidateContinuation(_pending, ReadRoot().Cursor);
     }
 
-    private static void ValidateContinuation(OccurrenceEvent<SpatialSimulationFact> occurrence, KernelCursor cursor) {
+    private static void ValidateContinuation(OccurrenceEvent<GraphSpatialFact> occurrence, KernelCursor cursor) {
         occurrence.Validate();
         if (occurrence.CauseKey == cursor.LastCauseKey || occurrence.TargetInstant.ModelTime < cursor.CurrentModelTime) {
             throw new InvalidDataException("The occurrence does not advance the completed cursor.");

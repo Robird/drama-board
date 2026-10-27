@@ -16,7 +16,7 @@ public sealed class LocalPredictionAcceptanceTests {
         var calls = new List<PassageId>();
         var simulation = new SpatialSimulation(definition, calls.Add);
         var planner = new SpatialPlanner(definition);
-        var root = simulation.CreateGenesis(GraphTestWorld.State(definition,
+        var root = simulation.Rebuild(GraphTestWorld.State(definition,
             ("a", GraphTestWorld.B), ("b", GraphTestWorld.A), ("c", GraphTestWorld.A),
             ("x", GraphTestWorld.C), ("y", GraphTestWorld.D)), ModelTime.Zero);
         root = Apply(simulation, root, 0,
@@ -47,7 +47,7 @@ public sealed class LocalPredictionAcceptanceTests {
         var calls = new List<PassageId>();
         var simulation = new SpatialSimulation(definition, calls.Add);
         var planner = new SpatialPlanner(definition);
-        var root = simulation.CreateGenesis(GraphTestWorld.State(definition, ("a", GraphTestWorld.A), ("b", GraphTestWorld.B)), ModelTime.Zero);
+        var root = simulation.Rebuild(GraphTestWorld.State(definition, ("a", GraphTestWorld.A), ("b", GraphTestWorld.B)), ModelTime.Zero);
         Assert.Empty(root.Contacts.Entries);
         calls.Clear();
         root = Apply(simulation, root, 0,
@@ -71,7 +71,7 @@ public sealed class LocalPredictionAcceptanceTests {
         var definition = Definition();
         var simulation = new SpatialSimulation(definition);
         var planner = new SpatialPlanner(definition);
-        var root = simulation.CreateGenesis(GraphTestWorld.State(definition,
+        var root = simulation.Rebuild(GraphTestWorld.State(definition,
             ("a", GraphTestWorld.A), ("b", GraphTestWorld.A), ("c", GraphTestWorld.A)), ModelTime.Zero);
         root = Apply(simulation, root, 0,
             Start(planner, root.Business, "b", GraphTestWorld.Bridge, 2, 0),
@@ -96,6 +96,16 @@ public sealed class LocalPredictionAcceptanceTests {
         var incomplete = new SpatialSimulationState(root.Business, new SpatialContactPredictions([]));
         simulation.Validate(incomplete, GraphTestWorld.Time(1)); // Structure alone cannot prove coverage.
         Assert.ThrowsAny<Exception>(() => ContactOracle.AssertMatches(definition, incomplete));
+        var selected = (PassageContactOccurrenceData)winner.Data;
+        root = Apply(simulation, root, 1, new PassageContactOccurredFact(selected.ContactKey, selected.Kind));
+        var rebuilt = simulation.Rebuild(root.Business, GraphTestWorld.Time(1));
+        Assert.Equal(root, rebuilt);
+        var remaining = Assert.Single(rebuilt.Contacts.Entries);
+        Assert.NotEqual(selected.ContactKey, remaining.ContactKey);
+        Assert.Equal(GraphTestWorld.Time(1), remaining.Due); // Unconsumed due-now output survives rebuilding.
+        root = Apply(simulation, root, 1, new PassageContactOccurredFact(remaining.ContactKey, remaining.Kind));
+        Assert.Empty(simulation.Rebuild(root.Business, GraphTestWorld.Time(1)).Contacts.Entries);
+        Assert.Equal(2, root.Business.ConsumedContacts.Count);
     }
 
     [Fact]
@@ -107,15 +117,16 @@ public sealed class LocalPredictionAcceptanceTests {
         var simulation = new SpatialSimulation(definition);
         var planner = new SpatialPlanner(definition);
         var random = new Random(1771);
-        var genesis = simulation.CreateGenesis(GraphTestWorld.State(definition,
+        var genesis = simulation.Rebuild(GraphTestWorld.State(definition,
             ("a", GraphTestWorld.A), ("b", GraphTestWorld.B), ("c", GraphTestWorld.A),
             ("d", GraphTestWorld.C), ("e", GraphTestWorld.D), ("f", GraphTestWorld.C)), ModelTime.Zero);
-        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(genesis,
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(genesis,
             new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         long largestGeneration = 0;
-        async Task Drain(SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> kernel, long time) {
+        async Task Drain(SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> kernel, long time) {
             while (await kernel.StepAsync(GraphTestWorld.Time(time)) == StepStatus.Committed) {
                 ContactOracle.AssertMatches(definition, kernel.World);
+                Assert.Equal(simulation.Rebuild(kernel.World.Business, kernel.CurrentModelTime), kernel.World);
                 largestGeneration = Math.Max(largestGeneration, kernel.World.Business.Entities.Max(e => e.MovementGeneration));
             }
         }
@@ -141,7 +152,7 @@ public sealed class LocalPredictionAcceptanceTests {
             Assert.NotSame(before, history.State);
         }
         await Drain(simulation.CreateKernel(Rules, history), 100);
-        var businessFacts = history.CompletedEvents.SelectMany(e => e.Facts).OfType<SpatialBusinessFact>().Select(f => f.Fact).ToArray();
+        var businessFacts = history.CompletedEvents.SelectMany(e => e.Facts).ToArray();
         Assert.True(businessFacts.OfType<TraversalArrivedFact>().Count() >= 2);
         Assert.True(businessFacts.OfType<TraversalReversedFact>().Count() >= 2);
         Assert.True(businessFacts.OfType<EntityRemovedFact>().Count() >= 2);
@@ -149,31 +160,66 @@ public sealed class LocalPredictionAcceptanceTests {
     }
 
     [Fact]
-    public void CompleteRejectsMaintenanceFactsAndAlreadyCompletedDrafts() {
+    public void CandidateReadsNeverRecomputePassages() {
         var definition = Definition();
-        var simulation = new SpatialSimulation(definition);
-        var root = simulation.CreateGenesis(GraphTestWorld.State(definition, ("a", GraphTestWorld.A), ("b", GraphTestWorld.B)), ModelTime.Zero);
-        var instant = GraphTestWorld.Instant(0);
-        var injected = new TransitionDraft<SpatialSimulationFact>([new ContactPredictionsReplaced([GraphTestWorld.Bridge], [])]);
-        Assert.Throws<InvalidOperationException>(() => simulation.Complete(root, instant, injected));
+        var calls = new List<PassageId>();
+        var simulation = new SpatialSimulation(definition, calls.Add);
         var planner = new SpatialPlanner(definition);
-        var business = new TransitionDraft<SpatialSimulationFact>([
-            new SpatialBusinessFact(Start(planner, root.Business, "a", GraphTestWorld.Bridge, 1, 0)),
-            new SpatialBusinessFact(Start(planner, root.Business, "b", GraphTestWorld.Bridge, 1, 0))]);
-        var completed = simulation.Complete(root, instant, business);
-        Assert.Single(completed.Facts.OfType<ContactPredictionsReplaced>());
-        Assert.Throws<InvalidOperationException>(() => simulation.Complete(root, instant, completed));
+        var root = simulation.Rebuild(GraphTestWorld.State(definition, ("a", GraphTestWorld.A), ("b", GraphTestWorld.B)), ModelTime.Zero);
+        root = Apply(simulation, root, 0,
+            Start(planner, root.Business, "a", GraphTestWorld.Bridge, 1, 0),
+            Start(planner, root.Business, "b", GraphTestWorld.Bridge, 1, 0));
+        calls.Clear();
+        var contactRule = new SpatialContactOccurrenceRule(definition);
+        var first = contactRule.Forecast(root, Rules);
+        var second = contactRule.Forecast(root, Rules);
+        Assert.Single(first);
+        Assert.Equal(first.Select(c => c.Key), second.Select(c => c.Key));
+        Assert.Equal(2, new SpatialOccurrenceRule(definition).Forecast(root, Rules).Count);
+        Assert.Empty(calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreparationFailureLeavesPublishedWorldAndCacheUntouched(bool failValidation) {
+        var definition = Definition();
+        bool failPrediction = false;
+        var simulation = new SpatialSimulation(definition, _ => {
+            if (failPrediction) { throw new InvalidOperationException("prediction probe"); }
+        });
+        var root = simulation.Rebuild(GraphTestWorld.State(definition, ("a", GraphTestWorld.A), ("b", GraphTestWorld.B)), ModelTime.Zero);
+        var planner = new SpatialPlanner(definition);
+        GraphSpatialFact[] facts = [
+            Start(planner, root.Business, "a", GraphTestWorld.Bridge, 1, 0),
+            Start(planner, root.Business, "b", GraphTestWorld.Bridge, 1, 0)];
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(root,
+            new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
+        var kernel = new SimulationKernel<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact>(
+            history, Rules, [new ScriptedChange(root, 0, facts)], simulation.Fold, simulation.Complete,
+            (world, time) => {
+                simulation.Validate(world, time);
+                if (failValidation && !ReferenceEquals(world, root)) { throw new InvalidOperationException("validation probe"); }
+            });
+        failPrediction = !failValidation;
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(ModelTime.Zero));
+        Assert.Same(root, kernel.World);
+        Assert.Same(root, history.State);
+        Assert.Empty(root.Contacts.Entries);
+        Assert.All(root.Business.Entities, e => Assert.IsType<AtPlaceLocation>(e.Location));
+        Assert.Empty(history.CompletedEvents);
+        Assert.Null(history.PendingEvent);
     }
 
     private sealed class ScriptedChange(SpatialSimulationState before, long tick, IReadOnlyList<GraphSpatialFact> facts)
-        : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
+        : IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
         public IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> Forecast(SpatialSimulationState world, SimulationRules rules) =>
             ReferenceEquals(before, world)
                 ? [new(new CandidateKey($"test/script/{tick}"), new CandidateDue(GraphTestWorld.Time(tick)), new ScriptData())]
                 : [];
-        public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(SpatialSimulationState world,
+        public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(SpatialSimulationState world,
             OccurrenceCandidate<SpatialOccurrenceData> winner, CancellationToken token) =>
-            ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(facts.Select(f => (SpatialSimulationFact)new SpatialBusinessFact(f)).ToArray()));
+            ValueTask.FromResult(new TransitionDraft<GraphSpatialFact>(facts));
     }
     private sealed record ScriptData : SpatialOccurrenceData;
 
@@ -186,8 +232,11 @@ public sealed class LocalPredictionAcceptanceTests {
         GraphTestWorld.Accepted(planner.TryStartTraversal(world, new EntityId(entity), passage, speed, GraphTestWorld.Time(time))).Facts.Single();
     private static SpatialSimulationState Apply(SpatialSimulation simulation, SpatialSimulationState root, long time, params GraphSpatialFact[] facts) {
         var instant = GraphTestWorld.Instant(time);
-        var draft = simulation.Complete(root, instant, new TransitionDraft<SpatialSimulationFact>(facts.Select(f => (SpatialSimulationFact)new SpatialBusinessFact(f)).ToArray()));
-        foreach (var fact in draft.Facts) { root = simulation.Fold(root, instant, fact); }
+        var before = root;
+        foreach (var fact in facts) { root = simulation.Fold(root, instant, fact); }
+        var foldedBusiness = root.Business;
+        root = simulation.Complete(before, instant, facts, root);
+        Assert.Same(foldedBusiness, root.Business);
         simulation.Validate(root, instant.ModelTime);
         return root;
     }

@@ -13,18 +13,18 @@ public sealed class SpacetimeHostScenarioTests {
 
     [Fact]
     public async Task Host_MeetsReversesAndArrivesDeterministicallyWithoutPlayer() {
-        InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> first = await RunScenario(false);
-        InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> permuted = await RunScenario(true);
+        InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact> first = await RunScenario(false);
+        InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact> permuted = await RunScenario(true);
 
         Assert.Equal(
             first.CompletedEvents.Select(value => value.CauseKey),
             permuted.CompletedEvents.Select(value => value.CauseKey));
         Assert.Equal(
-            first.CompletedEvents.Select(value => value.Facts.OfType<SpatialBusinessFact>().Single().Fact),
-            permuted.CompletedEvents.Select(value => value.Facts.OfType<SpatialBusinessFact>().Single().Fact));
+            first.CompletedEvents.Select(value => value.Facts.Single()),
+            permuted.CompletedEvents.Select(value => value.Facts.Single()));
     }
 
-    private static async Task<InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>> RunScenario(
+    private static async Task<InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>> RunScenario(
         bool reverseInputs) {
         GraphDefinition definition = GraphDefinition.Create(
             [GraphTestWorld.A, GraphTestWorld.B],
@@ -48,10 +48,10 @@ public sealed class SpacetimeHostScenarioTests {
             "reverse-outside-active-interval");
 
         var simulation = new SpatialSimulation(definition);
-        var root = simulation.CreateGenesis(genesis, ModelTime.Zero);
-        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(root,
+        var root = simulation.Rebuild(genesis, ModelTime.Zero);
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(root,
             new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
-        IOccurrenceRule<SpatialSimulationState, object, SpatialSimulationFact>[] rules = [
+        IOccurrenceRule<SpatialSimulationState, object, GraphSpatialFact>[] rules = [
             new RuleAdapter<SpatialOccurrenceData>(new SpatialOccurrenceRule(definition)),
             new RuleAdapter<SpatialOccurrenceData>(new SpatialContactOccurrenceRule(definition)),
             new ReverseAtThreeRule(planner),
@@ -60,11 +60,11 @@ public sealed class SpacetimeHostScenarioTests {
             Array.Reverse(rules);
         }
         int completions = 0;
-        var kernel = new SimulationKernel<SpatialSimulationState, object, SpatialSimulationFact>(history,
+        var kernel = new SimulationKernel<SpatialSimulationState, object, GraphSpatialFact>(history,
             new SimulationRules(worldSeed: 71, maxTransitionsPerModelTime: 100), rules,
-            simulation.Fold, (before, instant, draft) => {
+            simulation.Fold, (before, instant, facts, folded) => {
                 completions++;
-                return simulation.Complete(before, instant, draft);
+                return simulation.Complete(before, instant, facts, folded);
             }, simulation.Validate);
 
         // Exact meeting is at 11 / (3 + 2) = 2.2; contact belongs to tick 2.
@@ -73,7 +73,7 @@ public sealed class SpacetimeHostScenarioTests {
         Assert.Equal(1, meeting.CommittedTransitionCount);
         Assert.Equal(GraphTestWorld.Time(2), meeting.CurrentModelTime);
         PassageContactOccurredFact contact = Assert.IsType<PassageContactOccurredFact>(
-            Assert.Single(Assert.Single(history.CompletedEvents).Facts.OfType<SpatialBusinessFact>()).Fact);
+            Assert.Single(Assert.Single(history.CompletedEvents).Facts));
         ContactOracle.AssertMatches(definition, meeting.World);
         Assert.Equal(PassageContactKind.HeadOnMeeting, contact.Kind);
         Assert.Equal(contact.ContactKey, Assert.Single(meeting.World.Business.ConsumedContacts));
@@ -92,7 +92,7 @@ public sealed class SpacetimeHostScenarioTests {
         Assert.Equal(GraphTestWorld.Time(6), segment.ArrivalDue);
         Assert.Equal(2, Entity(reversed.World.Business, Alice).MovementGeneration);
         Assert.Empty(reversed.World.Business.ConsumedContacts); // Old-generation consumption is retired.
-        Assert.Equal(new TraversalReversedFact(Alice, 1), Assert.Single(history.CompletedEvents[1].Facts.OfType<SpatialBusinessFact>()).Fact);
+        Assert.Equal(new TraversalReversedFact(Alice, 1), Assert.Single(history.CompletedEvents[1].Facts));
 
         HostRunResult<SpatialSimulationState> oldArrival = await SimulationHost.RunUntilAsync(kernel, GraphTestWorld.Time(4));
         Assert.Equal(0, oldArrival.CommittedTransitionCount);
@@ -109,15 +109,15 @@ public sealed class SpacetimeHostScenarioTests {
             [GraphTestWorld.Instant(2), GraphTestWorld.Instant(3), GraphTestWorld.Instant(6), GraphTestWorld.Instant(6, 1)],
             history.CompletedEvents.Select(value => value.TargetInstant));
         TraversalArrivedFact[] arrivals = history.CompletedEvents.Skip(2)
-            .Select(value => Assert.IsType<TraversalArrivedFact>(Assert.Single(value.Facts.OfType<SpatialBusinessFact>()).Fact)).ToArray();
+            .Select(value => Assert.IsType<TraversalArrivedFact>(Assert.Single(value.Facts))).ToArray();
         Assert.Contains(new TraversalArrivedFact(Alice, 2), arrivals);
         Assert.Contains(new TraversalArrivedFact(Bob, 1), arrivals);
 
         ReplayResult<SpatialSimulationState> replay = SimulationReplay.Replay(root, 1, ModelTime.Zero,
-            history.CompletedEvents.Select(value => new JournalBatch<SpatialSimulationFact>(
+            history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
                 value.TargetInstant, value.CauseKey, value.Facts)).ToArray(),
-            simulation.Fold, simulation.Validate);
-        Assert.Equal(4, completions); // All rule sources completed once; replay completed zero times.
+            simulation.Fold, simulation.Complete, simulation.Validate);
+        Assert.Equal(4, completions); // All rule sources completed once; replay uses the pure completion seam directly.
         ContactOracle.AssertMatches(definition, arrived.World);
         Assert.Equal(arrived.World, replay.World);
         Assert.Equal(arrived.Version, replay.Version);
@@ -132,13 +132,13 @@ public sealed class SpacetimeHostScenarioTests {
         Assert.IsType<TraversingLocation>(Entity(state, id).Location);
 
     // Test composition only: preserve each production rule's identity, due time and planning.
-    private sealed class RuleAdapter<TData>(IOccurrenceRule<SpatialSimulationState, TData, SpatialSimulationFact> inner)
-        : IOccurrenceRule<SpatialSimulationState, object, SpatialSimulationFact> where TData : notnull {
+    private sealed class RuleAdapter<TData>(IOccurrenceRule<SpatialSimulationState, TData, GraphSpatialFact> inner)
+        : IOccurrenceRule<SpatialSimulationState, object, GraphSpatialFact> where TData : notnull {
         public IReadOnlyList<OccurrenceCandidate<object>> Forecast(SpatialSimulationState world, SimulationRules rules) =>
             inner.Forecast(world, rules).Select(candidate =>
                 new OccurrenceCandidate<object>(candidate.Key, candidate.Due, candidate.Data)).ToArray();
 
-        public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(SpatialSimulationState world,
+        public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(SpatialSimulationState world,
             OccurrenceCandidate<object> winner, CancellationToken cancellationToken) =>
             inner.PlanSelectedAsync(world, new OccurrenceCandidate<TData>(winner.Key, winner.Due,
                 (TData)winner.Data), cancellationToken);
@@ -146,17 +146,17 @@ public sealed class SpacetimeHostScenarioTests {
 
     // A fixed scenario action, consumed by movement generation; no Player or long-term plan.
     private sealed class ReverseAtThreeRule(SpatialPlanner planner)
-        : IOccurrenceRule<SpatialSimulationState, object, SpatialSimulationFact> {
+        : IOccurrenceRule<SpatialSimulationState, object, GraphSpatialFact> {
         public IReadOnlyList<OccurrenceCandidate<object>> Forecast(SpatialSimulationState world, SimulationRules rules) =>
             Entity(world.Business, Alice).MovementGeneration == 1
                 ? [new(new CandidateKey("scenario/reverse/alice/1"), new CandidateDue(GraphTestWorld.Time(3)), Alice)]
                 : [];
 
-        public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(SpatialSimulationState world,
+        public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(SpatialSimulationState world,
             OccurrenceCandidate<object> winner, CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(GraphTestWorld.Accepted(
-                planner.TryReverseTraversal(world.Business, (EntityId)winner.Data, winner.Due.ModelTime)).Facts.Select(f => (SpatialSimulationFact)new SpatialBusinessFact(f)).ToArray()));
+            return ValueTask.FromResult(new TransitionDraft<GraphSpatialFact>(GraphTestWorld.Accepted(
+                planner.TryReverseTraversal(world.Business, (EntityId)winner.Data, winner.Due.ModelTime)).Facts));
         }
     }
 }
