@@ -9,7 +9,7 @@
 
 ## 1. 保留什么，改变什么
 
-跨游戏版本的职责补充：应用层修订过程可以联合处理 State 与 pending E，选择透传、转换或显式结算；无需先调用当前 Kernel 恢复旧 E。下文普通恢复合同适用于与当前 callbacks 语义兼容的输入。修订的发布编排及未实施边界见[初始化与游戏修订决策](game-initialization-and-revision.md)，不据该设计宣称当前 adapter 已能迁移旧存档。
+跨游戏版本的职责补充：已选定 State/Event 各自记录 `GameRevision`，加载时协调升级内存表示，保留 pending 工作交给正常执行流程；升级不结算事件、不推进游标、不写盘。下文普通恢复合同适用于与当前 callbacks 语义兼容的输入。加载编排及旧 S/新 E 的恢复边界见[初始化与游戏修订决策](game-initialization-and-revision.md)；版本字段与管道尚未实现，不据该设计宣称当前 adapter 已能迁移旧存档。
 
 保留统一 Forecast、确定性单 winner、1ms 时间、同刻因果序号、可信 rule 规划和 Game + Spatial 完整提交。Spatial 的运动、接触、导航与 Player 信息边界不变。
 

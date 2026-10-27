@@ -73,8 +73,8 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图；可以组合程序化生成器，不负责升级旧世界。 | `CycleWorld.Create` / `CreatePlayable`；发布由 `CycleDurableHistory.Create` 负责。 |
-| 游戏修订号（GameRevision） | 领域图已应用的游戏语义修订进度，独立于 Schema 版本和模拟转换次数。 | 已选定整体递增整数方向，根字段尚未实现。 |
-| 游戏状态修订（Game revision） | 联合转换还原后的 State 与可选 pending E，明确活动进度和待完成工作的处置。 | [设计决策与编排草案](design/game-initialization-and-revision.md)，尚无运行管道。 |
+| 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 已选定整体递增整数方向，S/E 字段尚未实现。 |
+| 游戏状态修订（Game revision） | 加载时协调升级 State 与可选 pending E 的内存表示；不执行事件、不推进游标、不写盘，pending 工作留给正常流程。 | [设计决策与编排草案](design/game-initialization-and-revision.md)，尚无运行管道。 |
 | 模拟世界版本（WorldVersion） | 模拟谱系及已完成转换次数，标识模拟位置；不表示游戏内容或规则修订。 | [WorldVersion](../src/Kernel/Simulation/WorldVersion.cs) |
 
 
