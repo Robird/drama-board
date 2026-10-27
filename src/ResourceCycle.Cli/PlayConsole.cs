@@ -21,7 +21,7 @@ internal static class PlayConsole {
             throw new ArgumentException("这是批处理实验存档，不能用 --play 打开。请省略 --play 续跑，或选择新目录开始采集。");
         }
 
-        var kernel = CycleEngine.CreateKernel(history, decisionSource: new ConsoleDecisionSource());
+        var kernel = CycleEngine.CreateKernel(history, characterController: new ConsoleCharacterController());
         Console.WriteLine(store is null
             ? "多人采集 · 本次仅在内存中运行；退出后不保留进度。"
             : $"多人采集 · 存档：{store} · 每次成功转换自动保存。");
@@ -194,8 +194,9 @@ internal static class PlayConsole {
 
     private sealed class PlayEndedException : Exception { }
 
-    private sealed class ConsoleDecisionSource : ICycleDecisionSource {
-        public async ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+    // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
+    private sealed class ConsoleCharacterController : ICycleCharacterController {
+        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
             Console.WriteLine();
             Console.WriteLine(Render(world, actorId));
             while (true) {

@@ -5,7 +5,7 @@
 
 ## 1. 目标、价值与范围
 
-术语按[项目术语表](../glossary.md)：本文 Player 指角色控制器（CharacterController），当前代码入口为 `ICycleDecisionSource`；三个 Character 共用人类 Console，不表示已有三个独立控制器实例。唤醒控制器与角色的耗时活动是独立维度。
+术语按[项目术语表](../glossary.md)：本文 Player 指角色控制器（CharacterController），当前代码入口为 `ICycleCharacterController.ChooseCommandAsync`；三个 Character 共用人类 Console，不表示已有三个独立控制器实例。唤醒控制器与角色的耗时活动是独立维度。
 
 在现有 ResourceCycle 中做一个单地点、两种植物、三个角色共用 Console 的可玩原型。角色各有技能、背包和独立行动；资源共享，不预留，先完成采摘者取得资源。通过争夺同一存量自然产生选择与冲突，暂不实现战斗。
 

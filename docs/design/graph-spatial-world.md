@@ -1072,7 +1072,6 @@ rg "CellRef|GridMapDefinition|PortalDefinition|JourneyState|MoveGoal|StrictSuper
     → 对有效源码与测试零命中
 
 dotnet test DramaBoard.slnx
-dotnet test DramaBoard.Local.slnx
     → 全部通过
 ```
 

@@ -76,16 +76,16 @@ internal static class CycleTestSupport {
         Assert.Equal(CycleEngine.Rebuild(world.Business, world.Time).Forecasts.ToString(), world.Forecasts.ToString());
     }
 
-    internal sealed class Source(Func<CycleWorld, string, CycleCommand> choose) : ICycleDecisionSource {
+    internal sealed class StubCharacterController(Func<CycleWorld, string, CycleCommand> choose) : ICycleCharacterController {
         public int Calls { get; private set; }
         public List<(string Actor, ModelTime Time)> Requests { get; } = [];
-        public ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
             Calls++;
             Requests.Add((actorId, world.Time));
             return ValueTask.FromResult(choose(world, actorId));
         }
     }
-    public static Source Commands(params CycleCommand[] commands) {
+    public static StubCharacterController Commands(params CycleCommand[] commands) {
         Queue<CycleCommand> remaining = new(commands);
         return new((_, _) => remaining.Count > 0 ? remaining.Dequeue() : throw new InvalidOperationException("Unexpected Player request."));
     }

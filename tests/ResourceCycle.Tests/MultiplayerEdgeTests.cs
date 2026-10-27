@@ -24,7 +24,7 @@ public sealed class MultiplayerEdgeTests {
                 }
                 CycleWorld initial = CycleWorld.CreatePlayable(Hour(16), actors,
                     [Sun(Hour(16), stock: 1), Moon(Hour(16))]);
-                var source = new Source((world, id) => {
+                var source = new StubCharacterController((world, id) => {
                     Assert.Equal(Hour(16), world.Time);
                     Assert.Equal("a", id);
                     Assert.NotNull(world.GetCharacter(id).Activity);
@@ -36,7 +36,7 @@ public sealed class MultiplayerEdgeTests {
                 for (int index = 0; index < 8; index++) {
                     // Every step is a real cold-open; no session-local service cursor or candidate cache survives.
                     using var history = CycleDurableHistory.Open(directory.StorePath);
-                    var kernel = CycleEngine.CreateKernel(history, decisionSource: source);
+                    var kernel = CycleEngine.CreateKernel(history, characterController: source);
                     await Step(kernel);
                     final = kernel.World;
                     if (final.GetCharacter("a").Activity is null && final.GetCharacter("b").Activity is null) { break; }
@@ -72,7 +72,7 @@ public sealed class MultiplayerEdgeTests {
         using var directory = new TemporaryStore();
         using (var history = CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) {
             var kernel = CycleEngine.CreateKernel(history,
-                decisionSource: Commands(CycleCommand.Cancel(), CycleCommand.Gather("sunflower")));
+                characterController: Commands(CycleCommand.Cancel(), CycleCommand.Gather("sunflower")));
             await Step(kernel);
             Assert.Null(kernel.World.GetCharacter("a").Activity);
             Assert.DoesNotContain(kernel.World.Forecasts.Predictions, p => p.OwnerId == stale.OwnerId);
@@ -88,7 +88,7 @@ public sealed class MultiplayerEdgeTests {
         }
 
         using var reopened = CycleDurableHistory.Open(directory.StorePath);
-        var resumed = CycleEngine.CreateKernel(reopened, decisionSource: Commands(CycleCommand.Wait(24)));
+        var resumed = CycleEngine.CreateKernel(reopened, characterController: Commands(CycleCommand.Wait(24)));
         await Step(resumed);
         Assert.Equal(Hour(17), resumed.World.Time);
         Assert.Equal(1, resumed.World.GetCharacter("a").Backpack.Count("item.sunflower"));
@@ -109,7 +109,7 @@ public sealed class MultiplayerEdgeTests {
         using var directory = new TemporaryStore();
         string completedState;
         using (var history = CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) {
-            var kernel = CycleEngine.CreateKernel(history, decisionSource: Commands());
+            var kernel = CycleEngine.CreateKernel(history, characterController: Commands());
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(due));
             Assert.Equal(due, kernel.World.Time);
             Assert.Equal(1, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));

@@ -57,7 +57,7 @@ public sealed class CycleCompletionTests {
     public async Task Complete_rejects_folded_business_changes_not_recorded_in_facts(string extraChange) {
         CycleWorld before = Solo(Hour(15));
         string original = before.DescribeState();
-        var kernel = CycleEngine.CreateKernel(Memory(before), decisionSource: Commands(CycleCommand.Wait(1)));
+        var kernel = CycleEngine.CreateKernel(Memory(before), characterController: Commands(CycleCommand.Wait(1)));
         await Step(kernel);
         CycleFact[] facts = kernel.LastCompletion!.Event.Facts.ToArray();
         var instant = kernel.LastCompletion.Event.TargetInstant;

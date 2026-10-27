@@ -175,7 +175,7 @@ public sealed class CyclePersistenceTests {
     public async Task Cold_pending_recovery_never_queries_candidates_or_player_and_repeats_only_pure_completion() {
         using var directory = new TemporaryStore();
         CycleWorld initial = CycleWorld.CreatePlayable();
-        var baseline = CycleEngine.CreateKernel(Memory(initial), decisionSource: new WaitSource());
+        var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: new WaitingCharacterController());
         Assert.Equal(StepStatus.Committed, await baseline.StepAsync(Hour(48)));
         using (var history = CycleDurableHistory.Create(directory.Path, initial, InitialCursor(initial))) {
             history.CommitEvent(baseline.LastCompletion!.Event);
@@ -223,8 +223,8 @@ public sealed class CyclePersistenceTests {
         }
     }
 
-    private sealed class WaitSource : ICycleDecisionSource {
-        public ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
+    private sealed class WaitingCharacterController : ICycleCharacterController {
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
             ValueTask.FromResult(CycleCommand.Wait(6));
     }
 

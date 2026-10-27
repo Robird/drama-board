@@ -17,7 +17,7 @@ public sealed class CycleStorageShapeTests {
     public async Task Actual_disk_graphs_and_catalog_exclude_runtime_predictions_and_routing(bool completeState) {
         using var store = new TemporaryStore();
         CycleWorld initial = CycleWorld.CreatePlayable();
-        var kernel = CycleEngine.CreateKernel(Memory(initial), decisionSource: new WaitSource());
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: new WaitingCharacterController());
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
         using (var history = CycleDurableHistory.Create(store.Path, initial, InitialCursor(initial))) {
             history.CommitEvent(kernel.LastCompletion!.Event);
@@ -133,8 +133,8 @@ public sealed class CycleStorageShapeTests {
         }
     }
 
-    private sealed class WaitSource : ICycleDecisionSource {
-        public ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
+    private sealed class WaitingCharacterController : ICycleCharacterController {
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
             ValueTask.FromResult(CycleCommand.Wait(6));
     }
 

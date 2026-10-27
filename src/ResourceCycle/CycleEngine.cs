@@ -8,10 +8,10 @@ namespace DramaBoard.ResourceCycle;
 public static class CycleEngine {
     public static SimulationKernel<CycleWorld, CyclePrediction, CycleFact> CreateKernel(
         IOccurrenceHistory<CycleWorld, CycleFact> history, PredictionMode mode = PredictionMode.Incremental,
-        CycleMetrics? metrics = null, ICycleDecisionSource? decisionSource = null) {
+        CycleMetrics? metrics = null, ICycleCharacterController? characterController = null) {
         if (!Enum.IsDefined(mode)) { throw new ArgumentOutOfRangeException(nameof(mode)); }
         CycleMetrics measurements = metrics ?? new();
-        return new(history, new SimulationRules(0, 1024), [new CycleRule(measurements, decisionSource)],
+        return new(history, new SimulationRules(0, 1024), [new CycleRule(measurements, characterController)],
             Fold, (before, instant, facts, folded) => Complete(before, instant, facts, folded, mode, measurements), Validate);
     }
     public static CycleWorld Rebuild(CycleBusinessState business, ModelTime boundaryTime) {
@@ -219,7 +219,7 @@ public static class CycleEngine {
         throw new InvalidOperationException("Unknown prediction owner.");
     }
 
-    private sealed class CycleRule(CycleMetrics metrics, ICycleDecisionSource? decisionSource) : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
+    private sealed class CycleRule(CycleMetrics metrics, ICycleCharacterController? characterController) : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
         public IReadOnlyList<OccurrenceCandidate<CyclePrediction>> Forecast(CycleWorld world, SimulationRules rules) {
             if (world.Forecasts.Predictions.Count == 0) { return []; }
             ModelTime due = world.Forecasts.Predictions.Min(p => p.Due);
@@ -247,8 +247,8 @@ public static class CycleEngine {
             }
             CycleFact fact;
             if (prediction.Kind == CyclePredictionKind.RequestDecision) {
-                if (decisionSource is null) { throw new InvalidOperationException("A playable world requires an ICycleDecisionSource."); }
-                CycleCommand command = await decisionSource.ChooseAsync(world, prediction.TargetId, cancellationToken).ConfigureAwait(false);
+                if (characterController is null) { throw new InvalidOperationException($"A playable world requires an {nameof(ICycleCharacterController)}."); }
+                CycleCommand command = await characterController.ChooseCommandAsync(world, prediction.TargetId, cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 string? rejection = CycleActions.Check(world, prediction.TargetId, command);
                 if (rejection is not null) { throw new InvalidOperationException(rejection); }

@@ -1,6 +1,6 @@
 # 设计决策：共享无状态角色控制器与游戏维护的动态上下文
 
-状态：用户已采纳的架构方向；当前仅记录决策，不表示 LLM、角色记忆或新的上下文 API 已实现。
+状态：用户已采纳的架构方向；控制器符号重命名已完成，不表示 LLM、角色记忆或新的上下文 API 已实现。
 
 ## 决策与动机
 
@@ -52,18 +52,18 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 ## 当前实现与后续范围
 
-- [ICycleDecisionSource](../../src/ResourceCycle/CycleActions.cs) 接收 `CycleWorld + actorId`，返回 `CycleCommand`。它允许一个实例服务多个角色，但还不是角色信息隔离接口。
-- [ConsoleDecisionSource](../../src/ResourceCycle.Cli/PlayConsole.cs) 没有实例字段，单个实例轮流服务三个角色；每次调用渲染该角色界面并等待合法输入。
+- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 `CycleWorld + actorId`，返回 `CycleCommand`。它允许一个实例服务多个角色，但还不是角色信息隔离接口。
+- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 没有实例字段，单个实例轮流服务三个角色；每次调用渲染该角色界面并等待合法输入。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。共享控制器沿用现有服务轮转，不修改抢资源仲裁。
 - 当前没有 LLM 接入、持久笔记、角色经历召回或独立 DecisionContext 类型。归档 Player 实现是技术储备，不因本决策自动恢复使用。
 
 后续实现可用以下行为验收本决策：A/B 角色交替使用同一控制器不串记忆；替换控制器实例后显式角色记忆仍可用；文本与工具都不泄漏未授权信息；中断后的 pending E 恢复不再次调用控制器。更换 LLM 后得到完全相同的行动不属于验收要求。
 
-## IDE Symbol Rename 交接
+## 已完成的 IDE Symbol Rename 映射
 
-以下为当前代码到目标名称的映射，**本次文档提交不执行重命名**。保留 `Cycle` 前缀，接口仍属应用实例；重命名不同时修改参数类型、状态归属或行为。
+以下保留用户已完成的旧→新符号映射。当前代码使用右列名称；保留 `Cycle` 前缀，接口仍属应用实例。本次改名没有同时修改参数类型、状态归属或行为。
 
-| 声明位置 | 旧标识符 | 目标标识符 |
+| 声明位置 | 旧标识符 | 当前标识符 |
 | --- | --- | --- |
 | `src/ResourceCycle/CycleActions.cs` 接口 | `ICycleDecisionSource` | `ICycleCharacterController` |
 | 上述接口方法及其实现 | `ChooseAsync` | `ChooseCommandAsync` |
@@ -76,8 +76,8 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 | `tests/ResourceCycle.Tests/PlayableCycleTests.cs` 嵌套类 | `GatedSource` | `GatedCharacterController` |
 | `tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs` 嵌套类 | `GatedContinue` | `GatedContinueCharacterController` |
 
-两个 `WaitSource` 和两个 `decisionSource` 是独立声明，应分别 Rename。`actorId`、`NeedsDecision`、`DecisionGeneration` 等保留其准确含义，无需为统一词根而改名。
+两个 `WaitSource` 和两个 `decisionSource` 是独立声明，均已分别改名。`actorId`、`NeedsDecision`、`DecisionGeneration` 等保留其准确含义，无需为统一词根而改名。
 
-完成符号重命名后，另查异常字符串、注释、[术语表](../glossary.md)和当前设计中的 API 映射；历史档案不批量改写。本节保留旧→新映射作为交接记录，实际完成时更新实施状态及上节的当前代码名称。随后构建当前 solution 并运行相关测试；本次纯文档检查不代替重命名后的验证。
+异常字符串、接口注释、[术语表](../glossary.md)和当前设计中的 API 映射已同步；旧实验验收中的当时名称保持历史语境。后续语义改造仍应独立设计、实施和验证，不能把这次符号重命名当作无状态架构已经完整落地的证明。
 
 相关合同：[术语表](../glossary.md)、[多人采集规则](resource-cycle-multiplayer-gathering.md)、[E/S 发布](durablegraph-occurrence-persistence.md)、[缓存与恢复](runtime-derived-predictions.md)。

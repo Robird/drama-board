@@ -11,24 +11,29 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: drama-board
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: drama-board
       - name: Check out storage source
         uses: actions/checkout@v4
         with:
           repository: Atelia-org/atelia-storage
           ref: 70b406cd8d1117733eee81a33e7f978399aa98b2
-          path: external/atelia-storage
+          path: atelia-storage
       - name: Check out current DurableGraph source
         uses: actions/checkout@v4
         with:
           repository: Atelia-org/durable-graph
           ref: master
-          path: external/durable-graph
+          path: durable-graph
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: global.json
+          global-json-file: drama-board/global.json
       - name: Build solution
-        run: dotnet build DramaBoard.Local.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify -p:DurableGraphSourceRoot="${{ github.workspace }}/external/durable-graph" -p:StorageSourceRoot="${{ github.workspace }}/external/atelia-storage"
+        run: dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
       - name: Test
-        run: dotnet test DramaBoard.Local.slnx -c Release --no-build --no-restore -m:1 -p:DurableGraphSourceRoot="${{ github.workspace }}/external/durable-graph" -p:StorageSourceRoot="${{ github.workspace }}/external/atelia-storage"
+        run: dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1

@@ -35,7 +35,7 @@
 
 ## 2. 当前事实与容易漏掉的闭包
 
-- 两份入口 [DramaBoard.slnx](../../DramaBoard.slnx)、[DramaBoard.Local.slnx](../../DramaBoard.Local.slnx)各列出十个生产项目与十一个测试项目；[CI](../../.github/workflows/ci.yml)使用 Local 入口。
+- 当时两份入口 `DramaBoard.slnx`、`DramaBoard.Local.slnx` 各列出十个生产项目与十一个测试项目，CI 使用 Local 入口；现已收敛为 [DramaBoard.slnx](../../DramaBoard.slnx)，本文命令保留历史验收语境。
 - `FirstBoard.Persistence.Tests` 还引用未列入 solution 的 `FirstBoard.Persistence.Process`。这两个项目都链接 `tests/FirstBoard.Tests/EncounterPersistenceOracle.cs`，归档必须覆盖这个辅助进程与源码链接。
 - [ProjectDependencyGuardTests](../../tests/Kernel.Tests/ProjectDependencyGuardTests.cs)会直接打开 `src/Player.Llm/Player.Llm.csproj`。移走目录后，必须调整这项文件存在依赖；[AssemblyDependencyTests](../../tests/Kernel.Tests/AssemblyDependencyTests.cs)中的禁止依赖名称则仍有意义。
 - Protocol 的 JSON 测试（历史 `IntentJsonTests.cs`，已在 Dynamic-Programmer 切换时删除）包含 `FirstBoardActions` 等名称，但没有引用 FirstBoard 项目；它证明的是保留协议的序列化行为，不能仅因名称而删除。

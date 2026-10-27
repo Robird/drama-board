@@ -9,8 +9,8 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 角色（Character） | 世界内承受规则效果的对象，拥有技能、背包和活动。不能用 Player 指代角色状态。 | [CycleCharacter](../src/ResourceCycle/CycleCharacter.cs) |
-| 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前最小入口是 [ICycleDecisionSource](../src/ResourceCycle/CycleActions.cs)；尚无名为 `CharacterController` 的公共类型。标准拼写是 `Controller`。 |
-| 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 Console 决策源；同一 Console 服务三个角色。 |
+| 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前应用接口为 [ICycleCharacterController](../src/ResourceCycle/CycleActions.cs)，尚未提取通用引擎接口。 |
+| 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；同一 Console 服务三个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | 概念预留；当前可玩实例未接入。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | 当前由 `PlayConsole.Render(world, actorId)` 生成 Markdown，未建立独立结构化 Observation 类型。决策源接口目前仍接收整个 `CycleWorld`，不是信息隔离接口。 |
@@ -18,14 +18,14 @@
 | 耗时活动（Activity） | 角色已启动、跨模型时间持续的过程。当前每角色最多一个，种类为等待或采集。 | `CycleActivity`、`CycleCharacter.Activity` |
 | 感知通知（Notice） | 角色收到、等待控制器响应的业务信息，例如他人加入或资源耗尽；不是世界所有事件的副本。 | `CycleNotice`、`CycleCharacter.Notices`；会持久化。 |
 | 决策请求 / 待决策（Decision request） | 当前应给予角色控制器交互机会。可因空闲或有待响应感知产生。 | `NeedsDecision`、`CyclePredictionKind.RequestDecision`；没有独立持久请求对象。 |
-| 唤醒（Wake-up） | 服务决策请求：展示角色观察并等待合法操作。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleDecisionSource.ChooseAsync`；等待输入时暂停模型时间。 |
+| 唤醒（Wake-up） | 服务决策请求：展示角色观察并等待合法操作。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
 | 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，轮流选择下一个被服务者。保证服务机会，不保证资源公平分配。 | `CycleBusinessState.LastServedActorId`；查询和非法输入不交棒。 |
 
 **“多人”需要说明计数对象。** 当前 ResourceCycle 是“单个人类、共用 Console、多个 Character”；不能由三个角色推导出三个独立 Player 实例。未来多个 LLM 控制器与多个角色的绑定关系另行设计。需要精确表达时，用“多角色”或“多控制器”，不单写“多 Player”。
 
 **唤醒不等于打断。** `continue` 确认感知、保留活动及原定到期时刻；`cancel` 取消当前活动、保留已获成果。收到感知和活动继续存在可以同时成立。
 
-**控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；当前 API 仍使用上表原名。
+**控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；控制器已按上表命名，角色上下文 API 尚未实施。
 
 ## 时间、预测与调度
 

@@ -11,8 +11,12 @@ public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? 
     public static CycleCommand Cancel() => new(CycleCommandKind.Cancel);
 }
 
-public interface ICycleDecisionSource {
-    ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken);
+/// <summary>Provides commands for the requested character; one instance may serve multiple characters.</summary>
+/// <remarks>Cross-decision character memory belongs to explicit game state, not hidden controller history.
+/// The current world argument is a trusted application boundary, not a character-scoped information view.</remarks>
+public interface ICycleCharacterController {
+    /// <summary>Runs one decision interaction without committing world changes; the engine validates the returned intent.</summary>
+    ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken);
 }
 
 public static class CycleActions {

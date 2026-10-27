@@ -12,4 +12,16 @@
     <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
     <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
+  <Project Path="../atelia-storage/src/Binary/Binary.csproj" />
+  <Project Path="../atelia-storage/src/Data/Data.csproj" />
+  <Project Path="../atelia-storage/src/FrameStore/FrameStore.csproj" />
+  <Project Path="../atelia-storage/src/HeadStore/HeadStore.csproj" />
+  <Project Path="../atelia-storage/src/Primitives/Primitives.csproj" />
+  <Project Path="../atelia-storage/src/Rbf/Rbf.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph.Build/DurableGraph.Build.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph.Generator/DurableGraph.Generator.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph.Persistence/DurableGraph.Persistence.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph.Serialization/DurableGraph.Serialization.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph.Storage/DurableGraph.Storage.csproj" />
+  <Project Path="../durable-graph/src/DurableGraph/DurableGraph.csproj" />
 </Solution>

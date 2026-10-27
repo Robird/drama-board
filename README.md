@@ -6,14 +6,14 @@ Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred d
 
 ## Build and test
 
-Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` source checkouts. Build and test either equivalent solution entry point directly:
+Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` source checkouts. Use the single solution entry point:
 
 ```powershell
 dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). Both solutions contain Kernel, Spatial, Host, ResourceCycle, its Console entrypoint and their tests. The default workflow needs no package preparation, Node, browser, Player, or Server.
+Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains Kernel, Spatial, Host, ResourceCycle, its Console entrypoint and their tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
 
 ## Day/night resource cycle experiment
 

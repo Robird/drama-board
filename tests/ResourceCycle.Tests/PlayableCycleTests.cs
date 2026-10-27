@@ -13,7 +13,7 @@ public sealed class PlayableCycleTests {
     public async Task Finite_batches_deliver_exact_target_without_per_item_decisions(int count) {
         var source = Commands(CycleCommand.Gather("sunflower", count));
         var initial = Solo();
-        var kernel = CycleEngine.CreateKernel(Memory(initial), decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
         await Step(kernel);
         Assert.Equal(count, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
@@ -27,7 +27,7 @@ public sealed class PlayableCycleTests {
     public async Task All_freezes_accepted_stock_even_with_fast_regeneration() {
         var start = Hour(6);
         var source = Commands(CycleCommand.GatherAll("sunflower"));
-        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, regenerationTicks: CycleTime.Hour / 4), Moon(start)])), decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, regenerationTicks: CycleTime.Hour / 4), Moon(start)])), characterController: source);
         await Step(kernel);
         Assert.True(kernel.World.GetCharacter("a").Activity!.SelectedAll);
         Assert.Equal(3, kernel.World.GetCharacter("a").Activity!.TargetCount);
@@ -42,7 +42,7 @@ public sealed class PlayableCycleTests {
         var initial = CycleWorld.CreatePlayable(characters: [new("a", "Alice"), new("b", "Bob")]);
         var source = Commands(CycleCommand.Gather("sunflower", 2), CycleCommand.Gather("sunflower", 2), CycleCommand.Continue());
         var metrics = new CycleMetrics();
-        var kernel = CycleEngine.CreateKernel(Memory(initial), metrics: metrics, decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(initial), metrics: metrics, characterController: source);
         await Step(kernel);
         CycleActivity activity = kernel.World.GetCharacter("a").Activity!;
         CyclePrediction prediction = ActivityPrediction(kernel.World, "a");
@@ -70,12 +70,12 @@ public sealed class PlayableCycleTests {
     public async Task Stock_depletion_wakes_slow_collector_before_due_with_continue_or_cancel(bool cancel) {
         var start = Hour(6);
         var world = CycleWorld.CreatePlayable(start, [new("a", "Alice"), new("b", "Bob", 2)], [Sun(start, stock: 1), Moon(start)]);
-        var source = new Source((w, id) => {
+        var source = new StubCharacterController((w, id) => {
             var actor = w.GetCharacter(id);
             if (actor.Activity is null) { return actor.Backpack.Items.Count == 0 ? CycleCommand.Gather("sunflower") : CycleCommand.Wait(1); }
             return actor.Notices.Any(n => n.Kind == CycleNoticeKind.ResourceDepleted) && cancel ? CycleCommand.Cancel() : CycleCommand.Continue();
         });
-        var kernel = CycleEngine.CreateKernel(Memory(world), decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(world), characterController: source);
         await Until(kernel, w => w.GetCharacter("a").Notices.Any(n => n.Kind == CycleNoticeKind.ResourceDepleted));
         Assert.Equal(Minute(400), kernel.World.Time);
         var slow = kernel.World.GetCharacter("a");
@@ -101,7 +101,7 @@ public sealed class PlayableCycleTests {
     public async Task Self_depletion_alerts_once_and_continue_can_receive_replenishment_before_due() {
         var start = Hour(6);
         var source = Commands(CycleCommand.Gather("sunflower", 2), CycleCommand.Continue());
-        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1, regenerationTicks: 90 * 60_000), Moon(start)])), decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1, regenerationTicks: 90 * 60_000), Moon(start)])), characterController: source);
         await Step(kernel);
         await Until(kernel, w => w.GetCharacter("a").Notices.Count > 0);
         var actor = kernel.World.GetCharacter("a");
@@ -123,7 +123,7 @@ public sealed class PlayableCycleTests {
     public async Task Harvest_preserves_unfinished_regeneration_but_starts_fresh_from_full(bool initiallyFull) {
         var start = Hour(6);
         var world = Solo(start, [Sun(start, stock: initiallyFull ? 5 : 3), Moon(start)]);
-        var kernel = CycleEngine.CreateKernel(Memory(world), decisionSource: Commands(CycleCommand.Gather("sunflower")));
+        var kernel = CycleEngine.CreateKernel(Memory(world), characterController: Commands(CycleCommand.Gather("sunflower")));
         await Step(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(initiallyFull ? Hour(7) : Hour(6), kernel.World.GetResource("sunflower").ActiveSince);
@@ -132,8 +132,8 @@ public sealed class PlayableCycleTests {
 
     [Fact]
     public async Task Round_robin_assignments_are_followed_by_asynchronous_wait_completions() {
-        var source = new Source((_, id) => CycleCommand.Wait(id == "a" ? 6 : id == "b" ? 1 : 3));
-        var kernel = CycleEngine.CreateKernel(Memory(CycleWorld.CreatePlayable()), decisionSource: source);
+        var source = new StubCharacterController((_, id) => CycleCommand.Wait(id == "a" ? 6 : id == "b" ? 1 : 3));
+        var kernel = CycleEngine.CreateKernel(Memory(CycleWorld.CreatePlayable()), characterController: source);
         await Step(kernel);
         await Step(kernel);
         await Step(kernel);
@@ -170,7 +170,7 @@ public sealed class PlayableCycleTests {
         Assert.NotNull(CycleActions.Check(initial, "a", command));
         Assert.NotNull(CycleActions.Check(initial, "unknown", CycleCommand.Wait(1)));
         Assert.NotEmpty(CycleDiagnostics.Render(initial));
-        var kernel = CycleEngine.CreateKernel(history, decisionSource: Commands(command));
+        var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
         await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(96)).AsTask());
         Assert.Equal(before, history.State.DescribeState());
         Assert.Empty(history.CompletedEvents);
@@ -182,7 +182,7 @@ public sealed class PlayableCycleTests {
     [InlineData(1, 48)]
     [InlineData(2, 40)]
     public async Task Skill_formula_uses_exact_safe_integer_duration(int skill, int minutes) {
-        var kernel = CycleEngine.CreateKernel(Memory(Solo(skill: skill)), decisionSource: Commands(CycleCommand.Gather("sunflower")));
+        var kernel = CycleEngine.CreateKernel(Memory(Solo(skill: skill)), characterController: Commands(CycleCommand.Gather("sunflower")));
         await Step(kernel);
         Assert.Equal(minutes * 60_000L, kernel.World.GetCharacter("a").Activity!.DurationTicks);
         Assert.Equal(Minute(960 + minutes), kernel.World.GetCharacter("a").Activity!.Due);
@@ -192,8 +192,8 @@ public sealed class PlayableCycleTests {
     public async Task Waiting_for_external_input_does_not_advance_or_publish_and_cancellation_leaves_no_fact() {
         var initial = Solo();
         var history = Memory(initial);
-        var source = new GatedSource();
-        var kernel = CycleEngine.CreateKernel(history, decisionSource: source);
+        var source = new GatedCharacterController();
+        var kernel = CycleEngine.CreateKernel(history, characterController: source);
         using var cancellation = new CancellationTokenSource();
         Task<StepStatus> operation = kernel.StepAsync(Hour(96), cancellation.Token).AsTask();
         await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -211,7 +211,7 @@ public sealed class PlayableCycleTests {
 
     [Fact]
     public async Task Incremental_and_full_playable_traces_match_at_every_boundary() {
-        static Source Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
+        static StubCharacterController Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
             : w.GetResource("sunflower").Stock > 0 ? CycleCommand.Gather("sunflower", 2) : CycleCommand.Wait(3));
         var ih = Memory(CycleWorld.CreatePlayable());
         var fh = Memory(CycleWorld.CreatePlayable());
@@ -232,19 +232,19 @@ public sealed class PlayableCycleTests {
 
     [Fact]
     public async Task Cold_reopen_at_every_multiplayer_boundary_preserves_rotation_perceptions_and_trace() {
-        static Source Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
+        static StubCharacterController Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
             : w.GetResource("sunflower").Stock > 0 ? CycleCommand.GatherAll("sunflower") : CycleCommand.Wait(3));
         var initial = CycleWorld.CreatePlayable();
         var baselineSource = Driver();
         var resumedSource = Driver();
-        var baseline = CycleEngine.CreateKernel(Memory(initial), decisionSource: baselineSource);
+        var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: baselineSource);
         using var directory = new TemporaryStore();
         using (CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) { }
         for (int i = 0; i < 50; i++) {
             await Step(baseline);
             using var history = CycleDurableHistory.Open(directory.StorePath);
             AssertPredictions(history.State);
-            var resumed = CycleEngine.CreateKernel(history, decisionSource: resumedSource);
+            var resumed = CycleEngine.CreateKernel(history, characterController: resumedSource);
             await Step(resumed);
             Assert.Equal(baseline.World.DescribeState(), resumed.World.DescribeState());
             Assert.Equal(baseline.Cursor, resumed.Cursor);
@@ -260,7 +260,7 @@ public sealed class PlayableCycleTests {
     public async Task Regeneration_and_light_change_at_harvest_due_settle_before_delivery() {
         var start = Hour(15);
         var history = Memory(Solo(start, [Sun(start, harvestTicks: 3 * CycleTime.Hour), Moon(start)]));
-        var kernel = CycleEngine.CreateKernel(history, decisionSource: Commands(CycleCommand.Gather("sunflower")));
+        var kernel = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Gather("sunflower")));
         await Step(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(Hour(18), kernel.World.Time);
@@ -275,7 +275,7 @@ public sealed class PlayableCycleTests {
     public async Task Batch_can_request_more_than_stock_but_first_empty_completion_ends_it() {
         var start = Hour(6);
         var source = Commands(CycleCommand.Gather("sunflower", 5), CycleCommand.Continue());
-        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1), Moon(start)])), decisionSource: source);
+        var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1), Moon(start)])), characterController: source);
         await Step(kernel);
         Assert.Equal(5, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
@@ -284,9 +284,9 @@ public sealed class PlayableCycleTests {
         Assert.Equal(2, source.Calls);
     }
     private static CyclePrediction ActivityPrediction(CycleWorld world, string actor) => Assert.Single(world.Forecasts.Predictions, p => p.OwnerId == $"actor:{actor}:activity");
-    private sealed class GatedSource : ICycleDecisionSource {
+    private sealed class GatedCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
             Entered.SetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);
             throw new InvalidOperationException("unreachable");

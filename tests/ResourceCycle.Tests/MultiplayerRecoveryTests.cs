@@ -13,7 +13,7 @@ public sealed class MultiplayerRecoveryTests {
     [InlineData("confirmation")]
     public async Task Multiplayer_event_only_recovery_restores_atomic_effects_without_planning(string boundary) {
         CycleWorld initial = CompetitionWorld();
-        var expected = CycleEngine.CreateKernel(Memory(initial), decisionSource: CompetitionSource());
+        var expected = CycleEngine.CreateKernel(Memory(initial), characterController: CompetitionSource());
         int stepCount = 0;
         CycleWorld before;
         do {
@@ -28,7 +28,7 @@ public sealed class MultiplayerRecoveryTests {
         using var directory = new TemporaryStore();
         using (var history = CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) {
             var interrupted = CycleEngine.CreateKernel(new FailAfterEventNumber(history, stepCount),
-                decisionSource: CompetitionSource());
+                characterController: CompetitionSource());
             for (int step = 1; step < stepCount; step++) { await Step(interrupted); }
             string oldState = interrupted.World.DescribeState();
             KernelCursor oldCursor = interrupted.Cursor;
@@ -96,15 +96,15 @@ public sealed class MultiplayerRecoveryTests {
         string savedState;
         KernelCursor savedCursor;
         using (var history = CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) {
-            var preparation = CycleEngine.CreateKernel(history, decisionSource: CompetitionSource());
+            var preparation = CycleEngine.CreateKernel(history, characterController: CompetitionSource());
             await Until(preparation, world => world.GetResource("sunflower").Stock == 0);
             // b has just finished. Persist its next wait, so the next request is a's depletion response.
             while (preparation.World.GetCharacter("b").Activity is null) { await Step(preparation); }
             Assert.Single(preparation.World.GetCharacter("a").Notices);
             savedState = preparation.World.DescribeState();
             savedCursor = preparation.Cursor;
-            var source = new GatedContinue();
-            var kernel = CycleEngine.CreateKernel(history, decisionSource: source);
+            var source = new GatedContinueCharacterController();
+            var kernel = CycleEngine.CreateKernel(history, characterController: source);
             using var cancellation = new CancellationTokenSource();
             Task<StepStatus> pending = kernel.StepAsync(Hour(240), cancellation.Token).AsTask();
             await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -120,7 +120,7 @@ public sealed class MultiplayerRecoveryTests {
         Assert.Equal(savedState, reopened.State.DescribeState());
         Assert.Equal(savedCursor, reopened.Cursor);
         var response = Commands(CycleCommand.Continue());
-        var resumed = CycleEngine.CreateKernel(reopened, decisionSource: response);
+        var resumed = CycleEngine.CreateKernel(reopened, characterController: response);
         Assert.False(resumed.RecoverPending());
         string activity = reopened.State.GetCharacter("a").Activity!.ToString();
         await Step(resumed);
@@ -133,7 +133,7 @@ public sealed class MultiplayerRecoveryTests {
     private static CycleWorld CompetitionWorld() => CycleWorld.CreatePlayable(Hour(16),
         [new("a", "Alice", 0), new("b", "Bob", 2)], [Sun(Hour(16), stock: 1), Moon(Hour(16))]);
 
-    private static Source CompetitionSource() => new((world, id) => {
+    private static StubCharacterController CompetitionSource() => new((world, id) => {
         CycleCharacter actor = world.GetCharacter(id);
         if (actor.Activity is not null) { return CycleCommand.Continue(); }
         return actor.NextActivityId == 1
@@ -149,10 +149,10 @@ public sealed class MultiplayerRecoveryTests {
         _ => throw new ArgumentOutOfRangeException(nameof(boundary)),
     };
 
-    private sealed class GatedContinue : ICycleDecisionSource {
+    private sealed class GatedContinueCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? Actor { get; private set; }
-        public async ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
             Actor = actorId;
             Entered.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
