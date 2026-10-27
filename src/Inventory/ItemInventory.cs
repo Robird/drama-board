@@ -48,6 +48,25 @@ public sealed partial class ItemInventory : IDurableObject {
         var items = new Dictionary<string, int>(_items, StringComparer.Ordinal) { [itemId] = checked(Count(itemId) + 1) };
         return new(items, UnitCapacity);
     }
+
+    /// <summary>Returns a new snapshot with the requested quantity removed, deleting an exhausted entry.</summary>
+    /// <remarks>The entire quantity must be available. The original snapshot and its item views remain unchanged,
+    /// and the new snapshot retains this inventory's capacity and ordinal item identities.</remarks>
+    /// <exception cref="ArgumentException">The item identity is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is not positive.</exception>
+    /// <exception cref="InvalidOperationException">The requested quantity is not available.</exception>
+    public ItemInventory Remove(string itemId, int count = 1) {
+        int available = Count(itemId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        if (available < count) {
+            throw new InvalidOperationException("The requested item quantity is not available.");
+        }
+        var items = new Dictionary<string, int>(_items, StringComparer.Ordinal);
+        if (available == count) { items.Remove(itemId); }
+        else { items[itemId] = available - count; }
+        return new(items, UnitCapacity);
+    }
+
     /// <summary>Checks local invariants, including after hydration that bypasses the public constructor.</summary>
     /// <remarks>The composing game validates its complete graph before handing it to normal execution.</remarks>
     public void Validate() {

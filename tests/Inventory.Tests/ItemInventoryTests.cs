@@ -126,6 +126,77 @@ public sealed class ItemInventoryTests {
         Assert.ThrowsAny<ArgumentException>(() => backpack.Count(itemId!));
         Assert.ThrowsAny<ArgumentException>(() => backpack.CheckAdd(itemId!));
         Assert.ThrowsAny<ArgumentException>(() => backpack.Add(itemId!));
+        Assert.ThrowsAny<ArgumentException>(() => backpack.Remove(itemId!));
         Assert.Empty(backpack.Items);
+    }
+
+    [Fact]
+    public void Removing_one_unit_frees_capacity_without_changing_the_original_snapshot_or_view() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2, ["water"] = 1 }, unitCapacity: 3);
+        IReadOnlyDictionary<string, int> originalView = inventory.Items;
+
+        ItemInventory consumed = inventory.Remove("food");
+
+        Assert.NotSame(inventory, consumed);
+        Assert.Equal(1, consumed.Count("food"));
+        Assert.Equal(1, consumed.Count("water"));
+        Assert.Equal(2L, consumed.TotalCount);
+        Assert.Equal(3L, consumed.UnitCapacity);
+        Assert.Equal(InventoryAdmission.Allowed, consumed.CheckAdd("wood"));
+        Assert.Equal(2, originalView["food"]);
+        Assert.Equal(3L, inventory.TotalCount);
+        Assert.Equal(InventoryAdmission.CapacityLimit, inventory.CheckAdd("wood"));
+    }
+
+    [Fact]
+    public void Removing_the_whole_stack_deletes_only_the_exact_ordinal_identity() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2, ["FOOD"] = 3 });
+
+        ItemInventory consumed = inventory.Remove("food", 2);
+
+        Assert.False(consumed.Items.ContainsKey("food"));
+        Assert.Equal(0, consumed.Count("food"));
+        Assert.Equal(3, consumed.Count("FOOD"));
+        Assert.Equal("FOOD", Assert.Single(consumed.Items).Key);
+        Assert.Null(consumed.UnitCapacity);
+        Assert.Equal(2, inventory.Count("food"));
+        consumed.Validate();
+    }
+
+    [Theory]
+    [InlineData("food", 3)]
+    [InlineData("absent", 1)]
+    [InlineData("FOOD", 1)]
+    public void Insufficient_removal_is_rejected_without_partial_consumption(string itemId, int quantity) {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2 }, unitCapacity: 4);
+        IReadOnlyDictionary<string, int> originalView = inventory.Items;
+
+        Assert.Throws<InvalidOperationException>(() => inventory.Remove(itemId, quantity));
+
+        Assert.Equal(2, inventory.Count("food"));
+        Assert.Equal(2, Assert.Single(originalView).Value);
+        Assert.Equal(4L, inventory.UnitCapacity);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void Removal_requires_a_positive_quantity(int quantity) {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2 });
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => inventory.Remove("food", quantity));
+        Assert.Equal(2, inventory.Count("food"));
+    }
+
+    [Fact]
+    public void Maximum_representable_stack_can_be_removed_in_one_operation() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = int.MaxValue });
+
+        ItemInventory consumed = inventory.Remove("food", int.MaxValue);
+
+        Assert.Empty(consumed.Items);
+        Assert.Equal(0L, consumed.TotalCount);
+        Assert.Equal(int.MaxValue, inventory.Count("food"));
     }
 }
