@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；局部预测重构的空间首阶段 S1/S2 已实施，下一步是协调 ResourceCycle 的 S3 集成；其多角色化由另一会话并行推进。见[实施方案](docs/design/local-prediction-refactor.md)与[验收记录](docs/experiments/local-prediction-acceptance.md)。
+> 最近整理：2026-10-27；用户已选定把纯派生预测改为运行时缓存，先于原 S3 集成实施。当前代码仍是持久 Contacts，下一轮按[缓存重构方案](docs/design/runtime-derived-predictions.md)推进；本轮仅文档。ResourceCycle 多角色化仍由另一会话并行推进。
 
 ## 最终目标
 
@@ -21,7 +21,11 @@
 
 资源周期实例已有批处理预测对照与单角色、单地点、两种植物、背包、等待/即时采集的 Console 闭环，均保持单根恢复；证据见[批处理验收](docs/experiments/resource-cycle-acceptance.md)与[采集验收](docs/experiments/resource-cycle-play-acceptance.md)。没有空间接线、GUI 或 LLM。
 
-用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现，随后可缩为变化段配对。S1/S2 已落实独立 Contacts 子图、Kernel 唯一 Complete、带模型时间的完整校验与实际同根恢复；独立全量参考检查新关系漏项，arrival/schedule 复用既有 Due，没有通用过程注册表。下一步按[方案 S3](docs/design/local-prediction-refactor.md#7-实施切片与停止点)协调 ResourceCycle：把规则内维护迁入 Complete，保留 Due/Kind 优先级及角色唤醒，统一候选读取命名并验证恢复不维护；当前该工厂仅用显式 identity Complete 适配。现有 floor＋同 tick 仲裁是对照基线而非永久兼容约束；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
+用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现；运行中增量维护和冷开重建是独立选择。已有 S1/S2 实现及证据见[原验收记录](docs/experiments/local-prediction-acceptance.md)，但用户现已明确纯派生预测不应强制落盘。
+
+**下一轮实施**：[运行时派生预测方案](docs/design/runtime-derived-predictions.md)。先完成 Kernel/Spatial 的缓存与恢复闭环：磁盘只保存基础 Business、cursor 与业务 E；运行时保留不可变 Business/Contacts wrapper；正常推进和恢复均可做纯派生计算，禁止恢复重新规划或调用 Player。文档建议将 Complete 改到业务 Fold 后返回就绪运行时世界；具体 API 属于待实施方案。验收以全量 oracle、实际 S/E-only 冷开、缓存随 S 成功才安装为核心；没有旧存档兼容要求。
+
+随后再协调 ResourceCycle 的真实维护迁移，保留 Due/Kind 优先级、owner 消费与角色唤醒；当前先机械适配共享接口。移除预测持久化不会自动更新已保存的 SpeedSnapshot/RequiredTicks，平衡参数如何作用于在途过程另见新方案第 6 节，不隐式热更新。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话并行推进 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。当前核心分支不改该应用片；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 

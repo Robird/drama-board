@@ -1,5 +1,7 @@
 # 局部预测重构：空间首阶段验收
 
+> 本记录对应 `21379a1` 的持久预测实现。后续用户已选定[运行时预测缓存重构](../design/runtime-derived-predictions.md)；“恢复不运行 Complete”和“E 保存预测替换”是本基线的证据，不再是下一轮目标。新方案目前未实施。
+
 本记录对应[实施方案](../design/local-prediction-refactor.md)的 S1/S2。空间候选读取已改为持久接触输出的投影；业务变化通过 Kernel 的唯一 Complete 接缝重算受影响通道，并把结果与业务事实一起发布。ResourceCycle 本轮仅适配共享签名；其预测维护迁入 Complete 和 Forecast 命名收敛仍是 S3。
 
 ## 实现与使用入口

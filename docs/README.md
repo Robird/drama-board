@@ -17,6 +17,8 @@ The application-layer ResourceCycle example implements day/night changes, plant 
 
 The first stage of [local prediction maintenance](design/local-prediction-refactor.md) is implemented: passage-scoped discovery, persisted contact outputs, one transition-completion seam and time-aware validation. See [S1/S2 acceptance and recovery evidence](experiments/local-prediction-acceptance.md). ResourceCycle maintenance migration and the shared candidate API rename remain S3; its factory currently uses explicit identity completion. The [dialectical review](research/local-prediction-design-review.md) and [new-combination discovery survey](research/prediction-discovery/README.md) explain the choices. A separate conversation is advancing multiple ResourceCycle characters controlled through one Human Console; that application slice does not depend on movement.
 
+The next implementation is [runtime derived predictions](design/runtime-derived-predictions.md): keep incremental maintenance during play, persist business truth and recorded decisions, and rebuild derived predictions on load. This approved direction supersedes mandatory prediction persistence and takes priority over the original S3 integration. The document proposes the API and recovery changes; production code still uses the preceding persisted-Contacts design. Balance changes to saved movement/growth parameters require separate explicit semantics.
+
 The previous [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) is complete; see the [executed evidence](build-log/0027-spacetime-extraction.md).
 
 ## Application research

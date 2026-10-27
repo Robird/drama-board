@@ -1,5 +1,7 @@
 # 局部预测重构方案
 
+> 后续裁决（2026-10-27）：用户已选择纯派生预测不落盘。下一轮以[运行时派生预测方案](runtime-derived-predictions.md)为实施入口；本文记录已实施的 `21379a1` 基线，其中持久 Contacts、预测替换 facts、恢复禁止派生计算及原 S3 执行次序已被新方案调整。通道局部发现、数学时序与发布不变量仍保留。
+
 > 2026-10-27。经两轮辩证审阅后，S1/S2 空间首阶段已实施；入口与验证边界见[验收记录](../experiments/local-prediction-acceptance.md)。S3 ResourceCycle 共同维护接缝与 API 收敛仍待协调其多角色分支，S4 为可选优化。以下保留设计职责与验收契约；背景见[算法综述](../research/prediction-discovery/README.md)，取舍见[审阅裁决](../research/local-prediction-design-review.md)。
 
 ## 1. 需求账本与边界
