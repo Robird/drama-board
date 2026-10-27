@@ -1,4 +1,6 @@
 using DramaBoard.Kernel.Time;
+using DramaBoard.Kernel.Scheduling;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -17,6 +19,7 @@ public sealed class CyclePrediction {
     public ModelTime Due { get; }
     public long Generation { get; }
     public int Sequence { get; }
+    internal OccurrenceCandidate<SpatialOccurrenceData>? SpatialCandidate { get; init; }
     public CyclePrediction(string ownerId, CyclePredictionKind kind, string targetId, ModelTime due, long generation, int sequence = 0) {
         OwnerId = ownerId; Kind = kind; TargetId = targetId; Due = due; Generation = generation; Sequence = sequence;
     }

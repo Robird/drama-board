@@ -1,5 +1,6 @@
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -8,6 +9,21 @@ namespace DramaBoard.ResourceCycle;
 /// invocation. Supplied entity instances are retained, not cloned; callers must not mutate
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
+    /// <summary>Creates a fixed, revision-bound mountain scenario with one explorer and no revealed distant truth.</summary>
+    public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null) {
+        ModelTime time = start ?? new ModelTime(8 * CycleTime.Hour);
+        CycleResource[] resources = [
+            new("berries", "野浆果", "item.food", true, 3 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
+            new("water", "溪水", "item.water", true, CycleTime.Hour, 12, 12, harvestTicks: CycleTime.Hour / 4),
+            new("wood", "干木", "item.wood", true, 6 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
+            new("ridge-herbs", "山脊野菜", "item.food", true, 4 * CycleTime.Hour, 4, 4, harvestTicks: CycleTime.Hour / 2)
+        ];
+        GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("camp"))]);
+        var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [new("a", "camp", time, [])]);
+        return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
+            new([]), [new("a", "阿青")], expedition: expedition));
+    }
+
     /// <summary>Creates the scripted resource-cycle experiment and its initial cursor.</summary>
     public static (CycleWorld World, KernelCursor Cursor) CreateBatch(ModelTime? start = null,
         IEnumerable<CycleDestruction>? script = null) {

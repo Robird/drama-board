@@ -1,5 +1,6 @@
 using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -40,8 +41,52 @@ internal static class CyclePlanning {
             }
             case CycleCommandKind.Gather:
                 return StartGather(world, actor, command);
+            case CycleCommandKind.Go: {
+                var accepted = (SpatialPlanAccepted)CycleExpeditionMap.Planner.TryStartTraversal(
+                    world.Expedition!.Spatial, new(actorId), new(command.PassageId!), 1, world.Time);
+                string result = $"沿通路 {command.PassageId} 出发；本段移动不可取消。";
+                return new(CycleEventKind.MoveStarted, world.Time, actorId,
+                    changedCharacters: [actor.Change(null, notices: [], result: result)], lastServedActorId: actorId,
+                    result: result, spatialFacts: accepted.Facts);
+            }
             default: throw new InvalidOperationException("Unknown command after validation.");
         }
+    }
+
+    internal static CycleFact Arrive(CycleWorld world, ModelTime at, IReadOnlyList<GraphSpatialFact> facts) {
+        if (facts.Count != 1 || facts[0] is not TraversalArrivedFact arrived) {
+            throw new InvalidOperationException("This scenario supports only traversal arrivals from Spatial.");
+        }
+        CycleCharacter actor = world.GetCharacter(arrived.EntityId.Value);
+        var traversal = (TraversingLocation)world.Expedition!.Spatial.Entities.Single(e => e.Id == arrived.EntityId).Location;
+        CyclePlaceDefinition place = CycleExpeditionMap.GetPlace(traversal.TargetPlaceId.Value);
+        string result = $"抵达{place.Name}。{place.Description}";
+        return new(CycleEventKind.MoveArrived, at, actor.Id, changedCharacters: [actor.Change(null, result: result)],
+            result: result, spatialFacts: facts, outcome: place.IsExit ? CycleExpeditionOutcome.Escaped : null,
+            endingReason: place.IsExit ? $"你抵达{place.Name}，安全回到了人类社会。" : null);
+    }
+
+    /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>
+    internal static CycleFact Observe(CycleWorld world, CycleFact fact) {
+        if (world.Expedition is null) { return fact; }
+        GraphSpatialState spatial = world.Expedition.Spatial;
+        foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
+            spatial = CycleExpeditionMap.Reducer.Apply(spatial, new(fact.At, 0), spatialFact);
+        }
+        var resources = world.Resources.Select(r => fact.ChangedResources.SingleOrDefault(c => c.Id == r.Id) ?? r).ToArray();
+        var visits = new List<CycleVisit>();
+        foreach (CycleCharacter actor in world.Characters) {
+            SpatialLocation location = spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;
+            // Keep the departure snapshot too; moving does not reveal the destination.
+            if (fact.Kind == CycleEventKind.MoveStarted && actor.Id == fact.ActorId) {
+                location = world.Expedition.Spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;
+            }
+            if (location is AtPlaceLocation at) {
+                visits.Add(new(actor.Id, at.PlaceId.Value, fact.At,
+                    resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == at.PlaceId.Value)));
+            }
+        }
+        return fact.WithVisits(visits);
     }
 
     private static CycleFact StartGather(CycleWorld world, CycleCharacter actor, CycleCommand command) {

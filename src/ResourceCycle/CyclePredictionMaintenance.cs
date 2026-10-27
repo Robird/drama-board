@@ -66,7 +66,8 @@ internal static class CyclePredictionMaintenance {
                 yield return new($"actor:{actor.Id}:activity", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
-                CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged }) {
+                CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged,
+                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed }) {
@@ -103,7 +104,7 @@ internal static class CyclePredictionMaintenance {
                     prediction.Generation == activity.Id && prediction.Sequence == activity.CycleIndex && prediction.Due == activity.Due;
             case CyclePredictionKind.RequestDecision:
                 CycleCharacter? deciding = business.Characters.SingleOrDefault(c => c.Id == prediction.TargetId);
-                return deciding is not null && deciding.NeedsDecision && prediction.OwnerId == $"actor:{deciding.Id}:attention" &&
+                return deciding is not null && CycleActions.NeedsDecision(business, deciding.Id) && prediction.OwnerId == $"actor:{deciding.Id}:attention" &&
                     prediction.Generation == deciding.DecisionGeneration && prediction.Sequence == 0 && prediction.Due == business.Time;
             default: return false;
         }
@@ -138,7 +139,7 @@ internal static class CyclePredictionMaintenance {
         }
         if (owner.StartsWith("actor:", StringComparison.Ordinal) && owner.EndsWith(":attention", StringComparison.Ordinal)) {
             CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":attention".Length]);
-            return actor.NeedsDecision ? new(owner, CyclePredictionKind.RequestDecision, actor.Id, business.Time, actor.DecisionGeneration) : null;
+            return CycleActions.NeedsDecision(business, actor.Id) ? new(owner, CyclePredictionKind.RequestDecision, actor.Id, business.Time, actor.DecisionGeneration) : null;
         }
         throw new InvalidOperationException("Unknown prediction owner.");
     }

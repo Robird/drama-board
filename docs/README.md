@@ -17,7 +17,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The next [Survival escape milestone](design/survival-demo-milestone.md) defines two phases: a single-character Human Console game, then a two-character experience with an LLM companion, dialogue and gifts. Phase one combines movement, limited-information exploration, survival needs and environmental risks, with explicit playtest and recovery acceptance. This is a target document; implementation has not started. Its final section supplies a bounded goal prompt for the next implementation run.
+The [Survival escape milestone](design/survival-demo-milestone.md) defines two phases: a single-character Human Console game, then a two-character experience with an LLM companion, dialogue and gifts. Phase one is in progress through the [implementation plan](implementation/survival-demo-plan.md), starting with spatial exploration and a single durable game root, then survival needs, environmental risks and explicit playtest/recovery acceptance. Phase two has not started.
 
 The [gradual modularization plan](implementation/modularization-plan.md) A–D is implemented: application boundaries, the total-unit capacity probe, and an independent Inventory assembly with explicit model registration and local tests; see [acceptance evidence](experiments/modularization-acceptance.md). Further extraction follows concrete gameplay needs. The default demo remains unlimited; saves containing Backpack schema v1/v2 are not supported by the v3 model.
 

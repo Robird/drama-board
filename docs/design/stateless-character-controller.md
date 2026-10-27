@@ -30,7 +30,7 @@ CharacterController（亦称 Player）负责为指定角色产生决策，**不�
 
 角色自己的猜测、错误记忆或不确定判断也属于角色状态；不能在上下文构造时悄悄用全知真相替换。若标注事件与状态的因果联系，联系本身也需符合已选定的感知规则。
 
-Doc UI 与工具必须遵守同一可见性边界，不能只裁剪文本，却允许展开工具读取全部世界。未来输入边界应从完整世界对象收敛为“指定角色的决策上下文＋允许调用的工具”；具体类型和工具协议另行设计。
+Doc UI 与工具必须遵守同一可见性边界，不能只裁剪文本，却允许展开工具读取全部世界。当前已收敛为指定角色的 `CycleDecisionContext`：观察结果与只读命令校验；后续工具协议仍按实际需求设计。
 
 ### 无状态不等于确定性或无副作用
 
@@ -52,7 +52,7 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 ## 当前实现与后续范围
 
-- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 `CycleWorld + actorId`，返回 `CycleCommand`。它允许一个实例服务多个角色，但还不是角色信息隔离接口。
+- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleCommand`。上下文包含角色观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
 - [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 没有实例字段，单个实例轮流服务三个角色；每次调用渲染该角色界面并等待合法输入。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。共享控制器沿用现有服务轮转，不修改抢资源仲裁。
 - 当前没有 LLM 接入、持久笔记、角色经历召回或独立 DecisionContext 类型。归档 Player 实现是技术储备，不因本决策自动恢复使用。

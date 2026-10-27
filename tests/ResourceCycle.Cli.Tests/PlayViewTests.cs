@@ -13,12 +13,12 @@ public sealed class PlayViewTests {
         CycleCharacter other = new("b", "Bob", backpack: new(unitCapacity: 5));
         CycleWorld world = World(viewer, other);
 
-        string observation = PlayView.Render(world, "a");
+        string observation = Render(world, "a");
         Assert.Contains("- 容量：1 / 3 件。", observation);
-        Assert.Equal(observation, PlayView.Render(World(viewer,
+        Assert.Equal(observation, Render(World(viewer,
             new("b", "Bob", backpack: new(unitCapacity: 99))), "a"));
-        Assert.Contains("- 容量：0 / 5 件。", PlayView.Render(world, "b"));
-        Assert.DoesNotContain("- 容量：", PlayView.Render(World(new CycleCharacter("a", "Alice")), "a"));
+        Assert.Contains("- 容量：0 / 5 件。", Render(world, "b"));
+        Assert.DoesNotContain("- 容量：", Render(World(new CycleCharacter("a", "Alice")), "a"));
     }
 
     [Fact]
@@ -33,9 +33,9 @@ public sealed class PlayViewTests {
         CycleWorld variant = World(viewer, privateVariant);
 
         string before = variant.DescribeState();
-        string rendered = PlayView.Render(variant, "a");
-        Assert.Equal(PlayView.Render(baseline, "a"), rendered);
-        Assert.Equal(PlayView.RenderCommands(baseline, "a"), PlayView.RenderCommands(variant, "a"));
+        string rendered = Render(variant, "a");
+        Assert.Equal(Render(baseline, "a"), rendered);
+        Assert.Equal(RenderCommands(baseline, "a"), RenderCommands(variant, "a"));
         Assert.Contains("Bob（b），共 1 人", rendered);
         Assert.Contains("Bob（`b`）：正在采集 太阳花", rendered);
         Assert.DoesNotContain("private.gem", rendered);
@@ -43,7 +43,7 @@ public sealed class PlayViewTests {
         Assert.Equal(before, variant.DescribeState());
         Assert.Same(privateVariant, variant.GetCharacter("b"));
 
-        string ownView = PlayView.Render(variant, "b");
+        string ownView = Render(variant, "b");
         Assert.Contains("采药等级：47", ownView);
         Assert.Contains("private.gem", ownView);
         Assert.Contains("×12345", ownView);
@@ -57,7 +57,7 @@ public sealed class PlayViewTests {
     public void Joining_notice_distinguishes_the_historical_event_from_current_activity(bool stillGathering, string currentStatus) {
         CycleCharacter viewer = new("a", "Alice", activity: Gather(1), notices: [Joined(count: 2)], nextActivityId: 2);
         CycleActivity otherActivity = stillGathering ? Gather(2) : new(CycleActivityKind.Wait, 1, Hour(16), CycleTime.Hour, Hour(17));
-        string text = PlayView.Render(World(viewer, new("b", "Bob", activity: otherActivity, nextActivityId: 2)), "a");
+        string text = Render(World(viewer, new("b", "Bob", activity: otherActivity, nextActivityId: 2)), "a");
         Assert.Contains("第 0 天 15:00：Bob（b）曾加入 太阳花 的采集", text);
         Assert.Contains(currentStatus, text);
         Assert.Contains("待回应同类变化共 2 次，此处为最近一次", text);
@@ -68,7 +68,7 @@ public sealed class PlayViewTests {
     public void Depletion_notice_keeps_history_separate_from_replenished_stock_and_last_result() {
         CycleCharacter viewer = new("a", "Alice", notices: [Depleted()], lastResult: "当时背包为空");
         CycleWorld world = World(viewer, new("b", "Bob"));
-        string text = PlayView.Render(world, "a");
+        string text = Render(world, "a");
         Assert.Contains("第 0 天 15:00：太阳花曾被取空", text);
         Assert.Contains("原因：取走最后一份。当前余量 3/5", text);
         Assert.Contains("消息描述已发生的耗尽，不会取消你的在途周期", text);
@@ -81,7 +81,7 @@ public sealed class PlayViewTests {
     public void Commands_report_current_blockers_without_acknowledging_notices() {
         CycleCharacter viewer = new("a", "Alice", activity: Gather(1), notices: [Joined()], nextActivityId: 2);
         CycleWorld world = World(viewer, new("b", "Bob"));
-        string commands = PlayView.RenderCommands(world, "a");
+        string commands = RenderCommands(world, "a");
         Assert.Contains("- `continue`：确认感知并交还控制权，保留活动和进度；可执行。", commands);
         Assert.Contains("- `gather sunflower all`", commands);
         Assert.Contains("受阻：已有耗时活动，请先 cancel。", commands);
@@ -97,6 +97,9 @@ public sealed class PlayViewTests {
         CycleFact sunset = new(CycleEventKind.LightChanged, Hour(18), light: new(false, Hour(30)));
         Assert.Equal("\n世界变化 · 第 0 天 18:00：天黑了；月光草满足再生光照条件，太阳花暂停再生。", PlayView.RenderPublicChange(sunset));
     }
+
+    private static string Render(CycleWorld world, string actorId) => PlayView.Render(CycleDecisionContext.Create(world, actorId).Observation);
+    private static string RenderCommands(CycleWorld world, string actorId) => PlayView.RenderCommands(CycleDecisionContext.Create(world, actorId).Observation);
 
     private static CycleWorld World(params CycleCharacter[] actors) => CycleGameFactory.CreatePlayable(Hour(16), actors).World;
     private static CycleActivity Gather(int hours, int target = 3) =>

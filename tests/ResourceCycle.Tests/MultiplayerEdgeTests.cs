@@ -27,7 +27,7 @@ public sealed class MultiplayerEdgeTests {
                 var source = new StubCharacterController((world, id) => {
                     Assert.Equal(Hour(16), world.Time);
                     Assert.Equal("a", id);
-                    Assert.NotNull(world.GetCharacter(id).Activity);
+                    Assert.NotNull(world.Actor.Activity);
                     return CycleCommand.Continue();
                 });
                 using var directory = new TemporaryStore();

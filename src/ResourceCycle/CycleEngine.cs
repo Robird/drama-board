@@ -2,6 +2,7 @@ using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -17,13 +18,16 @@ public static class CycleEngine {
     public static CycleWorld Rebuild(CycleBusinessState business, ModelTime boundaryTime) {
         ArgumentNullException.ThrowIfNull(business);
         business.Validate();
-        var world = new CycleWorld(business, CyclePredictionMaintenance.Rebuild(business));
+        var world = new CycleWorld(business, CyclePredictionMaintenance.Rebuild(business), business.Expedition is { } expedition
+            ? CycleExpeditionMap.Simulation.Rebuild(expedition.Spatial, boundaryTime) : null);
         Validate(world, boundaryTime);
         return world;
     }
     public static CycleWorld Fold(CycleWorld world, LogicalInstant instant, CycleFact fact) {
         ArgumentNullException.ThrowIfNull(world);
-        return new(CycleFactApplication.Apply(world.Business, instant, fact), world.Forecasts);
+        CycleBusinessState business = CycleFactApplication.Apply(world.Business, instant, fact);
+        return new(business, world.Forecasts, business.Expedition is { } expedition
+            ? new SpatialSimulationState(expedition.Spatial, world.Spatial!.Contacts) : null);
     }
     public static CycleWorld Complete(CycleWorld before, LogicalInstant instant, IReadOnlyList<CycleFact> facts, CycleWorld folded) =>
         Complete(before, instant, facts, folded, PredictionMode.Incremental);
@@ -49,21 +53,40 @@ public static class CycleEngine {
         }
         if (mode == PredictionMode.Full) { dirty.UnionWith(CyclePredictionMaintenance.Owners(folded.Business)); }
         CycleForecasts forecasts = CyclePredictionMaintenance.Update(folded.Business, before.Forecasts, dirty, instant.ModelTime, metrics);
-        return ReferenceEquals(forecasts, folded.Forecasts) ? folded : new(folded.Business, forecasts);
+        SpatialSimulationState? spatial = folded.Spatial;
+        if (spatial is not null) {
+            GraphSpatialFact[] spatialFacts = facts.SelectMany(fact => fact.SpatialFacts).ToArray();
+            spatial = CycleExpeditionMap.Simulation.Complete(before.Spatial!, instant, spatialFacts, spatial);
+        }
+        return ReferenceEquals(forecasts, folded.Forecasts) && ReferenceEquals(spatial, folded.Spatial)
+            ? folded : new(folded.Business, forecasts, spatial);
     }
     public static void Validate(CycleWorld world, ModelTime boundaryTime) {
         ArgumentNullException.ThrowIfNull(world);
         world.Business.Validate();
         if (world.Time != boundaryTime) { throw new InvalidOperationException("Business time differs from its publication boundary."); }
         CyclePredictionMaintenance.Validate(world.Business, world.Forecasts, boundaryTime);
+        if (world.Expedition is null ? world.Spatial is not null : world.Spatial is null || !ReferenceEquals(world.Expedition.Spatial, world.Spatial.Business)) {
+            throw new InvalidOperationException("Runtime Spatial must share the expedition's authoritative business graph.");
+        }
+        if (world.Spatial is not null) { CycleExpeditionMap.Simulation.Validate(world.Spatial, boundaryTime); }
     }
 
     private sealed class CycleRule(CycleMetrics metrics, ICycleCharacterController? characterController) : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
+        private readonly SpatialOccurrenceRule _spatialRule = new(CycleExpeditionMap.Graph);
         public IReadOnlyList<OccurrenceCandidate<CyclePrediction>> Forecast(CycleWorld world, SimulationRules rules) {
-            if (world.Forecasts.Predictions.Count == 0) { return []; }
-            ModelTime due = world.Forecasts.Predictions.Min(p => p.Due);
-            CyclePredictionKind kind = world.Forecasts.Predictions.Where(p => p.Due == due).Min(p => p.Kind);
-            CyclePrediction[] eligible = world.Forecasts.Predictions.Where(p => p.Due == due && p.Kind == kind).ToArray();
+            if (world.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) { return []; }
+            var predictions = world.Forecasts.Predictions.ToList();
+            if (world.Spatial is not null) {
+                predictions.AddRange(_spatialRule.Forecast(world.Spatial, rules).Select(candidate =>
+                    new CyclePrediction($"spatial:{candidate.Key}", CyclePredictionKind.SpatialOccurrence,
+                        candidate.Data is TraversalArrivalOccurrenceData arrival ? arrival.EntityId.Value : "world", candidate.Due.ModelTime, 0) { SpatialCandidate = candidate }));
+            }
+            if (predictions.Count == 0) { return []; }
+            // One explicit cross-module policy: regeneration, phase, destruction, arrival, activity, then input.
+            ModelTime due = predictions.Min(p => p.Due);
+            CyclePredictionKind kind = predictions.Where(p => p.Due == due).Min(p => p.Kind);
+            CyclePrediction[] eligible = predictions.Where(p => p.Due == due && p.Kind == kind).ToArray();
             if (kind == CyclePredictionKind.RequestDecision) {
                 int last = world.Characters.ToList().FindIndex(c => c.Id == world.Business.LastServedActorId);
                 for (int offset = 1; offset <= world.Characters.Count; offset++) {
@@ -80,6 +103,13 @@ public static class CycleEngine {
             cancellationToken.ThrowIfCancellationRequested();
             CyclePrediction prediction = winner.Data;
             metrics.PredictionChecks++;
+            if (prediction.SpatialCandidate is { } spatialCandidate) {
+                if (world.Spatial is null || winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != spatialCandidate.Due.ModelTime) {
+                    throw new InvalidOperationException("Invalid composed spatial candidate.");
+                }
+                TransitionDraft<GraphSpatialFact> spatialDraft = await _spatialRule.PlanSelectedAsync(world.Spatial, spatialCandidate, cancellationToken).ConfigureAwait(false);
+                return new([CyclePlanning.Observe(world, CyclePlanning.Arrive(world, prediction.Due, spatialDraft.Facts))]);
+            }
             if (winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != prediction.Due || prediction.Due < world.Time ||
                 !world.Forecasts.Predictions.Any(p => p.ToString() == prediction.ToString()) || CyclePredictionMaintenance.Predict(world.Business, prediction.OwnerId)?.ToString() != prediction.ToString()) {
                 throw new InvalidOperationException("A stale or invalid prediction cannot execute.");
@@ -87,13 +117,13 @@ public static class CycleEngine {
             CycleFact fact;
             if (prediction.Kind == CyclePredictionKind.RequestDecision) {
                 if (characterController is null) { throw new InvalidOperationException($"A playable world requires an {nameof(ICycleCharacterController)}."); }
-                CycleCommand command = await characterController.ChooseCommandAsync(world, prediction.TargetId, cancellationToken).ConfigureAwait(false);
+                CycleCommand command = await characterController.ChooseCommandAsync(CycleDecisionContext.Create(world, prediction.TargetId), cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 string? rejection = CycleActions.Check(world, prediction.TargetId, command);
                 if (rejection is not null) { throw new InvalidOperationException(rejection); }
                 fact = CyclePlanning.Decision(world, prediction.TargetId, command);
             } else { fact = CyclePlanning.Occurrence(world, prediction); }
-            return new([fact]);
+            return new([CyclePlanning.Observe(world, fact)]);
         }
         private static OccurrenceCandidate<CyclePrediction> Candidate(CyclePrediction prediction) =>
             new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);

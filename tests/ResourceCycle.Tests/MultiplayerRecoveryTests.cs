@@ -134,7 +134,7 @@ public sealed class MultiplayerRecoveryTests {
         [new("a", "Alice", 0), new("b", "Bob", 2)], [Sun(Hour(16), stock: 1), Moon(Hour(16))]);
 
     private static StubCharacterController CompetitionSource() => new((world, id) => {
-        CycleCharacter actor = world.GetCharacter(id);
+        var actor = world.Actor;
         if (actor.Activity is not null) { return CycleCommand.Continue(); }
         return actor.NextActivityId == 1
             ? CycleCommand.Gather("sunflower", id == "a" ? 2 : 1)
@@ -152,8 +152,8 @@ public sealed class MultiplayerRecoveryTests {
     private sealed class GatedContinueCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? Actor { get; private set; }
-        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
-            Actor = actorId;
+        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+            Actor = context.Observation.Actor.Id;
             Entered.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             throw new InvalidOperationException("The input should have been cancelled before returning Continue.");

@@ -1,14 +1,15 @@
 using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 3)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 4)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
-    GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged
+    GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived
 }
-public enum CyclePredictionKind { RegenerateResource, ChangeLight, DestroyResource, CompleteActivity, RequestDecision }
+public enum CyclePredictionKind { RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, CompleteActivity, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
 public static class CycleTime {
@@ -53,7 +54,7 @@ public sealed partial class CycleScript : IDurableObject {
 }
 
 /// <summary>Persistent world truth; caches and member lists are rebuilt after loading.</summary>
-[DurableType("DramaBoard.ResourceCycle.BusinessState", 2)]
+[DurableType("DramaBoard.ResourceCycle.BusinessState", 3)]
 public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     [DurableField(2)] private CycleLight _light;
@@ -61,23 +62,28 @@ public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(4)] private CycleScript _script;
     [DurableField(5)] private List<CycleCharacter> _characters;
     [DurableField(6)] private string? _lastServedActorId;
+    [DurableField(7)] private CycleExpedition? _expedition;
     public ModelTime Time => _time;
     public CycleLight Light => _light;
     public CycleScript Script => _script;
     public IReadOnlyList<CycleResource> Resources => _resources.AsReadOnly();
     public IReadOnlyList<CycleCharacter> Characters => _characters.AsReadOnly();
     public string? LastServedActorId => _lastServedActorId;
+    public CycleExpedition? Expedition => _expedition;
     public CycleBusinessState(ModelTime time, CycleLight light, IEnumerable<CycleResource> resources,
-        CycleScript script, IEnumerable<CycleCharacter>? characters = null, string? lastServedActorId = null) {
+        CycleScript script, IEnumerable<CycleCharacter>? characters = null, string? lastServedActorId = null,
+        CycleExpedition? expedition = null) {
         _time = time; _light = light; _resources = [.. resources]; _script = script;
         _characters = characters?.ToList() ?? []; _lastServedActorId = lastServedActorId;
+        _expedition = expedition;
     }
     public CycleResource GetResource(string id) => _resources.Single(p => p.Id == id);
     public CycleCharacter GetCharacter(string id) => _characters.Single(c => c.Id == id);
     public CycleBusinessState Replace(ModelTime time, CycleLight? light = null, IEnumerable<CycleResource>? changedResources = null,
-        CycleScript? script = null, IEnumerable<CycleCharacter>? changedCharacters = null, string? lastServedActorId = null) {
+        CycleScript? script = null, IEnumerable<CycleCharacter>? changedCharacters = null, string? lastServedActorId = null,
+        CycleExpedition? expedition = null) {
         return new(time, light ?? Light, ReplaceChildren(_resources, changedResources, r => r.Id), script ?? Script,
-            ReplaceChildren(_characters, changedCharacters, c => c.Id), lastServedActorId ?? LastServedActorId);
+            ReplaceChildren(_characters, changedCharacters, c => c.Id), lastServedActorId ?? LastServedActorId, expedition ?? Expedition);
     }
     private static IEnumerable<T> ReplaceChildren<T>(IReadOnlyList<T> previous, IEnumerable<T>? changes, Func<T, string> id) {
         if (changes is null) { return previous; }
@@ -108,6 +114,7 @@ public sealed partial class CycleBusinessState : IDurableObject {
             Script.Entries.Zip(Script.Entries.Skip(1)).Any(pair => pair.First.Due > pair.Second.Due)) {
             throw new InvalidOperationException("Invalid script position or ordering.");
         }
+        Expedition?.Validate(this);
     }
 }
 
@@ -115,15 +122,18 @@ public sealed partial class CycleBusinessState : IDurableObject {
 public sealed class CycleWorld {
     public CycleBusinessState Business { get; }
     public CycleForecasts Forecasts { get; }
+    public SpatialSimulationState? Spatial { get; }
+    public CycleExpedition? Expedition => Business.Expedition;
     public ModelTime Time => Business.Time;
     public CycleLight Light => Business.Light;
     public IReadOnlyList<CycleResource> Resources => Business.Resources;
     public IReadOnlyList<CycleCharacter> Characters => Business.Characters;
     public CycleScript Script => Business.Script;
     public static ModelTime DefaultStart => new(16 * CycleTime.Hour);
-    internal CycleWorld(CycleBusinessState business, CycleForecasts forecasts) {
+    internal CycleWorld(CycleBusinessState business, CycleForecasts forecasts, SpatialSimulationState? spatial = null) {
         Business = business ?? throw new ArgumentNullException(nameof(business));
         Forecasts = forecasts ?? throw new ArgumentNullException(nameof(forecasts));
+        Spatial = spatial;
     }
     public CycleResource GetResource(string id) => Business.GetResource(id);
     public CycleCharacter GetCharacter(string id) => Business.GetCharacter(id);
@@ -137,5 +147,5 @@ public sealed class CycleWorld {
     public static CycleWorld CreatePlayable(ModelTime? start = null, IEnumerable<CycleCharacter>? characters = null,
         IEnumerable<CycleResource>? resources = null) => CycleGameFactory.CreatePlayable(start, characters, resources).World;
     public void Validate() => CycleEngine.Validate(this, Time);
-    public string DescribeState() => $"time={Time.Ticks};light={Light};resources=[{string.Join(';', Resources)}];script={Script};characters=[{string.Join(';', Characters)}];lastServed={Business.LastServedActorId};{Forecasts}";
+    public string DescribeState() => $"time={Time.Ticks};light={Light};resources=[{string.Join(';', Resources)}];script={Script};characters=[{string.Join(';', Characters)}];lastServed={Business.LastServedActorId};{(Expedition is null ? "" : $"expedition={Expedition};")}{Forecasts}";
 }

@@ -159,7 +159,7 @@ public sealed class CapacityGatheringTests {
         [Sun(Hour(6), stock: 5, capacity: 5, regenerationTicks: 100 * CycleTime.Hour)]);
 
     private sealed class ForbiddenController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("The recorded activity must continue without another decision.");
     }
 

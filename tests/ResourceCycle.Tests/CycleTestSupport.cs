@@ -76,13 +76,13 @@ internal static class CycleTestSupport {
         Assert.Equal(CycleEngine.Rebuild(world.Business, world.Time).Forecasts.ToString(), world.Forecasts.ToString());
     }
 
-    internal sealed class StubCharacterController(Func<CycleWorld, string, CycleCommand> choose) : ICycleCharacterController {
+    internal sealed class StubCharacterController(Func<CycleObservation, string, CycleCommand> choose) : ICycleCharacterController {
         public int Calls { get; private set; }
         public List<(string Actor, ModelTime Time)> Requests { get; } = [];
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Calls++;
-            Requests.Add((actorId, world.Time));
-            return ValueTask.FromResult(choose(world, actorId));
+            Requests.Add((context.Observation.Actor.Id, context.Observation.Time));
+            return ValueTask.FromResult(choose(context.Observation, context.Observation.Actor.Id));
         }
     }
     public static StubCharacterController Commands(params CycleCommand[] commands) {

@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="../Inventory/Inventory.csproj" />
     <ProjectReference Include="../Kernel/Kernel.csproj" />
+    <ProjectReference Include="../Spatial/Spatial.csproj" />
     <ProjectReference Include="$(DurableGraphSourceRoot)/src/DurableGraph.Persistence/DurableGraph.Persistence.csproj" />
   </ItemGroup>
   <Import Project="../../eng/DurableGraph.Source.props" />

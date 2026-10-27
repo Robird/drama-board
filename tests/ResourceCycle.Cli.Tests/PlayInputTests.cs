@@ -21,6 +21,7 @@ public sealed class PlayInputTests {
         { "gather sunflower all", CycleCommand.GatherAll("sunflower") },
         { "continue", CycleCommand.Continue() },
         { "cancel", CycleCommand.Cancel() },
+        { "go trail-1", CycleCommand.Go("trail-1") },
     };
 
     [Theory]
@@ -54,6 +55,9 @@ public sealed class PlayInputTests {
     [InlineData("gather sunflower 1,000")]
     [InlineData("wait １")]
     [InlineData("unknown")]
+    [InlineData("go")]
+    [InlineData("go trail-1 extra")]
+    [InlineData("Go trail-1")]
     public void Malformed_or_unrepresentable_input_is_not_an_action(string input) {
         PlayInput parsed = PlayInput.Parse(input);
         Assert.Equal(PlayInputKind.Invalid, parsed.Kind);

@@ -89,7 +89,7 @@ Host       → Kernel
 
 展示读取业务信息并决定如何表达，不成为规则执行的必需条件。但文字不一定都是可删除的 UI 杂质：当前 `CycleFact.Result`、`CycleCharacter.LastResult` 和 `CycleNotice.Reason` 已随业务历史保存。未来提取文案时须明确哪些是历史叙述、哪些是可重建显示，保持冷开与 pending 恢复的一致性。
 
-角色可见上下文由游戏构造；控制器局部会话、共享运行设施和角色长期记忆的边界继续遵守[无状态控制器决策](stateless-character-controller.md)。当前控制器仍接收 `CycleWorld`，这不是已经实现的信息隔离接口。领域模块可以支持观察查询，但不必绑定 Markdown、GUI 或某个 LLM SDK。
+角色可见上下文由游戏构造；控制器局部会话、共享运行设施和角色长期记忆的边界继续遵守[无状态控制器决策](stateless-character-controller.md)。当前控制器接收 `CycleDecisionContext` 的观察结果与纯命令校验，Console 不再直接读取完整世界；这不是同进程恶意代码的安全隔离。领域模块可以支持观察查询，但不必绑定 Markdown、GUI 或某个 LLM SDK。
 
 ## 7. Workshop / mod 是扩展来源
 

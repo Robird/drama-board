@@ -56,6 +56,20 @@ With `--store`, completed changes are saved automatically and the same command r
 
 See [the multiplayer gathering rules](docs/design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](docs/experiments/resource-cycle-multiplayer-acceptance.md). The earlier [single-character slice](docs/design/resource-cycle-play.md) and [its acceptance evidence](docs/experiments/resource-cycle-play-acceptance.md) describe the preceding experiment, not the current timed gathering rules. The current prediction/storage contract is [runtime-derived predictions](docs/design/runtime-derived-predictions.md).
 
+## Play the survival prototype
+
+The first spatial exploration slice of the [survival milestone](docs/design/survival-demo-milestone.md) is playable:
+
+```powershell
+dotnet run --project src/ResourceCycle.Cli -c Release -- --survival
+dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --store artifacts/my-expedition
+pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
+```
+
+Explore a small mountain map and find either exit. Use `go <trail-id>` from the displayed local choices, `gather <resource-id> <count|all>`, `wait <hours>`, `look`, `help`, and `quit`. Locations and resource memories become known through visits; old observations are labelled with their time. Travel takes model time and cannot yet be cancelled midway. Completed changes save automatically when a store is supplied; use the same command to resume. A completed ending does not advance further.
+
+This slice includes movement, local gathering, hidden geography and rescue endings. Food/water needs, cold, environmental risk and survival failure are still under construction; it is not the completed phase-one game. GameRevision is now 2; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. Current evidence and limitations are tracked in [survival acceptance](docs/experiments/survival-demo-acceptance.md).
+
 ## Small world scenario
 
 [SpacetimeHostScenarioTests](tests/Spatial.Tests/Acceptance/SpacetimeHostScenarioTests.cs) directly composes all three libraries. Two entities travel toward each other, meet at the floored contact time, one reverses strictly inside the passage, and both arrive at the same model time. It checks contact consumption, invalidation of the old arrival, deterministic arbitration under reordered inputs, and replay. Run it separately with:

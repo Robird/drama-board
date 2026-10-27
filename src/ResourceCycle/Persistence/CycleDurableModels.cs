@@ -1,6 +1,7 @@
 using Atelia.DurableGraph;
 using DramaBoard.Inventory;
 using DramaBoard.Kernel;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -10,6 +11,7 @@ public static class CycleDurableModels {
         ArgumentNullException.ThrowIfNull(models);
         KernelDurableModels.Register(models);
         InventoryDurableModels.Register(models);
+        SpatialDurableModels.Register(models);
         Atelia.DurableGraph.Generated.DurableDefinitions.Register(models);
     }
 }

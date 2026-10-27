@@ -19,6 +19,7 @@ try {
             dotnet run --project src/ResourceCycle.Cli -- [options]
               --store PATH          创建或恢复单根存档；省略则仅内存运行
               --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
+              --survival            单角色山林探索；可配合 --store 续玩，不接受批处理选项
               --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
               --steps N             本次最多推进 N 次转换（默认 10000）
               --full-recompute      每次重算全部预测者，用于对照
@@ -40,8 +41,8 @@ try {
     };
     Console.CancelKeyPress += cancelHandler;
     try {
-        if (options.Play) {
-            return await PlayConsole.RunAsync(options.Store, cancellation.Token);
+        if (options.Play || options.Survival) {
+            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival);
         }
         using CycleDurableHistory? durable = options.Store is { } store
             ? Directory.Exists(store)
@@ -112,13 +113,13 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play) {
+    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival) {
     public static Options Parse(string[] args) {
         string? store = null;
         string? snapshot = null;
         long hour = 88;
         int steps = 10_000;
-        bool full = false, trace = false, help = false, play = false;
+        bool full = false, trace = false, help = false, play = false, survival = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int index = 0; index < args.Length; index++) {
             string option = args[index];
@@ -142,13 +143,15 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--trace": trace = true; break;
                 case "--help": help = true; break;
                 case "--play": play = true; break;
+                case "--survival": survival = true; break;
                 default: throw new ArgumentException($"未知参数：{option}；使用 --help 查看用法。");
             }
         }
-        if (!help && play && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
-            throw new ArgumentException("--play 仅能配合 --store；批处理参数不适用于交互采集。");
+        if (!help && play && survival) { throw new ArgumentException("--play 与 --survival 不能同时使用。"); }
+        if (!help && (play || survival) && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
+            throw new ArgumentException("--play / --survival 仅能配合 --store；批处理参数不适用于交互游戏。");
         }
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
-        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play);
+        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival);
     }
 }

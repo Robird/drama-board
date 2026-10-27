@@ -224,7 +224,7 @@ public sealed class CyclePersistenceTests {
     }
 
     private sealed class WaitingCharacterController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
+        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(CycleCommand.Wait(6));
     }
 

@@ -71,7 +71,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(6);
         var world = CycleWorld.CreatePlayable(start, [new("a", "Alice"), new("b", "Bob", 2)], [Sun(start, stock: 1), Moon(start)]);
         var source = new StubCharacterController((w, id) => {
-            var actor = w.GetCharacter(id);
+            var actor = w.Actor;
             if (actor.Activity is null) { return actor.Backpack.Items.Count == 0 ? CycleCommand.Gather("sunflower") : CycleCommand.Wait(1); }
             return actor.Notices.Any(n => n.Kind == CycleNoticeKind.ResourceDepleted) && cancel ? CycleCommand.Cancel() : CycleCommand.Continue();
         });
@@ -211,8 +211,8 @@ public sealed class PlayableCycleTests {
 
     [Fact]
     public async Task Incremental_and_full_playable_traces_match_at_every_boundary() {
-        static StubCharacterController Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
-            : w.GetResource("sunflower").Stock > 0 ? CycleCommand.Gather("sunflower", 2) : CycleCommand.Wait(3));
+        static StubCharacterController Driver() => new((w, id) => w.Actor.Activity is not null ? CycleCommand.Continue()
+            : w.Resources.Single(resource => resource.Id == "sunflower").Stock > 0 ? CycleCommand.Gather("sunflower", 2) : CycleCommand.Wait(3));
         var ih = Memory(CycleWorld.CreatePlayable());
         var fh = Memory(CycleWorld.CreatePlayable());
         var im = new CycleMetrics();
@@ -232,8 +232,8 @@ public sealed class PlayableCycleTests {
 
     [Fact]
     public async Task Cold_reopen_at_every_multiplayer_boundary_preserves_rotation_perceptions_and_trace() {
-        static StubCharacterController Driver() => new((w, id) => w.GetCharacter(id).Activity is not null ? CycleCommand.Continue()
-            : w.GetResource("sunflower").Stock > 0 ? CycleCommand.GatherAll("sunflower") : CycleCommand.Wait(3));
+        static StubCharacterController Driver() => new((w, id) => w.Actor.Activity is not null ? CycleCommand.Continue()
+            : w.Resources.Single(resource => resource.Id == "sunflower").Stock > 0 ? CycleCommand.GatherAll("sunflower") : CycleCommand.Wait(3));
         var initial = CycleWorld.CreatePlayable();
         var baselineSource = Driver();
         var resumedSource = Driver();
@@ -286,7 +286,7 @@ public sealed class PlayableCycleTests {
     private static CyclePrediction ActivityPrediction(CycleWorld world, string actor) => Assert.Single(world.Forecasts.Predictions, p => p.OwnerId == $"actor:{actor}:activity");
     private sealed class GatedCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
+        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Entered.SetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);
             throw new InvalidOperationException("unreachable");

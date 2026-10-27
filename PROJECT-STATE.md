@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-28；下一目标为[生存逃离 Demo](docs/design/survival-demo-milestone.md)，一期单角色 Human Console，二期双角色与 LLM 同伴；当前仅完成目标文档，尚未启动实施。
+> 最近整理：2026-10-28；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期空间探索首片已验收，下一片加入生存需求；二期双角色与 LLM 同伴尚未启动。
 
 ## 最终目标
 
@@ -20,13 +20,13 @@
 
 用户已确定围绕现有时空模型在本仓库建设下一代引擎与一组实例游戏；Mud 保留为可玩参照，选择性借鉴其动作、观察、事件与状态关联经验，不进行原地迁移或兼容适配。新业务逻辑先写应用层，经实例验证后再提取共性。
 
-资源周期实例已有批处理预测对照与三角色、单地点、两资源点、独立背包/活动的 Console 闭环，均保持单根恢复；规则与当前证据见[多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)及[验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。没有空间接线、GUI 或 LLM。
+资源周期实例保留批处理预测对照与三角色单地点采集 Console，见[多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)；新增 `--survival` 单角色空间探索入口，空间与角色/资源组成同一发布根。没有 GUI 或 LLM。
 
 用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现；运行中增量维护和冷开重建是独立选择。纯派生预测不应强制落盘；原持久方案仅作为[历史验收记录](docs/experiments/local-prediction-acceptance.md)保留。
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：已确定[生存逃离两期里程碑](docs/design/survival-demo-milestone.md)。一期默认就地演进 ResourceCycle，组合空间移动、有限信息探索、食物/水/保暖、资源与环境随机事件；二期再引入双角色、LLM、对话与赠与。下一轮显式 Goal 启动后，先完成空间与游戏单根组合的可玩切片，再逐步增加生存取舍与风险；一期完成标准含不同路线的两次成功试玩、失败试玩、信息边界及真实冷恢复。具体数值和局部设计允许按证据调整，不自动扩张到二期。
+**当前焦点**：按[生存一期实施方案](docs/implementation/survival-demo-plan.md)推进 B 生存取舍：食物/水/寒冷、库存消费、庇护与危险唤醒；候选阈值/去重/分段积分方案已记录，须结合地图试玩细化。A 的空间移动、地点资源、有限信息、双出口与单根恢复已通过[首片验收](docs/experiments/survival-demo-acceptance.md)。之后还需环境随机风险及独立完整生存试玩；一期完成标准集中在[里程碑](docs/design/survival-demo-milestone.md) §2.6，不以当前无生存压力的双路线 smoke 代替通关验收。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -34,9 +34,9 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；现有采集场景使用同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。空间移动已由生存一期重开；复杂 Markdown 事件窗口和 AgentCore 子状态发布仍按后续切片裁决。
 
-**控制器方向已定**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态并构造上下文，本次局部会话与共享运行设施分开，文本/工具遵守角色可见性，pending E 不重做决定。当前接口为 `ICycleCharacterController.ChooseCommandAsync`；上下文 API、LLM 与工具持久化尚未施工。
+**控制器方向已定**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态并构造上下文，本次局部会话与共享运行设施分开，pending E 不重做决定。`ICycleCharacterController.ChooseCommandAsync` 已接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 的角色观察和纯命令校验；LLM 与工具会话持久化尚未施工。
 
-**初始化与修订首片已落地**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写盘。State 转换独立于 pending，混合版本先对齐再逐步转换，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖真实磁盘与中断窗口。生产只接受修订 1，跨版本转换仅为夹具；首个真实规则修订出现后再定义转换政策和支持范围。事件持久替代、多模块版本和通用框架按真实需求重开。
+**初始化与修订首片已落地**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写盘。State 转换独立于 pending，混合版本先对齐再逐步转换，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖真实磁盘与中断窗口。生产现接受修订 2，旧开发存档不兼容；跨版本转换仅为夹具。事件持久替代、多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
