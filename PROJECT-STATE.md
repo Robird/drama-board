@@ -25,7 +25,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。[背包局部接纳规则](src/ResourceCycle/CycleBackpack.cs)已独立并由开始/结算共同使用，接下来推进应用编排与交互边界；具体切片与验收状态只在[渐进重构方案](docs/implementation/modularization-plan.md)维护。库存容量变体仍是待设计的验证候选，不是默认玩法变更承诺。
+**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。背包接纳与 Console 纯视图/解析已形成独立边界，证据见[模块化验收](docs/experiments/modularization-acceptance.md)；下一步推进事实应用与预测维护，具体方案与推进条件只在[渐进重构方案](docs/implementation/modularization-plan.md)维护。库存容量变体仍是待设计的验证候选，不是默认玩法变更承诺。
 
 重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 

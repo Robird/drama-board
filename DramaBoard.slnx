@@ -10,6 +10,7 @@
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
+    <Project Path="tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj" />
     <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
   <Project Path="../atelia-storage/src/Binary/Binary.csproj" />

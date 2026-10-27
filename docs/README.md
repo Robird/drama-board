@@ -17,7 +17,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The next refactoring direction is [gradual modularization](implementation/modularization-plan.md): organize ResourceCycle responsibilities first, preserve gameplay and E/S recovery, then evaluate a bounded inventory extraction. The plan distinguishes executable slices from provisional extension ideas; no module extraction has been implemented by these documents.
+The active refactoring direction is [gradual modularization](implementation/modularization-plan.md): organize ResourceCycle responsibilities first, preserve gameplay and E/S recovery, then evaluate a bounded inventory extraction. Backpack acceptance and pure Console view/input boundaries are implemented; see [acceptance evidence](experiments/modularization-acceptance.md). Prediction maintenance, capacity variants and assembly extraction remain separate follow-up slices.
 
 The application-layer ResourceCycle example implements shared resource stock, day/night regeneration and three characters with independent timed gathering through one Console, using Mud as a reference rather than migrating it in place. See [the multiplayer rules](design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](experiments/resource-cycle-multiplayer-acceptance.md). The original [resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md), [batch acceptance](experiments/resource-cycle-acceptance.md) and [single-character slice](design/resource-cycle-play.md) describe preceding experiments.
 

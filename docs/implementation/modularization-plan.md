@@ -1,6 +1,6 @@
 # 模块化重构方案：从 ResourceCycle 的真实协作边界开始
 
-> 状态：渐进实施中；依据 2026-10-27 当前源码。A 已落地，后续切片按证据继续细化。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)；尚未确定的公共 API 或程序集名称不视为实施承诺。
+> 状态：渐进实施中；依据 2026-10-27 当前源码。A 与 B 的 Console 分片已落地，见[验收](../experiments/modularization-acceptance.md)；下一片为 B 的事实应用与预测维护边界，C/D 尚未实施。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)；尚未确定的公共 API 或程序集名称不视为实施承诺。
 
 ## 1. 目标与范围
 
@@ -22,7 +22,7 @@
 | [CycleForecasts](../../src/ResourceCycle/CycleForecasts.cs)、[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) | 运行时预测/绑定及诊断；缓存不落盘 | 保留冷开 Rebuild、增量 Complete 与全量对照，避免模块提取后各自维护世界时间或发布。 |
 | [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs) | 具体场景对象图、默认资源/角色/脚本、起始游标 | 作为组合入口保留；模块工厂最多返回其负责的子图，不另造全世界根。 |
 | [Persistence](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) | 驱动循环、角色视图、命令解析、Console 控制器 | 先让纯文本构造与 Console I/O 可独立验证；现有控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
+| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[PlayInput](../../src/ResourceCycle.Cli/PlayInput.cs) | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；现有控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
 
 当前项目引用也提供了边界：[ResourceCycle](../../src/ResourceCycle/ResourceCycle.csproj) 引用 Kernel 与 DG Persistence；[CLI](../../src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
 
@@ -32,7 +32,7 @@
 - 背包 `int.MaxValue` 接纳规则由 `CycleBackpack.CanAdd` 提供，接受命令与采集结算分别调用；预检查不预留，结算仍需重查。
 - `CycleEngine.Affected` 依赖子对象引用变化判断 dirty；`Complete` 还验证折叠结果与记录事实相符。重构若无条件复制子图，可能保持玩法结果却破坏增量行为。
 - `CyclePrediction.ToString()` 当前参与候选稳定身份与比较；业务对象的 `ToString()` 也用于诊断轨迹。不能把所有字符串一概当作可任意调整的展示实现。
-- `CycleFact.Result`、`CycleCharacter.LastResult`、`CycleNotice.Reason` 已进入持久对象图，规划代码生成中文文本；`PlayConsole` 又根据结构化信息渲染感知。展示职责尚未完全分离，调整时必须说明哪些是历史记录，哪些是当前状态投影。
+- `CycleFact.Result`、`CycleCharacter.LastResult`、`CycleNotice.Reason` 已进入持久对象图，规划代码生成中文文本；`PlayView` 根据结构化信息渲染感知。纯视图已独立，但持久文本尚未全面结构化，调整时必须说明哪些是历史记录，哪些是当前状态投影。
 
 ## 3. 所有切片共同保留的合同
 
@@ -63,6 +63,18 @@
 ### B. 分离应用内部的编排、预测维护和文本构造
 
 这一步可以按实际改动点分为独立小提交，不要求同时完成三处，也不以建立三套框架为目标。
+
+**Console 分片：已实施并验收。** `PlayView` 承担完整观察、命令列表与公共变化；`PlayInput` 只解析语法，IO/EOF/重试和世界合法性检查留在 `PlayConsole`。两个类型仍是 CLI 内部类型，独立 [CLI.Tests](../../tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj) 经单一友元访问，不让领域测试反向引用 exe。文本与现有命令行为保持；没有改变持久历史文字或增加信息隔离 API。行为测试和真实 Console 试玩见[验收](../experiments/modularization-acceptance.md)。
+
+**下一片的具体方案：事实应用与派生预测维护。** 拟新增两个应用内部静态职责，均不成为通用引擎模块：
+
+| 归属 | 职责 |
+| --- | --- |
+| `CycleFactApplication`（拟新增） | 从 Business 和记录事实得到新 Business，校验事实形状及重折叠一致性；不读取预测或控制器。 |
+| `CyclePredictionMaintenance`（拟新增） | 从 Business 列举 owner、生成预测/订阅、收集 dirty、更新及验证 `CycleForecasts`；不读取历史或发布状态。 |
+| `CycleEngine` | 保留现有公共入口和 Kernel 接线、候选政策；Complete 显式串联逐事实应用、dirty 收集、重折叠校验和最终缓存更新。 |
+
+这避免预测维护反调 Engine.Fold 的循环依赖，并让局部规则无需 Kernel/控制器即可验证。必须按**每条事实的前后业务态**收集 dirty，去重后针对最终态各计算一次；保留 consumed owner、没有当前输出的 owner 订阅、Activity/角色两级引用判断和相同预测的实例复用。冷开重建与增量更新继续分开；oracle 仍使用独立公式，不调用新 Predict 来生成期望。当前不支持动态增删角色/资源，生产 Validate 也不承担全量缓存完整性证明；本片不扩大这些合同。内嵌 CycleRule 体量小，暂不另抽一层。
 
 **目标与入口**：
 
@@ -124,6 +136,6 @@
 
 ## 6. 下一轮建议与待决边界
 
-下一片先做 B 的 Console 纯渲染/解析：独立测试当前角色的可见文本和输入语法，保持 IO 驱动与领域合法性判定分开。预测维护作为 B 的独立后续片，再依据局部 API、测试和试玩结果选择 C 或下一实际玩法需求，不把 A→D 当作必须机械走完的迁移流水线。
+下一片实施 B 的事实应用与预测维护边界，按上文方案保留明确的 Complete 编排；完成后细化 C 的一个容量用例，再用证据裁决 D 的物理拆分。不是机械拆文件或固定完成 A→D，而是逐片证明职责、依赖和独立使用收益，不能用暂缓文字替代尚未完成的评估。
 
 尚待证据选择：库存变体的容量含义；展示文字中历史记录与当前投影的具体拆分；哪个模块首先值得独立程序集；定义与运行实例是否拆开；后续空间与采集怎样组合。确定前保持普通类型、显式调用与应用层组合，不为这些问题预建公共接口。
