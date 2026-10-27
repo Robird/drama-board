@@ -25,9 +25,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**下一步**：ResourceCycle 多角色片采用用户提出的库存/再生、独立耗时采集、有限目标及他人加入感知方向；先审定[多人采集规则草案](docs/design/resource-cycle-multiplayer-gathering.md)，再分片实施。团队建议三个角色、周期到期竞争、活动与注意力正交、`all` 冻结目标；这些补充规则尚未实现或试玩验收。继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收；原型稳定后再评估抽取基础规则包，不先扩建引擎框架。
+**下一步**：ResourceCycle 多角色片采用用户提出的库存/再生、独立耗时采集、有限目标及他人加入/库存耗尽感知方向；先审定[多人采集规则草案](docs/design/resource-cycle-multiplayer-gathering.md)，再分片实施。用户已明确：中途采空也暂停时间并唤醒，可继续原活动或取消换行动，不能无提示地继续劳动。团队建议三个角色、周期到期竞争、活动与注意力正交、`all` 冻结目标；尚未实现或试玩验收。继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收；原型稳定后再评估抽取基础规则包，不先扩建引擎框架。
 
-Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，同一 Human Console 轮流控制多个角色。新的加入感知需求扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
+Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
 当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
