@@ -2,11 +2,14 @@
   <Folder Name="/src/">
     <Project Path="src/Host/Host.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
+    <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
+    <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
     <Project Path="src/Spatial/Spatial.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
+    <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
     <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
 </Solution>

@@ -13,7 +13,9 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) defines two separately verified steps. Both the engine/application split and the DurableGraph upgrade have passed acceptance; see the [executed evidence](build-log/0027-spacetime-extraction.md). There are no remaining implementation tasks in that brief. MUD integration remains a later decision.
+The first application-layer example implements day/night changes, plant growth and scripted destruction, using Mud as a reference rather than migrating it in place. See [the resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md) and [execution evidence](experiments/resource-cycle-acceptance.md). It demonstrates persistent predictions, dependency-driven invalidation and single-root recovery. Characters, multiplayer gathering and spatial changes remain deferred.
+
+The previous [Spacetime engine TODO / task brief](implementation/spacetime-engine-todo.md) is complete; see the [executed evidence](build-log/0027-spacetime-extraction.md).
 
 ## Frozen applications and design reserve
 
