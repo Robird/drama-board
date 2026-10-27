@@ -42,13 +42,14 @@ internal static class CycleFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool decision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted;
+        bool decision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed;
         if ((decision ? fact.LastServedActorId != fact.ActorId : fact.LastServedActorId is not null) ||
             (fact.LastServedActorId is not null && !actorEffect)) {
             throw new InvalidOperationException("Service cursor does not match a recorded decision.");
         }
         bool valid = fact.Kind switch {
-            CycleEventKind.LightChanged => fact.Light is not null && fact.Script is null && fact.ActorId is null && fact.ResourceId is null && fact.ChangedCharacters.Count == 0,
+            CycleEventKind.LightChanged => fact.Light is not null && fact.Script is null && fact.ActorId is null && fact.ResourceId is null &&
+                fact.ChangedCharacters.All(c => c.Survival is not null),
             CycleEventKind.ResourceRegenerated => oneResource && fact.Light is null && fact.Script is null && fact.ActorId is null && fact.ChangedCharacters.Count == 0,
             CycleEventKind.ResourceDestroyed => oneResource && fact.Light is null && fact.Script is not null && fact.ActorId is null,
             CycleEventKind.GatherYielded => actorEffect && oneResource && fact.Light is null && fact.Script is null,
@@ -57,6 +58,9 @@ internal static class CycleFactApplication {
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
+            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed =>
+                actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedCharacters[0].Survival is not null &&
+                fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             _ => false
         };
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
@@ -69,10 +73,13 @@ internal static class CycleFactApplication {
                 throw new InvalidOperationException("Movement requires a matching recorded spatial fact.");
             }
         } else if (fact.SpatialFacts.Count != 0) { throw new InvalidOperationException("Unexpected spatial facts."); }
-        if (fact.Kind != CycleEventKind.MoveArrived && (fact.Outcome is not null || fact.EndingReason is not null) ||
+        if (fact.Kind is not (CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed) && (fact.Outcome is not null || fact.EndingReason is not null) ||
             business.Expedition is null && fact.Visits.Count != 0 ||
             fact.Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != fact.Visits.Count) {
             throw new InvalidOperationException("Unexpected expedition observation or ending.");
+        }
+        if (fact.Kind == CycleEventKind.SurvivalFailed && (fact.Outcome != CycleExpeditionOutcome.Dead || string.IsNullOrWhiteSpace(fact.EndingReason))) {
+            throw new InvalidOperationException("A fatal survival fact must record the ending.");
         }
     }
 }

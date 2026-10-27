@@ -2,7 +2,7 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-public sealed record CyclePlaceDefinition(string Id, string Name, string Description, bool IsExit = false);
+public sealed record CyclePlaceDefinition(string Id, string Name, string Description, bool IsExit = false, bool Sheltered = false);
 public sealed record CyclePassageDefinition(string Id, string From, string To, string Description, long DurationTicks);
 
 /// <summary>Immutable scenario content. Its identity and game revision bind restored spatial IDs to this graph.</summary>
@@ -15,7 +15,7 @@ public static class CycleExpeditionMap {
         new("ravine", "狭谷旧桥", "溪水从旧桥下穿过。远处似有车声，但树影遮住了去路。"),
         new("road", "山脚公路", "公路养护站亮着灯，工作人员发现了你。", true),
         new("ridge", "风口山脊", "山风很冷。林间隐约露出一段屋顶，更高处有人工设施的轮廓。"),
-        new("cabin", "废弃林屋", "木屋能遮风。墙上有褪色的巡山路线指示，附近能找到干木。"),
+        new("cabin", "废弃林屋", "木屋能遮风，停留时身体会逐渐回暖。墙上有褪色的巡山路线指示，附近能找到干木。", Sheltered: true),
         new("signal", "巡山信号站", "值守员听见你的呼喊，打开了信号站的门。", true)
     ];
     private static readonly CyclePassageDefinition[] Passages = [

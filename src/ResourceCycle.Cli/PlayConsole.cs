@@ -93,7 +93,7 @@ internal static class PlayConsole {
                 if (parsed.Kind == PlayInputKind.Look) { Console.WriteLine(PlayView.Render(observation)); continue; }
                 if (parsed.Kind == PlayInputKind.Help) { Console.WriteLine(PlayView.RenderCommands(observation)); continue; }
                 if (parsed.Command is not { } command) {
-                    Console.WriteLine("无法识别命令。请输入 look、help、quit、continue、cancel、wait <1–24 整数小时>、gather <resource-id> <正整数|all> 或 go <passage-id>。时间未推进。");
+                    Console.WriteLine("无法识别命令。请输入 look、help、quit、continue、cancel、wait <1–24 整数小时>、gather <resource-id> <正整数|all>、go <passage-id> 或 use <item-id>。时间未推进。");
                     continue;
                 }
                 string? reason = context.Check(command);
@@ -101,6 +101,7 @@ internal static class PlayConsole {
                     Console.WriteLine($"无法行动：{reason} 时间未推进；未确认消息。");
                     continue;
                 }
+                if (context.Warning(command) is { } warning) { Console.WriteLine($"风险提示（不禁止）：{warning}"); }
                 return command;
             }
         }

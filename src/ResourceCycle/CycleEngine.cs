@@ -83,7 +83,7 @@ public static class CycleEngine {
                         candidate.Data is TraversalArrivalOccurrenceData arrival ? arrival.EntityId.Value : "world", candidate.Due.ModelTime, 0) { SpatialCandidate = candidate }));
             }
             if (predictions.Count == 0) { return []; }
-            // One explicit cross-module policy: regeneration, phase, destruction, arrival, activity, then input.
+            // One cross-module policy: death first; environmental changes, arrival and completion precede warnings/input.
             ModelTime due = predictions.Min(p => p.Due);
             CyclePredictionKind kind = predictions.Where(p => p.Due == due).Min(p => p.Kind);
             CyclePrediction[] eligible = predictions.Where(p => p.Due == due && p.Kind == kind).ToArray();
@@ -108,7 +108,8 @@ public static class CycleEngine {
                     throw new InvalidOperationException("Invalid composed spatial candidate.");
                 }
                 TransitionDraft<GraphSpatialFact> spatialDraft = await _spatialRule.PlanSelectedAsync(world.Spatial, spatialCandidate, cancellationToken).ConfigureAwait(false);
-                return new([CyclePlanning.Observe(world, CyclePlanning.Arrive(world, prediction.Due, spatialDraft.Facts))]);
+                return new([CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world,
+                    CyclePlanning.Arrive(world, prediction.Due, spatialDraft.Facts)))]);
             }
             if (winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != prediction.Due || prediction.Due < world.Time ||
                 !world.Forecasts.Predictions.Any(p => p.ToString() == prediction.ToString()) || CyclePredictionMaintenance.Predict(world.Business, prediction.OwnerId)?.ToString() != prediction.ToString()) {
@@ -123,7 +124,7 @@ public static class CycleEngine {
                 if (rejection is not null) { throw new InvalidOperationException(rejection); }
                 fact = CyclePlanning.Decision(world, prediction.TargetId, command);
             } else { fact = CyclePlanning.Occurrence(world, prediction); }
-            return new([CyclePlanning.Observe(world, fact)]);
+            return new([CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, fact))]);
         }
         private static OccurrenceCandidate<CyclePrediction> Candidate(CyclePrediction prediction) =>
             new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);

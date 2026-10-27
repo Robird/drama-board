@@ -45,6 +45,10 @@ internal static class CyclePredictionMaintenance {
             string id = owner["resource:".Length..^":regen".Length];
             return !ReferenceEquals(before.GetResource(id), after.GetResource(id));
         }
+        if (owner.EndsWith(":survival", StringComparison.Ordinal)) {
+            string id = owner["actor:".Length..^":survival".Length];
+            return !ReferenceEquals(before.GetCharacter(id).Survival, after.GetCharacter(id).Survival);
+        }
         bool activity = owner.EndsWith(":activity", StringComparison.Ordinal);
         string actorId = owner["actor:".Length..^(activity ? ":activity".Length : ":attention".Length)];
         CycleCharacter previous = before.GetCharacter(actorId), next = after.GetCharacter(actorId);
@@ -61,6 +65,15 @@ internal static class CyclePredictionMaintenance {
             }
         }
         foreach (CycleCharacter actor in business.Characters) {
+            if (actor.Survival is not null) {
+                foreach (CycleEventKind kind in Enum.GetValues<CycleEventKind>()) {
+                    yield return new($"actor:{actor.Id}:survival", kind, "*");
+                }
+                foreach (CycleEventKind kind in new[] { CycleEventKind.LightChanged, CycleEventKind.SurvivalWarning,
+                    CycleEventKind.SurvivalFailed, CycleEventKind.ItemUsed }) {
+                    yield return new($"actor:{actor.Id}:attention", kind, "*");
+                }
+            }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
                 CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled }) {
                 yield return new($"actor:{actor.Id}:activity", kind, actor.Id);
@@ -106,6 +119,8 @@ internal static class CyclePredictionMaintenance {
                 CycleCharacter? deciding = business.Characters.SingleOrDefault(c => c.Id == prediction.TargetId);
                 return deciding is not null && CycleActions.NeedsDecision(business, deciding.Id) && prediction.OwnerId == $"actor:{deciding.Id}:attention" &&
                     prediction.Generation == deciding.DecisionGeneration && prediction.Sequence == 0 && prediction.Due == business.Time;
+            case CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning:
+                return Predict(business, prediction.OwnerId)?.ToString() == prediction.ToString();
             default: return false;
         }
     }
@@ -113,13 +128,22 @@ internal static class CyclePredictionMaintenance {
         CycleEventKind.LightChanged => "light",
         CycleEventKind.ResourceDestroyed => "script",
         CycleEventKind.ResourceRegenerated => $"resource:{fact.ResourceId}:regen",
+        CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed => $"actor:{fact.ActorId}:survival",
         CycleEventKind.GatherYielded or CycleEventKind.GatherFinished or CycleEventKind.WaitCompleted => $"actor:{fact.ActorId}:activity",
         _ => $"actor:{fact.ActorId}:attention"
     };
     internal static IEnumerable<string> Owners(CycleBusinessState business) => new[] { "light", "script" }
         .Concat(business.Resources.Select(r => $"resource:{r.Id}:regen"))
-        .Concat(business.Characters.SelectMany(c => new[] { $"actor:{c.Id}:activity", $"actor:{c.Id}:attention" }));
+        .Concat(business.Characters.SelectMany(c => new[] { $"actor:{c.Id}:activity", $"actor:{c.Id}:attention" }))
+        .Concat(business.Characters.Where(c => c.Survival is not null).Select(c => $"actor:{c.Id}:survival"));
     internal static CyclePrediction? Predict(CycleBusinessState business, string owner) {
+        if (owner.EndsWith(":survival", StringComparison.Ordinal)) {
+            if (business.Expedition?.Outcome != CycleExpeditionOutcome.Exploring) { return null; }
+            CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":survival".Length]);
+            return CycleSurvivalRules.NextThreshold(actor.Survival!, business.Time) is { } threshold
+                ? new(owner, threshold.Fatal ? CyclePredictionKind.SurvivalFatal : CyclePredictionKind.SurvivalWarning,
+                    actor.Id, threshold.Due, actor.DecisionGeneration) : null;
+        }
         if (owner == "light") { return new(owner, CyclePredictionKind.ChangeLight, "world", business.Light.NextChange, 0); }
         if (owner == "script") {
             if (business.Script.NextIndex == business.Script.Entries.Count) { return null; }

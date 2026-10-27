@@ -12,18 +12,22 @@ internal static class PlayView {
 
     public static string Render(CycleObservation observation) {
         CycleActorObservation character = observation.Actor;
+        bool ended = observation.Outcome != CycleExpeditionOutcome.Exploring;
         var text = new StringBuilder();
         text.AppendLine($"# {(observation.IsExpedition ? "山林求生" : "林间苗圃")} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
         text.AppendLine();
-        text.AppendLine(observation.IsExpedition
+        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。" : observation.IsExpedition
             ? $"当前控制角色：{character.Name}（`{character.Id}`）。等待输入期间世界暂停；查看和帮助不消耗时间。"
             : $"当前控制角色：{character.Name}（`{character.Id}`）。等待输入期间世界暂停；其他人的活动不会因你查看信息而重新计时。");
-        text.AppendLine($"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
+        text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
+            $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
         text.AppendLine();
+        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended); }
         if (observation.IsExpedition) {
-            text.AppendLine("## 当前位置");
+            text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
             text.AppendLine(observation.ArrivalDue is { } arrival
-                ? $"正在途中；预计 {FormatTime(arrival)} 到达。移动途中不可 cancel；查看或继续不会重置行程。"
+                ? ended ? $"结束时仍在途中；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
+                    : $"正在途中；预计 {FormatTime(arrival)} 到达。移动途中不可 cancel；查看或继续不会重置行程。"
                 : $"{observation.PlaceName}：{observation.PlaceDescription}");
             text.AppendLine();
             if (observation.Memories.Count > 0) {
@@ -39,20 +43,39 @@ internal static class PlayView {
         text.AppendLine("## 本次介入");
         if (character.Notices.Count == 0) {
             text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 本次旅程已结束。" :
-                observation.ArrivalDue is not null ? "- 行程进行中。" : "- 当前空闲，请选择下一活动。");
+                observation.ArrivalDue is not null ? "- 行程进行中。" :
+                character.Activity is { } active ? $"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。" :
+                "- 当前空闲，请选择下一活动。");
         } else {
             foreach (CycleNoticeObservation notice in observation.Notices) {
-                text.AppendLine($"- {RenderNotice(notice)}");
+                text.AppendLine($"- {RenderNotice(notice, ended)}");
             }
-            text.AppendLine(character.Activity is { } ongoing
+            text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 本次旅程已结束；以下是结束前的历史感知。" : character.Activity is { } ongoing
                 ? $"- 你的活动没有中断；当前周期仍于 {FormatTime(ongoing.Due)} 结算。"
                 : "- 你的活动已结束；以下感知和行动结果一起呈现，请选择下一活动。");
         }
+        if (observation.Survival is { PendingWarnings.Count: > 0 } needs) {
+            text.AppendLine(ended ? "- 生存警告（结束时尚未确认的历史记录）：" : "- 生存警告（历史记录，待确认）：");
+            foreach (string warning in needs.PendingWarnings) { text.AppendLine($"  - {warning}"); }
+            text.AppendLine("- 这些警告记录已经发生的危险；即使已经补给也会保留，当前余量以“身体状态”为准。" +
+                (observation.Outcome == CycleExpeditionOutcome.Exploring
+                    ? "可以先 use 补给，再 continue 确认；原活动和行程期限保持不变。" : "旅程已经结束，无需再确认。"));
+        }
         if (character.LastResult is { } result) { text.AppendLine($"- 上次结果（记录当时状态）：{result}"); }
         text.AppendLine();
-        text.AppendLine("## 你的活动");
+        text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
-        if (observation.ArrivalDue is { } due) {
+        if (ended) {
+            if (observation.ArrivalDue is { } unfinishedArrival) {
+                text.AppendLine($"- 移动未完成；原计划到达时刻：{FormatTime(unfinishedArrival)}。此记录已冻结。");
+            } else if (character.Activity is { } unfinished) {
+                string description = unfinished.Kind == CycleActivityKind.Wait ? "等待未完成" :
+                    $"采集未完成：{unfinished.ResourceId}，已取得 {unfinished.CompletedCount}/{unfinished.TargetCount} 份";
+                text.AppendLine($"- {description}；原周期截止时刻：{FormatTime(unfinished.Due)}。此记录已冻结，不再结算。");
+            } else {
+                text.AppendLine("- 结束时没有未完成的活动。");
+            }
+        } else if (observation.ArrivalDue is { } due) {
             text.AppendLine($"- 正在移动，预计 {FormatTime(due)} 到达；当前不可采集、等待或取消移动。");
         } else if (character.Activity is not { } activity) {
             text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 无待执行的活动。" :
@@ -124,7 +147,7 @@ internal static class PlayView {
         return text.ToString();
     }
 
-    private static string RenderNotice(CycleNoticeObservation perceived) {
+    private static string RenderNotice(CycleNoticeObservation perceived, bool ended) {
         CycleNotice notice = perceived.Notice;
         string repeated = notice.Count > 1 ? $"；待回应同类变化共 {notice.Count} 次，此处为最近一次" : "";
         if (notice.Kind == CycleNoticeKind.CollectorJoined) {
@@ -135,7 +158,8 @@ internal static class PlayView {
         }
         string reason = notice.Reason.TrimEnd().TrimEnd('。', '.', '！', '!', '？', '?', '；', ';');
         string stock = perceived.CurrentStock is { } currentStock ? $"当前余量 {currentStock}/{perceived.Capacity}" : "当前余量不在视野内";
-        return $"{FormatTime(notice.At)}：{perceived.ResourceName}曾被取空；相关行动者：{perceived.ActorLabel}；原因：{reason}。{stock}{repeated}。消息描述已发生的耗尽，不会取消你的在途周期。";
+        return $"{FormatTime(notice.At)}：{perceived.ResourceName}曾被取空；相关行动者：{perceived.ActorLabel}；原因：{reason}。{stock}{repeated}。" +
+            (ended ? "这是结束前的耗尽记录。" : "消息描述已发生的耗尽，不会取消你的在途周期。");
     }
 
     public static string RenderCommands(CycleObservation observation) {
@@ -156,9 +180,18 @@ internal static class PlayView {
             }
         }
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认感知并交还控制权，保留活动和进度");
-        AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), observation.IsExpedition
-            ? "取消采集或等待，保留已经获得的物品；随后选择新活动，移动不能取消"
-            : "取消当前活动，保留已经获得的物品；随后按轮转选择新活动");
+        if (observation.ArrivalDue is null) {
+            AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), observation.IsExpedition
+                ? "取消采集或等待，保留已经获得的物品；随后选择新活动，移动不能取消"
+                : "取消当前活动，保留已经获得的物品；随后按轮转选择新活动");
+        }
+        if (observation.Survival is not null) {
+            text.AppendLine("- `use <item-id>`：消耗背包内 1 份物品补给，不消耗时间，不改变活动或行程期限，也不确认历史警告。");
+            foreach (CycleCommandCheck supply in observation.Commands.Where(entry => entry.Command.Kind == CycleCommandKind.Use)) {
+                AppendCommand(text, observation, $"use {supply.Command.ItemId}", supply.Command,
+                    CycleSurvivalRules.UseDescription(supply.Command.ItemId!)!);
+            }
+        }
         text.AppendLine("- `gather <resource-id> <正整数|all>`：数量 1–2147483647；all 固定为接受命令时的库存，不随再生增加、不预留。新开时必须有货，不能同时安排另一耗时活动。");
         foreach (CycleResource resource in observation.Resources) {
             AppendCommand(text, observation, $"gather {resource.Id} 1", CycleCommand.Gather(resource.Id, 1), $"最多取得 1 份{resource.Name}");
@@ -166,18 +199,57 @@ internal static class PlayView {
         }
         var waits = Enumerable.Range(1, 24).Select(hour => (Hour: hour, Reason: observation.CheckDisplayed(CycleCommand.Wait(hour)))).ToArray();
         int[] allowed = waits.Where(entry => entry.Reason is null).Select(entry => entry.Hour).ToArray();
-        text.AppendLine($"- `wait <hours>`：hours 为 1–24 的整数；{(allowed.Length == 24 ? "全部可执行" : $"当前可执行：{(allowed.Length == 0 ? "无" : string.Join(", ", allowed))}")}。等待完成后才请求行动。");
+        text.AppendLine($"- `wait <hours>`：hours 为 1–24 的整数；{(allowed.Length == 24 ? "全部可执行" : $"当前可执行：{(allowed.Length == 0 ? "无" : string.Join(", ", allowed))}")}。" +
+            (observation.Survival is null ? "等待完成后才请求行动。" : "等待完成或发生危险警告时请求行动。"));
         foreach (var group in waits.Where(entry => entry.Reason is not null).GroupBy(entry => entry.Reason)) {
             string hours = group.Count() == 24 ? "1–24" : string.Join(", ", group.Select(entry => entry.Hour));
             text.AppendLine($"  - 小时数 {hours} 受阻：{group.Key}");
+        }
+        foreach (var group in allowed.Select(hour => (Hour: hour, Warning: observation.WarningDisplayed(CycleCommand.Wait(hour))))
+            .Where(entry => entry.Warning is not null).GroupBy(entry => entry.Warning)) {
+            text.AppendLine($"  - 小时数 {string.Join(", ", group.Select(entry => entry.Hour))} 风险提示（不禁止）：{group.Key}");
         }
         return text.ToString();
     }
 
     private static void AppendCommand(StringBuilder text, CycleObservation observation, string syntax, CycleCommand command, string description) {
         string? reason = observation.CheckDisplayed(command);
+        description = description.TrimEnd().TrimEnd('。', '；');
         text.AppendLine($"- `{syntax}`：{description}；{(reason is null ? "可执行。" : $"受阻：{reason}")}");
+        if (observation.WarningDisplayed(command) is { } warning) {
+            text.AppendLine($"  - 风险提示（不禁止）：{warning}");
+        }
     }
+
+    private static void RenderSurvival(StringBuilder text, ModelTime time, CycleSurvivalObservation survival, bool ended) {
+        text.AppendLine("## 身体状态");
+        if (ended) {
+            text.AppendLine(survival.Sheltered ? "结束时处于庇护中。" : "结束时暴露在野外。");
+            text.AppendLine();
+            text.AppendLine("| 指标 | 结束时余量 |");
+            text.AppendLine("| --- | --- |");
+            text.AppendLine($"| 食物 | {Number(survival.Food)} |");
+            text.AppendLine($"| 饮水 | {Number(survival.Water)} |");
+            text.AppendLine($"| 温暖 | {Number(survival.Warmth)} |");
+            text.AppendLine();
+            return;
+        }
+        text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
+        text.AppendLine("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
+        text.AppendLine();
+        text.AppendLine("| 指标 | 当前余量 | 当前趋势（点 / 小时） |");
+        text.AppendLine("| --- | --- | --- |");
+        text.AppendLine($"| 食物 | {Number(survival.Food)} | {Trend(survival.FoodPerHour)} |");
+        text.AppendLine($"| 饮水 | {Number(survival.Water)} | {Trend(survival.WaterPerHour)} |");
+        text.AppendLine($"| 温暖 | {Number(survival.Warmth)} | {Trend(survival.WarmthPerHour)} |");
+        text.AppendLine(survival.FatalAt is { } fatal
+            ? $"- 维持当前趋势且不补给，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。环境改变后需重新评估。"
+            : "- 当前趋势没有可预计的致命时刻；环境改变后需重新评估。");
+        text.AppendLine();
+    }
+
+    private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    private static string Trend(int value) => value > 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
 
     private static string ItemName(CycleObservation observation, string itemId) => observation.ItemNames.GetValueOrDefault(itemId, itemId);
     private static string Hours(long ticks) => ((decimal)ticks / CycleTime.Hour).ToString("0.##", CultureInfo.InvariantCulture);

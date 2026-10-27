@@ -6,13 +6,13 @@
 
 | 里程碑要求 | 当前证据 | 判定 |
 | --- | --- | --- |
-| Console 新游戏、续局和完整胜负循环 | A 已有探索、采集与获救；尚无生存失败 | 部分完成 |
+| Console 新游戏、续局和完整胜负循环 | A/B 具备探索、补给、庇护与胜负结局 | 已有局部闭环；随机风险及整体试玩待做 |
 | 两路线成功与一次失败独立试玩 | 待生存与风险规则落地后执行 | 未完成 |
-| 采集/再生、移动、消费、寒冷、唤醒、随机风险 | A 移动与原采集组合已验证；需求和风险待做 | 部分完成 |
+| 采集/再生、移动、消费、寒冷、唤醒、随机风险 | A/B 已组合需求与庇护；随机风险待做 | 部分完成 |
 | 当前/历史观察与未知世界隔离 | A 的 DTO、校验探针、历史库存与 Console 通过 | A 范围完成；后续新增信息继续验证 |
-| 固定随机状态复现、移动/阈值/随机 E-only 恢复 | 移动中 S-only、出发/到达/出口 E-only 通过；尚无生存与随机 | 部分完成 |
-| Schema、相关测试与原 Console 回归 | A 的 Verify、整套测试和三种 Console smoke 通过 | A 范围完成；后续持续回归 |
-| 运行说明与剩余限制清晰 | README 已增加探索入口，本文记录限制 | A 范围完成 |
+| 固定随机状态复现、移动/阈值/随机 E-only 恢复 | 移动/阈值 S-only，以及移动/警告/消费/死亡 E-only 通过；尚无随机 | 部分完成 |
+| Schema、相关测试与原 Console 回归 | A/B 的 Verify、整套测试和三种 Console smoke 通过 | 当前范围完成；后续持续回归 |
+| 运行说明与剩余限制清晰 | README 已说明探索、生存操作与剩余工作 | 当前范围完成 |
 
 ## 2. 当前局部证据
 
@@ -53,8 +53,46 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 验证使用 .NET SDK 10.0.201 与相邻源码：DG `dd645c1bde973c82f95885b2fd0a395624ba6edb`、Storage `70b406cd8d1117733eee81a33e7f978399aa98b2`，两仓均干净；本片未修改上游。
 
-边界：单角色探索，移动途中不可取消；Spatial 计划通路变更明确拒绝。地图定义由应用版本绑定，不声称任意地图持久化。没有食水消耗、寒冷、随机风险、失败结局或 LLM；这些仍是一期/二期后续工作。
+当时边界：单角色探索，移动途中不可取消；Spatial 计划通路变更明确拒绝。地图定义由应用版本绑定，不声称任意地图持久化。A 当时没有食水消耗、寒冷或失败结局；这些由下述 B 加入。
+
+### B 生存取舍：2026-10-28
+
+源码入口：[CycleSurvival](../../src/ResourceCycle/CycleSurvival.cs)、[CycleSurvivalRules](../../src/ResourceCycle/CycleSurvivalRules.cs)、`CycleActions`、`CyclePlanning` 和 CLI `PlayView`。实现合同见[生存需求](../design/survival-needs.md)。
+
+每角色锚定三项余量和变化率，以定点积分推导最近阈值；不增加每分钟扣值循环。身体变化与消费、昼夜、到达事实同根提交。低值已提醒和历史待确认分开，补给不会重启原空间行程。生产场景从下午开始且需要采集食物；木材尚无燃料用途，保暖通过庇护停留。
+
+主线程独立复核实现与实际画面，修复了满值消费仍扣物品的遗漏，以及终局仍使用“预计到达”等未来动作描述的问题。死亡保留结束时的未完成活动和空间快照，UI 明示冻结记录。独立审阅未发现剩余阻塞。
+
+自动化边界见 [SurvivalValueTests](../../tests/ResourceCycle.Tests/SurvivalValueTests.cs)、[SurvivalTests](../../tests/ResourceCycle.Tests/SurvivalTests.cs) 与 [SurvivalNeedsViewTests](../../tests/ResourceCycle.Cli.Tests/SurvivalNeedsViewTests.cs)：
+
+- 手算分段积分、任意 tick 分割、上限饱和、长时长与阈值 ceil；严格超过警告线才重新武装。
+- 途中饮水不改变 Spatial 对象与到达时刻；昼夜/庇护切换先按旧率结算，回暖仍耗食水。
+- 死亡与出口相差 ±1 tick / 同刻的结果、全量与增量轨迹一致。
+- 阈值附近真实 S-only 冷开；警告/消费/途中死亡 E-only 恢复不重做 Forecast/Plan/控制器，不重复扣物品或虚构到达，死亡二次冷开仍为 `Exhausted`。
+- 满值消费拒绝且状态不变，接近满值仍能消费并裁剪；终局无未来行动承诺。
+
+工程 smoke 使用生产默认规则与真实 Console 进程：
+
+| 路线 | 实际操作与关键边界 |
+| --- | --- |
+| 溪流—旧桥—公路 | 采一份食物并食用、采水；17:30 途中水警告保存，重开饮水升至 70，待确认仍保留；continue 后仍按原期限 18:45 到达，21:45 获救 |
+| 山脊—林屋—信号站 | 采山脊食物并食用、饮水；19:30 到庇护，等待一小时温暖 60→72，食水同时下降；途中再次确认警告，23:30 获救 |
+| 原地不补给 | wait 24，先后确认两次警告但不喝水；20:37:30 脱水耗尽，背包仍保留未使用饮水 |
+
+各路线比较连续/冷续局最终观察，终局重开不推进；途中只读/非法输入及 EOF 不改变存档字节，喝水不耗时且不自动确认。继续保留未知目标校验与异地资源历史观察验证。这是已知路线的工程验收，**仍不替代 C 之后的独立完整试玩**。
+
+主线程在最终源码上重跑 A 所列五条命令：Schema Verify 构建零警告/错误；全 solution **480 项通过、无跳过**（Host 2、Inventory 27、Kernel 131、ResourceCycle 157、CLI 72、Spatial 91）。ResourceCycle 现有 18 个模型与 32 条历史：新增 Character v3、EventKind v5、Fact v4、Survival v1；Fact 的版本同步来自值类型 EventKind 的 Schema 变化。应用 GameRevision 为 3，保留旧 Schema 记录，但不支持旧开发游戏存档。
+
+最终工程 smoke 工件：
+
+| 入口 | 成功工件 |
+| --- | --- |
+| 原批处理 | `artifacts/resource-cycle-smoke/f1e04f2a5f85457ebd19fce394b9c8f0/` |
+| 原多人采集 | `artifacts/resource-cycle-play-smoke/8a15aa9e2efe4afea37cf7d70346612c/` |
+| 生存 A/B | `artifacts/resource-cycle-survival-smoke/a4481d8f940b425eaad244f3b285a9c3/` |
+
+使用与 A 相同的 SDK/DG/Storage 源码版本；两个上游工作树仍干净，本片未改上游。当前改动文档的 165 个本地文件链接通过存在性检查，`git diff --check` 通过。
 
 ## 3. 一期仍需完成
 
-食物、水、寒冷、危险响应、随机环境事件及恢复；两条路线在生存约束下的独立通关、失败试玩与平衡调整。当前空间探索成功退出即使验收通过，也只证明切片 A，不宣称一期已经具备完整生存体验。二期 LLM、双角色交流和赠与尚未启动。
+随机环境事件及其确定性/恢复；两条路线在完整生存约束下的独立通关、失败试玩与平衡调整。A/B 工程验收不代表一期完成。二期 LLM、双角色交流和赠与尚未启动。

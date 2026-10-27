@@ -5,7 +5,7 @@ using DramaBoard.Spatial;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 3)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 4)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -47,6 +47,8 @@ public sealed partial class CycleFact : IDurableObject {
     }
     internal CycleFact WithVisits(IEnumerable<CycleVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Outcome, EndingReason);
+    internal CycleFact WithCharacters(IEnumerable<CycleCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason);
     public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}];outcome={Outcome}:{EndingReason}";
 }
 

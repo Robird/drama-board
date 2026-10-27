@@ -4,12 +4,13 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 4)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 5)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
-    GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived
+    GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
+    SurvivalWarning, SurvivalFailed, ItemUsed
 }
-public enum CyclePredictionKind { RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, CompleteActivity, RequestDecision }
+public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, CompleteActivity, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
 public static class CycleTime {
@@ -115,6 +116,7 @@ public sealed partial class CycleBusinessState : IDurableObject {
             throw new InvalidOperationException("Invalid script position or ordering.");
         }
         Expedition?.Validate(this);
+        CycleSurvivalRules.Validate(this);
     }
 }
 

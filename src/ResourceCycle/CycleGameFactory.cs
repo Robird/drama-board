@@ -1,6 +1,7 @@
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
+using DramaBoard.Inventory;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -10,8 +11,8 @@ namespace DramaBoard.ResourceCycle;
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
     /// <summary>Creates a fixed, revision-bound mountain scenario with one explorer and no revealed distant truth.</summary>
-    public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null) {
-        ModelTime time = start ?? new ModelTime(8 * CycleTime.Hour);
+    public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true) {
+        ModelTime time = start ?? new ModelTime(15 * CycleTime.Hour);
         CycleResource[] resources = [
             new("berries", "野浆果", "item.food", true, 3 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
             new("water", "溪水", "item.water", true, CycleTime.Hour, 12, 12, harvestTicks: CycleTime.Hour / 4),
@@ -21,7 +22,10 @@ public static class CycleGameFactory {
         GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("camp"))]);
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [new("a", "camp", time, [])]);
         return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
-            new([]), [new("a", "阿青")], expedition: expedition));
+            new([]), [new("a", "阿青", backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
+                ["item.water"] = 1
+            }) : null, survival: enableNeeds ? CycleSurvival.Create(time, food: 30, water: 45, warmth: 60,
+                warmthPerHour: CycleTime.IsDay(time) ? 6 : -12) : null)], expedition: expedition));
     }
 
     /// <summary>Creates the scripted resource-cycle experiment and its initial cursor.</summary>

@@ -11,6 +11,7 @@ internal static class CyclePlanning {
         CyclePredictionKind.RegenerateResource => Regenerate(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.DestroyResource => Destroy(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.CompleteActivity => CompleteActivity(world, prediction.TargetId, prediction.Due),
+        CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning => CycleSurvivalRules.Boundary(world, prediction),
         _ => throw new InvalidOperationException("This occurrence requires a Player decision.")
     };
 
@@ -48,6 +49,12 @@ internal static class CyclePlanning {
                 return new(CycleEventKind.MoveStarted, world.Time, actorId,
                     changedCharacters: [actor.Change(null, notices: [], result: result)], lastServedActorId: actorId,
                     result: result, spatialFacts: accepted.Facts);
+            }
+            case CycleCommandKind.Use: {
+                string result = CycleSurvivalRules.UseDescription(command.ItemId!)!;
+                return new(CycleEventKind.ItemUsed, world.Time, actorId, changedCharacters: [actor.Change(actor.Activity,
+                    actor.Backpack.Remove(command.ItemId!), result: result, survival: actor.Survival!.Supply(world.Time, command.ItemId!))],
+                    lastServedActorId: actorId, result: result);
             }
             default: throw new InvalidOperationException("Unknown command after validation.");
         }

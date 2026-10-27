@@ -8,7 +8,7 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 public sealed class SurvivalViewTests {
     [Fact]
     public void Initial_view_describes_visible_trails_without_revealing_destinations_or_remote_resources() {
-        CycleWorld world = CycleGameFactory.CreateSurvival().World;
+        CycleWorld world = CycleGameFactory.CreateSurvival(enableNeeds: false).World;
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
         string text = PlayView.Render(context.Observation);
         Assert.Contains("# 山林求生", text);
@@ -29,7 +29,7 @@ public sealed class SurvivalViewTests {
 
     [Fact]
     public async Task Leaving_a_place_shows_timestamped_history_not_live_distant_stock() {
-        var initial = CycleGameFactory.CreateSurvival();
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-1")));
         await Step(kernel); // leave camp
@@ -53,7 +53,7 @@ public sealed class SurvivalViewTests {
 
     [Fact]
     public async Task Shared_item_identity_does_not_reveal_an_unvisited_producer() {
-        var initial = CycleGameFactory.CreateSurvival();
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2")));
         await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "ridge");
@@ -67,7 +67,7 @@ public sealed class SurvivalViewTests {
 
     [Fact]
     public async Task Arrival_at_safety_renders_an_ending_without_prompting_for_more_actions() {
-        var initial = CycleGameFactory.CreateSurvival();
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-3"), CycleCommand.Go("trail-4")));
         await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Escaped);

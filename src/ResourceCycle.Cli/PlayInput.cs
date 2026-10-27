@@ -34,6 +34,8 @@ internal sealed record PlayInput {
             command = CycleCommand.Cancel();
         } else if (parts is ["go", var passageId]) {
             command = CycleCommand.Go(passageId);
+        } else if (parts is ["use", var itemId]) {
+            command = CycleCommand.Use(itemId);
         } else {
             return new(PlayInputKind.Invalid);
         }

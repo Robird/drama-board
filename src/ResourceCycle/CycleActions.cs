@@ -3,16 +3,17 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go }
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use }
 
 /// <summary>Runtime intent; only validated concrete effects enter durable facts.</summary>
-public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? ResourceId = null, int Count = 0, bool All = false, string? PassageId = null) {
+public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? ResourceId = null, int Count = 0, bool All = false, string? PassageId = null, string? ItemId = null) {
     public static CycleCommand Wait(int hours) => new(CycleCommandKind.Wait, Hours: hours);
     public static CycleCommand Gather(string resourceId, int count = 1) => new(CycleCommandKind.Gather, ResourceId: resourceId, Count: count);
     public static CycleCommand GatherAll(string resourceId) => new(CycleCommandKind.Gather, ResourceId: resourceId, All: true);
     public static CycleCommand Continue() => new(CycleCommandKind.Continue);
     public static CycleCommand Cancel() => new(CycleCommandKind.Cancel);
     public static CycleCommand Go(string passageId) => new(CycleCommandKind.Go, PassageId: passageId);
+    public static CycleCommand Use(string itemId) => new(CycleCommandKind.Use, ItemId: itemId);
 }
 
 /// <summary>Provides commands for the requested character; one instance may serve multiple characters.</summary>
@@ -33,7 +34,7 @@ public static class CycleActions {
     internal static bool NeedsDecision(CycleBusinessState business, string actorId) {
         CycleCharacter actor = business.GetCharacter(actorId);
         return (business.Expedition is null || business.Expedition.Outcome == CycleExpeditionOutcome.Exploring) &&
-            (actor.Notices.Count > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
+            (actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
     }
 
     public static long HarvestDuration(CycleResource resource, CycleCharacter actor) {
@@ -51,13 +52,15 @@ public static class CycleActions {
         if (world.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) { return "旅程已经结束。"; }
         if (!NeedsDecision(world, actorId)) { return "角色正在活动，当前没有需要响应的感知。"; }
         bool travelling = IsTravelling(world, actorId);
-        if (travelling && command.Kind != CycleCommandKind.Continue) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
+        if (travelling && command.Kind is not (CycleCommandKind.Continue or CycleCommandKind.Use)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
+        if (command.Kind != CycleCommandKind.Use && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
         switch (command.Kind) {
             case CycleCommandKind.Continue:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "continue 不接受参数。"; }
-                return (actor.Activity is not null || travelling) && actor.Notices.Count > 0 ? null : "只有正在活动且收到待确认感知时才能 continue。";
+                return actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0
+                    ? null : "当前没有需要确认的活动感知或身体警告。";
             case CycleCommandKind.Cancel:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "cancel 不接受参数。"; }
                 return actor.Activity is null ? "当前没有可取消的活动。" : null;
@@ -87,6 +90,15 @@ public static class CycleActions {
                 if (place is null || !CycleExpeditionMap.GetPassages(place).Any(p => p.Id == command.PassageId)) { return "当前地点没有这条通路。"; }
                 return CycleExpeditionMap.Planner.TryStartTraversal(world.Expedition!.Spatial, new(actorId), new(command.PassageId), 1, world.Time)
                     is SpatialPlanAccepted ? null : "当前不能进入这条通路。";
+            case CycleCommandKind.Use:
+                if (command.Hours != 0 || command.ResourceId is not null || command.PassageId is not null || command.Count != 0 || command.All ||
+                    string.IsNullOrWhiteSpace(command.ItemId)) { return "使用补给需要一个物品编号。"; }
+                if (actor.Survival is null || CycleSurvivalRules.UseDescription(command.ItemId) is null) { return "这个物品不能用于补给。"; }
+                if (actor.Backpack.Count(command.ItemId) == 0) { return "背包中没有这个物品。"; }
+                CycleSurvival projected = actor.Survival.Project(world.Time);
+                if (projected.IsFatal) { return "身体已耗尽，无法通过此时补给挽回。"; }
+                return (command.ItemId == "item.food" ? projected.FoodUnits : projected.WaterUnits) == CycleSurvival.MaximumUnits
+                    ? "这项身体需求已经充足，使用补给不会产生收益。" : null;
             default: return "未知行动。";
         }
     }

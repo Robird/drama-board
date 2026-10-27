@@ -22,6 +22,8 @@ public sealed class PlayInputTests {
         { "continue", CycleCommand.Continue() },
         { "cancel", CycleCommand.Cancel() },
         { "go trail-1", CycleCommand.Go("trail-1") },
+        { "use item.water", CycleCommand.Use("item.water") },
+        { " \tuse\titem.food  ", CycleCommand.Use("item.food") },
     };
 
     [Theory]
@@ -58,6 +60,9 @@ public sealed class PlayInputTests {
     [InlineData("go")]
     [InlineData("go trail-1 extra")]
     [InlineData("Go trail-1")]
+    [InlineData("use")]
+    [InlineData("use item.water 2")]
+    [InlineData("Use item.water")]
     public void Malformed_or_unrepresentable_input_is_not_an_action(string input) {
         PlayInput parsed = PlayInput.Parse(input);
         Assert.Equal(PlayInputKind.Invalid, parsed.Kind);
@@ -73,6 +78,8 @@ public sealed class PlayInputTests {
     [InlineData("gather missing all")]
     [InlineData("continue")]
     [InlineData("cancel")]
+    [InlineData("use item.water")]
+    [InlineData("use missing")]
     public void Syntactic_success_does_not_bypass_current_domain_rules(string input) {
         CycleWorld world = CycleGameFactory.CreatePlayable().World;
         PlayInput parsed = PlayInput.Parse(input);

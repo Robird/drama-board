@@ -12,7 +12,7 @@ public sealed record CyclePassageObservation(string Id, string Description, long
 public sealed record CyclePlaceMemory(string Name, ModelTime At, IReadOnlyList<CycleResource> Resources);
 public sealed record CycleNoticeObservation(CycleNotice Notice, string ResourceName, string ActorLabel,
     bool? StillGathering, int? CurrentStock, int? Capacity);
-public sealed record CycleCommandCheck(CycleCommand Command, string? Rejection);
+public sealed record CycleCommandCheck(CycleCommand Command, string? Rejection, string? Warning = null);
 
 /// <summary>A nonpersistent projection of current senses, private state and explicit historical observations.</summary>
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
@@ -36,7 +36,9 @@ public sealed class CycleObservation {
     public IReadOnlyList<CyclePlaceMemory> Memories { get; init; } = [];
     public CycleExpeditionOutcome Outcome { get; init; } = CycleExpeditionOutcome.Exploring;
     public string? EndingReason { get; init; }
+    public CycleSurvivalObservation? Survival { get; init; }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
+    public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
 }
 
 /// <summary>One frozen decision's observation and scoped, side-effect-free command validation.</summary>
@@ -44,12 +46,16 @@ public sealed class CycleObservation {
 /// the world; invalid or guessed distant IDs cannot use rejection details to query hidden state.</remarks>
 public sealed class CycleDecisionContext {
     private readonly Func<CycleCommand?, string?> _check;
+    private readonly Func<CycleCommand, string?> _warning;
     public CycleObservation Observation { get; }
-    private CycleDecisionContext(CycleObservation observation, Func<CycleCommand?, string?> check) {
+    private CycleDecisionContext(CycleObservation observation, Func<CycleCommand?, string?> check, Func<CycleCommand, string?> warning) {
         Observation = observation;
         _check = check;
+        _warning = warning;
     }
     public string? Check(CycleCommand? command) => _check(command);
+    /// <summary>Known survival risk for a visible, legal action; does not reserve or execute it.</summary>
+    public string? Warning(CycleCommand command) => _warning(command);
 
     public static CycleDecisionContext Create(CycleWorld world, string actorId) {
         ArgumentNullException.ThrowIfNull(world);
@@ -69,6 +75,8 @@ public sealed class CycleDecisionContext {
             }
             return CycleActions.Check(world, actorId, command);
         }
+        string? Warning(CycleCommand command) => Check(command) is null
+            ? CycleSurvivalRules.ActionWarning(world, actorId, command) : null;
         CycleOtherCharacterObservation[] others = world.Characters.Where(other => other.Id != actorId &&
             (expedition is null || place is not null && CycleActions.CurrentPlace(world, other.Id) == place))
             .Select(other => new CycleOtherCharacterObservation(other.Id, other.Name,
@@ -94,6 +102,11 @@ public sealed class CycleDecisionContext {
         }
         commands.AddRange(Enumerable.Range(1, 24).Select(CycleCommand.Wait));
         commands.AddRange(passages.Select(passage => CycleCommand.Go(passage.Id)));
+        if (actor.Survival is not null) {
+            commands.AddRange(actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
+                .Distinct(StringComparer.Ordinal).Where(id => CycleSurvivalRules.UseDescription(id) is not null)
+                .Order(StringComparer.Ordinal).Select(CycleCommand.Use));
+        }
         CycleVisit[] visits = expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
         ModelTime? arrival = expedition?.Spatial.Entities.Single(entity => entity.Id.Value == actorId).Location
             is TraversingLocation moving ? moving.ArrivalDue : null;
@@ -110,7 +123,7 @@ public sealed class CycleDecisionContext {
                 resource => resource.Id, resource => CycleActions.HarvestDuration(resource, actor), StringComparer.Ordinal)),
             ItemNames = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(itemNames),
             OtherCharacters = Array.AsReadOnly(others), Notices = Array.AsReadOnly(notices),
-            Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, Check(command))).ToArray()),
+            Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, Check(command), Warning(command))).ToArray()),
             IsExpedition = expedition is not null,
             PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,
@@ -120,8 +133,9 @@ public sealed class CycleDecisionContext {
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>
                 new CyclePlaceMemory(CycleExpeditionMap.GetPlace(visit.PlaceId).Name, visit.At,
                     Array.AsReadOnly(visit.Resources.ToArray()))).ToArray()),
-            Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason
+            Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason,
+            Survival = CycleSurvivalRules.Observe(world, actorId)
         };
-        return new(observation, Check);
+        return new(observation, Check, Warning);
     }
 }

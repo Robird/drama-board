@@ -58,7 +58,7 @@ See [the multiplayer gathering rules](docs/design/resource-cycle-multiplayer-gat
 
 ## Play the survival prototype
 
-The first spatial exploration slice of the [survival milestone](docs/design/survival-demo-milestone.md) is playable:
+The exploration and survival-needs slices of the [survival milestone](docs/design/survival-demo-milestone.md) are playable:
 
 ```powershell
 dotnet run --project src/ResourceCycle.Cli -c Release -- --survival
@@ -68,7 +68,9 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 Explore a small mountain map and find either exit. Use `go <trail-id>` from the displayed local choices, `gather <resource-id> <count|all>`, `wait <hours>`, `look`, `help`, and `quit`. Locations and resource memories become known through visits; old observations are labelled with their time. Travel takes model time and cannot yet be cancelled midway. Completed changes save automatically when a store is supplied; use the same command to resume. A completed ending does not advance further.
 
-This slice includes movement, local gathering, hidden geography and rescue endings. Food/water needs, cold, environmental risk and survival failure are still under construction; it is not the completed phase-one game. GameRevision is now 2; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. Current evidence and limitations are tracked in [survival acceptance](docs/experiments/survival-demo-acceptance.md).
+Food and water decline with model time; exposure cools you at night, while shelter restores warmth. Use `use item.food` or `use item.water` to consume one supply without advancing time. A low-body warning pauses the world even during travel: replenish if possible, then `continue` to acknowledge it without restarting the original journey or activity. At a location, `cancel` can end gathering or waiting. Any need reaching zero ends the journey; reaching a safe exit first wins. Wood currently has no fuel use.
+
+Environmental randomness and independent full playtests are still pending; this is not the completed phase-one game. GameRevision is now 3; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. Current evidence and limitations are tracked in [survival acceptance](docs/experiments/survival-demo-acceptance.md).
 
 ## Small world scenario
 
