@@ -1,28 +1,7 @@
-using System.Collections.ObjectModel;
 using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
-
-[DurableType("DramaBoard.ResourceCycle.Backpack", 2)]
-public sealed partial class CycleBackpack : IDurableObject {
-    [DurableField(1)] private Dictionary<string, int> _items;
-    public IReadOnlyDictionary<string, int> Items => new ReadOnlyDictionary<string, int>(_items);
-    public CycleBackpack(IReadOnlyDictionary<string, int>? items = null) {
-        _items = items is null ? new(StringComparer.Ordinal) : new(items, StringComparer.Ordinal);
-    }
-    public int Count(string itemId) => _items.GetValueOrDefault(itemId);
-    internal CycleBackpack Add(string itemId) {
-        var items = new Dictionary<string, int>(_items, StringComparer.Ordinal) { [itemId] = checked(Count(itemId) + 1) };
-        return new(items);
-    }
-    internal void Validate() {
-        if (_items.Any(item => string.IsNullOrWhiteSpace(item.Key) || item.Value <= 0)) {
-            throw new InvalidOperationException("Backpack entries require an item identity and positive quantity.");
-        }
-    }
-    public override string ToString() => $"[{string.Join(';', _items.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => $"{item.Key}:{item.Value}"))}]";
-}
 
 [DurableType("DramaBoard.ResourceCycle.ActivityKind", 1)]
 public enum CycleActivityKind { Wait, Gather }

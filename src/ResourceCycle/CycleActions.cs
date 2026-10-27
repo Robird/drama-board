@@ -53,7 +53,7 @@ public static class CycleActions {
                 if (resource is null) { return "没有这个资源点。"; }
                 if (actor.SkillLevel < resource.RequiredLevel) { return $"采药等级不足，需要 {resource.RequiredLevel} 级。"; }
                 if (resource.Stock == 0) { return "资源点当前无货，不能新开采集。"; }
-                if (actor.Backpack.Count(resource.ItemId) == int.MaxValue) { return "背包中该物品的数量已达到上限。"; }
+                if (!actor.Backpack.CanAdd(resource.ItemId)) { return "背包中该物品的数量已达到上限。"; }
                 if (world.Time.Ticks > long.MaxValue - HarvestDuration(resource, actor) || actor.NextActivityId == long.MaxValue) { return "采集结束时间或活动编号超出支持范围。"; }
                 return null;
             default: return "未知行动。";

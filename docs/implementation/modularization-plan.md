@@ -1,6 +1,6 @@
 # 模块化重构方案：从 ResourceCycle 的真实协作边界开始
 
-> 状态：待实施的渐进方案；依据 2026-10-27 当前源码。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)。本文的切片是后续施工候选顺序，不表示本轮已修改代码，也不预先确定公共 API 或程序集名称。
+> 状态：渐进实施中；依据 2026-10-27 当前源码。A 已落地，后续切片按证据继续细化。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)；尚未确定的公共 API 或程序集名称不视为实施承诺。
 
 ## 1. 目标与范围
 
@@ -13,7 +13,7 @@
 | 当前入口 | 已承担职责与可用边界 | 后续整理时的重点 |
 | --- | --- | --- |
 | [Kernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[Spatial](../../src/Spatial/Simulation/SpatialSimulation.cs)、[Host](../../src/Host/SimulationHost.cs) | 通用发生项执行、可选空间机制、驱动循环；已有独立程序集 | 保留分界；不把采集顺序、昼夜规则或控制器轮转提升为 Kernel 默认政策。 |
-| [CycleCharacter.cs](../../src/ResourceCycle/CycleCharacter.cs) | 同文件内有 `CycleBackpack`、活动、感知和角色；背包本身只有物品数量，不读取整个世界 | 库存能力可先在原程序集内明确；角色的活动、感知与服务代数仍是本游戏组合的一部分，不能随背包一起提走。 |
+| [CycleBackpack](../../src/ResourceCycle/CycleBackpack.cs)、[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) | 背包独立承载物品数量与单份接纳查询，不读取整个世界；角色文件保留活动、感知和角色 | 库存能力先留在原程序集；角色的活动、感知与服务代数仍是本游戏组合的一部分，不能随背包一起提走。 |
 | [CycleResource](../../src/ResourceCycle/CycleResource.cs) | 资源定义与运行状态同对象；包含余量、容量、单项产出、光照约束、进度和采集要求 | 不预设“定义/实例”必须分图；当前只接受 `herbalism`，不能直接宣称为通用资源框架。 |
 | [CycleActions](../../src/ResourceCycle/CycleActions.cs) | 命令形状、控制器入口、接受条件、采集时长公式；受阻结果是中文字符串 | 区分局部规则检查与本游戏命令组合；保留“接受时合法”和“到期能否取得资源”的不同检查时点。 |
 | [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | 同时确定资源替换、背包增加、活动续接、感知与结果文字 | 这是明确存在的跨模块编排；可调用局部能力，但仍由它决定一整个发生项的结果。 |
@@ -29,7 +29,7 @@
 需要特别保留的事实：
 
 - `CycleBackpack.Add` 返回新对象；`CyclePlanning.CompleteGather` 同时选择资源、角色与感知的新值。局部能力不能就地改变已发布对象。
-- 背包 `int.MaxValue` 接纳检查目前分别出现在接受命令与采集结算；这两个检查时点都必要，但容量判定规则可以由同一局部职责提供。
+- 背包 `int.MaxValue` 接纳规则由 `CycleBackpack.CanAdd` 提供，接受命令与采集结算分别调用；预检查不预留，结算仍需重查。
 - `CycleEngine.Affected` 依赖子对象引用变化判断 dirty；`Complete` 还验证折叠结果与记录事实相符。重构若无条件复制子图，可能保持玩法结果却破坏增量行为。
 - `CyclePrediction.ToString()` 当前参与候选稳定身份与比较；业务对象的 `ToString()` 也用于诊断轨迹。不能把所有字符串一概当作可任意调整的展示实现。
 - `CycleFact.Result`、`CycleCharacter.LastResult`、`CycleNotice.Reason` 已进入持久对象图，规划代码生成中文文本；`PlayConsole` 又根据结构化信息渲染感知。展示职责尚未完全分离，调整时必须说明哪些是历史记录，哪些是当前状态投影。
@@ -42,11 +42,13 @@
 4. **既有玩法不顺便改变。** `all` 固定接受时余量、不预留；先完成先得；同刻自然过程和活动完成先于输入；加入/耗尽唤醒不取消活动；非法输入与查看不推进时间、不确认消息、不交棒。
 5. **初始化与游戏修订仍由游戏负责。** 模块整理不改变 State/E 各自的 `GameRevision` 合同；加载不写盘、不执行 pending、不推进游标。生产当前仅支持修订 1；夹具覆盖多版本不等于已有真实旧存档支持。
 
-对应证据入口：[多人玩法](../design/resource-cycle-multiplayer-gathering.md)、[运行时缓存](../design/runtime-derived-predictions.md)、[初始化与修订](../design/game-initialization-and-revision.md)。这些是未来施工的回归要求，本次文档调查没有重新运行测试。
+对应证据入口：[多人玩法](../design/resource-cycle-multiplayer-gathering.md)、[运行时缓存](../design/runtime-derived-predictions.md)、[初始化与修订](../design/game-initialization-and-revision.md)。各片按实际修改范围运行回归，未实施部分不借用历史测试结果作为验收。
 
 ## 4. 渐进切片
 
 ### A. 先整理库存接纳边界，留在原程序集
+
+**状态：已实施并验收。** `CycleBackpack.CanAdd(itemId)` 是内部纯查询，`Add` 返回新快照并保留 checked 表示保护；没有扩展公共 API、容量玩法或持久 Schema。开始和结算两处复用查询，失败文案、批次续接与资源效果仍归原编排。[BackpackTests](../../tests/ResourceCycle.Tests/BackpackTests.cs) 覆盖临界上限、其他物品独立接纳、输入与输出快照隔离；ResourceCycle.Tests 全套 Release 测试及 Schema Verify 已通过，包含拒收不扣资源与真实 E-only 恢复。
 
 **目标**：以一个实际重复的规则为起点，明确“库存表示及接纳结果”与“采集后如何改变世界”的分工。把背包从角色相关大文件中分离只是附属整理，主要收益是接受与结算复用同一个接纳规则，以及局部规则能够单独测试。
 
@@ -122,6 +124,6 @@
 
 ## 6. 下一轮建议与待决边界
 
-建议从 A 开始；B 中与正在修改代码自然相邻的整理可同行，其他部分保持独立。完成后依据局部 API、测试和试玩结果更新本文，再选择 C 或下一实际玩法需求，不把 A→D 当作必须机械走完的迁移流水线。
+下一片先做 B 的 Console 纯渲染/解析：独立测试当前角色的可见文本和输入语法，保持 IO 驱动与领域合法性判定分开。预测维护作为 B 的独立后续片，再依据局部 API、测试和试玩结果选择 C 或下一实际玩法需求，不把 A→D 当作必须机械走完的迁移流水线。
 
 尚待证据选择：库存变体的容量含义；展示文字中历史记录与当前投影的具体拆分；哪个模块首先值得独立程序集；定义与运行实例是否拆开；后续空间与采集怎样组合。确定前保持普通类型、显式调用与应用层组合，不为这些问题预建公共接口。
