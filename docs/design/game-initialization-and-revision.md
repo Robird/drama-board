@@ -1,6 +1,6 @@
 # 设计决策：对象图初始化与游戏状态修订
 
-状态：用户已采纳工厂初始化、State/Event 各自记录 `GameRevision`、加载时协调升级内存表示，再交给正常执行流程；升级本身不必完成 pending 工作。本文的具体类型与编排接线仍是草案，尚未接入运行；当前 ResourceCycle 没有游戏修订字段或管道。现有 XML 文档只标明职责边界，不构成迁移实现。
+状态：首片已接入 ResourceCycle 的真实创建、保存与恢复路径。普通工厂构造新游戏，State/Event 各自记录 `GameRevision`；加载还原并协调升级内存表示，再交给正常执行流程。生产目前只接受修订 1；跨版本语义通过测试夹具验证，不构成对旧存档的兼容承诺。升级本身不完成 pending 工作。实施边界与验证见[验收记录](../experiments/game-revision-acceptance.md)。
 
 三方交叉审阅收敛的约束与源码依据见[审阅裁决](../research/game-revision-review.md)。
 
@@ -8,7 +8,7 @@
 
 新游戏工厂接收场景、角色设置及必要时的生成种子，组装初始领域对象图；校验业务约束并重建派生预测后，由持久化入口发布初始 S。工厂直接构造当前游戏修订的状态，不从最早版本逐步升级。
 
-现有 [CycleWorld.Create / CreatePlayable](../../src/ResourceCycle/CycleModels.cs) 已是此模式的简单实例。随着场景生成增多，再将生成逻辑移出运行时 wrapper；目前不要求建立统一生成器接口。
+[CycleGameFactory.CreateBatch / CreatePlayable](../../src/ResourceCycle/CycleGameFactory.cs) 集中组装场景并返回 `(World, Cursor)`，供内存运行及磁盘新游戏使用；[CycleWorld.Create / CreatePlayable](../../src/ResourceCycle/CycleModels.cs) 保留为薄委托。工厂不发布存档，不建立统一生成器接口。
 
 - 地点、资源、角色等生成器可以是普通函数，各自构造子图，由上层连接引用、校验身份唯一性和引用完整性。
 - 每次新游戏的可变状态独立；外部传入子图的共享/转移约定应明确，不能默认工厂会深复制。配置文件可以成为可选输入，不是必经表示。
@@ -20,7 +20,7 @@
 | 概念 | 职责 | 当前状态 |
 | --- | --- | --- |
 | DurableGraph Schema 版本 | 将旧持久表示还原为可供应用处理的类型；State 与 Event 各自都可能需要 Schema Upgrade。 | 已有 DG 能力；`UpgradeContext` 不提供跨图访问和对象 ID 分配。 |
-| `GameRevision` | 表示该份 State 或 Event 的游戏语义修订版本，决定其内存升级路径。 | 使用同一套整体递增整数编号，State/Event 各自保存；字段尚未实现。 |
+| `GameRevision` | 表示该份 State 或 Event 的游戏语义修订版本，决定其内存升级路径。 | `CycleDurableRoot` / `CycleDurableEvent` 各自保存；`CycleGameRevision.Current` 为生产当前修订。 |
 | `WorldVersion` | 标识模拟谱系与已完成的发生项转换次数。 | 现有 [WorldVersion](../../src/Kernel/Simulation/WorldVersion.cs)，不能兼作游戏修订号。 |
 
 Schema 升级解决“能否还原”，游戏修订解决“还原出的世界应如何变化”，Rebuild 只负责派生预测与索引。业务修订必须显式处理正在进行的活动：例如周期缩短时保留原到期时刻、完成比例还是重置进度，不能靠重建预测暗中选择。
@@ -45,21 +45,23 @@ S/E 各自带版本不意味着总能独立转换。例如旧 E 保存了“背�
 
 升级保持原 E 的 CauseKey、TargetInstant、配对边界及 S 的游标；原始磁盘记录不变。改变历史身份或时间轴是另外的历史重写任务。
 
-## 4. 首片接口草案
+## 4. 首片应用接口
 
-以下是应用层普通函数的形状，**不是当前 API**。建议在 `CycleDurableRoot` 增加 `GameRevision`，并新增应用层持久事件包装 `CycleDurableEvent`，保存 `GameRevision` 与 `OccurrenceEvent<CycleFact>`；Kernel 不必因此承担游戏修订号。包装类型及 Schema 绑定待实施。
+应用层持久根 [CycleDurableRoot](../../src/ResourceCycle/Persistence/CycleDurableRoot.cs) 保存 `GameRevision`，独立事件包装 [CycleDurableEvent](../../src/ResourceCycle/Persistence/CycleDurableEvent.cs) 保存自己的修订号及 `OccurrenceEvent<CycleFact>`。Root Schema 为 v2，Event Schema 为 v1；Kernel 不承担应用修订号。旧无版本根和原始 occurrence 存档不在支持范围内。
 
 ```csharp
-// 签名草案；目标版本使用应用常量，S/E 各自携带源版本。
+// CycleGameRevision 中的 internal 普通函数；生产目标使用 Current。
 /// <summary>Upgrades restored representations without executing pending work.</summary>
 /// <remarks>Preserve input snapshots, cursor, event identity and pending presence.
 /// State conversion is independent of pending Event presence or content.
 /// No publication, planning or controller calls; reject unsupported boundaries.</remarks>
-internal static (CycleDurableRoot State, CycleDurableEvent? PendingEvent)
-    UpgradeLoadedBoundary(CycleDurableRoot state, CycleDurableEvent? pending);
+internal static (CycleDurableRoot State, CycleDurableEvent? PendingEvent) UpgradeLoadedBoundary(
+    CycleDurableRoot state, CycleDurableEvent? pending, int targetRevision,
+    Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
+    Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null);
 ```
 
-普通函数按下节顺序调用相邻转换；不建立同构的 Input/Result 类型、可替换管道接口、通用版本图或持久映射表。第二个真实消费者或实现替换需求出现后再提取接口。元数据与边界检查由编排负责，具体转换的正确性由修订代码及对应测试保证，不增加一套通用业务验证器。
+普通函数按下节顺序调用相邻转换；内部 `Open` 重载让测试夹具为同一加载和发布路径提供目标修订及转换函数，公开 `Open` 固定当前修订且不提供虚构历史步骤。后续 E/S 写入会话的目标修订。不建立同构的 Input/Result 类型、可替换管道接口、通用版本图或持久映射表。第二个真实消费者或实现替换需求出现后再提取接口。元数据与边界检查由编排负责，具体转换的正确性由修订代码及对应测试保证，不增加一套通用业务验证器。
 
 只承诺支持明确范围内的历史版本，不要求永久支持所有版本。DG 必须先能还原旧表示：保留必要的旧 Schema/DTO/绑定和转换数据，不能删掉解码途径后依赖应用修订补救。历史无版本字段的 S/E 需明确赋予旧版本，不能自动当作当前版。
 
@@ -84,15 +86,15 @@ adapter 需要区分物理保存基线与升级后的运行视图：`State`/`Pen
 
 当前范围不做事件持久化替代。以后若需要，须另行定义同一逻辑事件的新表示、配对 S 与中断恢复，不能靠追加 E 破坏当前应用的 E/S 形状。历史任意重放也不能直接用当前 Fold 解释所有旧 E；需经过对应表示升级及语义检查，或从合适的新版 S 起步。
 
-## 6. 当前源码接缝与下一切片验收
+## 6. 实施落点与验收合同
 
-- [CycleDurableHistory.Open](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 目前立即 Validate/Rebuild，再暴露 pending E；需拆开早期还原、协调升级与就绪视图交付。
-- `CycleDurableRoot` 构造函数也会调用当前业务 Validate；实施时区分修订候选结构检查与可运行根完整校验，不能只移动 Open 中的一次 Validate。
-- adapter 需要保存升级后的 root/event 视图，核对 `State`、`Cursor`、`PendingEvent` 及正常提交使用同一语义边界；当前 `ReadRoot()` 仍直接读取 DG 工作副本，不能仅升级 `_state` 而留下不同的根视图。
+- [CycleDurableHistory.Open](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 先还原 S/E 并检查历史边界，调用升级函数后才完整 Validate/Rebuild；加载不提前 Fold 事件。
+- `CycleDurableRoot` 普通构造仍完整 Validate；内部候选入口仅检查修订号、非空业务根、游标和世界时间对齐。候选交付运行及发布前必须完整验证。
+- adapter 的 `_readyRoot` / `_pending` 保存就绪视图，`State`、`Cursor`、`PendingEvent` 及正常提交使用同一语义边界；运行时 wrapper 与就绪根共享 Business。`WorkingCopy` 保留物理基线，只有提交成功才安装新根及 wrapper。
 - [SimulationKernel.RecoverPending](../../src/Kernel/Simulation/SimulationKernel.cs) 继续只处理兼容的输入，不识别游戏版本或挑选修订策略。`CommitState` 继续完成 pending E；本方案不要求新增独立升级发布入口。
-- 版本字段、事件包装和管道均未实现；本轮记录选定方案，不增加旧存档兼容承诺。
+- 公共入口只接受当前游戏修订；首次真实业务修订出现时再提供步骤并声明支持范围，不增加旧无版本存档兼容承诺。
 
-下一实施切片实现当前版字段、事件包装、普通升级函数及 adapter 接线，用测试夹具模拟跨图 ID 改名和 v1/v2/v3；不为展示管道捏造生产规则修订或兼容历史。首个真实业务修订出现时再声明实际支持范围。至少覆盖：
+首片用测试夹具模拟跨图 ID 改名和 v1/v2/v3，不为展示管道捏造生产规则修订或兼容历史。以下合同持续约束后续真实修订；具体已运行证据见[验收记录](../experiments/game-revision-acceptance.md)：
 
 1. 新游戏及新事件直接使用当前修订；工厂无意外共享，保存并冷开等价。
 2. S-only 与 S/E 加载升级均不发布、不推进游标；pending 保留，控制器/Plan 不调用；透传、转换及背包替换 fact 不写回旧 ID。
@@ -100,4 +102,4 @@ adapter 需要区分物理保存基线与升级后的运行视图：`State`/`Pen
 4. 不支持版本、解码/步骤/配对校验失败不发布；加载后退出再开可稳定重算；当前版无需转换。
 5. 真实磁盘覆盖旧 S/旧 E、旧 S/新 E、当前 S/E，以及新版 E 已发布而 S 未发布的中断窗口；模拟 S 发布成功但返回失败后重开，既不丢失效果也不重复执行。
 
-文档保存动机和边界；未来接口/XML doc 保存调用契约，编排器和测试保证协调、执行与发布的职责分离。
+文档保存动机和边界，接口/XML doc 保存调用契约，编排器和测试保证协调、执行与发布的职责分离。

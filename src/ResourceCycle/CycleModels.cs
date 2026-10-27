@@ -128,32 +128,14 @@ public sealed class CycleWorld {
     public CycleResource GetResource(string id) => Business.GetResource(id);
     public CycleCharacter GetCharacter(string id) => Business.GetCharacter(id);
     /// <summary>Constructs a new batch world and rebuilds its runtime predictions; does not publish a save.</summary>
-    public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) {
-        ModelTime time = start ?? DefaultStart;
-        var entries = (script ?? DefaultScript(time)).OrderBy(e => e.Due).ThenBy(e => e.ResourceId, StringComparer.Ordinal);
-        return CycleEngine.Rebuild(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)),
-            DefaultResources(time), new(entries)), time);
-    }
+    /// <remarks>Supplied destruction instances are retained, not deep-cloned.</remarks>
+    public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) =>
+        CycleGameFactory.CreateBatch(start, script).World;
     /// <summary>Constructs a new playable world and rebuilds its runtime predictions; does not publish a save.</summary>
     /// <remarks>This is a new-game factory, not a saved-world repair or revision operation.
     /// Supplied character and resource instances are retained, not deep-cloned.</remarks>
     public static CycleWorld CreatePlayable(ModelTime? start = null, IEnumerable<CycleCharacter>? characters = null,
-        IEnumerable<CycleResource>? resources = null) {
-        ModelTime time = start ?? DefaultStart;
-        return CycleEngine.Rebuild(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)),
-            resources ?? DefaultResources(time), new([]), characters ?? [new("a", "阿青"), new("b", "阿白", 1), new("c", "阿岚", 2)]), time);
-    }
-    private static IEnumerable<CycleResource> DefaultResources(ModelTime time) => [
-        new("sunflower", "太阳花", "item.sunflower", true, 3 * CycleTime.Hour, 5, 3, CycleTime.IsDay(time) ? time : null),
-        new("moongrass", "月光草", "item.moongrass", false, 4 * CycleTime.Hour, 5, 3, CycleTime.IsDay(time) ? null : time)
-    ];
-    private static IEnumerable<CycleDestruction> DefaultScript(ModelTime start) {
-        yield return new("sunflower", new(checked(start.Ticks + 7 * CycleTime.Hour)));
-        yield return new("moongrass", new(checked(start.Ticks + 14 * CycleTime.Hour)));
-        yield return new("sunflower", new(checked(start.Ticks + 17 * CycleTime.Hour)));
-        yield return new("moongrass", new(checked(start.Ticks + 30 * CycleTime.Hour)));
-        yield return new("sunflower", new(checked(start.Ticks + 47 * CycleTime.Hour)));
-    }
+        IEnumerable<CycleResource>? resources = null) => CycleGameFactory.CreatePlayable(start, characters, resources).World;
     public void Validate() => CycleEngine.Validate(this, Time);
     public string DescribeState() => $"time={Time.Ticks};light={Light};resources=[{string.Join(';', Resources)}];script={Script};characters=[{string.Join(';', Characters)}];lastServed={Business.LastServedActorId};{Forecasts}";
 }

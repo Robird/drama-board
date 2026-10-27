@@ -52,8 +52,8 @@ try {
         if (durable is not null) {
             history = durable;
         } else {
-            CycleWorld initial = CycleWorld.Create();
-            history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial, InitialCursor(initial));
+            var initial = CycleGameFactory.CreateBatch();
+            history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
 
         PlayConsole.RequireBatchWorld(history.State);
@@ -106,11 +106,9 @@ try {
     return 1;
 }
 
-static KernelCursor InitialCursor(CycleWorld world) => new(new WorldVersion(1, 0), world.Time, null, null);
-
 static CycleDurableHistory CreateStore(string path) {
-    CycleWorld initial = CycleWorld.Create();
-    return CycleDurableHistory.Create(path, initial, InitialCursor(initial));
+    var initial = CycleGameFactory.CreateBatch();
+    return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,

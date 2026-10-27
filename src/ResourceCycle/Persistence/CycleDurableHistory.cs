@@ -13,22 +13,37 @@ namespace DramaBoard.ResourceCycle;
 public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFact>, IDisposable {
     private readonly Repository _repository;
     private readonly WorkingCopy _work;
+    private readonly int _gameRevision;
+    private CycleDurableRoot _readyRoot;
     private CycleWorld _state;
-    private OccurrenceEvent<CycleFact>? _pending;
+    private CycleDurableEvent? _pending;
     private bool _faulted;
     private bool _disposed;
 
-    private CycleDurableHistory(Repository repository, WorkingCopy work) {
+    private CycleDurableHistory(Repository repository, WorkingCopy work, int targetRevision,
+        Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
         _repository = repository;
         _work = work;
-        ReadRoot().Validate();
-        _state = CycleEngine.Rebuild(ReadRoot().Business, ReadRoot().Cursor.CurrentModelTime);
-        LoadPending();
+        _gameRevision = targetRevision;
+
+        // The WorkingCopy retains the physical State/head baseline. Never replace it just to load.
+        CycleDurableRoot restored = ReadRestoredRoot();
+        restored.ValidateStructure();
+        CycleDurableEvent? pending = ReadPending(restored.Cursor);
+        (_readyRoot, _pending) = CycleGameRevision.UpgradeLoadedBoundary(
+            restored, pending, targetRevision, upgradeState, upgradeEvent);
+        _readyRoot.Validate();
+        if (_pending is not null) {
+            ValidateContinuation(_pending.Occurrence, _readyRoot.Cursor);
+        }
+        // One business graph supplies both the publication boundary and its derived runtime view.
+        _state = CycleEngine.Rebuild(_readyRoot.Business, _readyRoot.Cursor.CurrentModelTime);
     }
 
     public CycleWorld State { get { RequireUsable(); return _state; } }
-    public KernelCursor Cursor { get { RequireUsable(); return ReadRoot().Cursor; } }
-    public OccurrenceEvent<CycleFact>? PendingEvent { get { RequireUsable(); return _pending; } }
+    public KernelCursor Cursor { get { RequireUsable(); return _readyRoot.Cursor; } }
+    public OccurrenceEvent<CycleFact>? PendingEvent { get { RequireUsable(); return _pending?.Occurrence; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
 
     /// <summary>Creates a new repository at a previously nonexistent path and publishes its initial State.</summary>
@@ -38,7 +53,7 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         Repository repository = Repository.CreateNew(path, CreateModels());
         try {
             BranchId branch = repository.CreateRootBranchFromState("resource-cycle", root).Id;
-            return Attach(repository, branch);
+            return Attach(repository, branch, CycleGameRevision.Current);
         } catch {
             repository.Dispose();
             throw;
@@ -46,17 +61,26 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
     }
 
     /// <summary>Opens exactly one root branch. Pending E is exposed; the Kernel explicitly recovers it.</summary>
-    /// <remarks>Currently requires State and Event business semantics compatible with the running application.
-    /// Schema restoration alone does not establish that compatibility. No game revision pipeline is invoked;
-    /// this path validates and rebuilds the State before exposing pending work.</remarks>
-    public static CycleDurableHistory Open(string path) {
+    /// <remarks>Restores S/E, upgrades their in-memory representations, then validates and rebuilds State.
+    /// Loading neither publishes nor executes pending work. Unsupported revisions are rejected.</remarks>
+    public static CycleDurableHistory Open(string path) => OpenCore(path, CycleGameRevision.Current);
+
+    // Fixture seam for historical semantics; it uses the same adapter, version checks and publication path.
+    internal static CycleDurableHistory Open(string path, int targetRevision,
+        Func<CycleDurableRoot, CycleDurableRoot> upgradeState,
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent> upgradeEvent) =>
+        OpenCore(path, targetRevision, upgradeState, upgradeEvent);
+
+    private static CycleDurableHistory OpenCore(string path, int targetRevision,
+        Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
         Repository repository = Repository.OpenExisting(path, CreateModels());
         try {
             BranchInfo[] branches = repository.ListBranches();
             if (branches.Length != 1 || branches[0].ForkedFromCommitId is not null) {
                 throw new InvalidDataException("ResourceCycle requires exactly one root branch and no forks.");
             }
-            return Attach(repository, branches[0].Id);
+            return Attach(repository, branches[0].Id, targetRevision, upgradeState, upgradeEvent);
         } catch {
             repository.Dispose();
             throw;
@@ -70,9 +94,10 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
                 throw new InvalidOperationException("Complete the pending Event before recording another.");
             }
             ArgumentNullException.ThrowIfNull(occurrence);
-            ValidateContinuation(occurrence, ReadRoot().Cursor);
-            _work.CommitEvent(occurrence);
-            _pending = occurrence;
+            ValidateContinuation(occurrence, _readyRoot.Cursor);
+            var pending = new CycleDurableEvent(occurrence, _gameRevision);
+            _work.CommitEvent(pending);
+            _pending = pending;
         } catch {
             _faulted = true;
             throw;
@@ -84,15 +109,17 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
     public void CommitState(CycleWorld nextState, KernelCursor nextCursor) {
         RequireUsable();
         try {
-            OccurrenceEvent<CycleFact> pending = _pending
+            OccurrenceEvent<CycleFact> pending = _pending?.Occurrence
                 ?? throw new InvalidOperationException("A State must complete a pending Event.");
-            KernelCursor expected = ReadRoot().Cursor.Advance(pending.CauseKey, pending.TargetInstant);
+            KernelCursor expected = _readyRoot.Cursor.Advance(pending.CauseKey, pending.TargetInstant);
             if (nextCursor != expected) {
                 throw new ArgumentException("The State cursor must complete exactly the pending occurrence.", nameof(nextCursor));
             }
             CycleEngine.Validate(nextState, nextCursor.CurrentModelTime);
-            var nextRoot = new CycleDurableRoot(nextState.Business, nextCursor);
+            CycleDurableRoot nextRoot = CycleDurableRoot.CreateRevisionCandidate(nextState.Business, nextCursor, _gameRevision);
+            nextRoot.Validate();
             _work.CommitState(nextRoot);
+            _readyRoot = nextRoot;
             _state = nextState;
             _pending = null;
         } catch {
@@ -108,9 +135,11 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         finally { _repository.Dispose(); }
     }
 
-    private static CycleDurableHistory Attach(Repository repository, BranchId branch) {
+    private static CycleDurableHistory Attach(Repository repository, BranchId branch, int targetRevision,
+        Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
         WorkingCopy work = repository.OpenWorkingCopy(branch);
-        try { return new CycleDurableHistory(repository, work); }
+        try { return new CycleDurableHistory(repository, work, targetRevision, upgradeState, upgradeEvent); }
         catch {
             work.Dispose();
             throw;
@@ -123,16 +152,16 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         return models;
     }
 
-    private CycleDurableRoot ReadRoot() => _work.State as CycleDurableRoot
+    private CycleDurableRoot ReadRestoredRoot() => _work.State as CycleDurableRoot
         ?? throw new InvalidDataException("The saved State root is not a ResourceCycle root.");
 
-    private void LoadPending() {
+    private CycleDurableEvent? ReadPending(KernelCursor cursor) {
         CommitInfo head = _repository.ReadCommitInfo(_work.BaseCommitId);
         if (head.Kind == CommitKind.State) {
             if (_work.StateSourceCommitId != head.Id) {
                 throw new InvalidDataException("The completed head does not supply the restored State.");
             }
-            return;
+            return null;
         }
         if (head.Kind != CommitKind.Event) {
             throw new InvalidDataException("Unknown ResourceCycle history entry kind.");
@@ -146,9 +175,11 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
             _repository.GetPreviousState(head.Id) != _work.StateSourceCommitId) {
             throw new InvalidDataException("A pending Event must immediately follow the restored State.");
         }
-        _pending = _repository.LoadEvent(head.Id) as OccurrenceEvent<CycleFact>
-            ?? throw new InvalidDataException("The pending Event is not a ResourceCycle occurrence.");
-        ValidateContinuation(_pending, ReadRoot().Cursor);
+        CycleDurableEvent pending = _repository.LoadEvent(head.Id) as CycleDurableEvent
+            ?? throw new InvalidDataException("The pending Event is not a versioned ResourceCycle occurrence.");
+        pending.ValidateStructure();
+        ValidateContinuation(pending.Occurrence, cursor);
+        return pending;
     }
 
     private static void ValidateContinuation(OccurrenceEvent<CycleFact> occurrence, KernelCursor cursor) {

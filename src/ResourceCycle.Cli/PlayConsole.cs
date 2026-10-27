@@ -14,8 +14,8 @@ internal static class PlayConsole {
         if (durable is not null) {
             history = durable;
         } else {
-            CycleWorld initial = CycleWorld.CreatePlayable();
-            history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial, InitialCursor(initial));
+            var initial = CycleGameFactory.CreatePlayable();
+            history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
         if (history.State.Characters.Count == 0) {
             throw new ArgumentException("这是批处理实验存档，不能用 --play 打开。请省略 --play 续跑，或选择新目录开始采集。");
@@ -51,11 +51,9 @@ internal static class PlayConsole {
         }
     }
 
-    private static KernelCursor InitialCursor(CycleWorld world) => new(new WorldVersion(1, 0), world.Time, null, null);
-
     private static CycleDurableHistory CreateStore(string path) {
-        CycleWorld initial = CycleWorld.CreatePlayable();
-        return CycleDurableHistory.Create(path, initial, InitialCursor(initial));
+        var initial = CycleGameFactory.CreatePlayable();
+        return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
     // Actor-specific results belong to that actor's observation. Do not print their private

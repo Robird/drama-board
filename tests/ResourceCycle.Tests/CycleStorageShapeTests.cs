@@ -36,14 +36,17 @@ public sealed class CycleStorageShapeTests {
         CycleWorld expected = completeState ? kernel.World : initial;
         Assert.Equal(expected.DescribeState(), CycleEngine.Rebuild(root.Business, root.Cursor.CurrentModelTime).DescribeState());
         Assert.NotSame(expected.Business, root.Business);
-        Assert.Equal(new[] { typeof(CycleBusinessState), typeof(KernelCursor) },
+        Assert.Equal(CycleGameRevision.Current, root.GameRevision);
+        Assert.Equal(new[] { typeof(CycleBusinessState), typeof(KernelCursor), typeof(int) },
             DurableFields(typeof(CycleDurableRoot)).Select(field => field.FieldType));
-        var occurrence = Assert.IsType<OccurrenceEvent<CycleFact>>(repository.LoadEvent(eventCommit.Id));
+        var envelope = Assert.IsType<CycleDurableEvent>(repository.LoadEvent(eventCommit.Id));
+        Assert.Equal(CycleGameRevision.Current, envelope.GameRevision);
+        var occurrence = envelope.Occurrence;
         Assert.Equal(Describe(kernel.LastCompletion!.Event), Describe(occurrence));
         Assert.Equal(CycleEventKind.WaitStarted, Assert.Single(occurrence.Facts).Kind);
 
         Type[] stateTypes = ReachablePersistedObjects(root).Select(value => value.GetType()).Distinct().ToArray();
-        Type[] eventTypes = ReachablePersistedObjects(occurrence).Select(value => value.GetType()).Distinct().ToArray();
+        Type[] eventTypes = ReachablePersistedObjects(envelope).Select(value => value.GetType()).Distinct().ToArray();
         Assert.Contains(typeof(CycleBusinessState), stateTypes);
         Assert.Contains(typeof(CycleCharacter), stateTypes);
         Assert.Contains(typeof(CycleFact), eventTypes);
@@ -52,6 +55,7 @@ public sealed class CycleStorageShapeTests {
         CycleDurableModels.Register(catalog);
         Assert.Contains(typeof(CycleBusinessState), catalog.Types);
         Assert.Contains(typeof(CycleDurableRoot), catalog.Types);
+        Assert.Contains(typeof(CycleDurableEvent), catalog.Types);
         foreach (Type runtime in new[] { typeof(CycleWorld), typeof(CycleForecasts), typeof(CyclePrediction), typeof(CycleBinding), typeof(CyclePredictionKind) }) {
             Assert.DoesNotContain(runtime, stateTypes);
             Assert.DoesNotContain(runtime, eventTypes);
