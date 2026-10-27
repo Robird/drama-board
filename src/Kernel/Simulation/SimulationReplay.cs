@@ -5,14 +5,14 @@ namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Rebuilds committed world state by folding complete Journal batches only.</summary>
 public static class SimulationReplay {
-    /// <summary>Replays a complete current-format transition sequence without Forecast or Plan.</summary>
+    /// <summary>Replays a complete current-format transition sequence without Forecast, Plan or Complete.</summary>
     public static ReplayResult<TWorld> Replay<TWorld, TFact>(
         TWorld genesisWorld,
         long lineageId,
         ModelTime genesisTime,
         IEnumerable<JournalBatch<TFact>> batches,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate) {
+        Action<TWorld, ModelTime> validate) {
         if (genesisWorld is null) {
             throw new ArgumentNullException(nameof(genesisWorld));
         }
@@ -20,6 +20,7 @@ public static class SimulationReplay {
         ArgumentNullException.ThrowIfNull(batches);
         ArgumentNullException.ThrowIfNull(fold);
         ArgumentNullException.ThrowIfNull(validate);
+        validate(genesisWorld, genesisTime);
 
         TWorld world = genesisWorld;
         LogicalInstant? lastCommittedInstant = null;
@@ -39,7 +40,7 @@ public static class SimulationReplay {
                 }
             }
 
-            validate(scratchWorld);
+            validate(scratchWorld, batch.Instant.ModelTime);
             world = scratchWorld;
             lastCommittedInstant = batch.Instant;
             transitionCount = checked(transitionCount + 1);

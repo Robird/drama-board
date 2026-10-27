@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；局部预测重构提案已完成两轮辩证审阅，尚未实施；ResourceCycle 多角色化由另一会话并行推进。见[实施方案](docs/design/local-prediction-refactor.md)与[审阅裁决](docs/research/local-prediction-design-review.md)。
+> 最近整理：2026-10-27；局部预测重构的空间首阶段 S1/S2 已实施，下一步是协调 ResourceCycle 的 S3 集成；其多角色化由另一会话并行推进。见[实施方案](docs/design/local-prediction-refactor.md)与[验收记录](docs/experiments/local-prediction-acceptance.md)。
 
 ## 最终目标
 
@@ -9,8 +9,8 @@
 
 ## 当前实现锚点
 
-- **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
-- **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
+- **Kernel**：统一 Occurrence 仲裁；Plan 后显式 Complete，再完整 Fold/带时间 Validate，发布独立 E/S，S 成功才安装；pending 仅 Fold 保存结果。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
+- **Spatial**：[SpatialSimulation](src/Spatial/Simulation/SpatialSimulation.cs) 维护 dirty 通道，Business/Contacts 同根发布；候选只读投影，genesis 显式发现，恢复不重算。保留 contact floor、arrival ceil、严格内部掉头与 current-segment 消费；见[验收记录](docs/experiments/local-prediction-acceptance.md)和 [Graph 设计](docs/design/graph-spatial-world.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
 - **ResourceCycle 应用实例**：[CycleEngine](src/ResourceCycle/CycleEngine.cs) 依赖路由/dirty 重算与全量对照；[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根 E/S 与 pending 恢复；[Console](src/ResourceCycle.Cli/Program.cs) 提供批处理及 `--play` 单角色采集。角色/背包独立子图，输入源为运行时接口；见[可玩设计](docs/design/resource-cycle-play.md)。
 - **构建依赖**：Kernel/Spatial/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
@@ -21,7 +21,7 @@
 
 资源周期实例已有批处理预测对照与单角色、单地点、两种植物、背包、等待/即时采集的 Console 闭环，均保持单根恢复；证据见[批处理验收](docs/experiments/resource-cycle-acceptance.md)与[采集验收](docs/experiments/resource-cycle-play-acceptance.md)。没有空间接线、GUI 或 LLM。
 
-用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现，随后可缩为变化段配对。当前实现仍是 ResourceCycle 固定预测绑定与 Spatial 扫描式 Forecast，核心尚未改造。[重构方案](docs/design/local-prediction-refactor.md)经两轮审阅建议采用独立 Contacts 子图、Kernel 唯一 Complete 委托和带模型时间的完整校验；arrival/schedule 复用既有 Due，不新增通用过程注册表。下一实施阶段以方案 S1/S2 的空间纵向切片与单根恢复为边界，用独立全量参考验收漏项；S3 再完成第二消费者的共同执行契约。现有 floor＋同 tick 仲裁保留作首片基线，不是永久兼容约束；更强索引仍按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
+用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现，随后可缩为变化段配对。S1/S2 已落实独立 Contacts 子图、Kernel 唯一 Complete、带模型时间的完整校验与实际同根恢复；独立全量参考检查新关系漏项，arrival/schedule 复用既有 Due，没有通用过程注册表。下一步按[方案 S3](docs/design/local-prediction-refactor.md#7-实施切片与停止点)协调 ResourceCycle：把规则内维护迁入 Complete，保留 Due/Kind 优先级及角色唤醒，统一候选读取命名并验证恢复不维护；当前该工厂仅用显式 identity Complete 适配。现有 floor＋同 tick 仲裁是对照基线而非永久兼容约束；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话并行推进 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。当前核心分支不改该应用片；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
@@ -35,7 +35,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
 - **多角色与 Player**：无移动的 ResourceCycle 多角色片已由用户分到另一会话并行推进，同刻轮转/资源竞争规则在该片裁决；本分支不以核心重构阻断它。更多地点、LLM Player 与长期 Plan 尚未重开，旧实现保持归档。
-- **持久化扩展**：ResourceCycle adapter 仅服务本实例的单分支闭包；其他游戏、分支或空间持久化依据真实需求扩展，不把它视为通用 host。归档 FirstBoard 的结果不作为新实例的落盘证据。
+- **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：预测对象迁移已进入当前核心方向；空间拓扑、运动数学和更多途中互动不随之自动重设计，需独立需求再重开。
 - **持久 Script VM**：研究材料已归档；只有需要持久执行状态时才重新选择方案。

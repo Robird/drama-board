@@ -1,6 +1,6 @@
 # 局部预测重构方案
 
-> 2026-10-27。面向后续实施的设计提案，已经两轮辩证审阅修订；本轮仅文档，未实施。以当前 Kernel/Spatial 为首个纵向切片，ResourceCycle 多角色由另一会话推进。类型名可随施工调整，本文选定的职责与验收作为实施依据。背景见[算法综述](../research/prediction-discovery/README.md)，取舍见[审阅裁决](../research/local-prediction-design-review.md)。
+> 2026-10-27。经两轮辩证审阅后，S1/S2 空间首阶段已实施；入口与验证边界见[验收记录](../experiments/local-prediction-acceptance.md)。S3 ResourceCycle 共同维护接缝与 API 收敛仍待协调其多角色分支，S4 为可选优化。以下保留设计职责与验收契约；背景见[算法综述](../research/prediction-discovery/README.md)，取舍见[审阅裁决](../research/local-prediction-design-review.md)。
 
 ## 1. 需求账本与边界
 
@@ -165,10 +165,11 @@ S1、S2 是本次重构首阶段的完成边界；S3 是达成跨系统统一的
 
 ## 10. 代码证据入口
 
-- [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)：Plan→FoldAndValidate→E→S、pending 恢复与并发保护。
+- [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs)：Plan→Complete→FoldAndValidate→E→S、pending 恢复与并发保护。
 - [GraphSpatialReducer](../../src/Spatial/Facts/GraphSpatialReducer.cs)：逐事实业务校验、contact 消费与旧段清理。
-- [SpatialContactOccurrenceRule](../../src/Spatial/Simulation/SpatialContactOccurrenceRule.cs)：目前每次通道全配对、稳定 candidate key 与选中项复核。
+- [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs)：已实现 genesis 全量发现、通道 dirty 维护、组合根 Fold/Validate 与工厂接线。
+- [SpatialContactOccurrenceRule](../../src/Spatial/Simulation/SpatialContactOccurrenceRule.cs)：已改为持久 Contacts 投影，保留稳定 candidate key 与选中项复核。
 - [SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs)：arrival/schedule 已有 Due 的投影与消费。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)：持久输出、应用优先级、批内维护；属于第二消费者证据，不是空间设计的独立需求来源。
-- [空间模型持久化资格测试](../../tests/Spatial.Tests/Acceptance/DurableModelQualificationTests.cs)：目前明确不是 IOccurrenceHistory adapter，不能据此宣称已有空间落盘恢复闭环。
+- [空间模型持久化资格测试](../../tests/Spatial.Tests/Acceptance/DurableModelQualificationTests.cs)：保留低层类型资格；实际单根恢复证据另见 [SpatialPredictionPersistenceTests](../../tests/Spatial.Tests/Persistence/SpatialPredictionPersistenceTests.cs)。
 - [源码约束与反例](../research/prediction-discovery/dramaboard-constraints.md)：时间量化、同刻候选与旧/新关系寿命。

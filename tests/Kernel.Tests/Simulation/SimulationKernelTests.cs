@@ -118,7 +118,7 @@ public sealed class SimulationKernelTests {
     [Fact]
     public async Task ValidationFailureDoesNotPublishEvent() {
         var history = History();
-        var kernel = Kernel(history, [new(_ => [Candidate("bad", 0)])], validate: world => {
+        var kernel = Kernel(history, [new(_ => [Candidate("bad", 0)])], validate: (world, _) => {
             if (world != 0) { throw new TestFailure(); }
         });
         await Assert.ThrowsAsync<TestFailure>(async () => await kernel.StepAsync(Time(0)));
@@ -222,7 +222,7 @@ public sealed class SimulationKernelTests {
     public async Task EqualButDifferentReferenceStateCannotReplaceInstalledWorld() {
         var state = new ValueWorld(7);
         var history = new ReferenceHistory(state);
-        var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, _ => { });
+        var kernel = new SimulationKernel<ValueWorld, int, int>(history, new(42, 100), [], (world, _, _) => world, (_, _, draft) => draft, (_, _) => { });
         history.State = new ValueWorld(7);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await kernel.StepAsync(Time(1)));
         Assert.Same(state, kernel.World);
@@ -354,7 +354,7 @@ public sealed class SimulationKernelTests {
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(0), null, null));
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 0), Time(0), new(Time(0), 0), Key("bad")));
         Assert.Throws<ArgumentException>(() => new KernelCursor(new(1, 1), Time(2), new(Time(1), 0), Key("bad")));
-        Assert.Throws<TestFailure>(() => Kernel(History(), [], validate: _ => throw new TestFailure()));
+        Assert.Throws<TestFailure>(() => Kernel(History(), [], validate: (_, _) => throw new TestFailure()));
     }
 
     private static ModelTime Time(long ticks) => new(ticks);
@@ -366,8 +366,10 @@ public sealed class SimulationKernelTests {
     private static OccurrenceEvent<int> Event(string key, long time, long ordinal, params int[] facts) => new(Key(key), new(Time(time), ordinal), facts);
     private static ValueTask<TransitionDraft<int>> Planned(params int[] facts) => ValueTask.FromResult(new TransitionDraft<int>(facts));
     private static SimulationKernel<int, int, int> Kernel(IOccurrenceHistory<int, int> history, IEnumerable<TestRule> occurrenceRules,
-        Func<int, LogicalInstant, int, int>? fold = null, Action<int>? validate = null, SimulationRules? rules = null) =>
-        new(history, rules ?? new(42, 100), occurrenceRules, fold ?? ((world, _, fact) => world + fact), validate ?? (_ => { }));
+        Func<int, LogicalInstant, int, int>? fold = null, Action<int, ModelTime>? validate = null, SimulationRules? rules = null,
+        Func<int, LogicalInstant, TransitionDraft<int>, TransitionDraft<int>>? complete = null) =>
+        new(history, rules ?? new(42, 100), occurrenceRules, fold ?? ((world, _, fact) => world + fact),
+            complete ?? ((_, _, draft) => draft), validate ?? ((_, _) => { }));
 
     private sealed class TestRule : IOccurrenceRule<int, int, int> {
         public TestRule(Func<int, IReadOnlyList<OccurrenceCandidate<int>>> forecast,

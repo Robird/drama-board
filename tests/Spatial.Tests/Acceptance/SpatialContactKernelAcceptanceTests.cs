@@ -37,40 +37,43 @@ public sealed class SpatialContactKernelAcceptanceTests {
                 GraphTestWorld.Bridge,
                 speedSnapshot: 3,
                 GraphTestWorld.Time(0)));
-        var history = new InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact>(
-            genesis, new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
+        var simulation = new SpatialSimulation(definition);
+        var root = simulation.CreateGenesis(genesis, ModelTime.Zero);
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact>(
+            root, new KernelCursor(new WorldVersion(1, 0), ModelTime.Zero, null, null));
         var kernel = new SimulationKernel<
-            GraphSpatialState,
-            PassageContactOccurrenceData,
-            GraphSpatialFact>(
+            SpatialSimulationState,
+            SpatialOccurrenceData,
+            SpatialSimulationFact>(
                 history,
                 new SimulationRules(worldSeed: 17, maxTransitionsPerModelTime: 100),
                 [new SpatialContactOccurrenceRule(definition)],
-                reducer.Apply,
-                state => GraphSpatialStateValidator.ValidateComplete(definition, state));
+                simulation.Fold,
+                simulation.Complete,
+                simulation.Validate);
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(GraphTestWorld.Time(1)));
         Assert.Equal(GraphTestWorld.Time(1), kernel.CurrentModelTime);
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(GraphTestWorld.Time(1)));
-        Assert.Single(kernel.World.ConsumedContacts);
+        Assert.Single(kernel.World.Business.ConsumedContacts);
         Assert.Single(history.CompletedEvents);
-        Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts));
+        Assert.IsType<PassageContactOccurredFact>(Assert.Single(history.CompletedEvents[0].Facts.OfType<SpatialBusinessFact>()).Fact);
 
-        ReplayResult<GraphSpatialState> replay = SimulationReplay.Replay(
-            genesis,
+        ReplayResult<SpatialSimulationState> replay = SimulationReplay.Replay(
+            root,
             lineageId: 1,
             genesisTime: ModelTime.Zero,
             Batches(history),
-            reducer.Apply,
-            state => GraphSpatialStateValidator.ValidateComplete(definition, state));
+            simulation.Fold,
+            simulation.Validate);
 
         Assert.Equal(kernel.World, replay.World);
         Assert.Equal(kernel.Version, replay.Version);
         Assert.Equal(kernel.LastCommittedInstant, replay.LastCommittedInstant);
     }
 
-    private static IReadOnlyList<JournalBatch<GraphSpatialFact>> Batches(
-        InMemoryOccurrenceHistory<GraphSpatialState, GraphSpatialFact> history) =>
-        history.CompletedEvents.Select(value => new JournalBatch<GraphSpatialFact>(
+    private static IReadOnlyList<JournalBatch<SpatialSimulationFact>> Batches(
+        InMemoryOccurrenceHistory<SpatialSimulationState, SpatialSimulationFact> history) =>
+        history.CompletedEvents.Select(value => new JournalBatch<SpatialSimulationFact>(
             value.TargetInstant, value.CauseKey, value.Facts)).ToArray();
 }

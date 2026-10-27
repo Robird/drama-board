@@ -5,9 +5,9 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.Spatial;
 
-/// <summary>Forecasts every scheduled entry change and traversal arrival independently.</summary>
+/// <summary>Projects every stored entry change and traversal arrival independently.</summary>
 public sealed class SpatialOccurrenceRule :
-    IOccurrenceRule<GraphSpatialState, SpatialOccurrenceData, GraphSpatialFact> {
+    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
     private readonly GraphDefinition _definition;
 
     public SpatialOccurrenceRule(GraphDefinition definition) {
@@ -16,9 +16,10 @@ public sealed class SpatialOccurrenceRule :
     }
 
     public IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> Forecast(
-        GraphSpatialState world,
+        SpatialSimulationState snapshot,
         SimulationRules rules) {
-        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        GraphSpatialState world = snapshot.Business;
         ArgumentNullException.ThrowIfNull(rules);
         GraphSpatialStateValidator.ValidateComplete(_definition, world);
 
@@ -51,11 +52,12 @@ public sealed class SpatialOccurrenceRule :
         return candidates.AsReadOnly();
     }
 
-    public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(
-        GraphSpatialState world,
+    public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(
+        SpatialSimulationState snapshot,
         OccurrenceCandidate<SpatialOccurrenceData> winner,
         CancellationToken cancellationToken) {
-        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        GraphSpatialState world = snapshot.Business;
         ArgumentNullException.ThrowIfNull(winner);
         cancellationToken.ThrowIfCancellationRequested();
         GraphSpatialStateValidator.ValidateComplete(_definition, world);
@@ -67,7 +69,8 @@ public sealed class SpatialOccurrenceRule :
             _ => throw new InvalidOperationException(
                 $"Unsupported Graph Spatial occurrence data '{winner.Data.GetType().Name}'."),
         };
-        return ValueTask.FromResult(draft);
+        return ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(
+            draft.Facts.Select(fact => (SpatialSimulationFact)new SpatialBusinessFact(fact))));
     }
 
     private static TransitionDraft<GraphSpatialFact> PlanEntryChange(

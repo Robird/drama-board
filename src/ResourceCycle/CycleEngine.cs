@@ -55,7 +55,8 @@ public static class CycleEngine {
         IOccurrenceHistory<CycleWorld, CycleFact> history, PredictionMode mode = PredictionMode.Incremental, CycleMetrics? metrics = null,
         ICycleDecisionSource? decisionSource = null) {
         if (!Enum.IsDefined(mode)) { throw new ArgumentOutOfRangeException(nameof(mode)); }
-        return new(history, new SimulationRules(0, 1024), [new CycleRule(mode, metrics ?? new(), decisionSource)], Fold, world => world.Validate());
+        return new(history, new SimulationRules(0, 1024), [new CycleRule(mode, metrics ?? new(), decisionSource)],
+            Fold, (_, _, draft) => draft, (world, _) => world.Validate());
     }
     public static CycleWorld Fold(CycleWorld world, LogicalInstant instant, CycleFact fact) {
         if (fact.At != instant.ModelTime || fact.At < world.Time) {

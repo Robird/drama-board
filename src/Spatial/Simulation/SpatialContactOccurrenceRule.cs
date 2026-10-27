@@ -6,11 +6,11 @@ using DramaBoard.Kernel.Simulation;
 namespace DramaBoard.Spatial;
 
 /// <summary>
-/// Forecasts and consumes interaction opportunities for exact pairwise intersections of active passage segments.
+/// Projects maintained contact outputs and consumes selected interaction opportunities.
 /// The due time is the start of the model tick containing the intersection, rounded toward negative infinity.
 /// </summary>
 public sealed class SpatialContactOccurrenceRule :
-    IOccurrenceRule<GraphSpatialState, PassageContactOccurrenceData, GraphSpatialFact> {
+    IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, SpatialSimulationFact> {
     private readonly GraphDefinition _definition;
 
     public SpatialContactOccurrenceRule(GraphDefinition definition) {
@@ -18,68 +18,34 @@ public sealed class SpatialContactOccurrenceRule :
         _definition = definition;
     }
 
-    public IReadOnlyList<OccurrenceCandidate<PassageContactOccurrenceData>> Forecast(
-        GraphSpatialState world,
+    public IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> Forecast(
+        SpatialSimulationState world,
         SimulationRules rules) {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(rules);
-        GraphSpatialStateValidator.ValidateComplete(_definition, world);
-
-        var candidates = new List<OccurrenceCandidate<PassageContactOccurrenceData>>();
-        IEnumerable<IGrouping<PassageId, SpatialEntity>> passageGroups = world.Entities
-            .Where(entity => entity.Location is TraversingLocation)
-            .GroupBy(entity => ((TraversingLocation)entity.Location).PassageId)
-            .OrderBy(group => group.Key);
-        foreach (IGrouping<PassageId, SpatialEntity> passageGroup in passageGroups) {
-            SpatialEntity[] traversing = [.. passageGroup];
-            for (int leftIndex = 0; leftIndex < traversing.Length; leftIndex++) {
-                SpatialEntity left = traversing[leftIndex];
-                for (int rightIndex = leftIndex + 1; rightIndex < traversing.Length; rightIndex++) {
-                    SpatialEntity right = traversing[rightIndex];
-                    var contactKey = new PassageContactKey(
-                        passageGroup.Key,
-                        left.Id,
-                        left.MovementGeneration,
-                        right.Id,
-                        right.MovementGeneration);
-                    if (world.ConsumedContacts.Contains(contactKey) ||
-                        !PassageContactCalculator.TryCalculate(
-                            _definition,
-                            world,
-                            contactKey,
-                            out PassageContactCalculation calculation)) {
-                        continue;
-                    }
-
-                    var data = new PassageContactOccurrenceData(contactKey, calculation.Kind);
-                    candidates.Add(new OccurrenceCandidate<PassageContactOccurrenceData>(
-                        CreateCandidateKey(contactKey),
-                        new CandidateDue(calculation.Due),
-                        data));
-                }
-            }
-        }
-
-        OccurrenceCandidate<PassageContactOccurrenceData>[] canonical =
-        [
-            .. candidates.OrderBy(candidate => candidate.Data.ContactKey),
-        ];
-        return Array.AsReadOnly(canonical);
+        return Array.AsReadOnly(world.Contacts.Entries.Select(prediction =>
+            new OccurrenceCandidate<SpatialOccurrenceData>(
+                CreateCandidateKey(prediction.ContactKey),
+                new CandidateDue(prediction.Due),
+                new PassageContactOccurrenceData(prediction.ContactKey, prediction.Kind))).ToArray());
     }
 
-    public ValueTask<TransitionDraft<GraphSpatialFact>> PlanSelectedAsync(
-        GraphSpatialState world,
-        OccurrenceCandidate<PassageContactOccurrenceData> winner,
+    public ValueTask<TransitionDraft<SpatialSimulationFact>> PlanSelectedAsync(
+        SpatialSimulationState snapshot,
+        OccurrenceCandidate<SpatialOccurrenceData> winner,
         CancellationToken cancellationToken) {
-        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        GraphSpatialState world = snapshot.Business;
         ArgumentNullException.ThrowIfNull(winner);
         cancellationToken.ThrowIfCancellationRequested();
         GraphSpatialStateValidator.ValidateComplete(_definition, world);
 
-        PassageContactOccurrenceData data = winner.Data
+        PassageContactOccurrenceData data = winner.Data as PassageContactOccurrenceData
             ?? throw new InvalidOperationException("Passage contact occurrence data is required.");
         ArgumentNullException.ThrowIfNull(data.ContactKey);
-        if (world.ConsumedContacts.Contains(data.ContactKey) ||
+        if (!snapshot.Contacts.Entries.Any(prediction => prediction.ContactKey == data.ContactKey &&
+                prediction.Due == winner.Due.ModelTime && prediction.Kind == data.Kind) ||
+            world.ConsumedContacts.Contains(data.ContactKey) ||
             !PassageContactCalculator.TryCalculate(
                 _definition,
                 world,
@@ -92,11 +58,11 @@ public sealed class SpatialContactOccurrenceRule :
                 "The selected passage contact does not match current segment truth.");
         }
 
-        return ValueTask.FromResult(new TransitionDraft<GraphSpatialFact>(
-            [new PassageContactOccurredFact(data.ContactKey, data.Kind)]));
+        return ValueTask.FromResult(new TransitionDraft<SpatialSimulationFact>(
+            [new SpatialBusinessFact(new PassageContactOccurredFact(data.ContactKey, data.Kind))]));
     }
 
-    private static CandidateKey CreateCandidateKey(PassageContactKey key) {
+    internal static CandidateKey CreateCandidateKey(PassageContactKey key) {
         var buffer = new ArrayBufferWriter<byte>();
         using var writer = new Utf8JsonWriter(buffer);
         writer.WriteStartArray();

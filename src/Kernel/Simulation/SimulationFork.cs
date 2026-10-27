@@ -14,7 +14,7 @@ public static class SimulationFork {
         long newLineageId,
         SimulationRules simulationRules,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate) {
+        Action<TWorld, ModelTime> validate) {
         ArgumentNullException.ThrowIfNull(sourceJournal);
         ArgumentNullException.ThrowIfNull(simulationRules);
 

@@ -72,7 +72,7 @@ internal static class TimerModel {
         TimerFact fact) =>
         world with { FiredTimers = [.. world.FiredTimers, fact.TimerName] };
 
-    public static void Validate(TimerWorld world) {
+    public static void Validate(TimerWorld world, ModelTime modelTime) {
         if (world.FiredTimers.Count != world.FiredTimers.Distinct(StringComparer.Ordinal).Count()) {
             throw new InvalidOperationException("A timer cannot fire twice.");
         }
@@ -92,5 +92,6 @@ internal static class TimerModel {
             simulationRules ?? new SimulationRules(worldSeed: 42, maxTransitionsPerModelTime: 100),
             [rule],
             Fold,
+            (_, _, draft) => draft,
             Validate);
 }

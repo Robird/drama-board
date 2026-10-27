@@ -10,19 +10,26 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
     private readonly IReadOnlyList<IOccurrenceRule<TWorld, TCandidateData, TFact>> _rules;
     private readonly IOccurrenceHistory<TWorld, TFact> _history;
     private readonly Func<TWorld, LogicalInstant, TFact, TWorld> _fold;
-    private readonly Action<TWorld> _validate;
+    private readonly Func<TWorld, LogicalInstant, TransitionDraft<TFact>, TransitionDraft<TFact>> _complete;
+    private readonly Action<TWorld, ModelTime> _validate;
     private TWorld _world;
     private KernelCursor _cursor;
     private int _stepInFlight;
 
     /// <summary>Loads a completed boundary. Complete pending work explicitly with RecoverPending.</summary>
+    /// <param name="complete">Pure synchronous completion of a business draft before Event publication.
+    /// Must preserve business decisions and fact order, and must not mutate the published world.
+    /// Called once after normal planning; never called during pending recovery or replay.</param>
     public SimulationKernel(IOccurrenceHistory<TWorld, TFact> history, SimulationRules simulationRules,
         IEnumerable<IOccurrenceRule<TWorld, TCandidateData, TFact>> rules,
-        Func<TWorld, LogicalInstant, TFact, TWorld> fold, Action<TWorld> validate) {
+        Func<TWorld, LogicalInstant, TFact, TWorld> fold,
+        Func<TWorld, LogicalInstant, TransitionDraft<TFact>, TransitionDraft<TFact>> complete,
+        Action<TWorld, ModelTime> validate) {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(simulationRules);
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(fold);
+        ArgumentNullException.ThrowIfNull(complete);
         ArgumentNullException.ThrowIfNull(validate);
         ArgumentNullException.ThrowIfNull(history.State);
         IOccurrenceRule<TWorld, TCandidateData, TFact>[] ruleArray = [.. rules];
@@ -30,13 +37,14 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
             throw new ArgumentException("Occurrence rules cannot contain null entries.", nameof(rules));
         }
         history.Cursor.Validate();
-        validate(history.State);
+        validate(history.State, history.Cursor.CurrentModelTime);
         _world = history.State;
         _cursor = history.Cursor;
         _simulationRules = simulationRules;
         _rules = Array.AsReadOnly(ruleArray);
         _history = history;
         _fold = fold;
+        _complete = complete;
         _validate = validate;
     }
 
@@ -54,7 +62,7 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
         return StepCoreAsync(notAfter, cancellationToken);
     }
 
-    /// <summary>Completes only the published pending Event without Forecast, Plan or Player calls.
+    /// <summary>Completes only the published pending Event without Forecast, Plan, Complete or Player calls.
     /// Returns false if none exists. Cancellation is checked before recovery begins.</summary>
     public bool RecoverPending(CancellationToken cancellationToken = default) {
         BeginOperation();
@@ -105,6 +113,8 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
             TransitionDraft<TFact> draft = await selection.Owner
                 .PlanSelectedAsync(_world, winner, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The selected occurrence rule returned a null draft.");
+            draft = _complete(_world, nextInstant, draft)
+                ?? throw new InvalidOperationException("The completion delegate returned a null draft.");
             TWorld scratch = FoldAndValidate(nextInstant, draft.Facts);
             var occurrence = new OccurrenceEvent<TFact>(winner.Key, nextInstant, draft.Facts);
             cancellationToken.ThrowIfCancellationRequested();
@@ -126,7 +136,7 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
             scratch = _fold(scratch, instant, fact);
             if (scratch is null) { throw new InvalidOperationException("The fact fold returned a null HostWorld."); }
         }
-        _validate(scratch);
+        _validate(scratch, instant.ModelTime);
         return scratch;
     }
 

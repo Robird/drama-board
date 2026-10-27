@@ -7,7 +7,7 @@ namespace DramaBoard.Kernel.Simulation;
 /// <summary>Checks committed causes against the current build's Forecast and scheduler semantics.</summary>
 public static class SchedulerConformance {
     /// <summary>
-    /// Rebuilds from Genesis, recomputes each winner, and folds recorded facts without invoking Plan.
+    /// Rebuilds from Genesis, recomputes each winner, and folds recorded facts without invoking Plan or Complete.
     /// </summary>
     public static ReplayResult<TWorld> Verify<TWorld, TCandidateData, TFact>(
         TWorld genesisWorld,
@@ -17,7 +17,7 @@ public static class SchedulerConformance {
         IEnumerable<IOccurrenceRule<TWorld, TCandidateData, TFact>> rules,
         IEnumerable<JournalBatch<TFact>> batches,
         Func<TWorld, LogicalInstant, TFact, TWorld> fold,
-        Action<TWorld> validate) {
+        Action<TWorld, ModelTime> validate) {
         if (genesisWorld is null) {
             throw new ArgumentNullException(nameof(genesisWorld));
         }
@@ -33,6 +33,7 @@ public static class SchedulerConformance {
             throw new ArgumentException("Occurrence rules cannot contain null entries.", nameof(rules));
         }
 
+        validate(genesisWorld, genesisTime);
         TWorld world = genesisWorld;
         LogicalInstant? lastCommittedInstant = null;
         CandidateKey? previousCauseKey = null;
@@ -83,7 +84,7 @@ public static class SchedulerConformance {
                 }
             }
 
-            validate(scratchWorld);
+            validate(scratchWorld, batch.Instant.ModelTime);
             world = scratchWorld;
             lastCommittedInstant = batch.Instant;
             previousCauseKey = batch.CauseKey;

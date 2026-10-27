@@ -22,13 +22,13 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             fold: (world, instant, fact) => world + fact,
-            validate: world => validatedWorlds.Add(world));
+            validate: (world, _) => validatedWorlds.Add(world));
 
         Assert.Equal("ABC", result.World);
         Assert.Equal(new WorldVersion(7, 2), result.Version);
         Assert.Equal(new LogicalInstant(new ModelTime(10), 1), result.LastCommittedInstant);
         Assert.Equal(new ModelTime(10), result.CurrentModelTime);
-        Assert.Equal(["AB", "ABC"], validatedWorlds);
+        Assert.Equal(["", "AB", "ABC"], validatedWorlds);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public sealed class SimulationReplayTests {
             genesisTime: new ModelTime(3),
             batches: [],
             fold: (world, _, _) => world,
-            validate: _ => { });
+            validate: (_, _) => { });
 
         Assert.Equal(5, result.World);
         Assert.Equal(new WorldVersion(9, 0), result.Version);
@@ -56,7 +56,7 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             fold: (world, _, fact) => world + fact,
-            validate: _ => { }));
+            validate: (_, _) => { }));
     }
 
     public static TheoryData<JournalBatch<string>[]> InvalidInstantSequences {
@@ -229,7 +229,7 @@ public sealed class SimulationReplayTests {
             genesisTime: ModelTime.Zero,
             batches,
             TimerModel.Fold,
-            validate: _ => { });
+            validate: (_, _) => { });
         InvalidOperationException conformanceError = Assert.Throws<InvalidOperationException>(() =>
             SchedulerConformance.Verify(
                 genesis,
@@ -239,7 +239,7 @@ public sealed class SimulationReplayTests {
                 [new TimerRule(throwIfPlanCalled: true)],
                 batches,
                 TimerModel.Fold,
-                validate: _ => { }));
+                validate: (_, _) => { }));
 
         Assert.Equal(["A", "A"], ordinary.World.FiredTimers);
         Assert.Contains("adjacent transitions", conformanceError.Message);

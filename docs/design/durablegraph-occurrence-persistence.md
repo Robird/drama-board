@@ -5,6 +5,8 @@
 > 状态：2026-09-16。活跃核心保留独立 E/S、`IOccurrenceHistory` 与有限 [KernelCursor](../../src/Kernel/Simulation/KernelCursor.cs) 的合同；FirstBoard adapter、完整世界与跨进程恢复是已归档的消费者映射，见[归档索引](../archive/firstboard-llm.md)。
 > 本文的 Kernel 合同仍是当前依据；涉及具体 FirstBoard 模型、Ruleset 和 adapter 的段落保留历史语境，原始消费者合同与施工顺序均在归档中。
 
+> 完成接缝更新（2026-10-27）：[局部预测重构](local-prediction-refactor.md)在 Plan 与完整 scratch-fold 之间加入纯同步 Complete；E 包含业务 facts 与已算好的预测替换。S/pending 的完整校验显式使用 cursor/目标 ModelTime；冷恢复不调用 Complete。空间测试专用 adapter 的实际同根冷开验收见[新记录](../experiments/local-prediction-acceptance.md)，不依赖归档 FirstBoard 的证据。
+
 ## 1. 保留什么，改变什么
 
 保留统一 Forecast、确定性单 winner、1ms 时间、同刻因果序号、可信 rule 规划和 Game + Spatial 完整提交。Spatial 的运动、接触、导航与 Player 信息边界不变。
@@ -65,7 +67,8 @@ FirstBoard 首片曾复用 `ScenarioInstance` 的 canonical 内容与 hash：保
 从已完成 S 取得 frozen World 和游标
 → Forecast / 选 winner / 检查 notAfter 与预算
 → PlanSelectedAsync（必要时调用 Player）
-→ 按顺序纯 fold 全部 facts，验证 scratch World
+→ Complete（补入预测维护结果，不再次调用 Player）
+→ 按顺序纯 fold 完整 facts，在目标 ModelTime 验证 scratch World
 → 构造 E、next S，完成最后一次取消检查
 → CommitDomainEvent(E)
 → CommitDomainState(next S)       // 热路径直接复用 scratch

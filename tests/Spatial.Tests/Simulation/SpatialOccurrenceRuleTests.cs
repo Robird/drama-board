@@ -10,7 +10,7 @@ public sealed class SpatialOccurrenceRuleTests {
     [Fact]
     public async Task Forecast_EmitsEveryArrivalAndScheduleAsAnIndependentCandidate() {
         TestContext context = CreateFourContenderContext();
-        var rule = new SpatialOccurrenceRule(context.Definition);
+        var rule = new BusinessOccurrenceRule(context.Definition);
 
         IReadOnlyList<OccurrenceCandidate<SpatialOccurrenceData>> candidates =
             rule.Forecast(context.State, Rules);
@@ -60,7 +60,7 @@ public sealed class SpatialOccurrenceRuleTests {
                 GraphTestWorld.Time(10),
                 new PassageEntryPatch(true, null),
                 GraphTestWorld.Time(0)));
-        var rule = new SpatialOccurrenceRule(definition);
+        var rule = new BusinessOccurrenceRule(definition);
         OccurrenceCandidate<SpatialOccurrenceData> candidate = Assert.Single(rule.Forecast(state, Rules));
 
         TransitionDraft<GraphSpatialFact> draft = await rule.PlanSelectedAsync(
@@ -94,7 +94,7 @@ public sealed class SpatialOccurrenceRuleTests {
                 GraphTestWorld.Bridge,
                 speedSnapshot: 1,
                 GraphTestWorld.Time(0)));
-        var rule = new SpatialOccurrenceRule(definition);
+        var rule = new BusinessOccurrenceRule(definition);
         OccurrenceCandidate<SpatialOccurrenceData> candidate = Assert.Single(rule.Forecast(state, Rules));
         TraversalArrivalOccurrenceData data = Assert.IsType<TraversalArrivalOccurrenceData>(candidate.Data);
         var stale = new OccurrenceCandidate<SpatialOccurrenceData>(
@@ -115,7 +115,7 @@ public sealed class SpatialOccurrenceRuleTests {
         var actor = new EntityId("actor");
         var planner = new SpatialPlanner(definition);
         var reducer = new GraphSpatialReducer(definition);
-        var rule = new SpatialOccurrenceRule(definition);
+        var rule = new BusinessOccurrenceRule(definition);
         state = GraphTestWorld.Fold(
             reducer,
             state,

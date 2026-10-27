@@ -45,7 +45,7 @@ public sealed class PassageContactTests {
     [Fact]
     public async Task HeadOnMeeting_UsesExactBigIntegerIntersectionAndConsumesOnlySelectedPair() {
         ContactContext context = CreateHeadOnContext();
-        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        var rule = new BusinessContactRule(context.Definition);
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
             Assert.Single(rule.Forecast(context.State, Rules));
@@ -88,7 +88,7 @@ public sealed class PassageContactTests {
         state = Start(reducer, planner, state, "fast", GraphTestWorld.A, speed: 4, at: 2);
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate = Assert.Single(
-            new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
+            new BusinessContactRule(definition).Forecast(state, Rules));
 
         Assert.Equal(PassageContactKind.Overtake, candidate.Data.Kind);
         Assert.Equal(GraphTestWorld.Time(4), candidate.Due.ModelTime);
@@ -109,7 +109,7 @@ public sealed class PassageContactTests {
         state = Start(reducer, planner, state, "fast", GraphTestWorld.B, speed: 4, at: 2);
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate = Assert.Single(
-            new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
+            new BusinessContactRule(definition).Forecast(state, Rules));
 
         Assert.Equal(PassageContactKind.Overtake, candidate.Data.Kind);
         Assert.Equal(GraphTestWorld.Time(4), candidate.Due.ModelTime);
@@ -122,7 +122,7 @@ public sealed class PassageContactTests {
     public async Task HeadOnMeeting_FloorsContactBeforeEitherCeilingArrival(
         long speedA, long speedB, long anchor, long due, long arrivalA, long arrivalB) {
         ContactContext context = CreateHeadOnContext(speedA, speedB, anchor);
-        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        var rule = new BusinessContactRule(context.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
             Assert.Single(rule.Forecast(context.State, Rules));
 
@@ -147,7 +147,7 @@ public sealed class PassageContactTests {
         // Head-on contact is at 10/7. At tick 1 Alice is at 1, Bob at 4.
         // Reversing Alice creates a real catch-up at 1 + 3/5, still in tick 1.
         ContactContext context = CreateHeadOnContext(speedA: 1, speedB: 6);
-        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        var rule = new BusinessContactRule(context.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> headOn =
             Assert.Single(rule.Forecast(context.State, Rules));
         Assert.Equal(GraphTestWorld.Time(1), headOn.Due.ModelTime);
@@ -192,7 +192,7 @@ public sealed class PassageContactTests {
         state = Start(reducer, planner, state, "bob", GraphTestWorld.B, speed: 3, at: -5);
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate = Assert.Single(
-            new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
+            new BusinessContactRule(definition).Forecast(state, Rules));
 
         Assert.Equal(PassageContactKind.HeadOnMeeting, candidate.Data.Kind);
         Assert.Equal(GraphTestWorld.Time(-4), candidate.Due.ModelTime);
@@ -241,7 +241,7 @@ public sealed class PassageContactTests {
         state = Start(reducer, planner, state, "b", GraphTestWorld.B, long.MaxValue - 1, 0);
 
         OccurrenceCandidate<PassageContactOccurrenceData> candidate = Assert.Single(
-            new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
+            new BusinessContactRule(definition).Forecast(state, Rules));
 
         Assert.Equal(GraphTestWorld.Time(0), candidate.Due.ModelTime);
         Assert.Equal(PassageContactKind.HeadOnMeeting, candidate.Data.Kind);
@@ -250,7 +250,7 @@ public sealed class PassageContactTests {
     [Fact]
     public async Task SelectedPlanAndReducer_RejectTamperedKeyDueKindAndGeneration() {
         ContactContext context = CreateHeadOnContext();
-        var rule = new SpatialContactOccurrenceRule(context.Definition);
+        var rule = new BusinessContactRule(context.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> candidate =
             Assert.Single(rule.Forecast(context.State, Rules));
         PassageContactKey key = candidate.Data.ContactKey;
@@ -314,7 +314,7 @@ public sealed class PassageContactTests {
         state = Start(reducer, planner, state, "b", GraphTestWorld.B, 3, 0, GraphTestWorld.Bridge);
         state = Start(reducer, planner, state, "c", GraphTestWorld.C, 4, 0, secondPassage);
         state = Start(reducer, planner, state, "d", GraphTestWorld.D, 3, 0, secondPassage);
-        var rule = new SpatialContactOccurrenceRule(definition);
+        var rule = new BusinessContactRule(definition);
 
         OccurrenceCandidate<PassageContactOccurrenceData>[] candidates =
             [.. rule.Forecast(state, Rules)];
@@ -339,7 +339,7 @@ public sealed class PassageContactTests {
     [Fact]
     public async Task ArrivalAndReverse_EachClearConsumedKeysForTheOldGeneration() {
         ContactContext arrivalContext = CreateHeadOnContext();
-        var arrivalRule = new SpatialContactOccurrenceRule(arrivalContext.Definition);
+        var arrivalRule = new BusinessContactRule(arrivalContext.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> arrivalContact =
             Assert.Single(arrivalRule.Forecast(arrivalContext.State, Rules));
         GraphSpatialState arrivalState = arrivalContext.Reducer.Apply(
@@ -356,7 +356,7 @@ public sealed class PassageContactTests {
         Assert.Empty(arrivalState.ConsumedContacts);
 
         ContactContext reverseContext = CreateHeadOnContext();
-        var reverseRule = new SpatialContactOccurrenceRule(reverseContext.Definition);
+        var reverseRule = new BusinessContactRule(reverseContext.Definition);
         OccurrenceCandidate<PassageContactOccurrenceData> reverseContact =
             Assert.Single(reverseRule.Forecast(reverseContext.State, Rules));
         GraphSpatialState reverseState = reverseContext.Reducer.Apply(
@@ -384,8 +384,8 @@ public sealed class PassageContactTests {
             CreatePermutationContext(reverseInputs: false);
         (GraphDefinition secondDefinition, GraphSpatialState secondState) =
             CreatePermutationContext(reverseInputs: true);
-        var firstRule = new SpatialContactOccurrenceRule(firstDefinition);
-        var secondRule = new SpatialContactOccurrenceRule(secondDefinition);
+        var firstRule = new BusinessContactRule(firstDefinition);
+        var secondRule = new BusinessContactRule(secondDefinition);
 
         IReadOnlyList<OccurrenceCandidate<PassageContactOccurrenceData>> first =
             firstRule.Forecast(firstState, Rules);
@@ -410,7 +410,7 @@ public sealed class PassageContactTests {
     }
 
     private static async Task AssertPlanRejected(
-        SpatialContactOccurrenceRule rule,
+        BusinessContactRule rule,
         GraphSpatialState state,
         OccurrenceCandidate<PassageContactOccurrenceData> candidate) =>
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -431,7 +431,7 @@ public sealed class PassageContactTests {
             state = Start(reducer, planner, state, entity, place, speed, at);
         }
 
-        Assert.Empty(new SpatialContactOccurrenceRule(definition).Forecast(state, Rules));
+        Assert.Empty(new BusinessContactRule(definition).Forecast(state, Rules));
     }
 
     private static ContactContext CreateHeadOnContext(long speedA = 4, long speedB = 3, long anchor = 0) {

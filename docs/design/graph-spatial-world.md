@@ -7,6 +7,8 @@
 
 > 适用范围（2026-10-27）：地点、通路、运动段、多实体接触、严格内部掉头与到达仍是活跃空间合同，保留 contact floor、arrival ceil 和 Kernel 同刻仲裁。Player 的空间认知、交互与呈现已进入[应用归档](../archive/player-runtime.md)，不构成 Spatial 的依赖或本轮施工要求。
 
+> 预测维护更新（2026-10-27）：[局部预测重构](local-prediction-refactor.md) S1/S2 已实施。`GraphSpatialState` 保留业务状态职责，外层 `SpatialSimulationState` 合并持久 Contacts；空间规则现在读取这个组合根，接触发现移至通道级 Complete。下文旧根接线与每轮全量求交的描述由该方案替代，运动数学和业务事实合同保留。实际单根冷开证据见[验收记录](../experiments/local-prediction-acceptance.md)。
+
 > 阅读提示（2026-09-16）：Graph Slice 1/2、客观空间权威和 §3.5 的 contact floor 是活跃核心合同。§1.4、§8 及所有 FirstBoard composition/cutover 文字保留已归档消费者的迁移语境；其源码与验收在[FirstBoard 归档](../archive/firstboard-llm.md)。存储接缝采用[独立 E/S 与冷恢复](durablegraph-occurrence-persistence.md)，本文旧 AppendBatch/普通 Replay 存储条款由该方案替代。
 
 **Kernel 权威基线：** [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md)、[Simulation Kernel](simulation-kernel.md) 与当前 `src/Kernel`。

@@ -8,6 +8,8 @@
 
 > 适用范围（2026-10-27）：本文时间推进、全量 Forecast、单 winner、跨领域完整变化与 E/S 提交合同继续约束独立时空引擎。Player/Protocol/Server 已转入[应用归档](../archive/player-runtime.md)；涉及 Player 的段落说明边界或历史消费者，不要求核心依赖 Programmer。`PlanSelectedAsync` 规划一次 occurrence 的领域转移，不承担角色长期 Plan。
 
+> 局部预测更新（2026-10-27）：[空间首阶段](local-prediction-refactor.md)已实施。全量 Forecast 指读取各 rule 当前候选，不再要求重新计算全部预测；Spatial 读取持久 Contacts，运动变化在唯一 Complete 接缝维护。Complete 只补业务决定的派生结果，不另设规划权威；所有完整校验显式接收边界 ModelTime，恢复不运行 Complete。后文未展开该接缝的历史伪代码以此更新和当前源码为准。
+
 > 存储接缝更新（2026-09-12）：当前源码已采用[DurableGraph Occurrence 提交与恢复](durablegraph-occurrence-persistence.md)的独立 E/S 与有限游标。本文时间、全量 Forecast、单 winner 和领域完整提交法则保留；后文旧 `AppendBatch`、expected Journal head、普通 Replay 恢复条款作为上一版设计语境，由该后继方案替代。显式 Replay/Fork 工具仅保留作内存算法对照，不是存档恢复入口。
 
 **定位：定义 DramaBoard 的时间、联合预测、确定性仲裁、原子提交、Player 边界与可回放 Simulation Kernel。当前实现状态与验收边界以 [Kernel occurrence baseline](../implementation/kernel-occurrence-baseline.md) 为权威。**
@@ -24,8 +26,9 @@ Kernel 只有一条路径：
 冻结 committed HostWorld + KernelCursor
 → 所有 IOccurrenceRule 全量 Forecast
 → 按 CandidateDue、确定性 keyed hash、CandidateKey 选唯一 winner
-→ winner 所属 rule 在同一未完成 Step 中生成完整 TransitionDraft
-→ scratch-fold 全部 facts + 验证最终 HostWorld
+→ winner 所属 rule 在同一未完成 Step 中生成业务 TransitionDraft
+→ Complete 顺序折叠业务决定并补入受影响的预测结果
+→ scratch-fold 完整 facts + 按目标 ModelTime 验证最终 HostWorld
 → 先发布完整 Occurrence Event，再发布结果 State
 → 安装新 World、WorldVersion 与 LogicalInstant
 → 丢弃旧 candidates；下一 Step 全量 re-Forecast

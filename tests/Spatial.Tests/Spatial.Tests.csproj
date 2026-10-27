@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <DurableGraphGenerateDefinitions>true</DurableGraphGenerateDefinitions>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,4 +22,6 @@
     <ProjectReference Include="..\..\src\Spatial\Spatial.csproj" />
   </ItemGroup>
 
+  <Import Project="../../eng/DurableGraph.Source.props" />
+  <Import Project="../../eng/DurableGraph.Source.targets" />
 </Project>

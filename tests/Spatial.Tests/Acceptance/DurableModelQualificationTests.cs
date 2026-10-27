@@ -22,7 +22,7 @@ public sealed class DurableModelQualificationTests {
             planner.TryStartTraversal(world, new EntityId("alice"), GraphTestWorld.Bridge, 3, ModelTime.Zero));
         world = GraphTestWorld.Fold(reducer, world, GraphTestWorld.Instant(0, 1),
             planner.TryStartTraversal(world, new EntityId("bob"), GraphTestWorld.Bridge, 2, ModelTime.Zero));
-        var contactRule = new SpatialContactOccurrenceRule(definition);
+        var contactRule = new BusinessContactRule(definition);
         var candidate = Assert.Single(contactRule.Forecast(world, new SimulationRules(71, 100)));
         TransitionDraft<GraphSpatialFact> contact = await contactRule.PlanSelectedAsync(world, candidate, default);
         LogicalInstant instant = GraphTestWorld.Instant(2);
