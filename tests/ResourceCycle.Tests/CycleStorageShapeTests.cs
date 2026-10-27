@@ -68,7 +68,7 @@ public sealed class CycleStorageShapeTests {
         using var store = new TemporaryStore();
         CycleWorld initial = CycleWorld.CreatePlayable();
         CyclePrediction[] predictions = stale
-            ? [new("plant:sunflower", CyclePredictionKind.MaturePlant, "sunflower", Hour(0), 999)] : [];
+            ? [new("resource:sunflower:regen", CyclePredictionKind.RegenerateResource, "sunflower", Hour(0), 999)] : [];
         var obsolete = new CycleWorld(initial.Business, new CycleForecasts(predictions, []));
         using (var created = CycleDurableHistory.Create(store.Path, obsolete, InitialCursor(initial))) {
             Assert.Equal(initial.DescribeState(), created.State.DescribeState());
@@ -83,18 +83,13 @@ public sealed class CycleStorageShapeTests {
     }
 
     [Fact]
-    public void Cold_open_rejects_business_whose_recomputed_prediction_is_already_in_the_past() {
-        using var store = new TemporaryStore();
+    public void Durable_root_rejects_expired_business_before_it_can_be_published() {
         CycleWorld initial = CycleWorld.Create(start: Hour(6), script: []);
         CycleBusinessState invalid = initial.Business.Replace(Hour(10));
         var cursor = new KernelCursor(new WorldVersion(17, 0), Hour(10), null, null);
-        // Basic business fields are individually valid, but the unprocessed sunflower maturity is due at hour 9.
-        using (Repository repository = Repository.CreateNew(store.Path, Models())) {
-            repository.CreateRootBranchFromState("expired-boundary", new CycleDurableRoot(invalid, cursor));
-        }
-        Assert.Throws<InvalidOperationException>(() => CycleDurableHistory.Open(store.Path));
+        // Regeneration was due at hour 9. The stronger business invariant rejects this even before persistence.
+        Assert.Throws<InvalidOperationException>(() => new CycleDurableRoot(invalid, cursor));
     }
-
     private static StateModelRegistry Models() {
         var registry = new StateModelRegistry();
         CycleDurableModels.Register(registry);

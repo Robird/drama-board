@@ -5,7 +5,7 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.ResourceCycle;
 
-/// <summary>One asynchronous owner drives the Kernel; Console input never opens another writer.</summary>
+/// <summary>One asynchronous owner drives the Kernel; input and rendering never mutate the world.</summary>
 internal static class PlayConsole {
     public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken) {
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
@@ -17,21 +17,18 @@ internal static class PlayConsole {
             CycleWorld initial = CycleWorld.CreatePlayable();
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial, InitialCursor(initial));
         }
-        if (history.State.Character is null) {
+        if (history.State.Characters.Count == 0) {
             throw new ArgumentException("这是批处理实验存档，不能用 --play 打开。请省略 --play 续跑，或选择新目录开始采集。");
         }
 
         var kernel = CycleEngine.CreateKernel(history, decisionSource: new ConsoleDecisionSource());
         Console.WriteLine(store is null
-            ? "采集模式 · 本次仅在内存中运行；退出后不保留进度。"
-            : $"采集模式 · 存档：{store} · 每次成功转换自动保存。");
+            ? "多人采集 · 本次仅在内存中运行；退出后不保留进度。"
+            : $"多人采集 · 存档：{store} · 每次成功转换自动保存。");
+        Console.WriteLine("共用控制台轮流扮演角色；画面只显示当前角色的技能、活动细节和背包。等待输入期间世界暂停。");
         if (kernel.RecoverPending(cancellationToken)) {
-            Console.WriteLine("已完成上次中断时保存的行动：");
-            PrintCompletion(kernel.LastCompletion!);
-        }
-        if (kernel.World.Character!.WaitUntil is not null) {
-            Console.WriteLine(Render(kernel.World));
-            Console.WriteLine("正在继续已安排的等待；完成后再请求行动。");
+            Console.WriteLine("已完成上次中断时保存的行动；接下来按已保存的活动与请求继续。");
+            PrintPublicChanges(kernel.LastCompletion!);
         }
 
         try {
@@ -40,7 +37,7 @@ internal static class PlayConsole {
                 if (status != StepStatus.Committed) {
                     throw new InvalidOperationException($"采集世界未能产生下一步行动：{status}。");
                 }
-                PrintCompletion(kernel.LastCompletion!);
+                PrintPublicChanges(kernel.LastCompletion!);
             }
         } catch (PlayEndedException) {
             Console.WriteLine(store is null ? "已退出。内存中的采集进度未保存。" : "已退出。已完成的行动均已保存，可使用同一 --play --store 路径继续。");
@@ -49,7 +46,7 @@ internal static class PlayConsole {
     }
 
     public static void RequireBatchWorld(CycleWorld world) {
-        if (world.Character is not null) {
+        if (world.Characters.Count != 0) {
             throw new ArgumentException("这是交互采集存档；请使用 --play --store 打开。批处理不会推进此存档。");
         }
     }
@@ -61,129 +58,174 @@ internal static class PlayConsole {
         return CycleDurableHistory.Create(path, initial, InitialCursor(initial));
     }
 
-    private static void PrintCompletion(OccurrenceCompletion<CycleFact> completion) {
-        Console.WriteLine();
-        Console.WriteLine("## 刚刚发生");
+    // Actor-specific results belong to that actor's observation. Do not print their private
+    // activity schedule, skill or inventory into another actor's intervening console view.
+    private static void PrintPublicChanges(OccurrenceCompletion<CycleFact> completion) {
         foreach (CycleFact fact in completion.Event.Facts) {
-            string text = fact.Kind switch {
-                CycleEventKind.PlantMatured => $"{PlantName(fact.TargetId)}成熟了，可以采集。",
-                CycleEventKind.LightChanged => fact.Light!.IsDay
-                    ? "天亮了。未成熟的太阳花继续生长，未成熟的月光草暂停生长并保留进度。"
-                    : "天黑了。未成熟的月光草继续生长，未成熟的太阳花暂停生长并保留进度。",
-                CycleEventKind.PlantDestroyed => $"{PlantName(fact.TargetId)}被销毁，生长进度归零。",
-                CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted or CycleEventKind.PlantGathered
-                    => fact.Character!.LastResult ?? throw new InvalidOperationException("角色行动缺少结果文本。"),
-                _ => throw new InvalidOperationException($"尚未支持的采集事件：{fact.Kind}。"),
-            };
-            Console.WriteLine($"- {FormatTime(fact.At)}：{text}");
+            if (fact.Kind == CycleEventKind.LightChanged) {
+                Console.WriteLine($"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了；太阳花满足再生光照条件，月光草暂停再生。" : "天黑了；月光草满足再生光照条件，太阳花暂停再生。")}");
+            }
         }
     }
 
-    private static string Render(CycleWorld world) {
-        var character = world.Character ?? throw new InvalidOperationException("采集画面需要角色。");
+    private static string Render(CycleWorld world, string actorId) {
+        CycleCharacter character = world.GetCharacter(actorId);
         var text = new StringBuilder();
-        text.AppendLine("# 林间苗圃");
+        text.AppendLine($"# 林间苗圃 · {character.Name}（{character.Id}） · {FormatTime(world.Time)}");
         text.AppendLine();
-        text.AppendLine("这里有一片太阳花和一片月光草。成熟后可采集，每次获得一份，并重新开始生长。");
+        text.AppendLine($"当前控制角色：{character.Name}（`{character.Id}`）。等待输入期间世界暂停；其他人的活动不会因你查看信息而重新计时。");
+        text.AppendLine($"{(world.Light.IsDay ? "白天" : "夜晚")}；下次{(world.Light.IsDay ? "天黑" : "天亮")}：{FormatTime(world.Light.NextChange)}。");
         text.AppendLine();
-        text.AppendLine("## 时间与角色");
-        text.AppendLine($"- 当前时间：{FormatTime(world.Time)}，{(world.Light.IsDay ? "白天" : "夜晚")}。");
-        text.AppendLine($"- 下次{(world.Light.IsDay ? "天黑" : "天亮")}：{FormatTime(world.Light.NextChange)}。");
-        text.AppendLine($"- 当前角色：园丁（`{character.Id}`）。");
-        text.AppendLine(character.WaitUntil is { } until
-            ? $"- 行动：等待至{FormatTime(until)}；期间会显示自然变化。"
-            : "- 行动：轮到你决定。等待输入期间，世界时间暂停。");
-        if (character.LastResult is { } result) { text.AppendLine($"- 上次行动：{result}"); }
+        text.AppendLine("## 本次介入");
+        if (character.Notices.Count == 0) {
+            text.AppendLine("- 当前空闲，请选择下一活动。");
+        } else {
+            foreach (CycleNotice notice in character.Notices) {
+                text.AppendLine($"- {RenderNotice(world, notice)}");
+            }
+            text.AppendLine(character.Activity is { } ongoing
+                ? $"- 你的活动没有中断；当前周期仍于 {FormatTime(ongoing.Due)} 结算。"
+                : "- 你的活动已结束；以下感知和行动结果一起呈现，请选择下一活动。");
+        }
+        if (character.LastResult is { } result) { text.AppendLine($"- 上次结果（记录当时状态）：{result}"); }
         text.AppendLine();
-        text.AppendLine("## 植物");
-        foreach (CyclePlant plant in world.Plants) {
-            string phase = plant.GrowsInDaylight ? "白天" : "夜晚";
-            string status = plant.IsMature ? "已成熟" : plant.ActiveSince is null ? "暂停生长，进度保留" : "正在生长";
-            string progress = Hours(plant.ProgressAt(world.Time));
-            text.AppendLine($"- {PlantName(plant.Id)}（`{plant.Id}`）：{status}；有效生长进度 {progress}/{Hours(plant.RequiredTicks)} 小时，仅在{phase}生长。");
+        text.AppendLine("## 你的活动");
+        text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
+        if (character.Activity is not { } activity) {
+            text.AppendLine("- 空闲。可以启动采集或等待；每次合法选择后交给下一个有请求的角色。");
+        } else if (activity.Kind == CycleActivityKind.Wait) {
+            text.AppendLine($"- 正在等待，完成时刻：{FormatTime(activity.Due)}。");
+        } else {
+            CycleResource resource = world.GetResource(activity.ResourceId!);
+            text.AppendLine($"- 采集 {resource.Name}（`{resource.Id}`）；{(activity.SelectedAll ? "开始时选择 all，目标已固定" : "固定目标")}为 {activity.TargetCount} 份；已取得 {activity.CompletedCount}/{activity.TargetCount}。");
+            text.AppendLine($"- 当前周期：{FormatTime(activity.StartedAt)} → {FormatTime(activity.Due)}；每份 {Minutes(activity.DurationTicks)} 分钟，剩余 {Minutes(activity.Due.Ticks - world.Time.Ticks)} 分钟。");
+            text.AppendLine("- 成功后未达目标会安排下一周期，即使此刻库存为零。库存变零会先提醒；确认 continue 后才继续推进，已安排的周期保持不变。结算时无货则整批结束，最多损失一个无收获周期，不会自动等待再生。");
+            text.AppendLine("- continue 只确认消息；cancel 保留已取得物品，放弃当前尚未完成的一份。");
         }
         text.AppendLine();
-        text.AppendLine("## 背包");
+        text.AppendLine("## 资源点");
+        text.AppendLine("资源不预留，先完成先得；同刻完成按固定规则仲裁。别人只公开正在采集哪个点，不公开技能、速度或下一份完成时刻。");
+        text.AppendLine();
+        text.AppendLine("| 资源点 | 余量 / 容量 | 再生 | 产出及你的采集周期 | 正在采集的其他人 |");
+        text.AppendLine("| --- | --- | --- | --- | --- |");
+        foreach (CycleResource resource in world.Resources) {
+            var others = world.Characters.Where(other => other.Id != actorId &&
+                other.Activity is { Kind: CycleActivityKind.Gather } gathering && gathering.ResourceId == resource.Id).ToArray();
+            string members = others.Length == 0 ? "无" : $"{string.Join("、", others.Select(other => $"{other.Name}（{other.Id}）"))}，共 {others.Length} 人";
+            string phase = resource.Stock == resource.Capacity ? "已满，未囤积再生进度" :
+                $"{(resource.ActiveSince is null ? "暂停" : "进行中")}，进度 {Minutes(resource.ProgressAt(world.Time))}/{Minutes(resource.RegenerationTicks)} 分钟";
+            long duration = CycleActions.HarvestDuration(resource, character);
+            text.AppendLine($"| {resource.Name} `{resource.Id}` | {resource.Stock} / {resource.Capacity} | {(resource.GrowsInDaylight ? "白天" : "夜晚")}每 {Hours(resource.RegenerationTicks)} 小时补 1；{phase} | 每份产出 {ItemName(world, resource.ItemId)} ×1；你需 {Minutes(duration)} 分钟；要求采药等级 {resource.RequiredLevel} | {members} |");
+        }
+        text.AppendLine();
+        text.AppendLine("## 其他角色");
+        foreach (CycleCharacter other in world.Characters.Where(other => other.Id != actorId)) {
+            string status = other.Activity switch {
+                { Kind: CycleActivityKind.Gather, ResourceId: { } resourceId } => $"正在采集 {world.GetResource(resourceId).Name}",
+                { Kind: CycleActivityKind.Wait } => "正在等待",
+                _ => "空闲",
+            };
+            text.AppendLine($"- {other.Name}（`{other.Id}`）：{status}。");
+        }
+        text.AppendLine();
+        text.AppendLine("## 你的背包");
         if (character.Backpack.Items.Count == 0) {
             text.AppendLine("- 空。");
         } else {
             foreach (var item in character.Backpack.Items.OrderBy(pair => pair.Key, StringComparer.Ordinal)) {
-                text.AppendLine($"- {PlantName(item.Key)}（`{item.Key}`）×{item.Value}。");
+                text.AppendLine($"- {ItemName(world, item.Key)}（`{item.Key}`）×{item.Value}。");
             }
         }
         text.AppendLine();
-        text.Append(RenderCommands(world));
+        text.Append(RenderCommands(world, actorId));
         return text.ToString();
     }
 
-    private static string RenderCommands(CycleWorld world) {
-        string actorId = world.Character!.Id;
+    private static string RenderNotice(CycleWorld world, CycleNotice notice) {
+        CycleResource resource = world.GetResource(notice.ResourceId);
+        CycleCharacter? actor = world.Characters.SingleOrDefault(candidate => candidate.Id == notice.ActorId);
+        string who = actor is null ? "环境或未知原因" : $"{actor.Name}（{actor.Id}）";
+        string repeated = notice.Count > 1 ? $"；待回应同类变化共 {notice.Count} 次，此处为最近一次" : "";
+        if (notice.Kind == CycleNoticeKind.CollectorJoined) {
+            bool stillGathering = actor?.Activity is { Kind: CycleActivityKind.Gather } gathering && gathering.ResourceId == notice.ResourceId;
+            return $"{FormatTime(notice.At)}：{who}曾加入 {resource.Name} 的采集，{(stillGathering ? "目前仍在此点采集" : "目前已离开此点的采集")}{repeated}。";
+        }
+        string reason = notice.Reason.TrimEnd().TrimEnd('。', '.', '！', '!', '？', '?', '；', ';');
+        return $"{FormatTime(notice.At)}：{resource.Name}曾被取空；相关行动者：{who}；原因：{reason}。当前余量 {resource.Stock}/{resource.Capacity}{repeated}。消息描述已发生的耗尽，不会取消你的在途周期。";
+    }
+
+    private static string RenderCommands(CycleWorld world, string actorId) {
         var text = new StringBuilder();
         text.AppendLine("## 可用命令");
         text.AppendLine();
-        text.AppendLine("请输入完整命令和标识，区分大小写，不接受编号或缩写。");
-        text.AppendLine("- `look`：重新显示完整画面；不推进时间。");
-        text.AppendLine("- `help`：显示命令和当前受阻原因；不推进时间。");
-        text.AppendLine("- `quit`：退出；不额外推进时间。输入结束（EOF）也会退出。");
-        var availableWaits = new List<int>();
-        var blockedWaits = new List<(int Hour, string Reason)>();
-        for (int hour = 1; hour <= 24; hour++) {
-            string? reason = CycleActions.Check(world, actorId, CycleCommand.Wait(hour));
-            if (reason is null) { availableWaits.Add(hour); }
-            else { blockedWaits.Add((hour, reason)); }
+        text.AppendLine("输入完整命令和标识，区分大小写。查询、非法输入和退出不确认消息、不消耗时间，也不交棒。");
+        text.AppendLine("- `look`：重新显示完整画面。`help`：显示命令与当前受阻原因。");
+        text.AppendLine("- `quit`：退出；EOF 同样退出。已提交的活动和未确认消息可随存档恢复。");
+        AppendCommand(text, world, actorId, "continue", CycleCommand.Continue(), "确认感知并交还控制权，保留活动和进度");
+        AppendCommand(text, world, actorId, "cancel", CycleCommand.Cancel(), "取消当前活动，保留已经获得的物品；随后按轮转选择新活动");
+        text.AppendLine("- `gather <resource-id> <正整数|all>`：数量 1–2147483647；all 固定为接受命令时的库存，不随再生增加、不预留。新开时必须有货，不能同时安排另一耗时活动。");
+        foreach (CycleResource resource in world.Resources) {
+            AppendCommand(text, world, actorId, $"gather {resource.Id} 1", CycleCommand.Gather(resource.Id, 1), $"最多取得 1 份{resource.Name}");
+            AppendCommand(text, world, actorId, $"gather {resource.Id} all", CycleCommand.GatherAll(resource.Id), $"当前 all = {resource.Stock} 份；也可改为任意受支持的正整数 n，不要求库存已有 n 份");
         }
-        if (availableWaits.Count == 24) {
-            text.AppendLine("- `wait <hours>`：可执行；hours 为 1–24 的整数，例如 `wait 6`。等待指定小时数后再次行动；期间自然事件照常发生。");
-        } else {
-            text.AppendLine($"- `wait <hours>`：hours 为 1–24 的整数；当前可执行小时数：{(availableWaits.Count == 0 ? "无" : string.Join(", ", availableWaits))}。");
-            foreach (var group in blockedWaits.GroupBy(entry => entry.Reason)) {
-                text.AppendLine($"  - 受阻小时数 {string.Join(", ", group.Select(entry => entry.Hour))}：{group.Key}");
-            }
-        }
-        foreach (CyclePlant plant in world.Plants) {
-            string? reason = CycleActions.Check(world, actorId, CycleCommand.Gather(plant.Id));
-            text.AppendLine($"- `gather {plant.Id}`：采集{PlantName(plant.Id)}；{(reason is null ? "可执行。" : $"受阻：{reason}")}");
+        var waits = Enumerable.Range(1, 24).Select(hour => (Hour: hour, Reason: CycleActions.Check(world, actorId, CycleCommand.Wait(hour)))).ToArray();
+        int[] allowed = waits.Where(entry => entry.Reason is null).Select(entry => entry.Hour).ToArray();
+        text.AppendLine($"- `wait <hours>`：hours 为 1–24 的整数；{(allowed.Length == 24 ? "全部可执行" : $"当前可执行：{(allowed.Length == 0 ? "无" : string.Join(", ", allowed))}")}。等待完成后才请求行动。");
+        foreach (var group in waits.Where(entry => entry.Reason is not null).GroupBy(entry => entry.Reason)) {
+            string hours = group.Count() == 24 ? "1–24" : string.Join(", ", group.Select(entry => entry.Hour));
+            text.AppendLine($"  - 小时数 {hours} 受阻：{group.Key}");
         }
         return text.ToString();
     }
 
-    private static string PlantName(string id) => id switch {
-        "sunflower" => "太阳花",
-        "moongrass" => "月光草",
-        _ => id,
-    };
+    private static void AppendCommand(StringBuilder text, CycleWorld world, string actorId, string syntax, CycleCommand command, string description) {
+        string? reason = CycleActions.Check(world, actorId, command);
+        text.AppendLine($"- `{syntax}`：{description}；{(reason is null ? "可执行。" : $"受阻：{reason}")}");
+    }
 
+    private static string ItemName(CycleWorld world, string itemId) => world.Resources.FirstOrDefault(resource => resource.ItemId == itemId)?.Name ?? itemId;
     private static string Hours(long ticks) => ((decimal)ticks / CycleTime.Hour).ToString("0.##", CultureInfo.InvariantCulture);
-    private static string FormatTime(ModelTime time) => $"第 {time.Ticks / CycleTime.Day} 天 {time.Ticks % CycleTime.Day / CycleTime.Hour:00}:{time.Ticks % CycleTime.Hour / 60_000:00}";
+    private static string Minutes(long ticks) => ((decimal)ticks / 60_000).ToString("0.##", CultureInfo.InvariantCulture);
+    private static string FormatTime(ModelTime time) {
+        string minutes = $"第 {time.Ticks / CycleTime.Day} 天 {time.Ticks % CycleTime.Day / CycleTime.Hour:00}:{time.Ticks % CycleTime.Hour / 60_000:00}";
+        long remainder = time.Ticks % 60_000;
+        return remainder == 0 ? minutes : $"{minutes}:{remainder / 1_000:00}.{remainder % 1_000:000}";
+    }
 
     private sealed class PlayEndedException : Exception { }
 
     private sealed class ConsoleDecisionSource : ICycleDecisionSource {
         public async ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) {
             Console.WriteLine();
-            Console.WriteLine(Render(world));
+            Console.WriteLine(Render(world, actorId));
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
-                Console.Write("> ");
+                Console.Write($"{actorId}> ");
                 string? input = await Console.In.ReadLineAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (input is null) { throw new PlayEndedException(); }
                 string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
                 if (parts is ["quit"]) { throw new PlayEndedException(); }
-                if (parts is ["look"]) { Console.WriteLine(Render(world)); continue; }
-                if (parts is ["help"]) { Console.WriteLine(RenderCommands(world)); continue; }
+                if (parts is ["look"]) { Console.WriteLine(Render(world, actorId)); continue; }
+                if (parts is ["help"]) { Console.WriteLine(RenderCommands(world, actorId)); continue; }
                 CycleCommand command;
-                if (parts is ["wait", var hours] && int.TryParse(hours, NumberStyles.None, CultureInfo.InvariantCulture, out int count)) {
-                    command = CycleCommand.Wait(count);
-                } else if (parts is ["gather", var plantId]) {
-                    command = CycleCommand.Gather(plantId);
+                if (parts is ["wait", var hours] && int.TryParse(hours, NumberStyles.None, CultureInfo.InvariantCulture, out int waitHours)) {
+                    command = CycleCommand.Wait(waitHours);
+                } else if (parts is ["gather", var allResource, "all"]) {
+                    command = CycleCommand.GatherAll(allResource);
+                } else if (parts is ["gather", var resourceId, var quantity] && int.TryParse(quantity, NumberStyles.None, CultureInfo.InvariantCulture, out int count)) {
+                    command = CycleCommand.Gather(resourceId, count);
+                } else if (parts is ["continue"]) {
+                    command = CycleCommand.Continue();
+                } else if (parts is ["cancel"]) {
+                    command = CycleCommand.Cancel();
                 } else {
-                    Console.WriteLine("无法识别命令。请输入 look、help、quit、wait <1–24 整数小时> 或 gather sunflower|moongrass。时间未推进。");
+                    Console.WriteLine("无法识别命令。请输入 look、help、quit、continue、cancel、wait <1–24 整数小时> 或 gather <sunflower|moongrass> <正整数|all>。时间未推进。");
                     continue;
                 }
                 string? reason = CycleActions.Check(world, actorId, command);
                 if (reason is not null) {
-                    Console.WriteLine($"无法行动：{reason} 时间未推进。");
+                    Console.WriteLine($"无法行动：{reason} 时间未推进；未确认消息。");
                     continue;
                 }
                 return command;

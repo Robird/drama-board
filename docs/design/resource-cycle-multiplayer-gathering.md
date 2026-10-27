@@ -1,7 +1,7 @@
 # ResourceCycle：多人有限批次采集规则草案
 
 > 2026-10-27。基于 `0a5bd72` 的源码调查及玩法、Player 体验、预测与恢复三方评审。
-> 用户已提出资源存量、独立耗时采集、有限批次和竞争感知方向，并明确要求库存耗尽也唤醒 Player；其余补充是团队推荐规则。本文供后续实施使用，尚未实现或试玩验收。
+> 用户已授权按本文实施；库存再生、三角色有限采集及加入/耗尽感知已落地。实现范围与实际验证见[多人采集验收](../experiments/resource-cycle-multiplayer-acceptance.md)；题材扩展和规则包抽取仍为后续方向。
 
 ## 1. 目标、价值与范围
 
@@ -11,7 +11,7 @@
 
 这套规则值得先做，但不能把“资源操作”“Player 获得控制权”“时间推进”混为一种状态。尤其是：**收到感知可以唤醒 Player，而角色当前活动继续存在；查看消息与选择继续不损失采集进度。**
 
-本轮只设计。首个实现不引入移动、LLM API、技能成长、战斗、装备增益、聊天/笔记系统或 RuleSuite 插件框架。无旧档兼容要求。应用内规则稳定后，再判断哪些应成为可复用规则包，哪些才是引擎能力。
+首个实现不引入移动、LLM API、技能成长、战斗、装备增益、聊天/笔记系统或 RuleSuite 插件框架。无旧档兼容要求。应用内规则稳定后，再判断哪些应成为可复用规则包，哪些才是引擎能力。
 
 ## 2. 资源点与产出
 
@@ -226,11 +226,11 @@ Player 服务采用应用层持久轮转游标，按固定角色顺序选择下�
 
 ## 8. 当前源码落点与实施切片
 
-源码事实：当前 [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) 只有 WaitUntil；[CycleActions](../../src/ResourceCycle/CycleActions.cs) 以忙碌一票否决动作；[CycleModels](../../src/ResourceCycle/CycleModels.cs) 为单角色及单株成熟状态；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 每角色只预测等待完成或请求输入，CycleFact 只替换一个角色。[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) 也固定从唯一 Character 渲染。以上均须实质调整，不能把 Character 换为数组就算多人完成。
+当前源码：[CycleResource](../../src/ResourceCycle/CycleResource.cs) 保存库存和再生锚点；[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) 保存独立活动、感知及背包；[CycleModels](../../src/ResourceCycle/CycleModels.cs) 管理角色集合与轮转游标。[CycleActions](../../src/ResourceCycle/CycleActions.cs) 校验动作，[CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) 产生原子业务效果，[CycleFact](../../src/ResourceCycle/CycleFact.cs) 支持多角色替换；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 维护独立 activity/attention owner。[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) 按传入 actorId 渲染。
 
-现有 [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的单根 E/S 和 S 成功后安装可以复用。现有 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs) 可以负责同 Due 确定性仲裁。没有发现必须修改 Kernel/Spatial 或 DurableGraph 的阻塞；这是代码调查判断，不是本轮运行验证。
+复用 [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的单根 E/S 与 S 成功后安装，以及 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs) 的同 Due 确定性仲裁；没有修改 Kernel/Spatial 或 DurableGraph。技能首片只支持 herbalism，产出为单一物品；资源 ID 与物品 ID 分离。默认参数使用第 2 节配置。
 
-建议依次推进，每片保持可编译及可脚本验收：
+实施按以下职责分片，实际验收另记，不以这份分工代替运行证据：
 
 1. **库存与有限采集**：替换单株成熟模型为资源点库存/再生；加入活动槽、技能周期、有限目标、完成时库存检查及取消。先用单角色验证语义，原批处理仍用于增量/全量对照；销毁定义为清空库存、重置再生进度，不创建第二套遗留业务模型。
 2. **三角色竞争**：集合与身份查找、多角色事实、独立活动 owner、同刻完成与服务轮转；角色/背包各自子图，但仍单根事务发布。
@@ -241,7 +241,7 @@ Player 服务采用应用层持久轮转游标，按固定角色顺序选择下�
 
 ## 9. 验收场景与反例
 
-后续应运行的验收，**不是本轮已通过的结果**：
+以下为验收合同；各项的自动测试、真实 Console 证据及未实现边界见[验收记录](../experiments/resource-cycle-multiplayer-acceptance.md)：
 
 1. 目标 `1`、`n`、`all`，后者在命令接受时冻结；高频再生也不能提高目标。普通中间成功不请求输入，耗尽按感知规则唤醒，达标请求一次。
 2. 两人同 Due 抢最后一份，仅一人获得；另一个本周期失败结束；不同 Due 时较早完成者取得。无库存负数或重复发放。

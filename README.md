@@ -2,7 +2,7 @@
 
 DramaBoard is an experimental spacetime engine composed of three libraries: **Kernel** arbitrates and commits deterministic occurrences, **Spatial** models places, passages, moving entities and contacts, and **Host** drives Kernel steps. The core does not require a Player or an application server.
 
-Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred decisions, and [docs/README.md](docs/README.md) for design and evidence. [AGENTS.md](AGENTS.md) defines repository collaboration rules. The application-layer ResourceCycle example explores persistent predictions and dependency-driven invalidation, with a playable single-character Console mode, without changing the spacetime core.
+Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred decisions, and [docs/README.md](docs/README.md) for design and evidence. [AGENTS.md](AGENTS.md) defines repository collaboration rules. The application-layer ResourceCycle example explores persistent business state and dependency-driven runtime predictions, with a multiplayer gathering Console mode, without changing the spacetime core.
 
 ## Build and test
 
@@ -17,7 +17,7 @@ Source roots, generator/schema wiring and validation boundaries are documented i
 
 ## Day/night resource cycle experiment
 
-Two plants grow in their preferred light: sunflower needs three daylight hours, moongrass needs four night hours. Growth pauses across light changes; a fixed destruction script resets growth. Persistent predictors declare event dependencies, route invalidations, and recompute only affected predictions. The diagnostic view shows conditions, remaining work, predictions, subscriptions and process-local counters.
+Two resource patches regenerate in their preferred light: sunflower adds one unit every three daylight hours, moongrass every four night hours, until storage is full. Regeneration pauses across light changes and preserves progress; a fixed batch-only destruction script clears stock and resets progress. Runtime predictors declare event dependencies and recompute affected predictions. The diagnostic view shows conditions, stock, predictions, subscriptions and process-local counters.
 
 ```powershell
 # In-memory demonstration, including every intermediate diagnostic frame:
@@ -44,11 +44,15 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --play --store artifact
 pwsh -NoProfile -File scripts/Smoke-ResourceCyclePlay.ps1
 ```
 
-One gardener shares a nursery with sunflower and moongrass. The Console shows the full current state, inventory and blocked-action reasons. Enter `look`, `help`, `wait <1–24 hours>`, `gather sunflower`, `gather moongrass`, or `quit`. Logical time pauses while waiting for input; a scheduled wait lets natural events run until its completion. Only mature plants can be gathered, each producing one item and starting a new growth cycle. For a first outing, try `wait 6`, `gather moongrass`, `wait 9`, then gather both plants.
+Three characters share two resource patches and take turns using the same Console. Each has a separate inventory, skill level and timed activity. The full Markdown view identifies the active character, their current batch and pending perceptions, resource stock and other collectors; it hides other characters' skill levels and future completion times.
+
+Commands: `look`, `help`, `wait <1–24 hours>`, `gather sunflower <count|all>`, `gather moongrass <count|all>`, `continue`, `cancel`, and `quit`. `all` freezes the current stock as a finite target; it does not reserve stock. Each cycle consumes one available unit and grants one item. A cycle that finishes without stock ends the batch. Faster collectors can finish first; simultaneous completions use deterministic arbitration.
+
+Logical time pauses for each requested decision. A new collector or a stock transition to zero wakes affected collectors without resetting their activity. `continue` acknowledges perceptions and preserves the original deadline; `cancel` keeps collected items but abandons the unfinished cycle. Ordinary intermediate harvests continue automatically. Queries and invalid commands do not change the world or acknowledge perceptions. For a first outing, assign `gather sunflower all` to two characters, let the third `wait 1`, and respond to the joining/depletion notices.
 
 With `--store`, completed changes are saved automatically and the same command resumes the scene. Without it, progress exists only in memory. Play and batch stores are deliberately distinct; neither mode silently advances the other's store. This mode has no scripted destruction, movement, NPCs, LLM calls or GUI. Older ResourceCycle saves are not a compatibility target; use a fresh directory.
 
-See [the playable slice](docs/design/resource-cycle-play.md) and [its acceptance evidence](docs/experiments/resource-cycle-play-acceptance.md). Before expanding to a richer world, the next core direction is [persistent prediction processes and outputs](docs/design/prediction-objects-roadmap.md); its interface details remain a design draft.
+See [the multiplayer gathering rules](docs/design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](docs/experiments/resource-cycle-multiplayer-acceptance.md). The earlier [single-character slice](docs/design/resource-cycle-play.md) and [its acceptance evidence](docs/experiments/resource-cycle-play-acceptance.md) describe the preceding experiment, not the current timed gathering rules. The current prediction/storage contract is [runtime-derived predictions](docs/design/runtime-derived-predictions.md).
 
 ## Small world scenario
 

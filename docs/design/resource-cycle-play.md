@@ -1,6 +1,7 @@
 # ResourceCycle：单地点采集 Console 切片
 
 > 2026-10-27。用户已选择就地增强 `src/ResourceCycle`，同时独立研究预测对象核心重构。本片不增加移动，不依赖该重构完成。
+> 历史单角色切片：当前实现已采用[多人有限采集规则](resource-cycle-multiplayer-gathering.md)，本文的即时采集与单株成熟机制不再描述现行玩法。
 
 ## 目标和范围
 

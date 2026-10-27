@@ -14,11 +14,11 @@ try {
     hasStore = options.Store is not null;
     if (options.Help) {
         Console.WriteLine("""
-            ResourceCycle — 昼夜、植物生长与依赖驱动预测实验
+            ResourceCycle — 昼夜、资源再生与多人采集实验
 
             dotnet run --project src/ResourceCycle.Cli -- [options]
               --store PATH          创建或恢复单根存档；省略则仅内存运行
-              --play                单角色采集；可配合 --store 续玩，不接受批处理选项
+              --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
               --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
               --steps N             本次最多推进 N 次转换（默认 10000）
               --full-recompute      每次重算全部预测者，用于对照
@@ -77,7 +77,7 @@ try {
             completed++;
             var occurrence = kernel.LastCompletion!;
             foreach (CycleFact fact in occurrence.Event.Facts) {
-                Console.WriteLine($"{fact.At} | {fact.Kind} | {fact.TargetId}");
+                Console.WriteLine($"{fact.At} | {fact.Kind} | {fact.ResourceId ?? fact.ActorId ?? "world"}");
             }
             if (options.Trace) { Console.WriteLine(CycleDiagnostics.Render(kernel.World, metrics)); }
         }

@@ -2,42 +2,41 @@ using System.Text;
 
 namespace DramaBoard.ResourceCycle;
 
+/// <summary>Privileged diagnostics; unlike the player view this deliberately exposes all process state.</summary>
 public static class CycleDiagnostics {
     public static string Render(CycleWorld world, CycleMetrics? metrics = null) {
         var text = new StringBuilder();
         text.AppendLine($"# Resource cycle — {world.Time}");
         text.AppendLine($"Light: {(world.Light.IsDay ? "day" : "night")}; next change: {world.Light.NextChange}");
         text.AppendLine();
-        text.AppendLine("## Plants");
-        foreach (CyclePlant plant in world.Plants) {
-            string state = plant.IsMature ? "mature" : plant.ActiveSince is null ? "paused" : "growing";
-            text.AppendLine($"- {plant.Id}: {state}; grows during {(plant.GrowsInDaylight ? "day" : "night")}; effective growth {plant.ProgressAt(world.Time) / (double)CycleTime.Hour:0.###}/{plant.RequiredTicks / (double)CycleTime.Hour:0.###} h; cycle {plant.Generation}");
+        text.AppendLine("## Resources");
+        foreach (CycleResource resource in world.Resources) {
+            string state = resource.Stock == resource.Capacity ? "full" : resource.ActiveSince is null ? "paused" : "regenerating";
+            text.AppendLine($"- {resource.Id}: {resource.Stock}/{resource.Capacity}; {state}; regeneration {resource.ProgressAt(world.Time) / (double)CycleTime.Hour:0.###}/{resource.RegenerationTicks / (double)CycleTime.Hour:0.###} h; generation {resource.Generation}");
         }
         text.AppendLine();
-        if (world.Character is { } actor) {
-            text.AppendLine("## Character");
-            text.AppendLine($"- {actor.Id}: {(actor.WaitUntil is { } until ? $"waiting until {until}" : "ready for decision")}; request generation {actor.DecisionGeneration}");
-            text.AppendLine($"- backpack: {actor.Backpack}");
-            if (actor.LastResult is { } result) { text.AppendLine($"- last action: {result}"); }
-            text.AppendLine();
+        text.AppendLine("## Characters");
+        foreach (CycleCharacter actor in world.Characters) {
+            text.AppendLine($"- {actor.Id}: {actor.Activity?.ToString() ?? "idle"}; request generation {actor.DecisionGeneration}; needs decision={actor.NeedsDecision}");
+            text.AppendLine($"  - backpack: {actor.Backpack}; notices: [{string.Join(';', actor.Notices)}]");
+            text.AppendLine($"  - last result: {actor.LastResult}");
         }
+        text.AppendLine($"Last served: {world.Business.LastServedActorId ?? "none"}");
+        text.AppendLine();
         text.AppendLine("## Predictors and dependencies");
-        text.AppendLine("Predictions assume current conditions; watched events can invalidate them. Dependencies remain active even with no current prediction.");
+        text.AppendLine("Fixed coarse subscriptions are filtered by affected child identity; absent outputs remain subscribed.");
         foreach (string owner in CycleEngine.Owners(world)) {
             CyclePrediction? prediction = world.Forecasts.Predictions.SingleOrDefault(p => p.OwnerId == owner);
             text.AppendLine($"- {owner}: {(prediction is null ? "no current prediction" : $"{prediction.Kind}({prediction.TargetId}) at {prediction.Due}")}");
-            foreach (CycleBinding binding in world.Forecasts.Bindings.Where(b => b.OwnerId == owner)) {
-                text.AppendLine($"  - watches {binding.EventKind} target={binding.TargetId}");
-            }
+            text.AppendLine($"  - watches: {string.Join(", ", world.Forecasts.Bindings.Where(b => b.OwnerId == owner).Select(b => b.EventKind))}");
             if (metrics is not null) {
                 text.AppendLine($"  - recalculations: {metrics.RecalculationsByOwner.GetValueOrDefault(owner)}; last reason: {metrics.LastReasons.GetValueOrDefault(owner, "genesis/restored")}");
             }
         }
-        text.AppendLine();
         text.AppendLine($"Script: {world.Script.NextIndex}/{world.Script.Entries.Count} consumed");
         if (metrics is not null) {
             text.AppendLine($"Process counters: completion recalculations={metrics.Recalculations}; planning prediction checks={metrics.PredictionChecks}; routed={metrics.RoutedNotifications}; invalidations={metrics.Invalidations}");
-            text.AppendLine("Counters and last reasons cover this Kernel instance only. Completion includes pending recovery; genesis and cold-open rebuilding are excluded. Recovery never repeats player input or business planning.");
+            text.AppendLine("Counters cover this Kernel instance. Completion includes pending recovery; genesis and cold-open rebuild are excluded. Recovery never repeats Player input or planning.");
         }
         return text.ToString();
     }
