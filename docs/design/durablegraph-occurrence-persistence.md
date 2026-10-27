@@ -9,6 +9,8 @@
 
 ## 1. 保留什么，改变什么
 
+跨游戏版本的职责补充：应用层修订过程可以联合处理 State 与 pending E，选择透传、转换或显式结算；无需先调用当前 Kernel 恢复旧 E。下文普通恢复合同适用于与当前 callbacks 语义兼容的输入。修订的发布编排及未实施边界见[初始化与游戏修订决策](game-initialization-and-revision.md)，不据该设计宣称当前 adapter 已能迁移旧存档。
+
 保留统一 Forecast、确定性单 winner、1ms 时间、同刻因果序号、可信 rule 规划和 Game + Spatial 完整提交。Spatial 的运动、接触、导航与 Player 信息边界不变。
 
 改变的是 [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的 `AppendBatch → 安装世界` 接缝：历史成为 `S0 → E1 → S1`，正常恢复加载 S，只有 pending E 需要执行尚未完成的一次领域处理。

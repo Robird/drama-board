@@ -65,6 +65,8 @@ public sealed class SimulationKernel<TWorld, TCandidateData, TFact> {
 
     /// <summary>Completes only the published pending Event without Forecast, Plan or Player calls; pure Complete runs after Fold.
     /// Returns false if none exists. Cancellation is checked before recovery begins.</summary>
+    /// <remarks>The application must supply State and Event semantics compatible with the configured callbacks.
+    /// Game revision policy, including joint State/Event conversion, belongs to the application loading path.</remarks>
     public bool RecoverPending(CancellationToken cancellationToken = default) {
         BeginOperation();
         try {

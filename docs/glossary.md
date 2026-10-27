@@ -63,10 +63,20 @@
 | 事件记录（Event，E） | 一次发生项的原因 key、目标逻辑时点和有序业务事实的记录。不是一条 UI 消息。 | [OccurrenceEvent](../src/Kernel/Journal/OccurrenceEvent.cs) |
 | 状态发布（State publication，S） | 发布该边界的业务状态与 Kernel 游标。E/S 是两个发布边界，不能称为一次不可分割的磁盘事务。 | [CycleDurableRoot](../src/ResourceCycle/Persistence/CycleDurableRoot.cs)、`CycleDurableHistory` |
 | Kernel 游标（Kernel cursor） | 标明已完成的世界版本、逻辑时点与原因，和业务状态一起保存。不同于 Console 的角色服务游标。 | [KernelCursor](../src/Kernel/Simulation/KernelCursor.cs) |
-| 待完成事件（Pending E） | E 已发布，而对应 S 尚未完成发布的记录。恢复按记录 Fold、Complete、Validate，再发布 S；不重新仲裁、Plan 或询问控制器。 | [E/S 合同](design/durablegraph-occurrence-persistence.md)、[缓存恢复方案](design/runtime-derived-predictions.md) |
+| 待完成事件（Pending E） | E 已发布，而对应 S 尚未完成发布的记录。兼容语义下按记录 Fold、Complete、Validate，再发布 S；跨游戏修订由应用联合处理 State/E，不重新仲裁、Plan 或询问控制器。 | [E/S 合同](design/durablegraph-occurrence-persistence.md)、[游戏修订决策](design/game-initialization-and-revision.md)；修订管道尚未实现。 |
 | 单根发布（Single-root publication） | 在同一个 S 根下保存业务对象图及游标，使背包、资源、角色活动等共同组成一致边界。 | 当前 ResourceCycle 的 durable root；不表示 .NET Task、调用栈或外部 LLM 调用也自动持久化。 |
 
 单写“事件”时容易混淆：说明是在讲候选发生项、业务事实、E 记录、依赖绑定所匹配的事实种类，还是给角色的感知通知。它们可以相关，但不是同一个对象。
+
+## 初始化与版本修订
+
+| 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
+| --- | --- | --- |
+| 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图；可以组合程序化生成器，不负责升级旧世界。 | `CycleWorld.Create` / `CreatePlayable`；发布由 `CycleDurableHistory.Create` 负责。 |
+| 游戏修订号（GameRevision） | 领域图已应用的游戏语义修订进度，独立于 Schema 版本和模拟转换次数。 | 已选定整体递增整数方向，根字段尚未实现。 |
+| 游戏状态修订（Game revision） | 联合转换还原后的 State 与可选 pending E，明确活动进度和待完成工作的处置。 | [设计决策与编排草案](design/game-initialization-and-revision.md)，尚无运行管道。 |
+| 模拟世界版本（WorldVersion） | 模拟谱系及已完成转换次数，标识模拟位置；不表示游戏内容或规则修订。 | [WorldVersion](../src/Kernel/Simulation/WorldVersion.cs) |
+
 
 ## 空间
 

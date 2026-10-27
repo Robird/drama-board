@@ -127,12 +127,16 @@ public sealed class CycleWorld {
     }
     public CycleResource GetResource(string id) => Business.GetResource(id);
     public CycleCharacter GetCharacter(string id) => Business.GetCharacter(id);
+    /// <summary>Constructs a new batch world and rebuilds its runtime predictions; does not publish a save.</summary>
     public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) {
         ModelTime time = start ?? DefaultStart;
         var entries = (script ?? DefaultScript(time)).OrderBy(e => e.Due).ThenBy(e => e.ResourceId, StringComparer.Ordinal);
         return CycleEngine.Rebuild(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)),
             DefaultResources(time), new(entries)), time);
     }
+    /// <summary>Constructs a new playable world and rebuilds its runtime predictions; does not publish a save.</summary>
+    /// <remarks>This is a new-game factory, not a saved-world repair or revision operation.
+    /// Supplied character and resource instances are retained, not deep-cloned.</remarks>
     public static CycleWorld CreatePlayable(ModelTime? start = null, IEnumerable<CycleCharacter>? characters = null,
         IEnumerable<CycleResource>? resources = null) {
         ModelTime time = start ?? DefaultStart;

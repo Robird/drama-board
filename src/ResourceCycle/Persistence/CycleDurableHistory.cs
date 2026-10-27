@@ -46,6 +46,9 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
     }
 
     /// <summary>Opens exactly one root branch. Pending E is exposed; the Kernel explicitly recovers it.</summary>
+    /// <remarks>Currently requires State and Event business semantics compatible with the running application.
+    /// Schema restoration alone does not establish that compatibility. No game revision pipeline is invoked;
+    /// this path validates and rebuilds the State before exposing pending work.</remarks>
     public static CycleDurableHistory Open(string path) {
         Repository repository = Repository.OpenExisting(path, CreateModels());
         try {
@@ -76,6 +79,8 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         }
     }
 
+    /// <summary>Publishes the completion of exactly one pending occurrence.</summary>
+    /// <remarks>This is the normal Kernel publication path, not a standalone game revision entry point.</remarks>
     public void CommitState(CycleWorld nextState, KernelCursor nextCursor) {
         RequireUsable();
         try {

@@ -1,6 +1,7 @@
 namespace DramaBoard.Kernel.Simulation;
 
 /// <summary>Identifies one committed transition prefix within a simulation lineage.</summary>
+/// <remarks>This is a simulation position, not a Schema version or an application game revision.</remarks>
 [Atelia.DurableGraph.DurableType("DramaBoard.Kernel.WorldVersion", 1)]
 public readonly partial record struct WorldVersion {
     /// <summary>Initializes a version from a lineage and its committed transition count.</summary>
