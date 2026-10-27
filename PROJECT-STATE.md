@@ -31,7 +31,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **控制器方向已定**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态并构造上下文，本次局部会话与共享运行设施分开，文本/工具遵守角色可见性，pending E 不重做决定。当前接口为 `ICycleCharacterController.ChooseCommandAsync`；上下文 API、LLM 与工具持久化尚未施工。
 
-**初始化与修订方向已定**：[新游戏工厂与整体游戏修订](docs/design/game-initialization-and-revision.md) 以代码组装对象图，State/Event 各自记录同一编号体系的 `GameRevision`，加载时协调升级内存表示，pending 工作交给正常执行流程；升级不执行事件、不推进游标、不写盘。版本字段与管道尚未实施。下一基础切片验证真实跨图修订、旧 S/新 E 混合版本及磁盘中断重开；事件持久替代、多模块版本和通用框架按真实需求重开。
+**初始化与修订方向已定**：[新游戏工厂与整体游戏修订](docs/design/game-initialization-and-revision.md) 以代码组装对象图，State/Event 各自记录 `GameRevision`，加载升级内存后交给正常执行；升级不执行事件、不推进游标、不写盘。State 转换独立于 pending，混合版本先对齐再逐步转换，跨图用领域 ID；[交叉审阅](docs/research/game-revision-review.md)将草案收敛为应用普通函数。版本字段与管道尚未实施；下一基础切片用磁盘夹具验证跨图、多跳及中断恢复，不捏造生产兼容史。事件持久替代、多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
