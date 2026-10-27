@@ -1,4 +1,5 @@
 using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.ResourceCycle;
 using static DramaBoard.ResourceCycle.Tests.CycleTestSupport;
@@ -84,10 +85,8 @@ public sealed class CyclePersistenceTests {
 
             Assert.True(resumed.RecoverPending());
 
-            Assert.Equal(0, metrics.Recalculations);
+            Assert.True(metrics.Recalculations > 0);
             Assert.Equal(0, metrics.PredictionChecks);
-            Assert.Equal(0, metrics.RoutedNotifications);
-            Assert.Equal(0, metrics.Invalidations);
             Assert.Equal(pendingText, Describe(resumed.LastCompletion!.Event));
             Assert.Equal(uninterrupted.World.DescribeState(), resumed.World.DescribeState());
             Assert.Equal(uninterrupted.Cursor, resumed.Cursor);
@@ -136,6 +135,105 @@ public sealed class CyclePersistenceTests {
         Assert.True(resumed.RecoverPending());
         Assert.Equal(kernel.World.DescribeState(), resumed.World.DescribeState());
         Assert.Equal(kernel.Cursor, resumed.Cursor);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Prepared_runtime_wrapper_is_installed_only_after_successful_state_publication(bool failBeforeState) {
+        using var directory = new TemporaryStore();
+        CycleWorld initial = CycleWorld.Create();
+        string expectedState;
+        using (var history = CycleDurableHistory.Create(directory.Path, initial, InitialCursor(initial))) {
+            CycleWorld old = history.State;
+            string oldText = old.DescribeState();
+            var observed = new ObservePublication(history, failBeforeState);
+            var kernel = CycleEngine.CreateKernel(observed);
+            if (failBeforeState) {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(48)).AsTask());
+                Assert.IsType<InjectedCrash>(error.InnerException);
+                Assert.Same(old, history.State);
+                Assert.Same(old, kernel.World);
+                Assert.NotNull(history.PendingEvent);
+            } else {
+                Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
+                Assert.Same(observed.Prepared, history.State);
+                Assert.Same(observed.Prepared, kernel.World);
+                Assert.Null(history.PendingEvent);
+            }
+            Assert.Equal(oldText, old.DescribeState());
+            expectedState = Assert.IsType<CycleWorld>(observed.Prepared).DescribeState();
+        }
+
+        using var reopened = CycleDurableHistory.Open(directory.Path);
+        var recovered = CycleEngine.CreateKernel(reopened);
+        Assert.Equal(failBeforeState, recovered.RecoverPending());
+        Assert.Equal(expectedState, recovered.World.DescribeState());
+    }
+
+    [Fact]
+    public async Task Cold_pending_recovery_never_queries_candidates_or_player_and_repeats_only_pure_completion() {
+        using var directory = new TemporaryStore();
+        CycleWorld initial = CycleWorld.CreatePlayable();
+        var baseline = CycleEngine.CreateKernel(Memory(initial), decisionSource: new WaitSource());
+        Assert.Equal(StepStatus.Committed, await baseline.StepAsync(Hour(48)));
+        using (var history = CycleDurableHistory.Create(directory.Path, initial, InitialCursor(initial))) {
+            history.CommitEvent(baseline.LastCompletion!.Event);
+        }
+
+        using var reopened = CycleDurableHistory.Open(directory.Path);
+        var metrics = new CycleMetrics();
+        int completions = 0;
+        var kernel = new SimulationKernel<CycleWorld, CyclePrediction, CycleFact>(reopened, new SimulationRules(0, 1024),
+            [new ForbiddenPlanning()], CycleEngine.Fold,
+            (before, instant, facts, folded) => {
+                completions++;
+                return CycleEngine.Complete(before, instant, facts, folded, PredictionMode.Incremental, metrics);
+            }, CycleEngine.Validate);
+
+        Assert.True(kernel.RecoverPending());
+        Assert.Equal(1, completions);
+        Assert.True(metrics.Recalculations > 0);
+        Assert.Equal(0, metrics.PredictionChecks);
+        Assert.Equal(baseline.World.DescribeState(), kernel.World.DescribeState());
+        Assert.Equal(Describe(baseline.LastCompletion!.Event), Describe(kernel.LastCompletion!.Event));
+        Assert.False(kernel.RecoverPending());
+        Assert.Equal(1, completions);
+    }
+
+    private sealed class ObservePublication(CycleDurableHistory inner, bool failBeforeState)
+        : IOccurrenceHistory<CycleWorld, CycleFact> {
+        private readonly CycleWorld _old = inner.State;
+        public CycleWorld? Prepared { get; private set; }
+        public CycleWorld State => inner.State;
+        public KernelCursor Cursor => inner.Cursor;
+        public OccurrenceEvent<CycleFact>? PendingEvent => inner.PendingEvent;
+        public void CommitEvent(OccurrenceEvent<CycleFact> occurrence) {
+            Assert.Same(_old, inner.State);
+            inner.CommitEvent(occurrence);
+            Assert.Same(_old, inner.State);
+        }
+        public void CommitState(CycleWorld state, KernelCursor cursor) {
+            Prepared = state;
+            Assert.NotSame(_old, state);
+            Assert.Same(_old, inner.State);
+            if (failBeforeState) { throw new InjectedCrash(); }
+            inner.CommitState(state, cursor);
+            Assert.Same(state, inner.State);
+        }
+    }
+
+    private sealed class WaitSource : ICycleDecisionSource {
+        public ValueTask<CycleCommand> ChooseAsync(CycleWorld world, string actorId, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(CycleCommand.Wait(6));
+    }
+
+    private sealed class ForbiddenPlanning : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
+        public IReadOnlyList<OccurrenceCandidate<CyclePrediction>> Forecast(CycleWorld world, SimulationRules rules) =>
+            throw new InvalidOperationException("Recovery must not discover or arbitrate candidates.");
+        public ValueTask<TransitionDraft<CycleFact>> PlanSelectedAsync(CycleWorld world,
+            OccurrenceCandidate<CyclePrediction> winner, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Recovery must not plan or ask the Player again.");
     }
 
     private sealed class InjectedCrash : IOException { }

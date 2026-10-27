@@ -1,5 +1,7 @@
 # 昼夜与资源刷新：最小预测实例实验
 
+> 历史首片设计：下文的预测/绑定落盘、恢复不重算条款已由[运行时缓存方案](runtime-derived-predictions.md#9-resourcecycle-单角色迁移)取代。现状与验证见[缓存验收](../experiments/resource-cycle-runtime-cache-acceptance.md)；昼夜、生长及同刻优先级规则继续保留。
+
 日期：2026-10-27。状态：实验原型已实施；范围见[施工契约](../implementation/resource-cycle-prototype.md)，结果见[验收](../experiments/resource-cycle-acceptance.md)。实验规则不视为最终引擎 API。
 
 本文保留首片批处理实验的范围。后续同一应用已增加[单角色采集 Console](resource-cycle-play.md)；核心下一阶段方向见[预测对象草稿](prediction-objects-roadmap.md)。

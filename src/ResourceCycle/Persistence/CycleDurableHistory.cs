@@ -5,7 +5,7 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.ResourceCycle;
 
-/// <summary>Single-branch E/S history. Every State replaces one complete immutable world/cursor root.</summary>
+/// <summary>Single-branch E/S history: disk stores business/cursor, the session keeps a ready runtime world.</summary>
 /// <remarks>
 /// Exclusively owned by one Kernel. Any failed commit attempt retires this adapter; dispose and reopen
 /// before inspecting durable progress. Disposing never completes pending work or saves memory changes.
@@ -13,6 +13,7 @@ namespace DramaBoard.ResourceCycle;
 public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFact>, IDisposable {
     private readonly Repository _repository;
     private readonly WorkingCopy _work;
+    private CycleWorld _state;
     private OccurrenceEvent<CycleFact>? _pending;
     private bool _faulted;
     private bool _disposed;
@@ -21,17 +22,19 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         _repository = repository;
         _work = work;
         ReadRoot().Validate();
+        _state = CycleEngine.Rebuild(ReadRoot().Business, ReadRoot().Cursor.CurrentModelTime);
         LoadPending();
     }
 
-    public CycleWorld State { get { RequireUsable(); return ReadRoot().World; } }
+    public CycleWorld State { get { RequireUsable(); return _state; } }
     public KernelCursor Cursor { get { RequireUsable(); return ReadRoot().Cursor; } }
     public OccurrenceEvent<CycleFact>? PendingEvent { get { RequireUsable(); return _pending; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
 
     /// <summary>Creates a new repository at a previously nonexistent path and publishes its initial State.</summary>
     public static CycleDurableHistory Create(string path, CycleWorld world, KernelCursor cursor) {
-        var root = new CycleDurableRoot(world, cursor);
+        ArgumentNullException.ThrowIfNull(world);
+        var root = new CycleDurableRoot(world.Business, cursor);
         Repository repository = Repository.CreateNew(path, CreateModels());
         try {
             BranchId branch = repository.CreateRootBranchFromState("resource-cycle", root).Id;
@@ -82,8 +85,10 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
             if (nextCursor != expected) {
                 throw new ArgumentException("The State cursor must complete exactly the pending occurrence.", nameof(nextCursor));
             }
-            var nextRoot = new CycleDurableRoot(nextState, nextCursor);
+            CycleEngine.Validate(nextState, nextCursor.CurrentModelTime);
+            var nextRoot = new CycleDurableRoot(nextState.Business, nextCursor);
             _work.CommitState(nextRoot);
+            _state = nextState;
             _pending = null;
         } catch {
             _faulted = true;

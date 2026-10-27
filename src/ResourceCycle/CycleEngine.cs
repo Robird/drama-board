@@ -7,7 +7,7 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Concrete planned changes. Replay applies these values and never calls business handlers.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 2)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 1)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     public CycleEventKind Kind => _kind;
@@ -20,20 +20,18 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(5)] private List<CyclePlant> _changedPlants = [];
     [DurableField(6)] private CycleScript? _script;
     public CycleScript? Script => _script;
-    [DurableField(7)] private CycleForecasts? _forecasts;
-    public CycleForecasts? Forecasts => _forecasts;
-    [DurableField(8)] private CycleCharacter? _character;
+    [DurableField(7)] private CycleCharacter? _character;
     public CycleCharacter? Character => _character;
     public IReadOnlyList<CyclePlant> ChangedPlants => _changedPlants.AsReadOnly();
     internal CycleFact(CycleEventKind kind, ModelTime at, string targetId, CycleLight? light,
-        IEnumerable<CyclePlant> changedPlants, CycleScript? script, CycleForecasts? forecasts, CycleCharacter? character = null) {
-        _kind = kind; _at = at; _targetId = targetId; _light = light; _changedPlants = [.. changedPlants]; _script = script; _forecasts = forecasts; _character = character;
+        IEnumerable<CyclePlant> changedPlants, CycleScript? script, CycleCharacter? character = null) {
+        _kind = kind; _at = at; _targetId = targetId; _light = light; _changedPlants = [.. changedPlants]; _script = script; _character = character;
     }
-    public override string ToString() => $"{Kind}@{At.Ticks}:{TargetId};light={Light?.ToString() ?? "-"};plants=[{string.Join(';', _changedPlants)}];script={Script?.ToString() ?? "-"};forecasts={Forecasts?.ToString() ?? "-"}" +
+    public override string ToString() => $"{Kind}@{At.Ticks}:{TargetId};light={Light?.ToString() ?? "-"};plants=[{string.Join(';', _changedPlants)}];script={Script?.ToString() ?? "-"}" +
         (Character is null ? "" : $";character={Character}");
 }
 
-/// <summary>Measurements of this process's planning work, not durable world state.</summary>
+/// <summary>Runtime planning and cache-maintenance diagnostics; never durable business state.</summary>
 public sealed class CycleMetrics {
     private readonly Dictionary<string, long> _recalculationsByOwner = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _lastReasons = new(StringComparer.Ordinal);
@@ -55,15 +53,154 @@ public static class CycleEngine {
         IOccurrenceHistory<CycleWorld, CycleFact> history, PredictionMode mode = PredictionMode.Incremental, CycleMetrics? metrics = null,
         ICycleDecisionSource? decisionSource = null) {
         if (!Enum.IsDefined(mode)) { throw new ArgumentOutOfRangeException(nameof(mode)); }
-        return new(history, new SimulationRules(0, 1024), [new CycleRule(mode, metrics ?? new(), decisionSource)],
-            Fold, (_, _, _, folded) => folded, (world, _) => world.Validate());
+        CycleMetrics measurements = metrics ?? new();
+        return new(history, new SimulationRules(0, 1024), [new CycleRule(measurements, decisionSource)],
+            Fold, (before, instant, facts, folded) => Complete(before, instant, facts, folded, mode, measurements), Validate);
     }
+    /// <summary>Reconstructs all fixed routing and predictions from persistent business truth.</summary>
+    public static CycleWorld Rebuild(CycleBusinessState business, ModelTime boundaryTime) {
+        ArgumentNullException.ThrowIfNull(business);
+        business.Validate();
+        List<CycleBinding> bindings = [new("light", CycleEventKind.LightChanged, "world"), new("script", CycleEventKind.PlantDestroyed, "*")];
+        foreach (CyclePlant plant in business.Plants) {
+            string owner = $"plant:{plant.Id}";
+            bindings.Add(new(owner, CycleEventKind.LightChanged, "world"));
+            bindings.Add(new(owner, CycleEventKind.PlantDestroyed, plant.Id));
+            bindings.Add(new(owner, CycleEventKind.PlantMatured, plant.Id));
+            if (business.Character is not null) { bindings.Add(new(owner, CycleEventKind.PlantGathered, plant.Id)); }
+        }
+        if (business.Character is { } actor) {
+            string owner = $"actor:{actor.Id}";
+            bindings.Add(new(owner, CycleEventKind.WaitStarted, actor.Id));
+            bindings.Add(new(owner, CycleEventKind.WaitCompleted, actor.Id));
+            bindings.Add(new(owner, CycleEventKind.PlantGathered, "*"));
+        }
+        var world = new CycleWorld(business, new([], bindings));
+        world = new(business, world.Forecasts.WithPredictions(Owners(world).Select(owner => Predict(world, owner)).OfType<CyclePrediction>()));
+        Validate(world, boundaryTime);
+        return world;
+    }
+    /// <summary>Applies recorded business effects, leaving the preceding cache as scratch until Complete.</summary>
     public static CycleWorld Fold(CycleWorld world, LogicalInstant instant, CycleFact fact) {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(fact);
         if (fact.At != instant.ModelTime || fact.At < world.Time) {
             throw new InvalidOperationException("A fact must apply at its recorded time and cannot move time backwards.");
         }
-        return world.Replace(fact.At, fact.Light, fact.ChangedPlants, fact.Script, fact.Forecasts, fact.Character);
+        ValidateFact(world, fact);
+        return new(world.Business.Replace(fact.At, fact.Light, fact.ChangedPlants, fact.Script, fact.Character), world.Forecasts);
     }
+    /// <summary>Collects impacts across ordered facts and recomputes each affected owner once from final Business.</summary>
+    public static CycleWorld Complete(CycleWorld before, LogicalInstant instant, IReadOnlyList<CycleFact> facts,
+        CycleWorld folded) => Complete(before, instant, facts, folded, PredictionMode.Incremental);
+
+    public static CycleWorld Complete(CycleWorld before, LogicalInstant instant, IReadOnlyList<CycleFact> facts,
+        CycleWorld folded, PredictionMode mode, CycleMetrics? metrics = null) {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(folded);
+        if (!Enum.IsDefined(mode)) { throw new ArgumentOutOfRangeException(nameof(mode)); }
+        var dirty = new HashSet<string>(StringComparer.Ordinal);
+        CycleWorld intermediate = before;
+        foreach (CycleFact fact in facts) {
+            CycleWorld next = Fold(intermediate, instant, fact);
+            if (mode == PredictionMode.Incremental) {
+                foreach (CycleBinding binding in before.Forecasts.FindBindings(fact.Kind, fact.TargetId)) {
+                    if (metrics is not null) { metrics.RoutedNotifications++; }
+                    bool affected = binding.OwnerId is "light" or "script" ||
+                        (binding.OwnerId.StartsWith("actor:", StringComparison.Ordinal)
+                            ? !ReferenceEquals(intermediate.Character, next.Character)
+                            : !ReferenceEquals(intermediate.GetPlant(binding.OwnerId["plant:".Length..]), next.GetPlant(binding.OwnerId["plant:".Length..])));
+                    if (affected) {
+                        if (metrics is not null) { metrics.Invalidations++; }
+                        dirty.Add(binding.OwnerId);
+                    }
+                }
+                // A consumed producer must be reconsidered even when its old output was its only dependency.
+                dirty.Add(ConsumedOwner(intermediate, fact));
+            }
+            intermediate = next;
+        }
+        if (!HasSameFoldedBusiness(intermediate.Business, folded.Business)) {
+            throw new InvalidOperationException("The folded cycle business does not match the recorded fact sequence.");
+        }
+        if (mode == PredictionMode.Full) { dirty.UnionWith(Owners(folded)); }
+        Dictionary<string, CyclePrediction> predictions = before.Forecasts.Predictions.ToDictionary(p => p.OwnerId, StringComparer.Ordinal);
+        foreach (string owner in dirty.Order(StringComparer.Ordinal)) {
+            metrics?.Count(owner, $"complete@{instant.ModelTime}");
+            CyclePrediction? next = Predict(folded, owner);
+            if (next is null) { predictions.Remove(owner); }
+            else if (!predictions.TryGetValue(owner, out CyclePrediction? previous) || previous.ToString() != next.ToString()) { predictions[owner] = next; }
+        }
+        bool changed = predictions.Count != before.Forecasts.Predictions.Count ||
+            before.Forecasts.Predictions.Any(p => !predictions.TryGetValue(p.OwnerId, out CyclePrediction? current) || !ReferenceEquals(p, current));
+        CycleForecasts forecasts = changed ? before.Forecasts.WithPredictions(predictions.Values) : before.Forecasts;
+        return ReferenceEquals(forecasts, folded.Forecasts) ? folded : new(folded.Business, forecasts);
+    }
+    // Re-folding the same facts creates another container but retains the exact recorded child objects.
+    private static bool HasSameFoldedBusiness(CycleBusinessState expected, CycleBusinessState actual) =>
+        expected.Time == actual.Time && ReferenceEquals(expected.Light, actual.Light) &&
+        ReferenceEquals(expected.Script, actual.Script) && ReferenceEquals(expected.Character, actual.Character) &&
+        expected.Plants.Count == actual.Plants.Count &&
+        expected.Plants.Zip(actual.Plants).All(pair => ReferenceEquals(pair.First, pair.Second));
+
+    /// <summary>Checks business and existing cache outputs; full-rebuild comparisons independently check completeness.</summary>
+    public static void Validate(CycleWorld world, ModelTime boundaryTime) {
+        ArgumentNullException.ThrowIfNull(world);
+        world.Business.Validate();
+        if (world.Time != boundaryTime) { throw new InvalidOperationException("The business clock does not match the publication boundary."); }
+        string? previous = null;
+        foreach (CyclePrediction prediction in world.Forecasts.Predictions) {
+            if (prediction.Due < boundaryTime || !Enum.IsDefined(prediction.Kind) ||
+                (previous is not null && StringComparer.Ordinal.Compare(previous, prediction.OwnerId) >= 0) ||
+                !HasValidIdentity(world, prediction)) {
+                throw new InvalidOperationException("Invalid prediction set.");
+            }
+            previous = prediction.OwnerId;
+        }
+    }
+    private static bool HasValidIdentity(CycleWorld world, CyclePrediction prediction) => prediction.Kind switch {
+        CyclePredictionKind.ChangeLight => prediction.OwnerId == "light" && prediction.TargetId == "world" && prediction.Generation == 0,
+        CyclePredictionKind.DestroyPlant => prediction.OwnerId == "script" && prediction.Generation == world.Script.NextIndex &&
+            world.Script.NextIndex < world.Script.Entries.Count && world.Script.Entries[world.Script.NextIndex].PlantId == prediction.TargetId,
+        CyclePredictionKind.MaturePlant => prediction.OwnerId == $"plant:{prediction.TargetId}" &&
+            world.Plants.Any(plant => plant.Id == prediction.TargetId && plant.Generation == prediction.Generation && !plant.IsMature && plant.ActiveSince is not null),
+        CyclePredictionKind.CompleteWait or CyclePredictionKind.RequestDecision => world.Character is { } actor &&
+            prediction.OwnerId == $"actor:{actor.Id}" && prediction.TargetId == actor.Id && prediction.Generation == actor.DecisionGeneration &&
+            (prediction.Kind == CyclePredictionKind.CompleteWait) == (actor.WaitUntil is not null),
+        _ => false
+    };
+    private static string ConsumedOwner(CycleWorld world, CycleFact fact) => fact.Kind switch {
+        CycleEventKind.LightChanged => "light",
+        CycleEventKind.PlantDestroyed => "script",
+        CycleEventKind.PlantMatured => $"plant:{fact.TargetId}",
+        CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted or CycleEventKind.PlantGathered => $"actor:{world.Character!.Id}",
+        _ => throw new InvalidOperationException("Unknown cycle event kind.")
+    };
+
+    // Validate recorded effect identities and shape, without asking the Player or planning the action again.
+    private static void ValidateFact(CycleWorld world, CycleFact fact) {
+        if (!Enum.IsDefined(fact.Kind) || string.IsNullOrWhiteSpace(fact.TargetId) ||
+            fact.ChangedPlants.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != fact.ChangedPlants.Count ||
+            fact.ChangedPlants.Any(p => !world.Plants.Any(old => old.Id == p.Id)) ||
+            (fact.Character is not null && fact.Character.Id != world.Character?.Id)) {
+            throw new InvalidOperationException("A cycle fact contains an unknown kind, identity or duplicate plant effect.");
+        }
+        bool onePlant = fact.ChangedPlants.Count == 1 && fact.ChangedPlants[0].Id == fact.TargetId;
+        bool actorTarget = world.Character is { } actor && fact.TargetId == actor.Id;
+        bool valid = fact.Kind switch {
+            CycleEventKind.LightChanged => fact.TargetId == "world" && fact.Light is not null &&
+                fact.Script is null && fact.Character is null,
+            CycleEventKind.PlantMatured => onePlant && fact.Light is null && fact.Script is null && fact.Character is null,
+            CycleEventKind.PlantDestroyed => onePlant && fact.Light is null && fact.Script is not null && fact.Character is null,
+            CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted => actorTarget && fact.Character is not null &&
+                fact.Light is null && fact.Script is null && fact.ChangedPlants.Count == 0,
+            CycleEventKind.PlantGathered => onePlant && fact.Character is not null && fact.Light is null && fact.Script is null,
+            _ => false
+        };
+        if (!valid) { throw new InvalidOperationException("The recorded effects do not match the cycle event identity and shape."); }
+    }
+
     internal static IEnumerable<string> Owners(CycleWorld world) => new[] { "light", "script" }.Concat(world.Plants.Select(p => $"plant:{p.Id}"))
         .Concat(world.Character is { } actor ? [$"actor:{actor.Id}"] : Array.Empty<string>());
     internal static CyclePrediction? Predict(CycleWorld world, string owner) {
@@ -80,17 +217,15 @@ public static class CycleEngine {
                 ? new(owner, CyclePredictionKind.CompleteWait, actor.Id, until, actor.DecisionGeneration)
                 : new(owner, CyclePredictionKind.RequestDecision, actor.Id, world.Time, actor.DecisionGeneration);
         }
+        if (!owner.StartsWith("plant:", StringComparison.Ordinal)) { throw new InvalidOperationException("Unknown prediction owner."); }
         CyclePlant plant = world.GetPlant(owner["plant:".Length..]);
         if (plant.IsMature || plant.ActiveSince is not { } start) { return null; }
         return new(owner, CyclePredictionKind.MaturePlant, plant.Id,
             new ModelTime(checked(start.Ticks + plant.RequiredTicks - plant.AccumulatedTicks)), plant.Generation);
     }
 
-    private sealed class CycleRule(PredictionMode mode, CycleMetrics metrics, ICycleDecisionSource? decisionSource)
+    private sealed class CycleRule(CycleMetrics metrics, ICycleDecisionSource? decisionSource)
         : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
-        private object? _bindingIdentity;
-        private Dictionary<(CycleEventKind, string), CycleBinding[]> _index = [];
-
         public IReadOnlyList<OccurrenceCandidate<CyclePrediction>> Forecast(CycleWorld world, SimulationRules rules) {
             if (world.Forecasts.Predictions.Count == 0) { return []; }
             // Application priority precedes Kernel's seeded tie arbitration; owners of equal priority are stable-keyed.
@@ -172,45 +307,9 @@ public static class CycleEngine {
                     break;
                 default: throw new InvalidOperationException("Unknown prediction action.");
             }
-            CycleWorld changed = world.Replace(time, light, changedPlants, script, character: character);
-            HashSet<string> dirty = new(StringComparer.Ordinal);
-            if (mode == PredictionMode.Full) {
-                dirty.UnionWith(Owners(changed));
-            } else {
-                EnsureIndex(world.Forecasts);
-                foreach (CycleBinding binding in FindBindings(kind, targetId)) {
-                    metrics.RoutedNotifications++;
-                    // Fine filter: a mature plant does not depend on light anymore.
-                    bool affected = binding.OwnerId is "light" or "script" ||
-                        (binding.OwnerId.StartsWith("actor:", StringComparison.Ordinal)
-                            ? !ReferenceEquals(world.Character, changed.Character)
-                            : !ReferenceEquals(world.GetPlant(binding.OwnerId["plant:".Length..]), changed.GetPlant(binding.OwnerId["plant:".Length..])));
-                    if (affected) { metrics.Invalidations++; dirty.Add(binding.OwnerId); }
-                }
-                // Consumption invalidates its producer even if a future new action has no event binding.
-                dirty.Add(prediction.OwnerId);
-            }
-            Dictionary<string, CyclePrediction> predictions = world.Forecasts.Predictions.ToDictionary(p => p.OwnerId, StringComparer.Ordinal);
-            foreach (string owner in dirty.Order(StringComparer.Ordinal)) {
-                metrics.Count(owner, $"{kind}:{targetId}@{time}");
-                CyclePrediction? next = Predict(changed, owner);
-                if (next is null) { predictions.Remove(owner); }
-                else if (!predictions.TryGetValue(owner, out CyclePrediction? previous) || previous.ToString() != next.ToString()) { predictions[owner] = next; }
-            }
-            bool forecastsChanged = predictions.Count != world.Forecasts.Predictions.Count ||
-                world.Forecasts.Predictions.Any(p => !predictions.TryGetValue(p.OwnerId, out CyclePrediction? current) || !ReferenceEquals(p, current));
-            CycleForecasts? forecasts = forecastsChanged ? world.Forecasts.WithPredictions(predictions.Values) : null;
-            CycleFact fact = new(kind, time, targetId, light, changedPlants, script, forecasts, character);
+            CycleFact fact = new(kind, time, targetId, light, changedPlants, script, character);
             return new TransitionDraft<CycleFact>([fact]);
         }
         private static CandidateKey Key(CyclePrediction prediction) => new(prediction.ToString());
-        private void EnsureIndex(CycleForecasts forecasts) {
-            if (ReferenceEquals(_bindingIdentity, forecasts.BindingIdentity)) { return; }
-            _index = forecasts.Bindings.GroupBy(b => (b.EventKind, b.TargetId))
-                .ToDictionary(g => g.Key, g => g.OrderBy(b => b.OwnerId, StringComparer.Ordinal).ToArray());
-            _bindingIdentity = forecasts.BindingIdentity;
-        }
-        private IEnumerable<CycleBinding> FindBindings(CycleEventKind kind, string target) =>
-            _index.GetValueOrDefault((kind, target), []).Concat(_index.GetValueOrDefault((kind, "*"), []));
     }
 }

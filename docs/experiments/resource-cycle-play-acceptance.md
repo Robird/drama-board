@@ -1,5 +1,7 @@
 # ResourceCycle Console 采集切片验收
 
+> 本文保留采集首片验收；当前恢复为 Fold → Complete → S，允许重算派生预测，仍不重复输入。存储形状与本轮证据见[运行时缓存验收](resource-cycle-runtime-cache-acceptance.md)，本页旧 schema/测试数量不作为当前基线。
+
 > 2026-10-27。对应[可玩设计](../design/resource-cycle-play.md)。实现位于原 ResourceCycle 库与 CLI，没有修改 Kernel、Spatial 或上游仓库产品代码。
 
 ## 交付

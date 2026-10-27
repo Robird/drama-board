@@ -34,7 +34,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1
 
 The default world starts at D0 16:00 and runs through events up to absolute hour 88 (D3 16:00), without wall-clock delays. If no event lands on that boundary, the clock stays at the last committed event. Use `--help` for options, or `--snapshot PATH` for a final Markdown diagnostic. An existing store is resumed, never reset; use a new path to start again.
 
-This example has one DurableGraph root for the world subgraphs, predictions, bindings and Kernel cursor. Recorded events contain concrete changes; pending recovery does not rerun business planning. The batch experiment has no character or inventory. See [the design](docs/design/resource-cycle-demo.md) and [acceptance evidence](docs/experiments/resource-cycle-acceptance.md) for its original scope.
+This example has one DurableGraph root for business world subgraphs and the Kernel cursor. Predictions and fixed bindings are runtime caches, rebuilt on cold open and maintained after business facts are folded. Pending recovery repeats pure cache completion, never player input or business planning. See [runtime cache acceptance](docs/experiments/resource-cycle-runtime-cache-acceptance.md). The batch experiment has no character or inventory; its original scope is recorded in [the design](docs/design/resource-cycle-demo.md) and [original acceptance](docs/experiments/resource-cycle-acceptance.md).
 
 ## Play the gathering scene
 

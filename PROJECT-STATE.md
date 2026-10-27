@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-27；Kernel/Spatial 已按[缓存方案](docs/design/runtime-derived-predictions.md)改为运行时派生预测，磁盘只保存空间业务状态与决定。ResourceCycle 多角色化仍由另一会话并行推进，其真实预测维护迁移待协调。
+> 最近整理：2026-10-27；Kernel/Spatial 与 ResourceCycle 单角色实例均按[缓存方案](docs/design/runtime-derived-predictions.md)分离持久业务状态与运行时派生预测，冷开重建缓存。多角色化独立推进，不是缓存迁移的前置条件。
 
 ## 最终目标
 
@@ -12,7 +12,7 @@
 - **Kernel**：统一 Occurrence 仲裁；Plan → 业务 Fold → 纯 Complete → 带时间 Validate，发布独立 E/S，S 成功才安装；pending/Replay 同样准备派生缓存，不重做 Plan。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：[SpatialSimulation](src/Spatial/Simulation/SpatialSimulation.cs) 按 dirty 通道增量维护运行时 Contacts，genesis/冷开显式 Rebuild；磁盘 S 只保存 Business/cursor，E 只含 GraphSpatialFact。保留 contact floor、arrival ceil、严格内部掉头与 current-segment 消费；见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)和 [Graph 设计](docs/design/graph-spatial-world.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
-- **ResourceCycle 应用实例**：[CycleEngine](src/ResourceCycle/CycleEngine.cs) 依赖路由/dirty 重算与全量对照；[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根 E/S 与 pending 恢复；[Console](src/ResourceCycle.Cli/Program.cs) 提供批处理及 `--play` 单角色采集。角色/背包独立子图，输入源为运行时接口；见[可玩设计](docs/design/resource-cycle-play.md)。
+- **ResourceCycle 应用实例**：[CycleEngine](src/ResourceCycle/CycleEngine.cs) 在 Complete 内路由/dirty 重算，Rebuild 从 Business 重建预测与固定订阅；[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根只保存业务/游标，pending 恢复不重做 Player/Plan；见[缓存验收](docs/experiments/resource-cycle-runtime-cache-acceptance.md)。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 单角色采集，角色/背包独立子图。
 - **构建依赖**：Kernel/Spatial/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
 
 ## 当前焦点与下一步
@@ -25,9 +25,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**下一步**：协调 ResourceCycle 的真实维护迁移：把派生 Forecasts 移出 E/S、维护移到 Complete，分类固定路由与业务订阅，保留 Due/Kind 优先级、owner 消费与角色唤醒；验收须覆盖届时多角色轨迹与冷开。当前该实例仅机械适配共享接口。移除预测持久化不会自动更新已保存的 SpeedSnapshot/RequiredTicks，平衡参数如何作用于在途过程见缓存方案第 6 节，不隐式热更新。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
+**下一步**：在已拆分业务/缓存的 ResourceCycle 上独立推进 2–3 角色及 Console 轮转；扩展业务 owner、身份查找、行动完成和资源竞争时，继续以逐边界 Rebuild/oracle 和冷开轨迹作验收。缓存迁移已先在单角色完成，不必将两项重构捆绑。移除预测持久化不会自动更新已保存的 SpeedSnapshot/RequiredTicks，平衡参数如何作用于在途过程见缓存方案第 6 节，不隐式热更新。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
 
-Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话并行推进 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。当前核心分支不改该应用片；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
+Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话负责 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。该工作与单角色缓存重构共享应用文件，合入时需协调施工顺序；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
 当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

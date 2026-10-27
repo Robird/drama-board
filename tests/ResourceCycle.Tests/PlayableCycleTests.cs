@@ -24,6 +24,8 @@ public sealed class PlayableCycleTests {
 
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
 
+        AssertPredictions(kernel.World);
+
         Assert.Equal(Hour(22), kernel.World.Time);
         Assert.Equal(1, kernel.World.Character!.Backpack.Count("moongrass"));
         Assert.False(kernel.World.GetPlant("moongrass").IsMature);
@@ -147,8 +149,10 @@ public sealed class PlayableCycleTests {
         foreach (var kernel in new[] { incremental, full }) {
             await PerformWait(kernel);
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+            AssertPredictions(kernel.World);
             await PerformWait(kernel);
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+            AssertPredictions(kernel.World);
         }
 
         Assert.Equal(full.World.DescribeState(), incremental.World.DescribeState());
@@ -157,6 +161,50 @@ public sealed class PlayableCycleTests {
         Assert.Equal(1, incremental.World.Character!.Backpack.Count("sunflower"));
         Assert.Equal(1, incremental.World.Character!.Backpack.Count("moongrass"));
         Assert.True(incrementalMetrics.Recalculations < fullMetrics.Recalculations);
+    }
+
+    [Fact]
+    public async Task Cold_reopen_after_every_occurrence_preserves_full_playable_trace_and_choices() {
+        var baselineHistory = Memory(CycleWorld.CreatePlayable());
+        var baselineSource = StandardScript();
+        var baseline = CycleEngine.CreateKernel(baselineHistory, decisionSource: baselineSource);
+        var checkpoints = new List<(string State, KernelCursor Cursor, string Event)>();
+        for (int step = 0; step < 100; step++) {
+            Assert.Equal(StepStatus.Committed, await baseline.StepAsync(Hour(96)));
+            AssertPredictions(baseline.World);
+            checkpoints.Add((baseline.World.DescribeState(), baseline.Cursor, Describe(baseline.LastCompletion!.Event)));
+            if (baseline.World.Character!.Backpack.Count("sunflower") == 1) { break; }
+        }
+        Assert.Equal(4, baselineSource.Calls);
+        Assert.Equal(1, baseline.World.Character!.Backpack.Count("moongrass"));
+        Assert.Equal(1, baseline.World.Character.Backpack.Count("sunflower"));
+        Assert.Contains(baselineHistory.CompletedEvents.SelectMany(e => e.Facts), f => f.Kind == CycleEventKind.LightChanged);
+        Assert.Contains(baselineHistory.CompletedEvents.SelectMany(e => e.Facts), f => f.Kind == CycleEventKind.WaitCompleted);
+
+        using var directory = new TemporaryStore();
+        CycleWorld initial = CycleWorld.CreatePlayable();
+        using (CycleDurableHistory.Create(directory.Path, initial, InitialCursor(initial))) { }
+        var resumedSource = StandardScript();
+        foreach (var checkpoint in checkpoints) {
+            using var history = CycleDurableHistory.Open(directory.Path);
+            Assert.Same(history.State, history.State);
+            AssertPredictions(history.State);
+            var kernel = CycleEngine.CreateKernel(history, decisionSource: resumedSource);
+
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+
+            Assert.Same(kernel.World, history.State);
+            AssertPredictions(kernel.World);
+            Assert.Equal(checkpoint.State, kernel.World.DescribeState());
+            Assert.Equal(checkpoint.Cursor, kernel.Cursor);
+            Assert.Equal(checkpoint.Event, Describe(kernel.LastCompletion!.Event));
+        }
+        Assert.Equal(baselineSource.Calls, resumedSource.Calls);
+        using var final = CycleDurableHistory.Open(directory.Path);
+        AssertPredictions(final.State);
+        Assert.Equal(baseline.World.DescribeState(), final.State.DescribeState());
+        Assert.Equal(baseline.Cursor, final.Cursor);
+        Assert.Null(final.PendingEvent);
     }
 
     [Fact]
@@ -235,8 +283,9 @@ public sealed class PlayableCycleTests {
             Assert.True(resumed.RecoverPending());
 
             Assert.Equal(0, source.Calls);
-            Assert.Equal(0, metrics.Recalculations);
+            Assert.True(metrics.Recalculations > 0);
             Assert.Equal(0, metrics.PredictionChecks);
+            AssertPredictions(resumed.World);
             Assert.Equal(expectedEvent, Describe(resumed.LastCompletion!.Event));
             Assert.Equal(expectedState, resumed.World.DescribeState());
             Assert.Equal(expectedCursor, resumed.Cursor);
@@ -258,6 +307,7 @@ public sealed class PlayableCycleTests {
     private static async Task PerformWait(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
         Assert.Null(kernel.World.Character!.WaitUntil);
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+        AssertPredictions(kernel.World);
         Assert.NotNull(kernel.World.Character!.WaitUntil);
         await FinishWait(kernel);
     }
@@ -266,6 +316,7 @@ public sealed class PlayableCycleTests {
         for (int attempts = 0; attempts < 100; attempts++) {
             if (kernel.World.Character!.WaitUntil is null) { return; }
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+            AssertPredictions(kernel.World);
         }
         Assert.Fail("A bounded wait did not complete within 100 world events.");
     }

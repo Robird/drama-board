@@ -36,8 +36,8 @@ public static class CycleDiagnostics {
         text.AppendLine();
         text.AppendLine($"Script: {world.Script.NextIndex}/{world.Script.Entries.Count} consumed");
         if (metrics is not null) {
-            text.AppendLine($"Process planning counters: dirty recalculations={metrics.Recalculations}; execution prediction checks={metrics.PredictionChecks}; routed={metrics.RoutedNotifications}; invalidations={metrics.Invalidations}");
-            text.AppendLine("Counters and last reasons cover this process only; genesis calculations and recovered facts are not counted as planning.");
+            text.AppendLine($"Process counters: completion recalculations={metrics.Recalculations}; planning prediction checks={metrics.PredictionChecks}; routed={metrics.RoutedNotifications}; invalidations={metrics.Invalidations}");
+            text.AppendLine("Counters and last reasons cover this Kernel instance only. Completion includes pending recovery; genesis and cold-open rebuilding are excluded. Recovery never repeats player input or business planning.");
         }
         return text.ToString();
     }

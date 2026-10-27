@@ -45,4 +45,4 @@ Kernel、Spatial 及持久化专项分别经过独立只读审查，主线程核
 
 故障测试模拟实际 E 提交后抛错、S 调用前失败及非法 cursor 拒绝，并关闭重开 Repository；没有模拟断电或磁盘写入中途故障。陈旧缓存实验只证明当前代码从业务重新发现，没有模拟两个算法版本，更不承诺任意旧 pending 与新规则兼容。
 
-`SpeedSnapshot`、`ArrivalDue`、`RequiredTicks` 的业务语义保持。默认平衡值改变不会自动修改已保存的在途/生长过程。下一片协调 ResourceCycle 多角色实现，将真正的派生 Forecasts 移出 E/S、维护移至 Complete，并分类可重建路由与业务订阅决定。
+`SpeedSnapshot`、`ArrivalDue`、`RequiredTicks` 的业务语义保持。默认平衡值改变不会自动修改已保存的在途/生长过程。后续已先在单角色 ResourceCycle 完成 Forecasts/固定路由运行时迁移，见[应用缓存验收](resource-cycle-runtime-cache-acceptance.md)；多角色化为独立切片。

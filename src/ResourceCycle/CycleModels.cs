@@ -5,7 +5,6 @@ namespace DramaBoard.ResourceCycle;
 
 [DurableType("DramaBoard.ResourceCycle.EventKind", 2)]
 public enum CycleEventKind { PlantMatured, LightChanged, PlantDestroyed, WaitStarted, WaitCompleted, PlantGathered }
-[DurableType("DramaBoard.ResourceCycle.PredictionKind", 2)]
 public enum CyclePredictionKind { MaturePlant, ChangeLight, DestroyPlant, CompleteWait, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
@@ -76,59 +75,53 @@ public sealed partial class CycleScript : IDurableObject {
     public override string ToString() => $"{NextIndex}[{string.Join(';', _entries)}]";
 }
 
-/// <summary>A durable data binding, interpreted by the application's fixed dispatch table.</summary>
-[DurableType("DramaBoard.ResourceCycle.Binding", 2)]
-public sealed partial class CycleBinding : IDurableObject {
-    [DurableField(1)] private string _ownerId;
-    public string OwnerId => _ownerId;
-    [DurableField(2)] private CycleEventKind _eventKind;
-    public CycleEventKind EventKind => _eventKind;
-    [DurableField(3)] private string _targetId;
-    public string TargetId => _targetId;
-    public CycleBinding(string ownerId, CycleEventKind eventKind, string targetId) {
-        _ownerId = ownerId; _eventKind = eventKind; _targetId = targetId;
-    }
+/// <summary>A fixed runtime routing entry; owners remain subscribed while they have no prediction.</summary>
+public sealed class CycleBinding(string ownerId, CycleEventKind eventKind, string targetId) {
+    public string OwnerId { get; } = ownerId;
+    public CycleEventKind EventKind { get; } = eventKind;
+    public string TargetId { get; } = targetId;
     public override string ToString() => $"{OwnerId}:{EventKind}:{TargetId}";
 }
 
-[DurableType("DramaBoard.ResourceCycle.Prediction", 2)]
-public sealed partial class CyclePrediction : IDurableObject {
-    [DurableField(1)] private string _ownerId;
-    public string OwnerId => _ownerId;
-    [DurableField(2)] private CyclePredictionKind _kind;
-    public CyclePredictionKind Kind => _kind;
-    [DurableField(3)] private string _targetId;
-    public string TargetId => _targetId;
-    [DurableField(4)] private ModelTime _due;
-    public ModelTime Due => _due;
-    [DurableField(5)] private long _generation;
-    public long Generation => _generation;
+public sealed class CyclePrediction {
+    public string OwnerId { get; }
+    public CyclePredictionKind Kind { get; }
+    public string TargetId { get; }
+    public ModelTime Due { get; }
+    public long Generation { get; }
     internal CyclePrediction(string ownerId, CyclePredictionKind kind, string targetId, ModelTime due, long generation) {
-        _ownerId = ownerId; _kind = kind; _targetId = targetId; _due = due; _generation = generation;
+        OwnerId = ownerId; Kind = kind; TargetId = targetId; Due = due; Generation = generation;
     }
     public override string ToString() => $"{OwnerId}:{Kind}:{TargetId}:{Due.Ticks}:{Generation}";
 }
 
-/// <summary>Bindings survive periods in which their owner has no future prediction.</summary>
-[DurableType("DramaBoard.ResourceCycle.Forecasts", 1)]
-public sealed partial class CycleForecasts : IDurableObject {
-    [DurableField(1)] private List<CyclePrediction> _predictions = [];
-    [DurableField(2)] private List<CycleBinding> _bindings = [];
-    public IReadOnlyList<CyclePrediction> Predictions => _predictions.AsReadOnly();
-    public IReadOnlyList<CycleBinding> Bindings => _bindings.AsReadOnly();
-    internal object BindingIdentity => _bindings;
+/// <summary>Immutable derived predictions and fixed routing, never part of a durable graph.</summary>
+public sealed class CycleForecasts {
+    private readonly IReadOnlyList<CyclePrediction> _predictions;
+    private readonly IReadOnlyList<CycleBinding> _bindings;
+    private readonly Dictionary<(CycleEventKind, string), CycleBinding[]> _index;
+    public IReadOnlyList<CyclePrediction> Predictions => _predictions;
+    public IReadOnlyList<CycleBinding> Bindings => _bindings;
     internal CycleForecasts(IEnumerable<CyclePrediction> predictions, IEnumerable<CycleBinding> bindings) {
-        _predictions = [.. predictions.OrderBy(p => p.OwnerId, StringComparer.Ordinal)]; _bindings = [.. bindings];
+        _predictions = Array.AsReadOnly(predictions.OrderBy(p => p.OwnerId, StringComparer.Ordinal).ToArray());
+        _bindings = Array.AsReadOnly(bindings.ToArray());
+        _index = _bindings.GroupBy(b => (b.EventKind, b.TargetId))
+            .ToDictionary(g => g.Key, g => g.OrderBy(b => b.OwnerId, StringComparer.Ordinal).ToArray());
     }
-    private CycleForecasts(IEnumerable<CyclePrediction> predictions, List<CycleBinding> bindings) {
-        _predictions = [.. predictions.OrderBy(p => p.OwnerId, StringComparer.Ordinal)]; _bindings = bindings;
+    private CycleForecasts(IEnumerable<CyclePrediction> predictions, CycleForecasts previous) {
+        _predictions = Array.AsReadOnly(predictions.OrderBy(p => p.OwnerId, StringComparer.Ordinal).ToArray());
+        _bindings = previous._bindings;
+        _index = previous._index;
     }
-    internal CycleForecasts WithPredictions(IEnumerable<CyclePrediction> predictions) => new(predictions, _bindings);
+    internal CycleForecasts WithPredictions(IEnumerable<CyclePrediction> predictions) => new(predictions, this);
+    internal IEnumerable<CycleBinding> FindBindings(CycleEventKind kind, string target) =>
+        _index.GetValueOrDefault((kind, target), []).Concat(_index.GetValueOrDefault((kind, "*"), []));
     public override string ToString() => $"predictions[{string.Join(';', _predictions)}]bindings[{string.Join(';', _bindings)}]";
 }
 
-[DurableType("DramaBoard.ResourceCycle.World", 2)]
-public sealed partial class CycleWorld : IDurableObject {
+/// <summary>Persistent world truth; predictions and dispatch indexes are derived after loading.</summary>
+[DurableType("DramaBoard.ResourceCycle.BusinessState", 1)]
+public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public ModelTime Time => _time;
     [DurableField(2)] private CycleLight _light;
@@ -136,73 +129,28 @@ public sealed partial class CycleWorld : IDurableObject {
     [DurableField(3)] private List<CyclePlant> _plants = [];
     [DurableField(4)] private CycleScript _script;
     public CycleScript Script => _script;
-    [DurableField(5)] private CycleForecasts _forecasts;
-    public CycleForecasts Forecasts => _forecasts;
-    [DurableField(6)] private CycleCharacter? _character;
+    [DurableField(5)] private CycleCharacter? _character;
     public CycleCharacter? Character => _character;
     public IReadOnlyList<CyclePlant> Plants => _plants.AsReadOnly();
-    public static ModelTime DefaultStart => new(16 * CycleTime.Hour);
-    internal CycleWorld(ModelTime time, CycleLight light, List<CyclePlant> plants, CycleScript script, CycleForecasts forecasts, CycleCharacter? character = null) {
-        _time = time; _light = light; _plants = plants; _script = script; _forecasts = forecasts; _character = character;
+    internal CycleBusinessState(ModelTime time, CycleLight light, IEnumerable<CyclePlant> plants,
+        CycleScript script, CycleCharacter? character = null) {
+        _time = time; _light = light; _plants = [.. plants]; _script = script; _character = character;
     }
     public CyclePlant GetPlant(string id) => _plants.Single(p => p.Id == id);
-    internal CycleWorld Replace(ModelTime time, CycleLight? light = null, IEnumerable<CyclePlant>? changedPlants = null,
-        CycleScript? script = null, CycleForecasts? forecasts = null, CycleCharacter? character = null) {
+    internal CycleBusinessState Replace(ModelTime time, CycleLight? light = null, IEnumerable<CyclePlant>? changedPlants = null,
+        CycleScript? script = null, CycleCharacter? character = null) {
         List<CyclePlant> plants = _plants;
         if (changedPlants is not null) {
             Dictionary<string, CyclePlant> changes = changedPlants.ToDictionary(p => p.Id, StringComparer.Ordinal);
+            if (changes.Keys.Any(id => !_plants.Any(p => p.Id == id))) {
+                throw new InvalidOperationException("A fact cannot replace an unknown plant.");
+            }
             if (changes.Count > 0) { plants = _plants.Select(p => changes.GetValueOrDefault(p.Id, p)).ToList(); }
         }
-        return new(time, light ?? Light, plants, script ?? Script, forecasts ?? Forecasts, character ?? Character);
-    }
-    public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) {
-        ModelTime time = start ?? DefaultStart;
-        if (time.Ticks < 0) { throw new ArgumentOutOfRangeException(nameof(start)); }
-        bool isDay = CycleTime.IsDay(time);
-        List<CyclePlant> plants = [
-            new("moongrass", false, 4 * CycleTime.Hour, 0, isDay ? null : time, false, 0),
-            new("sunflower", true, 3 * CycleTime.Hour, 0, isDay ? time : null, false, 0)
-        ];
-        var entries = (script ?? DefaultScript(time)).OrderBy(e => e.Due).ThenBy(e => e.PlantId, StringComparer.Ordinal).ToArray();
-        if (entries.Any(e => e.Due < time || !plants.Any(p => p.Id == e.PlantId))) {
-            throw new ArgumentException("Script entries require an existing plant and a due time at or after genesis.", nameof(script));
-        }
-        List<CycleBinding> bindings = [new("light", CycleEventKind.LightChanged, "world"), new("script", CycleEventKind.PlantDestroyed, "*")];
-        foreach (CyclePlant plant in plants) {
-            bindings.Add(new($"plant:{plant.Id}", CycleEventKind.LightChanged, "world"));
-            bindings.Add(new($"plant:{plant.Id}", CycleEventKind.PlantDestroyed, plant.Id));
-            bindings.Add(new($"plant:{plant.Id}", CycleEventKind.PlantMatured, plant.Id));
-        }
-        var world = new CycleWorld(time, new(isDay, CycleTime.NextLightChange(time)), plants, new(entries), new([], bindings));
-        world = world.Replace(time, forecasts: world.Forecasts.WithPredictions(CycleEngine.Owners(world).Select(owner => CycleEngine.Predict(world, owner)).OfType<CyclePrediction>()));
-        world.Validate();
-        return world;
-    }
-    public static CycleWorld CreatePlayable(ModelTime? start = null, string actorId = "gardener") {
-        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
-        CycleWorld world = Create(start, []);
-        var bindings = world.Forecasts.Bindings.ToList();
-        foreach (CyclePlant plant in world.Plants) {
-            bindings.Add(new($"plant:{plant.Id}", CycleEventKind.PlantGathered, plant.Id));
-        }
-        string owner = $"actor:{actorId}";
-        bindings.Add(new(owner, CycleEventKind.WaitStarted, actorId));
-        bindings.Add(new(owner, CycleEventKind.WaitCompleted, actorId));
-        bindings.Add(new(owner, CycleEventKind.PlantGathered, "*"));
-        world = world.Replace(world.Time, character: new(actorId, new()), forecasts: new([], bindings));
-        world = world.Replace(world.Time, forecasts: world.Forecasts.WithPredictions(CycleEngine.Owners(world).Select(id => CycleEngine.Predict(world, id)).OfType<CyclePrediction>()));
-        world.Validate();
-        return world;
-    }
-    private static IEnumerable<CycleDestruction> DefaultScript(ModelTime start) {
-        yield return new("sunflower", new(checked(start.Ticks + 7 * CycleTime.Hour)));
-        yield return new("moongrass", new(checked(start.Ticks + 14 * CycleTime.Hour)));
-        yield return new("sunflower", new(checked(start.Ticks + 17 * CycleTime.Hour)));
-        yield return new("moongrass", new(checked(start.Ticks + 30 * CycleTime.Hour)));
-        yield return new("sunflower", new(checked(start.Ticks + 47 * CycleTime.Hour)));
+        return new(time, light ?? Light, plants, script ?? Script, character ?? Character);
     }
     public void Validate() {
-        if (Time.Ticks < 0 || Light is null || Script is null || Forecasts is null || Light.NextChange < Time) {
+        if (Time.Ticks < 0 || Light is null || Script is null || Light.NextChange < Time) {
             throw new InvalidOperationException("Invalid cycle world clock or subgraphs.");
         }
         if (_plants.Count != 2 || _plants.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != _plants.Count) {
@@ -219,11 +167,53 @@ public sealed partial class CycleWorld : IDurableObject {
             Script.Entries.Skip(Script.NextIndex).Any(e => e.Due < Time || !_plants.Any(p => p.Id == e.PlantId))) {
             throw new InvalidOperationException("Invalid script position.");
         }
-        if (Forecasts.Predictions.Any(p => p.Due < Time) || Forecasts.Predictions.Select(p => p.OwnerId).Distinct(StringComparer.Ordinal).Count() != Forecasts.Predictions.Count) {
-            throw new InvalidOperationException("Invalid prediction set.");
-        }
         Character?.Validate(Time);
     }
-    public string DescribeState() => $"time={Time.Ticks};light={Light};plants=[{string.Join(';', _plants)}];script={Script};{Forecasts}" +
+}
+
+/// <summary>A ready runtime snapshot; Fold may temporarily retain the preceding cache until Complete.</summary>
+public sealed class CycleWorld {
+    public CycleBusinessState Business { get; }
+    public CycleForecasts Forecasts { get; }
+    public ModelTime Time => Business.Time;
+    public CycleLight Light => Business.Light;
+    public IReadOnlyList<CyclePlant> Plants => Business.Plants;
+    public CycleScript Script => Business.Script;
+    public CycleCharacter? Character => Business.Character;
+    public static ModelTime DefaultStart => new(16 * CycleTime.Hour);
+    internal CycleWorld(CycleBusinessState business, CycleForecasts forecasts) {
+        Business = business ?? throw new ArgumentNullException(nameof(business));
+        Forecasts = forecasts ?? throw new ArgumentNullException(nameof(forecasts));
+    }
+    public CyclePlant GetPlant(string id) => Business.GetPlant(id);
+    public static CycleWorld Create(ModelTime? start = null, IEnumerable<CycleDestruction>? script = null) {
+        ModelTime time = start ?? DefaultStart;
+        if (time.Ticks < 0) { throw new ArgumentOutOfRangeException(nameof(start)); }
+        bool isDay = CycleTime.IsDay(time);
+        List<CyclePlant> plants = [
+            new("moongrass", false, 4 * CycleTime.Hour, 0, isDay ? null : time, false, 0),
+            new("sunflower", true, 3 * CycleTime.Hour, 0, isDay ? time : null, false, 0)
+        ];
+        var entries = (script ?? DefaultScript(time)).OrderBy(e => e.Due).ThenBy(e => e.PlantId, StringComparer.Ordinal).ToArray();
+        if (entries.Any(e => e.Due < time || !plants.Any(p => p.Id == e.PlantId))) {
+            throw new ArgumentException("Script entries require an existing plant and a due time at or after genesis.", nameof(script));
+        }
+        var business = new CycleBusinessState(time, new(isDay, CycleTime.NextLightChange(time)), plants, new(entries));
+        return CycleEngine.Rebuild(business, time);
+    }
+    public static CycleWorld CreatePlayable(ModelTime? start = null, string actorId = "gardener") {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        CycleWorld world = Create(start, []);
+        return CycleEngine.Rebuild(world.Business.Replace(world.Time, character: new(actorId, new())), world.Time);
+    }
+    private static IEnumerable<CycleDestruction> DefaultScript(ModelTime start) {
+        yield return new("sunflower", new(checked(start.Ticks + 7 * CycleTime.Hour)));
+        yield return new("moongrass", new(checked(start.Ticks + 14 * CycleTime.Hour)));
+        yield return new("sunflower", new(checked(start.Ticks + 17 * CycleTime.Hour)));
+        yield return new("moongrass", new(checked(start.Ticks + 30 * CycleTime.Hour)));
+        yield return new("sunflower", new(checked(start.Ticks + 47 * CycleTime.Hour)));
+    }
+    public void Validate() => CycleEngine.Validate(this, Time);
+    public string DescribeState() => $"time={Time.Ticks};light={Light};plants=[{string.Join(';', Plants)}];script={Script};{Forecasts}" +
         (Character is null ? "" : $";character={Character}");
 }

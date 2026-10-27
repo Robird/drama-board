@@ -13,7 +13,7 @@
 - [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs) 通过 Rebuild 全量发现，Complete 保留逐 fact 旧/新范围收集与局部维护。
 - [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的 Complete 在业务 Fold 后返回准备好的运行时世界。
 - [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs) 要求 State 返回已安装实例；不能把 State getter 改为每次创建 wrapper。
-- ResourceCycle 仍把 Forecasts 存进世界及 facts，且另一个会话正在做多角色化。本片只机械适配共享 Kernel 签名，随后再协调迁移。
+- Kernel/Spatial 首片仅机械适配 ResourceCycle；随后单角色实例已迁移，见第 9 节。多角色化不构成缓存拆分的技术前置条件。
 
 ## 2. 哪些保存，哪些重建
 
@@ -125,7 +125,7 @@ Replay 每批同样 Fold → Complete → Validate；其初始输入必须已经
 
 Kernel 与 Spatial 可在签名确认后并行；持久化支撑与现有测试迁移分配独立文件；主线程负责集成构建、Schema Verify、最终验证。必要的上游修改以真实阻塞为依据，当前没有发现必须改 DurableGraph 的证据。
 
-ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原则，把预测维护移出 Plan，移除 E/S 中的派生 Forecasts。Bindings 是否也是代码/业务对象可重建的索引应单独分类：固定路由可重建，显式动态订阅若承载业务决定则保存决定。以届时的多角色实现为准，不盲搬当前单角色代码。必须保留 Due/Kind 优先级、已消费 owner 的重算、无输出过程的订阅和角色唤醒。
+ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原则，把预测维护移出 Plan，移除 E/S 中的派生 Forecasts。Bindings 是否也是代码/业务对象可重建的索引应单独分类：固定路由可重建，显式动态订阅若承载业务决定则保存决定。用户已选择先在单角色版本完成迁移，再独立扩展多角色；原协调要求针对同文件并行编辑，不是架构依赖。必须保留 Due/Kind 优先级、已消费 owner 的重算、无输出过程的订阅和角色唤醒。
 
 本片完成边界是 **Kernel + Spatial 缓存/恢复闭环及其他消费者机械适配**；不夹带运动参数热更新、资源进度语义重设计、通用缓存框架或持久预测可选开关。之后再做 ResourceCycle 的实际迁移与候选读取命名收敛。
 
@@ -141,3 +141,16 @@ ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原
 8. 运行 solution Release 构建、Schema Verify 与全套测试；记录本轮实际结果，不能沿用基线的通过数量作为新证据。
 
 实施与验证结果见[缓存验收记录](../experiments/runtime-derived-predictions-acceptance.md)。第 7 项采用缺失/陈旧运行时缓存重新落盘并冷开的定向实验，证明读取当前业务重新发现；没有为测试增设产品算法注入接口，也不声称验证了任意跨算法版本兼容。
+
+## 9. ResourceCycle 单角色迁移
+
+本后续片不等待多角色化，仍保留批处理与单角色采集两种入口。实现与证据见[ResourceCycle 缓存验收](../experiments/resource-cycle-runtime-cache-acceptance.md)。
+
+- `CycleBusinessState` 保存 Time、Light、Plants、Script 与可选 Character；角色和背包继续作为独立业务子图。`CycleDurableRoot` 只保存 Business 与 Cursor。
+- `CycleWorld` 是普通不可变运行时包装，持有 Business 与 Forecasts；固定 bindings 及其索引由当前业务身份和代码生成，不是动态订阅决定。`CyclePrediction`、`CycleForecasts`、`CycleBinding` 不再注册为 durable 类型。
+- `CycleFact` 仅保存已决定的业务子图变化。Plan 不再生成预测表；Fold 应用业务，Complete 按有序 facts 收集受影响 owner、合并 dirty 后从最终业务状态重算。已消费 owner 必须包含在内，无当前输出的植物仍保留订阅。
+- `Rebuild(business, boundaryTime)` 负责初始世界与冷开；运行中候选读取仍只投影缓存。按 Due 再 Kind 的应用优先级保留，同刻先成熟、光照、销毁，再等待完成，最后决策。
+- History 打开时重建一次；State 返回稳定运行时实例。S 落盘成功后才安装传入 wrapper。pending 恢复只折叠已记录业务并完成派生缓存，不再询问 Player，也不重新选择行动。
+- 验收同时比较增量、全量维护、从业务重建与独立业务公式 oracle；真实磁盘 S/E-only 恢复继续相同轨迹。缓存重算计数允许包含 pending Complete，不再把“恢复零派生计算”视为合同。
+
+本片不引入多角色调度、动态订阅、参数热更新、通用缓存框架或旧档兼容。`RequiredTicks`、等待截止时间等业务决定仍保存，删除预测不会隐式改变已开始的过程。

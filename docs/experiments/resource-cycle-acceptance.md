@@ -1,5 +1,7 @@
 # ResourceCycle 原型与试运行
 
+> 本文保留首片实际验收。预测/绑定持久化与恢复零重算的结论属于旧实现，当前已改为运行时缓存，见[后续验收](resource-cycle-runtime-cache-acceptance.md)。本页测试数量与计量不代表当前构建。
+
 日期：2026-10-27。范围为应用层预测失效实验，无角色、物品、空间重构或模型 API 调用。设计见[资源周期](../design/resource-cycle-demo.md)，本轮规则见[施工契约](../implementation/resource-cycle-prototype.md)。
 
 ## 交付与关键裁决
