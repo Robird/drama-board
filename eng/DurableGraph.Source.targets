@@ -1,0 +1,23 @@
+<Project>
+  <Import Project="$(DurableGraphSourceRoot)/src/DurableGraph/build/Atelia.DurableGraph.targets"
+          Condition="Exists('$(DurableGraphSourceRoot)/src/DurableGraph/build/Atelia.DurableGraph.targets')" />
+  <Target Name="ValidateDramaBoardDurableGraphSources" BeforeTargets="CollectPackageReferences;PrepareForBuild">
+    <Error Condition="'$(UseStorageSources)' != 'true'"
+           Text="DramaBoard builds require UseStorageSources=true from Directory.Build.rsp. Build/test from dotnet or pass the source properties explicitly in hosts that do not load response files." />
+    <Error Condition="!$([System.IO.Path]::IsPathFullyQualified('$(DurableGraphSourceRoot)'))"
+           Text="DurableGraphSourceRoot must be an absolute path to the durable-graph checkout." />
+    <Error Condition="!Exists('$(DurableGraphSourceRoot)/src/DurableGraph/build/Atelia.DurableGraph.targets')"
+           Text="DurableGraph source checkout not found at '$(DurableGraphSourceRoot)'. Place durable-graph beside this repository or set DurableGraphSourceRoot. Package fallback is not supported." />
+    <Error Condition="!Exists('$(StorageSourceRoot)/src/HeadStore/HeadStore.csproj')"
+           Text="Storage source checkout not found at '$(StorageSourceRoot)'. Place atelia-storage beside this repository or set StorageSourceRoot; its HEAD must match DurableGraph's eng/StorageDependency.props." />
+  </Target>
+  <!-- Package targets assume tools/net10.0; resolve the referenced source tool instead. -->
+  <Target Name="ResolveDramaBoardDurableGraphBuildTool" BeforeTargets="DurableGraphProcessSchemaHistory">
+    <MSBuild Projects="$(DurableGraphSourceRoot)/src/DurableGraph.Build/DurableGraph.Build.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" PropertyName="_DurableGraphBuildTool" />
+    </MSBuild>
+  </Target>
+</Project>

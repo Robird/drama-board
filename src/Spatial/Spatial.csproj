@@ -5,8 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Atelia.DurableGraph" Version="$(DurableGraphPackageVersion)" />
     <ProjectReference Include="..\Kernel\Kernel.csproj" />
   </ItemGroup>
 
+  <Import Project="../../eng/DurableGraph.Source.props" />
+  <Import Project="../../eng/DurableGraph.Source.targets" />
 </Project>

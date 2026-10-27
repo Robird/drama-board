@@ -1,4 +1,5 @@
 #requires -Version 7.0
+# Historical fixed-package reproduction only. Current development builds sibling source directly.
 [CmdletBinding()]
 param(
     [string] $DurableGraphSource = (Join-Path $PSScriptRoot '../../durable-graph'),
@@ -6,7 +7,7 @@ param(
     [string] $CheckoutRoot = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/fixed-c549124'),
     [string] $CandidateDirectory = (Join-Path $PSScriptRoot '../artifacts/durablegraph-integration/core-candidate'),
     [ValidatePattern('^0\.0\.0-dramaboard\.[0-9]{8}\.gc549124\.[1-9][0-9]*$')]
-    [string] $PackageVersion = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Directory.Build.props') -Raw)).Project.PropertyGroup.DurableGraphPackageVersion
+    [string] $PackageVersion = '0.0.0-dramaboard.20261027.gc549124.1'
 )
 
 $ErrorActionPreference = 'Stop'

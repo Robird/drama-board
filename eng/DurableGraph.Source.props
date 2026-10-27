@@ -1,0 +1,11 @@
+<Project>
+  <Import Project="$(DurableGraphSourceRoot)/src/DurableGraph/build/Atelia.DurableGraph.props"
+          Condition="Exists('$(DurableGraphSourceRoot)/src/DurableGraph/build/Atelia.DurableGraph.props')" />
+  <ItemGroup>
+    <ProjectReference Include="$(DurableGraphSourceRoot)/src/DurableGraph/DurableGraph.csproj" />
+    <ProjectReference Include="$(DurableGraphSourceRoot)/src/DurableGraph.Generator/DurableGraph.Generator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="$(DurableGraphSourceRoot)/src/DurableGraph.Build/DurableGraph.Build.csproj"
+                      ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

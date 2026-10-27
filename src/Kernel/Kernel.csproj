@@ -2,7 +2,6 @@
   <PropertyGroup>
     <DurableGraphGenerateDefinitions>true</DurableGraphGenerateDefinitions>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Atelia.DurableGraph" Version="$(DurableGraphPackageVersion)" />
-  </ItemGroup>
+  <Import Project="../../eng/DurableGraph.Source.props" />
+  <Import Project="../../eng/DurableGraph.Source.targets" />
 </Project>

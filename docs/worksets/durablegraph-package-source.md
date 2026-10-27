@@ -1,6 +1,8 @@
 # DurableGraph 固定包来源
 
-当前时空核心通过真实 NuGet 包消费固定源码；[Prepare-DurableGraph.ps1](../../scripts/Prepare-DurableGraph.ps1)准备闭包，调用方随后执行 restore/build/test。新版验收及其边界见[独立化验收](../build-log/0027-spacetime-extraction.md)。
+> 历史验收说明：2026-10-27 后续开发决定已切换为[相邻源码引用](../source-dependencies.md)，下文固定包流程不再是当前构建入口。旧脚本保留复现来源，不会切换当前项目回包模式；精确旧消费者入口请使用提交历史。
+
+本次历史验收通过真实 NuGet 包消费固定源码；[Prepare-DurableGraph.ps1](../../scripts/Prepare-DurableGraph.ps1)准备闭包，调用方随后执行 restore/build/test。新版验收及其边界见[独立化验收](../build-log/0027-spacetime-extraction.md)。
 
 ## 固定输入
 

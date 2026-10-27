@@ -6,15 +6,14 @@ Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred d
 
 ## Build and test
 
-Requires .NET SDK **10.0.201**, PowerShell 7, and the fixed sibling `durable-graph` / `atelia-storage` source revisions. Prepare the package feed, then build and test either equivalent solution entry point:
+Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` source checkouts. Build and test either equivalent solution entry point directly:
 
 ```powershell
-pwsh -File scripts/Prepare-DurableGraph.ps1
-dotnet build DramaBoard.slnx -t:Rebuild -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
-dotnet test DramaBoard.slnx --no-build --no-restore -m:1
+dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
+dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-The fixed package source and its validation rules are documented in [DurableGraph package source](docs/worksets/durablegraph-package-source.md). Both solutions contain only Kernel, Spatial, Host and their tests. The default workflow needs no Node, browser, Player, or Server.
+Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). Both solutions contain only Kernel, Spatial, Host and their tests. The default workflow needs no package preparation, Node, browser, Player, or Server.
 
 ## Small world scenario
 

@@ -12,7 +12,7 @@
 - **Kernel**：统一 Occurrence 仲裁；scratch-fold 后发布独立 E/S，S 成功才安装世界；有限 [KernelCursor](src/Kernel/Simulation/KernelCursor.cs) 只支持完成已记录 pending。见 [SimulationKernel](src/Kernel/Simulation/SimulationKernel.cs) 与 [E/S 设计](docs/design/durablegraph-occurrence-persistence.md)。
 - **Spatial**：Graph Slice 1/2 已实现；contact 使用 floor，arrival 使用 ceil，保留严格内部掉头与 current-segment 配对消费。见 [GraphSpatialState](src/Spatial/State/GraphSpatialState.cs)、[Graph 设计](docs/design/graph-spatial-world.md) 和 [contact 证据](docs/worksets/passage-contact-floor.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
-- **构建依赖**：Kernel/Spatial 使用固定 `c549124` 普通包，来源和复现规则见 [包准备说明](docs/worksets/durablegraph-package-source.md)。新包生成、schema 与真实模型资格见[验收记录](docs/build-log/0027-spacetime-extraction.md)。
+- **构建依赖**：Kernel/Spatial 直接引用相邻 DurableGraph 当前源码，同时接入 Generator 与 schema Build 工具；Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
 
 ## 当前焦点与下一步
 
@@ -35,5 +35,5 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 按需导航与验证
 
-- 两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 只含三核心及其测试。固定依赖由 [Prepare-DurableGraph.ps1](scripts/Prepare-DurableGraph.ps1) 准备；[README](README.md)与 [CI](.github/workflows/ci.yml)只构建验证核心。使用精确 SDK 10.0.201 与仓内隔离包源。
+- 两份等价入口 [DramaBoard.slnx](DramaBoard.slnx) 与 [DramaBoard.Local.slnx](DramaBoard.Local.slnx) 只含三核心及其测试。[README](README.md)与 [CI](.github/workflows/ci.yml)直接构建源码依赖，使用精确 SDK 10.0.201；第三方包来自 nuget.org，保留仓内包缓存。旧包准备脚本仅保留历史复现用途，当前不要求发包。
 - 文档入口：[docs/README](docs/README.md)。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

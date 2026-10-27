@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <DurableGraphPackageVersion>0.0.0-dramaboard.20261027.gc549124.1</DurableGraphPackageVersion>
+    <DurableGraphSourceRoot Condition="'$(DurableGraphSourceRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../durable-graph'))</DurableGraphSourceRoot>
     <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)artifacts/nuget-packages</RestorePackagesPath>
     <TargetFramework>net10.0</TargetFramework>

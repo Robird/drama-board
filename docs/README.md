@@ -9,7 +9,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 - [DurableGraph occurrence persistence](design/durablegraph-occurrence-persistence.md): retained E/S seam and finite pending recovery contract; this is not a disk persistence adapter.
 - [Kernel occurrence baseline](implementation/kernel-occurrence-baseline.md): scheduler evidence, with superseded storage clauses identified.
 - [Passage contact floor timing](worksets/passage-contact-floor.md): retained Spatial floor-contact and ceil-arrival semantics.
-- [DurableGraph package source](worksets/durablegraph-package-source.md): fixed package preparation and consumption path.
+- [DurableGraph source dependencies](source-dependencies.md): current sibling-source development entry, including generator and schema verification.
 
 ## Current work
 

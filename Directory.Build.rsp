@@ -1,0 +1,9 @@
+# Global properties must reach both NuGet's restore graph and MSBuild's project graph.
+# %MSBuildThisFileDirectory% is the directory of this response file, even from another cwd.
+-property:UseStorageSources=true
+-property:StorageSourceRoot="%MSBuildThisFileDirectory%../atelia-storage"
+-property:ShouldUnsetParentConfigurationAndPlatform=false
+# dotnet build supplies a separate restore-property set; keep it identical.
+-restoreProperty:UseStorageSources=true
+-restoreProperty:StorageSourceRoot="%MSBuildThisFileDirectory%../atelia-storage"
+-restoreProperty:ShouldUnsetParentConfigurationAndPlatform=false
