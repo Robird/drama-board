@@ -25,9 +25,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**下一步**：在已拆分业务/缓存的 ResourceCycle 上独立推进 2–3 角色及 Console 轮转；扩展业务 owner、身份查找、行动完成和资源竞争时，继续以逐边界 Rebuild/oracle 和冷开轨迹作验收。缓存迁移已先在单角色完成，不必将两项重构捆绑。移除预测持久化不会自动更新已保存的 SpeedSnapshot/RequiredTicks，平衡参数如何作用于在途过程见缓存方案第 6 节，不隐式热更新。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。
+**下一步**：ResourceCycle 多角色片采用用户提出的库存/再生、独立耗时采集、有限目标及他人加入感知方向；先审定[多人采集规则草案](docs/design/resource-cycle-multiplayer-gathering.md)，再分片实施。团队建议三个角色、周期到期竞争、活动与注意力正交、`all` 冻结目标；这些补充规则尚未实现或试玩验收。继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收；原型稳定后再评估抽取基础规则包，不先扩建引擎框架。
 
-Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，避免另一套 Demo 的维护面。另一会话负责 2–3 角色、同一 Human Console 轮流控制；动作完成或被打断才唤醒交互。该工作与单角色缓存重构共享应用文件，合入时需协调施工顺序；近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
+Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；用户选定就地增强 ResourceCycle，同一 Human Console 轮流控制多个角色。新的加入感知需求扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。近期不增加移动，复杂 Markdown 事件窗口和 AgentCore 子状态发布按后续切片裁决。
 
 当前构建包含三个核心、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
@@ -38,10 +38,10 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **多角色与 Player**：无移动的 ResourceCycle 多角色片已由用户分到另一会话并行推进，同刻轮转/资源竞争规则在该片裁决；本分支不以核心重构阻断它。更多地点、LLM Player 与长期 Plan 尚未重开，旧实现保持归档。
+- **多角色与 Player**：无移动的 ResourceCycle 多角色片按上述草案推进；更多地点、LLM Player 与长期 Plan 尚未重开，旧实现保持归档。概率产出、主动后台插话和通用规则包按草案的真实需求条件重开。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
-- **Spatial 扩展**：预测对象迁移已进入当前核心方向；空间拓扑、运动数学和更多途中互动不随之自动重设计，需独立需求再重开。
+- **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。
 - **持久 Script VM**：研究材料已归档；只有需要持久执行状态时才重新选择方案。
 
 ## 按需导航与验证
