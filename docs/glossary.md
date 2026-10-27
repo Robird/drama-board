@@ -104,6 +104,8 @@ ResourceCycle 当前“单地点”是玩法范围说明，尚未接入这些空
 | 采集批次（Gathering batch） | 一次接受的有限成功目标，内部可以连续执行多个周期；`all` 固定为接受时库存快照，不是预留。 | Gather 种类的 `CycleActivity`：`TargetCount`、`CompletedCount`、`SelectedAll` |
 | 采集周期（Gathering cycle） | 尝试取得一份资源的耗时过程；到期成功才扣一份库存并给一件物品，失败可结束批次。 | `CycleActivity.DurationTicks`、`Due`、`CycleIndex`；成功事件 `GatherYielded`。 |
 | 背包（Backpack） | 角色已经获得的物品数量，独立于资源点库存。 | `CycleBackpack` |
+| 总件数容量（Unit capacity） | 所有物品数量之和的可选上限，不是物品种类数或资源点容量；null 表示无玩法限制，0 表示零容量。 | `CycleBackpack.UnitCapacity` 持久化；`TotalCount` 派生；默认 demo 不设置上限。 |
+| 库存接纳（Inventory admission） | 当前快照能否接纳单份物品的局部查询；不预留，成功/失败如何改变活动由游戏决定。 | `CheckAdd` / `BackpackAddResult`；单项表示上限优先于总容量上限。 |
 | 内核（Kernel） | 通用发生项调度、转换与发布协议。 | `src/Kernel` |
 | 空间层（Spatial） | 客观图空间、运动及交会规则。 | `src/Spatial` |
 | 宿主（Host） | 驱动 Kernel 运行的程序层职责，不等同于角色控制器。 | [SimulationHost](../src/Host/SimulationHost.cs)、应用 Console 入口 |

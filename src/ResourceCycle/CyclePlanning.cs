@@ -98,8 +98,11 @@ internal static class CyclePlanning {
     }
     private static CycleFact CompleteGather(CycleWorld world, CycleCharacter actor, CycleActivity activity, ModelTime time) {
         CycleResource previous = world.GetResource(activity.ResourceId!);
-        string? failure = previous.Stock == 0 ? "本周期结算时资源已空" :
-            !actor.Backpack.CanAdd(previous.ItemId) ? "背包该物品数量已达上限" : null;
+        string? failure = previous.Stock == 0 ? "本周期结算时资源已空" : actor.Backpack.CheckAdd(previous.ItemId) switch {
+            BackpackAddResult.ItemQuantityLimit => "背包该物品数量已达上限",
+            BackpackAddResult.CapacityLimit => "背包总件数已达容量上限",
+            _ => null
+        };
         if (failure is not null) {
             string result = $"{previous.Name} 采集结束：目标 {activity.TargetCount}，取得 {activity.CompletedCount}；{failure}。该次结算后余量 {previous.Stock}/{previous.Capacity}。";
             return new(CycleEventKind.GatherFinished, time, actor.Id, previous.Id,

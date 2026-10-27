@@ -71,6 +71,9 @@ internal static class PlayView {
         }
         text.AppendLine();
         text.AppendLine("## 你的背包");
+        if (character.Backpack.UnitCapacity is { } capacity) {
+            text.AppendLine($"- 容量：{character.Backpack.TotalCount} / {capacity} 件。");
+        }
         if (character.Backpack.Items.Count == 0) {
             text.AppendLine("- 空。");
         } else {

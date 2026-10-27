@@ -11,7 +11,7 @@ public sealed class BackpackTests {
         var backpack = new CycleBackpack(initial);
         IReadOnlyDictionary<string, int> originalView = backpack.Items;
 
-        Assert.True(backpack.CanAdd("herb"));
+        Assert.Equal(BackpackAddResult.Allowed, backpack.CheckAdd("herb"));
         CycleBackpack added = backpack.Add("herb");
 
         Assert.NotSame(backpack, added);
@@ -19,18 +19,18 @@ public sealed class BackpackTests {
         Assert.Equal(quantity, originalView.GetValueOrDefault("herb"));
         Assert.Equal(quantity + 1, added.Count("herb"));
         Assert.Equal(3, added.Count("other"));
-        Assert.Equal(quantity < int.MaxValue - 1, added.CanAdd("herb"));
-        Assert.True(backpack.CanAdd("herb"));
+        Assert.Equal(quantity < int.MaxValue - 1 ? BackpackAddResult.Allowed : BackpackAddResult.ItemQuantityLimit, added.CheckAdd("herb"));
+        Assert.Equal(BackpackAddResult.Allowed, backpack.CheckAdd("herb"));
     }
 
     [Fact]
     public void Full_item_rejects_another_unit_without_blocking_other_items() {
         var backpack = new CycleBackpack(new Dictionary<string, int> { ["herb"] = int.MaxValue });
 
-        Assert.False(backpack.CanAdd("herb"));
+        Assert.Equal(BackpackAddResult.ItemQuantityLimit, backpack.CheckAdd("herb"));
         Assert.Throws<OverflowException>(() => backpack.Add("herb"));
         Assert.Equal(int.MaxValue, backpack.Count("herb"));
-        Assert.True(backpack.CanAdd("ore"));
+        Assert.Equal(BackpackAddResult.Allowed, backpack.CheckAdd("ore"));
         Assert.Equal(1, backpack.Add("ore").Count("ore"));
         Assert.Equal(0, backpack.Count("ore"));
     }
@@ -43,11 +43,89 @@ public sealed class BackpackTests {
         supplied["ore"] = 9;
 
         Assert.Equal(2, backpack.Count("herb"));
-        Assert.True(backpack.CanAdd("herb"));
+        Assert.Equal(BackpackAddResult.Allowed, backpack.CheckAdd("herb"));
         Assert.Equal(0, backpack.Count("ore"));
         Assert.Equal(0, backpack.Count("HERB"));
         CycleBackpack added = backpack.Add("HERB");
         Assert.Equal(2, added.Count("herb"));
         Assert.Equal(1, added.Count("HERB"));
+    }
+
+    [Fact]
+    public void Different_items_share_capacity_and_add_cannot_bypass_rejection() {
+        var backpack = new CycleBackpack(new Dictionary<string, int> { ["ore"] = 2 }, unitCapacity: 3);
+        IReadOnlyDictionary<string, int> originalView = backpack.Items;
+
+        Assert.Equal(BackpackAddResult.Allowed, backpack.CheckAdd("herb"));
+        CycleBackpack full = backpack.Add("herb");
+
+        Assert.Equal(3L, full.UnitCapacity);
+        Assert.Equal(3L, full.TotalCount);
+        Assert.Equal(BackpackAddResult.CapacityLimit, full.CheckAdd("herb"));
+        Assert.Equal(BackpackAddResult.CapacityLimit, full.CheckAdd("new-item"));
+        Assert.Throws<InvalidOperationException>(() => full.Add("ore"));
+        Assert.Equal(2, full.Count("ore"));
+        Assert.Equal(1, full.Count("herb"));
+        Assert.Equal(2L, backpack.TotalCount);
+        Assert.Equal(0, backpack.Count("herb"));
+        Assert.False(originalView.ContainsKey("herb"));
+        Assert.Equal(3L, backpack.UnitCapacity);
+    }
+
+    [Fact]
+    public void Zero_capacity_is_valid_but_accepts_nothing() {
+        var backpack = new CycleBackpack(unitCapacity: 0);
+
+        Assert.Equal(0L, backpack.TotalCount);
+        Assert.Equal(BackpackAddResult.CapacityLimit, backpack.CheckAdd("herb"));
+        Assert.Throws<InvalidOperationException>(() => backpack.Add("herb"));
+        Assert.Empty(backpack.Items);
+        backpack.Validate();
+    }
+
+    [Fact]
+    public void Totals_use_long_and_item_limit_takes_precedence_over_total_capacity() {
+        var items = new Dictionary<string, int> { ["ore"] = int.MaxValue, ["herb"] = int.MaxValue };
+        var unlimited = new CycleBackpack(items);
+        var full = new CycleBackpack(items, unitCapacity: 2L * int.MaxValue);
+
+        Assert.Null(unlimited.UnitCapacity);
+        Assert.Equal(2L * int.MaxValue, unlimited.TotalCount);
+        Assert.Equal(BackpackAddResult.Allowed, unlimited.CheckAdd("new-item"));
+        Assert.Equal(2L * int.MaxValue + 1, unlimited.Add("new-item").TotalCount);
+        Assert.Equal(BackpackAddResult.ItemQuantityLimit, full.CheckAdd("ore"));
+        Assert.Equal(BackpackAddResult.CapacityLimit, full.CheckAdd("new-item"));
+        Assert.Throws<OverflowException>(() => full.Add("ore"));
+    }
+
+    [Theory]
+    [InlineData(-1L)]
+    [InlineData(0L)]
+    [InlineData(1L)]
+    public void Construction_rejects_invalid_capacity_or_contents_exceeding_it(long capacity) {
+        Assert.Throws<InvalidOperationException>(() => new CycleBackpack(
+            new Dictionary<string, int> { ["ore"] = 2 }, capacity));
+    }
+
+    [Theory]
+    [InlineData("", 1)]
+    [InlineData(" ", 1)]
+    [InlineData("herb", 0)]
+    [InlineData("herb", -1)]
+    public void Construction_rejects_invalid_entries(string itemId, int count) {
+        Assert.Throws<InvalidOperationException>(() => new CycleBackpack(new Dictionary<string, int> { [itemId] = count }));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Queries_and_add_reject_invalid_item_identities(string? itemId) {
+        var backpack = new CycleBackpack();
+
+        Assert.ThrowsAny<ArgumentException>(() => backpack.Count(itemId!));
+        Assert.ThrowsAny<ArgumentException>(() => backpack.CheckAdd(itemId!));
+        Assert.ThrowsAny<ArgumentException>(() => backpack.Add(itemId!));
+        Assert.Empty(backpack.Items);
     }
 }

@@ -17,7 +17,7 @@ Start with the repository's [current project state](../PROJECT-STATE.md). The ac
 
 ## Current work
 
-The active refactoring direction is [gradual modularization](implementation/modularization-plan.md): organize ResourceCycle responsibilities first, preserve gameplay and E/S recovery, then evaluate a bounded inventory extraction. Backpack acceptance, pure Console view/input, recorded fact application and prediction maintenance boundaries are implemented; see [acceptance evidence](experiments/modularization-acceptance.md). A total-unit capacity probe is next, followed by an evidence-based assembly extraction decision.
+The active refactoring direction is [gradual modularization](implementation/modularization-plan.md): logical boundaries and the total-unit capacity probe are implemented; see [acceptance evidence](experiments/modularization-acceptance.md). Next is the Inventory assembly extraction with explicit model registration and independent tests. The default demo remains unlimited; saves containing Backpack schema v1/v2 are not supported by the new v3 model.
 
 The application-layer ResourceCycle example implements shared resource stock, day/night regeneration and three characters with independent timed gathering through one Console, using Mud as a reference rather than migrating it in place. See [the multiplayer rules](design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](experiments/resource-cycle-multiplayer-acceptance.md). The original [resource cycle design](design/resource-cycle-demo.md), [prototype scope](implementation/resource-cycle-prototype.md), [batch acceptance](experiments/resource-cycle-acceptance.md) and [single-character slice](design/resource-cycle-play.md) describe preceding experiments.
 

@@ -25,7 +25,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)，先整理 ResourceCycle 内部职责，再依据收益提取领域模块；不强制等第二个完整游戏，也不预建通用组件框架。背包接纳、Console 纯视图/解析、事实应用与预测维护的逻辑边界已落地，证据见[模块化验收](docs/experiments/modularization-acceptance.md)；下一步用总件数容量探针验证库存变体，之后裁决程序集提取。具体合同、Schema/修订待决项及验收只在[渐进重构方案](docs/implementation/modularization-plan.md)维护，默认 demo 玩法不随探针改变。
+**当前焦点**：按已采纳的[分层与组合设计](docs/design/layering-and-composition.md)推进模块化，逻辑边界与总件数容量探针已通过[验收](docs/experiments/modularization-acceptance.md)，默认 demo 仍使用无限背包。下一步提取独立 Inventory 程序集及局部测试，由游戏显式组合模型注册；符号映射、持久身份及旧开发存档支持范围集中在[渐进重构方案](docs/implementation/modularization-plan.md)。完成后审计 A–D 全部要求，不预建通用组件框架。
 
 重构保留现有采集合同：`all` 冻结接受时库存；加入/耗尽暂停时间请求响应，continue 保留活动，cancel 保留已得成果；同刻全部完成先于输入。跨模块变化保持单根结算，正常 Step 先准备并校验，再发布 E/S；继续以逐边界 Rebuild/oracle、同刻竞争及真实 S/E-only 冷开轨迹验收。
 

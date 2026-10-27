@@ -101,7 +101,7 @@ try {
         ? "已停止。已完成的进度已保存，使用同一 --store 路径可继续。"
         : "已停止。内存中的进度未保存。");
     return 130;
-} catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or OverflowException) {
+} catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or OverflowException) {
     Console.Error.WriteLine($"ResourceCycle: {error.Message}");
     return 1;
 }

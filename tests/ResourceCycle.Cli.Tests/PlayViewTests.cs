@@ -7,6 +7,21 @@ public sealed class PlayViewTests {
     private static ModelTime Hour(int hour) => new(hour * CycleTime.Hour);
 
     [Fact]
+    public void Finite_capacity_is_visible_only_to_its_owner() {
+        CycleCharacter viewer = new("a", "Alice",
+            backpack: new(new Dictionary<string, int> { ["ore"] = 1 }, unitCapacity: 3));
+        CycleCharacter other = new("b", "Bob", backpack: new(unitCapacity: 5));
+        CycleWorld world = World(viewer, other);
+
+        string observation = PlayView.Render(world, "a");
+        Assert.Contains("- 容量：1 / 3 件。", observation);
+        Assert.Equal(observation, PlayView.Render(World(viewer,
+            new("b", "Bob", backpack: new(unitCapacity: 99))), "a"));
+        Assert.Contains("- 容量：0 / 5 件。", PlayView.Render(world, "b"));
+        Assert.DoesNotContain("- 容量：", PlayView.Render(World(new CycleCharacter("a", "Alice")), "a"));
+    }
+
+    [Fact]
     public void Other_characters_private_state_does_not_change_the_observation() {
         CycleCharacter viewer = new("a", "Alice", notices: [Joined()]);
         CycleCharacter other = new("b", "Bob", activity: Gather(1), nextActivityId: 2);
