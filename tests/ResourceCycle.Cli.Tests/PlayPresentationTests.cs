@@ -30,8 +30,8 @@ public sealed class PlayPresentationTests {
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
         using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:details\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
-        int clears = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => clears++);
+        int boundaries = 0;
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => boundaries++);
 
         CycleControllerOperation operation = await controller.ChooseCommandAsync(context, default);
 
@@ -43,60 +43,63 @@ public sealed class PlayPresentationTests {
         Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),
             observation => Assert.Same(context.Observation, observation));
         Assert.Equal(before, world.DescribeState());
-        Assert.Equal(1, clears);
+        Assert.Equal(1, boundaries);
     }
 
     [Fact]
-    public async Task New_time_or_actor_clears_but_same_time_interactions_remain() {
+    public async Task New_time_or_actor_adds_boundary_but_same_time_interactions_remain() {
         var layout = new RecordingLayout("test");
         var presentation = new PlayPresentation(layout);
         CycleWorld earlier = CycleGameFactory.CreatePlayable(new ModelTime(16 * CycleTime.Hour)).World;
         CycleWorld later = CycleGameFactory.CreatePlayable(new ModelTime(17 * CycleTime.Hour)).World;
         using var input = new StringReader("wait 1\n:help\nwait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
-        int clears = 0;
+        int boundaries = 0;
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output,
-            () => clears++);
+            () => boundaries++);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
-        Assert.Equal(1, clears);
+        Assert.Equal(1, boundaries);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "b"), default);
-        Assert.Equal(2, clears);
+        Assert.Equal(2, boundaries);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(later, "b"), default);
-        Assert.Equal(3, clears);
+        Assert.Equal(3, boundaries);
 
         // Terminal observations use this same boundary even though no further input is requested.
         controller.RenderObservation(CycleDecisionContext.Create(
             CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b").Observation);
-        Assert.Equal(4, clears);
+        Assert.Equal(4, boundaries);
         Assert.Equal(5, layout.Screens.Count);
     }
 
     [Fact]
-    public async Task Survival_clears_on_first_delivery_and_context_identity_even_without_time_advancing() {
+    public async Task Survival_separates_first_delivery_and_new_context_even_without_time_advancing() {
         var layout = new RecordingLayout("test");
         using var input = new StringReader("wait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
-        int clears = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, input, output,
-            () => clears++) { StartupText = "startup-help" };
+        var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, input, output) {
+            StartupText = "startup-help"
+        };
+        int BoundaryCount() => output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1;
         CycleWorld first = SurvivalContext(15, 1);
         CycleWorld sameContextLaterTime = SurvivalContext(16, 1);
         CycleWorld nextContextSameTime = SurvivalContext(16, 2);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(first, "a"), default);
-        Assert.Equal(1, clears);
+        Assert.Equal(1, BoundaryCount());
         Assert.Contains("startup-help", output.ToString());
         Assert.Null(controller.StartupText);
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(sameContextLaterTime, "a"), default);
-        Assert.Equal(1, clears);
+        Assert.Equal(1, BoundaryCount());
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(nextContextSameTime, "a"), default);
-        Assert.Equal(2, clears);
+        Assert.Equal(2, BoundaryCount());
         controller.RenderObservation(CycleDecisionContext.Create(nextContextSameTime, "a").Observation);
-        Assert.Equal(2, clears);
+        Assert.Equal(2, BoundaryCount());
+        Assert.Contains("startup-help", output.ToString()); // Earlier output remains in the transcript.
+        Assert.DoesNotContain("\u001b", output.ToString(), StringComparison.Ordinal);
     }
 
     private static CycleWorld SurvivalContext(int hour, long sequence) {

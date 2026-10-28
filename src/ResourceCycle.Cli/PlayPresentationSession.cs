@@ -5,7 +5,8 @@ internal enum PlayDeliveryPhase { Advancing, ControllerInput }
 
 /// <summary>One serial writer owns delivery and its transient semantic baseline.</summary>
 internal sealed class PlayPresentationSession(PlayPresentation presentation, ConsoleMetaCommands metaCommands,
-    TextWriter output, Action? clearScreen = null) {
+    TextWriter output, Action? writeTurnBoundary = null) {
+    internal const string TurnBoundary = "\n━━━━━━━━━━━━━━━━━━━━ 回合边界 ━━━━━━━━━━━━━━━━━━━━\n";
     public CycleViewSnapshot? Baseline { get; private set; }
     public PlayDeliveryPhase Phase { get; private set; } = PlayDeliveryPhase.Advancing;
     public string? StartupText { get; set; }
@@ -43,7 +44,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         string text = (StartupText is { } startup ? startup + "\n" : "") + prefix +
             presentation.Current.RenderFull(snapshot) + FullConsoleText(observation);
         beforeWrite?.Invoke(text);
-        Write(text, snapshot, clear: _identity != Identity(observation));
+        Write(text, snapshot, newTurn: _identity != Identity(observation));
     }
 
     public string Prompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
@@ -58,7 +59,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         // A successful commit is not an input opportunity. Only EnterInput changes this phase.
         if (fullTail) { text += FullConsoleText(observation); }
         else if (phaseChanged) { text += PhaseText(observation); }
-        Write(text, snapshot, clear: false);
+        Write(text, snapshot, newTurn: false);
     }
 
     private string FullConsoleText(CycleObservation observation) {
@@ -72,9 +73,13 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         : Phase == PlayDeliveryPhase.ControllerInput ? "\n现在可输入；等待输入时世界暂停。\n"
         : "\n正在处理结算，尚未进入下一次输入。\n";
 
-    private void Write(string text, CycleViewSnapshot snapshot, bool clear) {
+    private void Write(string text, CycleViewSnapshot snapshot, bool newTurn) {
         try {
-            if (clear) { output.Flush(); clearScreen?.Invoke(); }
+            if (newTurn) {
+                output.Flush();
+                if (writeTurnBoundary is not null) { writeTurnBoundary(); }
+                else { output.WriteLine(TurnBoundary); }
+            }
             output.WriteLine(text);
             output.Flush();
             Baseline = snapshot;

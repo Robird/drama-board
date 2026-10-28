@@ -22,7 +22,7 @@
 
 上表是 `HumanDefault` 能力；`None` 不提示或执行这些元命令，`:exit` / `:quit` 均记录为拒绝，随后仍可接受游戏行动。行动语法由 [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) 独立解析；`handoff :exit` 的正文不会再次分派。EOF 与宿主取消不受目录控制。配置不依据输出是否重定向；本轮未提供 CLI 禁用参数或会话中途切换。
 
-生存模式在首次交付及 `(ActorId, ContextSequence)` 变化时清屏；启动说明与帮助显示在首次清屏之后。同一回合提交后统一追加事件、缩进效果与当前状态；delta 只选受影响的状态，full 使用完整尾部。查询、重同步与模式/布局切换不清屏；`:details` 不改变基线。终局事件之后只输出一次冻结全文。未启用连续性的多人采集仍以角色/时间判断展示边界。清屏与成功写出后的基线由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 管理；输入或输出重定向时保留完整文本，终端清屏发生 I/O 错误则退回追加输出。
+生存模式在首次交付及 `(ActorId, ContextSequence)` 变化时输出青色回合分隔线；启动说明与帮助显示在首次分隔线之后。同一回合提交后统一追加事件、缩进效果与当前状态；delta 只选受影响的状态，full 使用完整尾部。查询、重同步与模式/布局切换不额外输出分隔线；`:details` 不改变基线。终局事件之后只输出一次冻结全文。未启用连续性的多人采集仍以角色/时间判断展示边界。回合分隔与成功写出后的基线由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 管理；始终追加输出、保留滚动历史；输出重定向时使用纯文本分隔线，不发送颜色控制码。
 
 此行为用于试玩时检查单次观察是否足以决策，不等同于 LLM 上下文隔离：终端自身的回滚历史不作跨平台保证，未来 LLM 收到哪些历史消息仍由上下文构造决定。
 

@@ -86,7 +86,7 @@ public sealed class PlayControllerOperationTests {
         using var output = new StringWriter();
         var presentation = PlayPresentation.ForMode(true);
         IPlayLayout layout = presentation.Current;
-        int clears = 0;
+        int boundaries = 0;
         CycleViewSnapshot? baseline = null;
         PlayConsole.ConsoleCharacterController? controller = null;
         using var input = new CallbackReader(disabled.Append("handoff :exit"), () => {
@@ -96,7 +96,7 @@ public sealed class PlayControllerOperationTests {
             Assert.NotNull(baseline);
             Assert.Same(baseline, controller!.Baseline);
         });
-        controller = new(presentation, ConsoleMetaCommands.None, input, output, () => clears++, journal);
+        controller = new(presentation, ConsoleMetaCommands.None, input, output, () => boundaries++, journal);
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
 
@@ -111,7 +111,7 @@ public sealed class PlayControllerOperationTests {
         });
         Assert.Null(journal.Entries[^1].Completed);
         Assert.Equal(action.ToolCallId, journal.Entries[^1].Received.ToolCallId);
-        Assert.Equal(1, clears);
+        Assert.Equal(1, boundaries);
         Assert.Equal(before, world.DescribeState());
         // This fixture contains no literal command text in its game data; input is not echoed.
         Assert.DoesNotContain(":help", output.ToString());

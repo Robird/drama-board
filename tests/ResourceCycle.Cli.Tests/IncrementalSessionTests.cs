@@ -96,8 +96,8 @@ public sealed class IncrementalSessionTests {
     public void Failed_write_invalidates_baseline_and_next_delivery_is_full() {
         var layout = new RecordingLayout();
         using var writer = new FaultingWriter();
-        int clears = 0;
-        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer, () => clears++);
+        int boundaries = 0;
+        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer, () => boundaries++);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
         session.EnterInput(observation);
         Assert.NotNull(session.Baseline);
@@ -112,7 +112,7 @@ public sealed class IncrementalSessionTests {
 
         Assert.Equal(2, layout.Full.Count);
         Assert.NotNull(session.Baseline);
-        Assert.Equal(1, clears); // Recovery resynchronizes without inventing a new decision context.
+        Assert.Equal(1, boundaries); // Recovery resynchronizes without inventing a new decision context.
     }
 
     [Fact]

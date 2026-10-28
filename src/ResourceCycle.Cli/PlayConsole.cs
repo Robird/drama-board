@@ -26,7 +26,7 @@ internal static class PlayConsole {
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
         var presentation = PlayPresentation.ForMode(survival);
-        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, clearScreen: ClearInteractiveScreen,
+        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, writeTurnBoundary: WriteTurnBoundary,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
         string title = survival ? "山林求生" : "多人采集";
@@ -97,25 +97,29 @@ internal static class PlayConsole {
 
     internal sealed class PlayEndedException : Exception { }
 
-    private static void ClearInteractiveScreen() {
-        // Pipes and redirected transcripts keep every observation, without terminal control sequences.
-        if (Console.IsInputRedirected || Console.IsOutputRedirected) { return; }
+    private static void WriteTurnBoundary() {
+        if (Console.IsOutputRedirected) {
+            Console.WriteLine(PlayPresentationSession.TurnBoundary);
+            return;
+        }
+        ConsoleColor previous = Console.ForegroundColor;
         try {
-            Console.Clear();
-        } catch (IOException) {
-            // Clearing is cosmetic; a terminal that cannot clear must not interrupt the game.
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine(PlayPresentationSession.TurnBoundary);
+        } finally {
+            Console.ForegroundColor = previous;
         }
     }
 
     // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
     internal sealed class ConsoleCharacterController(PlayPresentation presentation, ConsoleMetaCommands metaCommands, TextReader? inputReader = null,
-        TextWriter? outputWriter = null, Action? clearScreen = null, CycleOperationJournal? operations = null,
+        TextWriter? outputWriter = null, Action? writeTurnBoundary = null, CycleOperationJournal? operations = null,
         Func<string>? worldVersion = null) : ICycleCharacterController {
         private readonly TextReader _input = inputReader ?? Console.In;
         private readonly TextWriter _output = outputWriter ?? Console.Out;
         private readonly CycleOperationJournal _operations = operations ?? CycleOperationJournal.CreateInMemory();
         private readonly string _batchId = Guid.NewGuid().ToString("N");
-        private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, clearScreen);
+        private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, writeTurnBoundary);
         internal string? StartupText { get => _session.StartupText; set => _session.StartupText = value; }
         internal bool TerminalDelivered => _session.TerminalDelivered;
         internal CycleViewSnapshot? Baseline => _session.Baseline;
