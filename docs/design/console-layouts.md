@@ -1,5 +1,7 @@
 # Console 可切换布局
 
+本文描述当前实现。元命令的提示与解析尚不可关闭；将共享游戏文档与 Human Console 功能分离的后续设计见[元命令边界重构](console-command-boundary.md)，尚未实施。
+
 布局（Play layout）只负责把角色观察组织成文本，不读取完整世界、不校验或执行行动、不确认感知。接口为 [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)，接受角色观察、全量语义快照或更新消息；分别渲染全量、事件/效果与当前状态、帮助和输入提示。增量合同见[切片 A](incremental-ui-slice-a.md)。
 
 ## 会话与命令

@@ -20,6 +20,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+The [Human Console command-boundary refactor](design/console-command-boundary.md) separates game-action parsing and reusable game documents from human-only meta commands and Console prompts. It is a design awaiting implementation; current commands are still always enabled. The plan adds explicit session configuration without implementing an LLM adapter.
+
 The [Incremental UI milestone](design/incremental-ui-milestone.md) records the confirmed rules: preserve event/effect sequences, summarize each affected current value once, report actual effects, and reuse the events in recent history. [Slice A](design/incremental-ui-slice-a.md) implements recorded effect materials, output after commit, semantic state selection, and full/delta session modes for survival; see [acceptance evidence](experiments/incremental-ui-slice-a-acceptance.md). Next is slice B design: the retained history window, capacity, first-observed semantics and durable source identity binding. Multiplayer remains explicitly full-only.
 
 The [Survival escape milestone](design/survival-demo-milestone.md) defines two phases: a single-character Human Console game, then a two-character experience with an LLM companion, dialogue and gifts. Phase one is complete; see the [implementation contracts](implementation/survival-demo-plan.md) and [final acceptance](experiments/survival-demo-acceptance.md), including two independent successful routes, explained failures and post-fix checks. Spatial exploration, [survival needs](design/survival-needs.md) and [weather risks](design/survival-weather.md) share a single durable game root. Phase two has not started.

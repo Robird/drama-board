@@ -15,6 +15,7 @@
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | [CycleObservation / CycleDecisionContext](../src/ResourceCycle/CycleObservation.cs) 由游戏构造角色观察与纯命令校验；Console 布局只接收观察来渲染 Markdown。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
+| Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | 当前由 `PlayInput` 解析、`ConsoleCharacterController` 执行；[隔离重构方案](design/console-command-boundary.md)拟将解析与提示收归可配置目录，尚未实施。 |
 | 增量观察（Incremental observation） | 在同一阅读上下文内，按序追加事件及其效果，尾部统一汇总受影响状态的最新值并明确失效信息；布局或上下文变化时可全量重同步。不是游戏状态的增量持久化。 | 生存模式默认 delta；[CycleViewSnapshot](../src/ResourceCycle.Cli/CycleViewSnapshot.cs) / [CycleViewUpdate](../src/ResourceCycle.Cli/CycleViewUpdate.cs) 与 [PlayPresentationSession](../src/ResourceCycle.Cli/PlayPresentationSession.cs)，见[切片 A 合同](design/incremental-ui-slice-a.md)。 |
 | 可见事件与效果（Observed event / effect） | 给角色的有序过程材料；效果保存有语义身份的前后值，解释结算但不再次执行结算。当前值、历史效果和观察范围变化分别表达。 | [CycleObservedEvent / CycleObservedEffect](../src/ResourceCycle/CycleObservedEvent.cs) 随事实 E 保存；Incoming 仍是有限行动摘要，最近回合历史窗口待 B 实施。 |
 | 可见状态键和值（State key / visible value） | 与布局和中文名称无关的状态身份，以及数值、布尔、文字、已知不存在、不可见等有限值；自有物品用尽是 0，不等于离开观察范围。 | `CycleStateKey` / `CycleVisibleValue`，效果与当前观察共用；数值按 `Units / Scale` 表达。 |
