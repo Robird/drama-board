@@ -2,11 +2,14 @@
 
 Start with the repository's [current project state](../PROJECT-STATE.md). The active engine consists of Kernel, Spatial and Host. ResourceCycle provides the current Console interaction; the earlier Player planning and presentation stack remains a frozen experiment.
 
+The [Console layout contract](design/console-layouts.md) describes runtime layout switching, local meta commands and the survival decision layout; [playtest feedback and verification](experiments/console-layout-playtest.md) record the two routes and follow-up refinements.
+
 ## Current design and core
 
 - [Terminology](glossary.md): shared Chinese/English vocabulary and current code mappings for characters/controllers, time, predictions, publication and space.
 - [Layering and composition](design/layering-and-composition.md): accepted logical boundaries, domain modules, game composition and source-based mod direction; assembly extraction follows evidence, without a generic component framework.
-- [Stateless character controller decision](design/stateless-character-controller.md): accepted state ownership, per-character context and recovery boundaries, plus the completed symbol rename map; LLM/context APIs are not yet implemented.
+- [Stateless character controller decision](design/stateless-character-controller.md): state ownership, character-scoped observation and operation envelopes, plus recovery boundaries; LLM integration remains deferred.
+- [Decision-context handoff](design/decision-context-handoff.md): explicit per-wake contexts, frozen action outcomes, character-authored handoff text and stable operation identities; [implementation acceptance](experiments/decision-context-handoff-acceptance.md) includes real disk recovery and independent Console/PTY playtests.
 - [Game initialization and revision](design/game-initialization-and-revision.md): shared new-game factory, separately versioned State/Event representations and load-time revision before normal execution; production accepts the current revision, with historical semantics exercised by [disk recovery fixtures](experiments/game-revision-acceptance.md).
 - [Simulation Kernel](design/simulation-kernel.md): occurrence, time, deterministic arbitration and atomic publication; no Player implementation is required.
 - [Graph Spatial World](design/graph-spatial-world.md): objective locations, passages, motion, contact and arrival.

@@ -38,6 +38,7 @@ public sealed class CycleObservation {
     public string? EndingReason { get; init; }
     public CycleSurvivalObservation? Survival { get; init; }
     public CycleWeatherObservation? Weather { get; init; }
+    public CycleDecisionContinuity? Continuity { get; init; }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
 }
@@ -97,6 +98,7 @@ public sealed class CycleDecisionContext {
                 who, stillGathering, visible?.Stock, visible?.Capacity);
         }).ToArray();
         List<CycleCommand> commands = [CycleCommand.Continue(), CycleCommand.Cancel()];
+        if (actor.Continuity is not null) { commands.Add(CycleCommand.Handoff(null)); }
         foreach (CycleResource resource in resources) {
             commands.Add(CycleCommand.Gather(resource.Id));
             commands.Add(CycleCommand.GatherAll(resource.Id));
@@ -111,7 +113,10 @@ public sealed class CycleDecisionContext {
         CycleVisit[] visits = expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
         ModelTime? arrival = expedition?.Spatial.Entities.Single(entity => entity.Id.Value == actorId).Location
             is TraversingLocation moving ? moving.ArrivalDue : null;
-        var itemNames = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId)).Distinct(StringComparer.Ordinal)
+        IEnumerable<string> historicalItems = actor.Continuity?.Incoming is { } incoming
+            ? incoming.Before.Backpack.Keys.Concat(incoming.After.Backpack.Keys) : [];
+        var itemNames = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
+            .Concat(historicalItems).Distinct(StringComparer.Ordinal)
             .ToDictionary(id => id, id => expedition is null
                 ? world.Resources.FirstOrDefault(resource => resource.ItemId == id)?.Name ?? id
                 : id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id }, StringComparer.Ordinal);
@@ -136,7 +141,7 @@ public sealed class CycleDecisionContext {
                     Array.AsReadOnly(visit.Resources.ToArray()))).ToArray()),
             Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason,
             Survival = CycleSurvivalRules.Observe(world, actorId),
-            Weather = CycleEnvironmentRules.Observe(world, actorId)
+            Weather = CycleEnvironmentRules.Observe(world, actorId), Continuity = actor.Continuity
         };
         return new(observation, Check, Warning);
     }

@@ -224,8 +224,8 @@ public sealed class CyclePersistenceTests {
     }
 
     private sealed class WaitingCharacterController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(CycleCommand.Wait(6));
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(Operation(CycleCommand.Wait(6)));
     }
 
     private sealed class ForbiddenPlanning : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {

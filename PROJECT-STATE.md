@@ -26,7 +26,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：生存一期按[实施方案](docs/implementation/survival-demo-plan.md)完成并逐项通过里程碑 §2.6；不同路线独立通关、失败、修正后复查、组合再生与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。下一步可据此细化二期：双角色胜负与唤醒政策、零时间对话/赠与的轮转、按角色构造上下文及 LLM 调用恢复；未自动启动实施。分段积分与只读昼夜估计见[生存需求](docs/design/survival-needs.md)，Plan-only 抽样和到达先于天气见[天气合同](docs/design/survival-weather.md)。完整 Markdown 重复较多、移动不可取消、干木暂无燃料用途，均为当前明确限制；是否继续扩展依真实体验决定。
+**当前焦点**：[决策回合的信息继承](docs/design/decision-context-handoff.md)已落地并通过[工程与独立试玩验收](docs/experiments/decision-context-handoff-acceptance.md)：放行模拟后结束旧会话，下次唤醒封存结构化结果与一次性交接文字，零耗时操作保留同一上下文；不建设动作后收尾阶段或 `:end`。后续先依据实际体验打磨信息密度；接入 LLM 时再比较“当前观察 / 加结果 / 加交接”的决策质量与上下文成本。完整工具会话恢复、增量渲染和全轨迹日志仍延期。
+
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，元命令仅接受冒号前缀；生存模式按角色/ContextSequence 首次及新回合清屏，重定向仍保留全文。排版合同与早期试玩集中在[布局合同](docs/design/console-layouts.md)及[反馈](docs/experiments/console-layout-playtest.md)，不设位置快照测试。危险指标提示应扩充观察投影，不在布局复制预测。二期双角色胜负、零时间对话/赠与轮转及 LLM 接入尚未启动；移动不可取消、干木燃料用途仍依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -34,9 +36,11 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；现有采集场景使用同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。空间移动已由生存一期重开；复杂 Markdown 事件窗口和 AgentCore 子状态发布仍按后续切片裁决。
 
-**控制器方向已定**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态并构造上下文，本次局部会话与共享运行设施分开，pending E 不重做决定。`ICycleCharacterController.ChooseCommandAsync` 已接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 的角色观察和纯命令校验；LLM 与工具会话持久化尚未施工。
+**控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态，pending E 不重做决定。`ChooseCommandAsync` 接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 并返回 `CycleControllerOperation`；`CycleDecisionContinuity` 保存 Incoming、DraftHandoff 与 Pending。LLM 与完整工具会话恢复尚未施工。
 
-**初始化与修订首片已落地**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写盘。State 转换独立于 pending，混合版本先对齐再逐步转换，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖真实磁盘与中断窗口。生产现接受修订 4，旧开发存档不兼容；跨版本转换仅为夹具。事件持久替代、多模块版本和通用框架按真实需求重开。
+**操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，合法动作 E/S 保存来源。`operations.jsonl` 与 E/S 各自提交，冷开只补结果、不重做动作；未来 LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
+
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 5，旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；事件持久替代、多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

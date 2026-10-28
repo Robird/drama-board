@@ -371,7 +371,7 @@ public sealed class SurvivalTests {
         Assert.Fail("Expected survival boundary was not reached.");
     }
     private sealed class ForbiddenController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("This threshold must not request a character decision.");
     }
     private sealed class ForbiddenPlanning : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {

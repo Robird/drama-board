@@ -29,6 +29,7 @@ internal static class PlayView {
             $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
         text.AppendLine();
         if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended, observation.Weather is not null); }
+        text.Append(ContinuityPlayView.Render(observation));
         if (observation.Weather is { } weather) { RenderWeather(text, weather, ended); }
         if (observation.IsExpedition) {
             text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
@@ -165,7 +166,7 @@ internal static class PlayView {
         return text.ToString();
     }
 
-    private static string RenderNotice(CycleNoticeObservation perceived, bool ended) {
+    internal static string RenderNotice(CycleNoticeObservation perceived, bool ended) {
         CycleNotice notice = perceived.Notice;
         string repeated = notice.Count > 1 ? $"；待回应同类变化共 {notice.Count} 次，此处为最近一次" : "";
         if (notice.Kind == CycleNoticeKind.CollectorJoined) {
@@ -190,8 +191,11 @@ internal static class PlayView {
         if (observation.Weather is not null) {
             text.AppendLine("行动风险提示仅计算已知趋势与昼夜变化，未包含未来随机天气；没有提示不代表没有天气风险。");
         }
-        text.AppendLine("- `look`：重新显示完整画面。`help`：显示命令与当前受阻原因。");
-        text.AppendLine("- `quit`：退出；EOF 同样退出。已提交的活动和未确认消息可随存档恢复。");
+        text.AppendLine("- `:look`：重新显示完整画面。`:help`：显示命令与当前受阻原因。");
+        text.AppendLine("- `:exit`：退出；EOF 同样退出。已提交的活动和未确认消息可随存档恢复。");
+        if (observation.Continuity is not null) {
+            text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
+        }
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (CyclePassageObservation passage in observation.Passages) {

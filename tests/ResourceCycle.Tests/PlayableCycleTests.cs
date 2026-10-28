@@ -18,6 +18,7 @@ public sealed class PlayableCycleTests {
         Assert.Equal(count, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(count, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));
+        Assert.Equal(CycleGatherStopReason.TargetReached, Assert.Single(kernel.LastCompletion!.Event.Facts).GatherStopReason);
         Assert.Equal(1, source.Calls);
         Assert.Equal(Hour(16 + count), kernel.World.Time);
         Assert.Empty(initial.GetCharacter("a").Backpack.Items);
@@ -282,11 +283,12 @@ public sealed class PlayableCycleTests {
         Assert.Equal(Hour(8), kernel.World.Time);
         Assert.Equal(1, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));
         Assert.Equal(2, source.Calls);
+        Assert.Equal(CycleGatherStopReason.ResourceEmpty, Assert.Single(kernel.LastCompletion!.Event.Facts).GatherStopReason);
     }
     private static CyclePrediction ActivityPrediction(CycleWorld world, string actor) => Assert.Single(world.Forecasts.Predictions, p => p.OwnerId == $"actor:{actor}:activity");
     private sealed class GatedCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+        public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Entered.SetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);
             throw new InvalidOperationException("unreachable");

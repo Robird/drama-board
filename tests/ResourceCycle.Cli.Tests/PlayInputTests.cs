@@ -4,12 +4,28 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class PlayInputTests {
     [Theory]
-    [InlineData("look", "Look")]
-    [InlineData("\t help  ", "Help")]
-    [InlineData(" quit\r\n", "Quit")]
+    [InlineData("\t :help  ", "Help")]
+    [InlineData(" :exit\r\n", "Quit")]
+    [InlineData(":look", "Look")]
+    [InlineData(":help", "Help")]
+    [InlineData(":exit", "Quit")]
+    [InlineData(":quit", "Quit")]
+    [InlineData(":details", "Details")]
+    [InlineData(":layout", "Layout")]
     public void Local_intents_have_no_game_command(string input, string kind) {
         PlayInput parsed = PlayInput.Parse(input);
         Assert.Equal(kind, parsed.Kind.ToString());
+        Assert.Null(parsed.Command);
+    }
+
+    [Theory]
+    [InlineData("classic")]
+    [InlineData("decision")]
+    [InlineData("unknown")]
+    public void Layout_selection_is_a_local_intent_even_when_the_name_is_unknown(string id) {
+        PlayInput parsed = PlayInput.Parse($" :layout\t{id} ");
+        Assert.Equal(PlayInputKind.Layout, parsed.Kind);
+        Assert.Equal(id, parsed.LayoutId);
         Assert.Null(parsed.Command);
     }
 
@@ -24,6 +40,9 @@ public sealed class PlayInputTests {
         { "go trail-1", CycleCommand.Go("trail-1") },
         { "use item.water", CycleCommand.Use("item.water") },
         { " \tuse\titem.food  ", CycleCommand.Use("item.food") },
+        { "handoff 抵达后  先检查保暖。", CycleCommand.Handoff("抵达后  先检查保暖。") },
+        { "  handoff\t--clear ", CycleCommand.Handoff(null) },
+        { "handoff --clear 然后检查", CycleCommand.Handoff("--clear 然后检查") },
     };
 
     [Theory]
@@ -38,6 +57,19 @@ public sealed class PlayInputTests {
     [InlineData("")]
     [InlineData(" \t")]
     [InlineData("Look")]
+    [InlineData("look")]
+    [InlineData("help")]
+    [InlineData("quit")]
+    [InlineData("exit")]
+    [InlineData("details")]
+    [InlineData("layout")]
+    [InlineData("layout decision")]
+    [InlineData(":continue")]
+    [InlineData(":cancel")]
+    [InlineData(":wait 1")]
+    [InlineData(":go trail-1")]
+    [InlineData(":use item.water")]
+    [InlineData(":gather sunflower 1")]
     [InlineData("WAIT 1")]
     [InlineData("gather sunflower ALL")]
     [InlineData("look extra")]
@@ -63,6 +95,15 @@ public sealed class PlayInputTests {
     [InlineData("use")]
     [InlineData("use item.water 2")]
     [InlineData("Use item.water")]
+    [InlineData(":layout classic extra")]
+    [InlineData(":help extra")]
+    [InlineData(":exit extra")]
+    [InlineData(":details extra")]
+    [InlineData(":unknown")]
+    [InlineData("handoff")]
+    [InlineData("handoff  ")]
+    [InlineData(":handoff 备注")]
+    [InlineData("handofftext")]
     public void Malformed_or_unrepresentable_input_is_not_an_action(string input) {
         PlayInput parsed = PlayInput.Parse(input);
         Assert.Equal(PlayInputKind.Invalid, parsed.Kind);

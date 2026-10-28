@@ -160,7 +160,9 @@ internal static class CyclePlanning {
         if (failure is not null) {
             string result = $"{previous.Name} 采集结束：目标 {activity.TargetCount}，取得 {activity.CompletedCount}；{failure}。该次结算后余量 {previous.Stock}/{previous.Capacity}。";
             return new(CycleEventKind.GatherFinished, time, actor.Id, previous.Id,
-                changedCharacters: [actor.Change(null, result: result)], result: result);
+                changedCharacters: [actor.Change(null, result: result)], result: result,
+                gatherStopReason: previous.Stock == 0 ? CycleGatherStopReason.ResourceEmpty :
+                    actor.Backpack.CheckAdd(previous.ItemId) == InventoryAdmission.ItemQuantityLimit ? CycleGatherStopReason.ItemLimit : CycleGatherStopReason.CapacityLimit);
         }
         int completed = checked(activity.CompletedCount + 1);
         CycleResource resource = previous.Stock == previous.Capacity
@@ -189,7 +191,8 @@ internal static class CyclePlanning {
             NotifyCollectors(world, changes, resource.Id, notice);
         }
         return new(CycleEventKind.GatherYielded, time, actor.Id, resource.Id, changedResources: [resource],
-            changedCharacters: OrderedChanges(world, changes), result: resultText);
+            changedCharacters: OrderedChanges(world, changes), result: resultText,
+            gatherStopReason: next is not null ? null : completed >= activity.TargetCount ? CycleGatherStopReason.TargetReached : CycleGatherStopReason.TimeLimit);
     }
     private static void NotifyCollectors(CycleWorld world, Dictionary<string, CycleCharacter> changes,
         string resourceId, CycleNotice notice, string? exceptActorId = null) {

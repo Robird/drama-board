@@ -210,12 +210,14 @@ public sealed class SurvivalNeedsViewTests {
 
     private sealed class Commands(params CycleCommand[] commands) : ICycleCharacterController {
         private readonly Queue<CycleCommand> _commands = new(commands);
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(_commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision."));
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
+                _commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision."), Guid.NewGuid().ToString("N")));
     }
 
     private sealed class IgnoreWarnings : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24));
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
+                context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24), Guid.NewGuid().ToString("N")));
     }
 }

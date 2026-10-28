@@ -108,23 +108,34 @@ public static class CycleEngine {
                     throw new InvalidOperationException("Invalid composed spatial candidate.");
                 }
                 TransitionDraft<GraphSpatialFact> spatialDraft = await _spatialRule.PlanSelectedAsync(world.Spatial, spatialCandidate, cancellationToken).ConfigureAwait(false);
-                return new([CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world,
-                    CyclePlanning.Arrive(world, prediction.Due, spatialDraft.Facts)))]);
+                return new([CycleContinuityRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world,
+                    CyclePlanning.Arrive(world, prediction.Due, spatialDraft.Facts))))]);
             }
             if (winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != prediction.Due || prediction.Due < world.Time ||
                 !world.Forecasts.Predictions.Any(p => p.ToString() == prediction.ToString()) || CyclePredictionMaintenance.Predict(world.Business, prediction.OwnerId)?.ToString() != prediction.ToString()) {
                 throw new InvalidOperationException("A stale or invalid prediction cannot execute.");
             }
             CycleFact fact;
+            CycleControllerOperation? operation = null;
             if (prediction.Kind == CyclePredictionKind.RequestDecision) {
+                if (world.GetCharacter(prediction.TargetId).Continuity?.Pending is not null) {
+                    return new([CycleContinuityRules.OpenContext(world, prediction.TargetId)]);
+                }
                 if (characterController is null) { throw new InvalidOperationException($"A playable world requires an {nameof(ICycleCharacterController)}."); }
-                CycleCommand command = await characterController.ChooseCommandAsync(CycleDecisionContext.Create(world, prediction.TargetId), cancellationToken).ConfigureAwait(false);
+                operation = await characterController.ChooseCommandAsync(CycleDecisionContext.Create(world, prediction.TargetId), cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
+                if (operation is null || string.IsNullOrWhiteSpace(operation.ToolCallId) || string.IsNullOrWhiteSpace(operation.OperationRecordId)) {
+                    throw new InvalidOperationException("A controller operation requires captured tool-call and operation record identities.");
+                }
+                CycleCommand command = operation.Command;
                 string? rejection = CycleActions.Check(world, prediction.TargetId, command);
                 if (rejection is not null) { throw new InvalidOperationException(rejection); }
-                fact = CyclePlanning.Decision(world, prediction.TargetId, command);
+                if (command.Kind == CycleCommandKind.Handoff) {
+                    return new([CycleContinuityRules.EditHandoff(world, prediction.TargetId, command.HandoffText).WithOperation(operation)]);
+                }
+                fact = CyclePlanning.Decision(world, prediction.TargetId, command).WithOperation(operation);
             } else { fact = CyclePlanning.Occurrence(world, prediction); }
-            return new([CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, fact))]);
+            return new([CycleContinuityRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, fact)), operation)]);
         }
         private static OccurrenceCandidate<CyclePrediction> Candidate(CyclePrediction prediction) =>
             new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);

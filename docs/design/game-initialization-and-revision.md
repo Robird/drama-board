@@ -1,6 +1,6 @@
 # 设计决策：对象图初始化与游戏状态修订
 
-状态：首片已接入 ResourceCycle 的真实创建、保存与恢复路径。普通工厂构造新游戏，State/Event 各自记录 `GameRevision`；加载还原并协调升级内存表示，再交给正常执行流程。生产目前只接受修订 4（空间、生存需求与天气组合），旧开发存档不兼容；跨版本语义通过测试夹具验证。升级本身不完成 pending 工作。加载机制验证见[验收记录](../experiments/game-revision-acceptance.md)，新增组合见[生存验收](../experiments/survival-demo-acceptance.md)。
+状态：首片已接入 ResourceCycle 的真实创建、保存与恢复路径。普通工厂构造新游戏，State/Event 各自记录 `GameRevision`；加载还原并协调升级内存表示，再交给正常执行流程。生产目前只接受修订 5（含[决策回合继承与操作身份](decision-context-handoff.md)），旧开发存档不兼容；跨版本语义通过测试夹具验证。升级本身不完成 pending 工作。加载机制验证见[验收记录](../experiments/game-revision-acceptance.md)，生存组合见[一期验收](../experiments/survival-demo-acceptance.md)。
 
 三方交叉审阅收敛的约束与源码依据见[审阅裁决](../research/game-revision-review.md)。
 

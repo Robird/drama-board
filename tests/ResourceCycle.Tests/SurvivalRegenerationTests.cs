@@ -104,12 +104,12 @@ public sealed class SurvivalRegenerationTests {
         public int Calls { get; private set; }
         public int Remaining => _remaining.Count;
 
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Assert.NotEmpty(_remaining);
             CycleCommand command = _remaining.Dequeue();
             Assert.Null(context.Check(command));
             Calls++;
-            return ValueTask.FromResult(command);
+            return ValueTask.FromResult(Operation(command, Calls));
         }
     }
 }

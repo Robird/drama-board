@@ -48,7 +48,8 @@ internal static class CyclePredictionMaintenance {
         }
         if (owner.EndsWith(":survival", StringComparison.Ordinal)) {
             string id = owner["actor:".Length..^":survival".Length];
-            return !ReferenceEquals(before.GetCharacter(id).Survival, after.GetCharacter(id).Survival);
+            return !ReferenceEquals(before.GetCharacter(id).Survival, after.GetCharacter(id).Survival) ||
+                before.GetCharacter(id).DecisionGeneration != after.GetCharacter(id).DecisionGeneration;
         }
         bool activity = owner.EndsWith(":activity", StringComparison.Ordinal);
         string actorId = owner["actor:".Length..^(activity ? ":activity".Length : ":attention".Length)];
@@ -82,7 +83,7 @@ internal static class CyclePredictionMaintenance {
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
                 CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged,
-                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived }) {
+                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.HandoffEdited, CycleEventKind.DecisionContextOpened }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed }) {

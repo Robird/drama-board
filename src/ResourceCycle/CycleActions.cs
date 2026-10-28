@@ -3,10 +3,10 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use }
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff }
 
 /// <summary>Runtime intent; only validated concrete effects enter durable facts.</summary>
-public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? ResourceId = null, int Count = 0, bool All = false, string? PassageId = null, string? ItemId = null) {
+public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? ResourceId = null, int Count = 0, bool All = false, string? PassageId = null, string? ItemId = null, string? HandoffText = null) {
     public static CycleCommand Wait(int hours) => new(CycleCommandKind.Wait, Hours: hours);
     public static CycleCommand Gather(string resourceId, int count = 1) => new(CycleCommandKind.Gather, ResourceId: resourceId, Count: count);
     public static CycleCommand GatherAll(string resourceId) => new(CycleCommandKind.Gather, ResourceId: resourceId, All: true);
@@ -14,14 +14,18 @@ public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? 
     public static CycleCommand Cancel() => new(CycleCommandKind.Cancel);
     public static CycleCommand Go(string passageId) => new(CycleCommandKind.Go, PassageId: passageId);
     public static CycleCommand Use(string itemId) => new(CycleCommandKind.Use, ItemId: itemId);
+    public static CycleCommand Handoff(string? text) => new(CycleCommandKind.Handoff, HandoffText: text);
 }
+
+/// <summary>Captured controller identity; IDs are opaque and must survive execution and recovery unchanged.</summary>
+public sealed record CycleControllerOperation(string ToolCallId, CycleCommand Command, string OperationRecordId);
 
 /// <summary>Provides commands for the requested character; one instance may serve multiple characters.</summary>
 /// <remarks>Cross-decision character memory belongs to explicit game state, not hidden controller history.
 /// Each decision receives a character-scoped observation and a pure legality query.</remarks>
 public interface ICycleCharacterController {
     /// <summary>Runs one decision interaction without committing world changes; the engine validates the returned intent.</summary>
-    ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken);
+    ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken);
 }
 
 public static class CycleActions {
@@ -52,11 +56,19 @@ public static class CycleActions {
         if (world.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) { return "旅程已经结束。"; }
         if (!NeedsDecision(world, actorId)) { return "角色正在活动，当前没有需要响应的感知。"; }
         bool travelling = IsTravelling(world, actorId);
-        if (travelling && command.Kind is not (CycleCommandKind.Continue or CycleCommandKind.Use)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
+        if (travelling && command.Kind is not (CycleCommandKind.Continue or CycleCommandKind.Use or CycleCommandKind.Handoff)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
+        if (command.Kind != CycleCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
         if (command.Kind != CycleCommandKind.Use && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
+        if (actor.Continuity is { ContextSequence: long.MaxValue } &&
+            (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go ||
+                command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling))) { return "决策回合编号已达到支持上限。"; }
         switch (command.Kind) {
+            case CycleCommandKind.Handoff:
+                if (actor.Continuity is null) { return "此场景未启用交接文字。"; }
+                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "handoff 只接受交接文字。"; }
+                return !CycleDecisionContinuity.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
             case CycleCommandKind.Continue:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "continue 不接受参数。"; }
                 return actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0

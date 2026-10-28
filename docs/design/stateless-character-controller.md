@@ -1,6 +1,6 @@
 # 设计决策：共享无状态角色控制器与游戏维护的动态上下文
 
-状态：用户已采纳的架构方向；控制器符号重命名已完成，不表示 LLM、角色记忆或新的上下文 API 已实现。
+状态：用户已采纳的架构方向；ResourceCycle 已实现角色观察、操作封套和生存模式的决策回合继承，尚未接入 LLM、长期角色记忆或完整局部会话恢复。
 
 ## 决策与动机
 
@@ -40,22 +40,24 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 未来工具若编辑笔记或产生其他持久效果，应通过游戏的显式状态更新与发布路径，不把副作用藏在控制器内部。具体工具提交粒度及中断恢复协议，随工具切片设计，不因本决策自动确定。
 
+已选定的[操作身份合同](decision-context-handoff.md#44-操作-id结果配对与-completion-边界)要求接收时固定并保存 ToolCallId，结果使用同一关联 ID；Console 自动生成，LLM 保留 Completion 交付值。宿主最小操作记录与业务 E/S 各有边界，保存 ID 不等于恢复完整局部会话；端点格式兼容和稳定映射由 Completion 负责。
+
 ## 一次决策的概念流程
 
 1. 世界产生某角色的决策请求；当前 ResourceCycle 在服务输入期间暂停模型时间。
 2. 游戏根据角色身份、当前可见状态、相关经历、目标和笔记构造上下文，并绑定该角色可用的工具。
 3. 共享控制器执行本次局部交互，返回行动意图。查询、非法输入不等于接受行动。
 4. 游戏校验并按规则形成具体事实，沿现有转换与发布协议提交。
-5. 本次临时会话结束；需要保留的信息应已进入显式状态，后续决策重新构造上下文。
+5. 本次命令选择调用结束；需要保留的信息应进入显式状态。局部会话是否继续取决于命令是否放行模拟，后续交互所需状态由游戏提供。
 
-以上是职责划分，不是冻结的新 API 签名。行动结果后追加一次记笔记机会仍是可选后续设计。共享控制器也不自动意味着并发安全：当前 Console 串行服务，未来若并行调用，局部会话隔离、工具写入顺序和发布仲裁需要单独验证。
+以上是职责划分。当前[决策回合的信息继承](decision-context-handoff.md)允许零耗时命令在同一上下文中多次提交，接受放行模拟的行动后结束局部会话；下次唤醒新建上下文，继承结构化结果与可选交接文字，不建设原会话的动作后收尾阶段。共享控制器不自动意味着并发安全：当前 Console 串行服务，未来若并行调用，局部会话隔离、工具写入顺序和发布仲裁需要单独验证。
 
 ## 当前实现与后续范围
 
-- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleCommand`。上下文包含角色观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
-- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 没有实例字段，单个实例轮流服务三个角色；每次调用渲染该角色界面并等待合法输入。
+- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleControllerOperation(ToolCallId, Command, OperationRecordId)`。上下文包含角色观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
+- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出和清屏所用的上次画面标识，不保存角色的跨决策语义记忆。每次调用渲染该角色界面并等待合法输入。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。共享控制器沿用现有服务轮转，不修改抢资源仲裁。
-- 当前没有 LLM 接入、持久笔记、角色经历召回或独立 DecisionContext 类型。归档 Player 实现是技术储备，不因本决策自动恢复使用。
+- 角色的 `CycleDecisionContinuity` 保存固定的 Incoming、本轮 DraftHandoff 和尚未交付的 Pending；`DecisionContextOpened` 通过现有请求仲裁封存结果，再交付控制器。宿主操作记录保留身份与结果，不恢复完整对话。尚无 LLM 接入、长期笔记或角色经历召回；归档 Player 实现不因本决策自动恢复使用。
 
 后续实现可用以下行为验收本决策：A/B 角色交替使用同一控制器不串记忆；替换控制器实例后显式角色记忆仍可用；文本与工具都不泄漏未授权信息；中断后的 pending E 恢复不再次调用控制器。更换 LLM 后得到完全相同的行动不属于验收要求。
 

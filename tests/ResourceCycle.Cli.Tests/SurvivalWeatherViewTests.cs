@@ -27,7 +27,8 @@ public sealed class SurvivalWeatherViewTests {
         Assert.Contains("未包含未来随机天气", PlayView.RenderCommands(context.Observation));
         string json = JsonSerializer.Serialize(context.Observation);
         Assert.DoesNotContain("seed", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("sequence", json, StringComparison.OrdinalIgnoreCase);
+        // ContextSequence is a visible decision identity; the weather RNG's Sequence remains private.
+        Assert.DoesNotContain("\"Sequence\":", json, StringComparison.OrdinalIgnoreCase);
         string alternate = JsonSerializer.Serialize(CycleDecisionContext.Create(
             CycleGameFactory.CreateSurvival(weatherSeed: 987654321UL).World, "a").Observation);
         Assert.Equal(json, alternate);
@@ -86,7 +87,8 @@ public sealed class SurvivalWeatherViewTests {
     }
 
     private sealed class WaitAndAcknowledge : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24));
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
+                context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24), Guid.NewGuid().ToString("N")));
     }
 }

@@ -46,6 +46,57 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
     public OccurrenceEvent<CycleFact>? PendingEvent { get { RequireUsable(); return _pending?.Occurrence; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
 
+    /// <summary>Finds operation effects already covered by a completed State, without replaying them.</summary>
+    /// <remarks>Pending E is excluded until the Kernel completes it. Intended for cold-open repair of
+    /// missing host receipts; neither receipt absence nor presence authorizes executing an input again.</remarks>
+    public IReadOnlyList<CycleCommittedOperation> ReadCommittedOperations(IEnumerable<string> operationRecordIds) {
+        RequireUsable();
+        ArgumentNullException.ThrowIfNull(operationRecordIds);
+        var remaining = new HashSet<string>(operationRecordIds, StringComparer.Ordinal);
+        if (remaining.Any(string.IsNullOrWhiteSpace)) { throw new ArgumentException("Operation references must be nonempty.", nameof(operationRecordIds)); }
+        var results = new List<CycleCommittedOperation>();
+        if (remaining.Count == 0) { return results.AsReadOnly(); }
+        CommitId oldestState = _work.StateSourceCommitId
+            ?? throw new InvalidDataException("The game has no completed State.");
+        HistoryStart? start = HistoryStart.Before(oldestState);
+        long transitionCount = Cursor.Version.TransitionCount;
+        bool expectEvent = true;
+        while (start is { } boundary) {
+            CommitHistoryPage page = _repository.ReadHistoryPage(boundary, new HistoryPageLimits(64, long.MaxValue));
+            foreach (CommitInfo commit in page.Items) {
+                if (commit.Kind != (expectEvent ? CommitKind.Event : CommitKind.State)) {
+                    throw new InvalidDataException("ResourceCycle history must alternate completed State/Event pairs.");
+                }
+                expectEvent = !expectEvent;
+                if (commit.Kind != CommitKind.Event) { oldestState = commit.Id; continue; }
+                if (transitionCount <= 0) { throw new InvalidDataException("History exceeds the completed transition count."); }
+                var entry = _repository.LoadEvent(commit.Id) as CycleDurableEvent
+                    ?? throw new InvalidDataException("The historical Event is not a ResourceCycle occurrence.");
+                entry.ValidateStructure();
+                foreach (CycleFact fact in entry.Occurrence.Facts) {
+                    if (fact.OperationRecordId is not { } recordId || !remaining.Remove(recordId)) { continue; }
+                    if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId)) {
+                        throw new InvalidDataException("A recorded operation effect has incomplete provenance.");
+                    }
+                    results.Add(new(recordId, fact.ToolCallId, fact.ActorId, fact.Result ?? fact.Kind.ToString(),
+                        fact.At.Ticks, Cursor.Version.LineageId, transitionCount, entry.Occurrence.CauseKey.ToString()));
+                }
+                transitionCount--;
+                if (remaining.Count == 0) { return results.AsReadOnly(); }
+            }
+            start = page.Continuation;
+        }
+        // Create also accepts a completed snapshot with a nonzero simulation version. Its root State
+        // is the beginning of this repository, not necessarily the beginning of that simulation.
+        var genesis = _repository.LoadState(oldestState) as CycleDurableRoot
+            ?? throw new InvalidDataException("The initial State is not a ResourceCycle root.");
+        if (!expectEvent || genesis.Cursor.Version.TransitionCount != transitionCount ||
+            genesis.Cursor.Version.LineageId != Cursor.Version.LineageId) {
+            throw new InvalidDataException("Incomplete ResourceCycle history prefix.");
+        }
+        return results.AsReadOnly();
+    }
+
     /// <summary>Creates a new repository at a previously nonexistent path and publishes its initial State.</summary>
     public static CycleDurableHistory Create(string path, CycleWorld world, KernelCursor cursor) {
         ArgumentNullException.ThrowIfNull(world);

@@ -152,7 +152,7 @@ public sealed class MultiplayerRecoveryTests {
     private sealed class GatedContinueCharacterController : ICycleCharacterController {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? Actor { get; private set; }
-        public async ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+        public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Actor = context.Observation.Actor.Id;
             Entered.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);

@@ -79,12 +79,14 @@ internal static class CycleTestSupport {
     internal sealed class StubCharacterController(Func<CycleObservation, string, CycleCommand> choose) : ICycleCharacterController {
         public int Calls { get; private set; }
         public List<(string Actor, ModelTime Time)> Requests { get; } = [];
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Calls++;
             Requests.Add((context.Observation.Actor.Id, context.Observation.Time));
-            return ValueTask.FromResult(choose(context.Observation, context.Observation.Actor.Id));
+            return ValueTask.FromResult(Operation(choose(context.Observation, context.Observation.Actor.Id), Calls));
         }
     }
+    public static CycleControllerOperation Operation(CycleCommand command, int ordinal = 1) =>
+        new($"call_fixture_{ordinal}", command, $"fixture/{ordinal}");
     public static StubCharacterController Commands(params CycleCommand[] commands) {
         Queue<CycleCommand> remaining = new(commands);
         return new((_, _) => remaining.Count > 0 ? remaining.Dequeue() : throw new InvalidOperationException("Unexpected Player request."));

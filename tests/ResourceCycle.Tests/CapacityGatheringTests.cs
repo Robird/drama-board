@@ -59,6 +59,7 @@ public sealed class CapacityGatheringTests {
             .Count(fact => fact.Kind == CycleEventKind.GatherYielded));
         CycleFact finished = Assert.Single(kernel.LastCompletion!.Event.Facts);
         Assert.Equal(CycleEventKind.GatherFinished, finished.Kind);
+        Assert.Equal(CycleGatherStopReason.CapacityLimit, finished.GatherStopReason);
         Assert.Empty(finished.ChangedResources);
         Assert.Empty(actor.Notices);
 
@@ -159,7 +160,7 @@ public sealed class CapacityGatheringTests {
         [Sun(Hour(6), stock: 5, capacity: 5, regenerationTicks: 100 * CycleTime.Hour)]);
 
     private sealed class ForbiddenController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("The recorded activity must continue without another decision.");
     }
 

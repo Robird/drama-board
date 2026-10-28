@@ -28,7 +28,7 @@ public static class CycleGameFactory {
             new([]), [new("a", "阿青", backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
                 ["item.water"] = 1
             }) : null, survival: enableNeeds ? CycleSurvival.Create(time, food: 30, water: 45, warmth: 60,
-                warmthPerHour: CycleTime.IsDay(time) ? 6 : -12) : null)], expedition: expedition));
+                warmthPerHour: CycleTime.IsDay(time) ? 6 : -12) : null, continuity: new(1))], expedition: expedition));
     }
 
     /// <summary>Creates the scripted resource-cycle experiment and its initial cursor.</summary>

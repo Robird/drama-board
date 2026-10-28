@@ -42,7 +42,7 @@ public sealed class CycleMaintenanceBoundaryTests {
         CyclePrediction activityPrediction = Assert.Single(previous.Predictions, p => p.OwnerId == "actor:a:activity");
         var replacement = actor.Change(activity, notices: []);
         var fact = new CycleFact(CycleEventKind.AttentionAcknowledged, Hour(6), "a",
-            changedCharacters: [replacement], lastServedActorId: "a");
+            changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1");
 
         CycleBusinessState after = CycleFactApplication.Apply(before, new(Hour(6), 0), fact);
         var dirty = new HashSet<string>(StringComparer.Ordinal);

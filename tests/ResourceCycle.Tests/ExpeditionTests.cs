@@ -76,6 +76,9 @@ public sealed class ExpeditionTests {
         Assert.Equal(new[] { CycleEventKind.LightChanged, CycleEventKind.MoveArrived }, history.CompletedEvents
             .Where(e => e.TargetInstant.ModelTime == Hour(18)).SelectMany(e => e.Facts).Select(f => f.Kind));
         await Advance(kernel);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(kernel.LastCompletion!.Event.Facts).Kind);
+        Assert.Equal(1, source.Calls);
+        await Advance(kernel);
         Assert.Equal(CycleEventKind.WaitStarted, Assert.Single(kernel.LastCompletion!.Event.Facts).Kind);
         Assert.Equal(Hour(18), kernel.World.Time);
         Assert.Equal(2, source.Calls);
@@ -111,8 +114,12 @@ public sealed class ExpeditionTests {
                 CycleCommand.Go(Passage("stream", "cabin"))));
         await AdvanceUntil(kernel, world => CycleActions.CurrentPlace(world, "a") == "stream");
         await Advance(kernel);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(kernel.LastCompletion!.Event.Facts).Kind);
+        await Advance(kernel);
         await AdvanceUntil(kernel, world => world.GetCharacter("a").Activity is null);
         Assert.Equal(1, kernel.World.GetCharacter("a").Backpack.Count(kernel.World.GetResource("berries").ItemId));
+        await Advance(kernel);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(kernel.LastCompletion!.Event.Facts).Kind);
         await Advance(kernel);
         CycleVisit remembered = Assert.Single(kernel.World.Expedition!.Visits, visit => visit.PlaceId == "stream");
         string snapshot = remembered.ToString();
@@ -280,7 +287,7 @@ public sealed class ExpeditionTests {
     }
 
     private sealed class ForbiddenController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Travelling must not request a new character command.");
     }
 

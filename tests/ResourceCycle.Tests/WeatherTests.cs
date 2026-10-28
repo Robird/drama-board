@@ -325,7 +325,7 @@ public sealed class WeatherTests {
     }
 
     private sealed class ForbiddenController : ICycleCharacterController {
-        public ValueTask<CycleCommand> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("This weather boundary must not call the character controller.");
     }
     private sealed class ForbiddenPlanning : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
