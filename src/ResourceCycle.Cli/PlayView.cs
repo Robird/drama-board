@@ -75,7 +75,9 @@ internal static class PlayView {
                     : "已知的庇护中停留可以回暖，白天野外也会回暖；夜间暴露会继续降温。"));
             }
         }
-        if (character.LastResult is { } result) { text.AppendLine($"- 上次结果（记录当时状态）：{result}"); }
+        if (!observation.IsExpedition && character.LastResult is { } result) {
+            text.AppendLine($"- 上次结果（记录当时状态）：{result}");
+        }
         text.AppendLine();
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");

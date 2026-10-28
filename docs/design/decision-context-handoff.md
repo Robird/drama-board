@@ -2,7 +2,7 @@
 
 状态：2026-10-28 已实施：生存模式使用显式决策回合、固定行动结果与交接草稿；所有 Console 操作保存稳定身份。GameRevision 5，不兼容旧开发存档。初稿经[三路设计审查](../research/decision-context-handoff-review.md)收敛，实施阶段另经流程与操作恢复的独立源码审查；工程验证、实际试玩及边界见[实施验收](../experiments/decision-context-handoff-acceptance.md)。LLM 接入、端点 ID 映射与完整工具会话恢复仍未实施。
 
-后续方向：[增量 UI 目标](incremental-ui-milestone.md)将扩展回合内事件/效果呈现，并增加包含零耗时事件的有界最近历史；该扩展尚未实施。本文件保留本切片已落地的有限继承范围，新目标不改变放行后结束旧控制会话的流程。
+后续方向：[增量 UI 目标](incremental-ui-milestone.md)的切片 A 已扩展回合内事件/效果呈现；包含零耗时事件的有界最近历史仍待 B 实施。本文件保留本切片已落地的有限继承范围，新目标不改变放行后结束旧控制会话的流程。
 
 ## 1. 目标与裁决
 

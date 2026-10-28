@@ -1,7 +1,7 @@
 using System.Globalization;
 using DramaBoard.ResourceCycle;
 
-internal enum PlayInputKind { Invalid, Look, Help, Details, Layout, Quit, Action }
+internal enum PlayInputKind { Invalid, Look, Help, Details, Layout, Mode, Quit, Action }
 
 /// <summary>Parsed console intent, before checking whether an action is legal in the current world.</summary>
 internal sealed record PlayInput {
@@ -33,6 +33,8 @@ internal sealed record PlayInput {
         if (parts is [":details"]) { return new(PlayInputKind.Details); }
         if (parts is [":layout"]) { return new(PlayInputKind.Layout); }
         if (parts is [":layout", var layoutId]) { return new(PlayInputKind.Layout, layoutId: layoutId); }
+        if (parts is [":mode"]) { return new(PlayInputKind.Mode); }
+        if (parts is [":mode", var modeId]) { return new(PlayInputKind.Mode, layoutId: modeId); }
         CycleCommand command;
         if (parts is ["wait", var hours] && int.TryParse(hours, NumberStyles.None, CultureInfo.InvariantCulture, out int waitHours)) {
             command = CycleCommand.Wait(waitHours);

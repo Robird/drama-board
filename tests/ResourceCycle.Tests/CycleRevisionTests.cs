@@ -16,11 +16,11 @@ public sealed class CycleRevisionTests {
     [InlineData(true)]
     public void Production_open_rejects_previous_development_revision_without_rewriting_disk(bool hasPending) {
         using var store = new TemporaryStore();
-        CycleDurableRoot root = InitialRoot(4);
-        WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), 4) : null);
+        CycleDurableRoot root = InitialRoot(CycleGameRevision.Current - 1);
+        WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), CycleGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(5, CycleGameRevision.Current);
+        Assert.Equal(6, CycleGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));

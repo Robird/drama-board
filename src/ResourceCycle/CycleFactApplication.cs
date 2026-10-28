@@ -20,8 +20,10 @@ internal static class CycleFactApplication {
             }
             expedition = expedition.Change(spatial, fact.Visits, fact.Outcome, fact.EndingReason, fact.Environment);
         }
-        return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
+        CycleBusinessState result = business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
             fact.ChangedCharacters, fact.LastServedActorId, expedition);
+        CycleObservedEventValidation.Validate(business, result, fact);
+        return result;
     }
     internal static bool SameFoldedBusiness(CycleBusinessState expected, CycleBusinessState actual) =>
         expected.Time == actual.Time && ReferenceEquals(expected.Light, actual.Light) && ReferenceEquals(expected.Script, actual.Script) &&

@@ -11,7 +11,9 @@ internal static class ContinuityPlayView {
         string resultLabel = observation.Outcome == CycleExpeditionOutcome.Exploring ? "上次推进的结果" : "终局结果";
         text.AppendLine($"## 决策回合 {continuity.ContextSequence} · {resultLabel}");
         if (continuity.Incoming is not { } incoming) {
-            text.AppendLine("这是首次决策，尚无上次推进的结果。");
+            text.AppendLine(continuity.Pending is null
+                ? "这是首次决策，尚无上次推进的结果。"
+                : "本回合已放行推进；尚无已封存的上次行动结果。");
         } else {
             text.AppendLine($"历史区间：{Time(incoming.Action.AcceptedAt)} → {Time(incoming.DeliveredAt)}；行动：{Action(incoming.Action)}。");
             text.AppendLine(incoming.ActivityState switch {
@@ -21,6 +23,12 @@ internal static class ContinuityPlayView {
             });
             text.AppendLine($"返回原因：{Reasons(incoming.Summary)}。");
             text.AppendLine($"位置：{Position(incoming.Before)} → {Position(incoming.After)}。");
+            if (incoming.Before.ActivityId is not null) {
+                string progress = incoming.Before.TargetCount > 0
+                    ? $"已取得 {incoming.Before.CompletedCount}/{incoming.Before.TargetCount} 份；" : "";
+                text.AppendLine($"- 行动前活动：{progress}" +
+                    (incoming.Before.ActivityDue is { } beforeDue ? $"原周期截止 {Time(beforeDue)}。" : "没有周期期限。"));
+            }
             Body(text, "食物", incoming.Before.FoodUnits, incoming.After.FoodUnits);
             Body(text, "饮水", incoming.Before.WaterUnits, incoming.After.WaterUnits);
             Body(text, "温暖", incoming.Before.WarmthUnits, incoming.After.WarmthUnits);
@@ -48,6 +56,9 @@ internal static class ContinuityPlayView {
             if (summary.IsSaturated) { text.AppendLine("累计值达到表示上限；计数仅表示下界。"); }
             text.AppendLine("上回合的交接文字（角色主观记录，并非游戏确认的事实）：");
             Quote(text, incoming.Handoff ?? "（无）");
+        }
+        if (continuity.Pending is { } pending) {
+            text.AppendLine($"已接受的行动：{Action(pending.Action)}；正在推进，结果将在下次决策时交付。");
         }
         text.AppendLine();
         text.AppendLine("本轮交接草稿（下一次放行模拟时发送，旧交接不会自动续传）：");

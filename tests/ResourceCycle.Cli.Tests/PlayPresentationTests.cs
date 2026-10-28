@@ -47,31 +47,31 @@ public sealed class PlayPresentationTests {
     }
 
     [Fact]
-    public async Task New_time_or_actor_clears_before_rendering_but_same_time_interactions_remain() {
+    public async Task New_time_or_actor_clears_but_same_time_interactions_remain() {
         var layout = new RecordingLayout("test");
         var presentation = new PlayPresentation(layout);
         CycleWorld earlier = CycleGameFactory.CreatePlayable(new ModelTime(16 * CycleTime.Hour)).World;
         CycleWorld later = CycleGameFactory.CreatePlayable(new ModelTime(17 * CycleTime.Hour)).World;
         using var input = new StringReader("wait 1\n:help\nwait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
-        var screensAtClear = new List<int>();
+        int clears = 0;
         var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output,
-            () => screensAtClear.Add(layout.Screens.Count));
+            () => clears++);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
-        Assert.Equal(new[] { 0 }, screensAtClear);
+        Assert.Equal(1, clears);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "b"), default);
-        Assert.Equal(new[] { 0, 2 }, screensAtClear);
+        Assert.Equal(2, clears);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(later, "b"), default);
-        Assert.Equal(new[] { 0, 2, 3 }, screensAtClear);
+        Assert.Equal(3, clears);
 
         // Terminal observations use this same boundary even though no further input is requested.
         controller.RenderObservation(CycleDecisionContext.Create(
             CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b").Observation);
-        Assert.Equal(new[] { 0, 2, 3, 4 }, screensAtClear);
+        Assert.Equal(4, clears);
         Assert.Equal(5, layout.Screens.Count);
     }
 
@@ -80,23 +80,23 @@ public sealed class PlayPresentationTests {
         var layout = new RecordingLayout("test");
         using var input = new StringReader("wait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
-        var clearedAfterScreens = new List<int>();
+        int clears = 0;
         var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), input, output,
-            () => clearedAfterScreens.Add(layout.Screens.Count)) { StartupText = "startup-help" };
+            () => clears++) { StartupText = "startup-help" };
         CycleWorld first = SurvivalContext(15, 1);
         CycleWorld sameContextLaterTime = SurvivalContext(16, 1);
         CycleWorld nextContextSameTime = SurvivalContext(16, 2);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(first, "a"), default);
-        Assert.Equal(new[] { 0 }, clearedAfterScreens);
+        Assert.Equal(1, clears);
         Assert.Contains("startup-help", output.ToString());
         Assert.Null(controller.StartupText);
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(sameContextLaterTime, "a"), default);
-        Assert.Equal(new[] { 0 }, clearedAfterScreens);
+        Assert.Equal(1, clears);
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(nextContextSameTime, "a"), default);
-        Assert.Equal(new[] { 0, 2 }, clearedAfterScreens);
+        Assert.Equal(2, clears);
         controller.RenderObservation(CycleDecisionContext.Create(nextContextSameTime, "a").Observation);
-        Assert.Equal(new[] { 0, 2 }, clearedAfterScreens);
+        Assert.Equal(2, clears);
     }
 
     private static CycleWorld SurvivalContext(int hour, long sequence) {

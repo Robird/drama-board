@@ -78,7 +78,7 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
                     if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId)) {
                         throw new InvalidDataException("A recorded operation effect has incomplete provenance.");
                     }
-                    results.Add(new(recordId, fact.ToolCallId, fact.ActorId, fact.Result ?? fact.Kind.ToString(),
+                    results.Add(new(recordId, fact.ToolCallId, fact.ActorId, CycleOperationResults.Describe(fact),
                         fact.At.Ticks, Cursor.Version.LineageId, transitionCount, entry.Occurrence.CauseKey.ToString()));
                 }
                 transitionCount--;

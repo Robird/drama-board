@@ -35,7 +35,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         }
         if (observation.Weather is { } weather) {
             text.AppendLine(weather.NextWindow is { } next
-                ? $"- 下次天气窗口：{Time(next)}；结果未知。寒风可使暴露者温暖额外减少最多 {Number(weather.ExposedWarmthLoss)} 点；庇护内免损，移动途中暴露。"
+                ? $"- 下次天气窗口：{Time(next)}（每 {Minutes(weather.IntervalTicks)} 分钟一次）；结果未知。寒风可使暴露者温暖额外减少最多 {Number(weather.ExposedWarmthLoss)} 点；庇护内免损，移动途中暴露。"
                 : "- 没有后续天气窗口。");
         }
         RenderActivity(text, observation, ended: false);
@@ -85,11 +85,21 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         if (observation.ArrivalDue is null) {
             text.AppendLine();
             AppendCommand(text, observation, "wait 1", CycleCommand.Wait(1), "在原地停留 1 小时；完成或危险警告时请求输入");
-            text.AppendLine("等待可选 1–24 整数小时；`:help` 查看全部时长的受阻原因和风险，长时间等待前请查阅。");
+            text.AppendLine("等待可选 1–24 整数小时；各时长当前条件与风险：");
         }
+        text.Append(CycleUpdateRenderer.RenderCommandStates(CycleViewSnapshot.Create(observation).Values
+            .Where(pair => pair.Key.Category == "command" &&
+                (pair.Key.ObjectId.StartsWith("Wait|", StringComparison.Ordinal) ||
+                 pair.Key.ObjectId.StartsWith("Handoff|", StringComparison.Ordinal) ||
+                 pair.Key.ObjectId.StartsWith("Cancel|", StringComparison.Ordinal)))));
         if (observation.Memories.Count > 0) {
             text.AppendLine();
-            text.AppendLine($"曾到访（历史）：{string.Join("、", observation.Memories.Select(memory => $"{memory.Name}（{Time(memory.At)}）"))}。`:details` 查看离开前的资源记录，远处余量可能已变。");
+            text.AppendLine("曾到访（离开前的历史观察；远处余量可能已变）：");
+            foreach (CyclePlaceMemory memory in observation.Memories) {
+                string stock = memory.Resources.Count == 0 ? "当时没有可采资源" :
+                    string.Join("；", memory.Resources.Select(resource => $"{resource.Name} {resource.Stock}/{resource.Capacity}"));
+                text.AppendLine($"- {memory.Name}（{Time(memory.At)}）：{stock}。");
+            }
         }
         text.AppendLine();
         text.AppendLine("`:look` 重看 · `:help` 完整命令与规则 · `:details` 完整观察和历史 · `:layout` 切换布局 · `:exit` 退出。查看不耗时、不确认消息。");
@@ -99,29 +109,9 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
     public string RenderHelp(CycleObservation observation) => observation.Outcome == CycleExpeditionOutcome.Exploring
         ? PlayView.RenderCommands(observation) : "本局已经结束；可以查看冻结记录或退出。\n";
 
-    public string RenderPrompt(CycleObservation observation) {
-        if (observation.Outcome != CycleExpeditionOutcome.Exploring) { return "已结束> "; }
-        if (!observation.IsExpedition || observation.Survival is not { } survival) { return $"{observation.Actor.Id}> "; }
-        string position = observation.ArrivalDue is { } arrival
-            ? $"在途，{Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）"
-            : observation.PlaceName ?? "当前位置";
-        string[] responses = observation.Commands.Where(entry => entry.Rejection is null &&
-            entry.Command.Kind is CycleCommandKind.Continue or CycleCommandKind.Cancel or CycleCommandKind.Use)
-            .Select(entry => entry.Command.Kind switch {
-                CycleCommandKind.Continue => "continue（确认并保留活动）",
-                CycleCommandKind.Cancel => "cancel（取消当前活动）",
-                _ => $"use {entry.Command.ItemId}（补给）"
-            }).ToArray();
-        return $"\n现在 {Time(observation.Time)} · {(observation.IsDay ? "白天" : "夜晚")} · {position}\n" +
-            $"{Exposure(survival)} · 温暖 {Number(survival.Warmth)}/100（{Trend(survival.WarmthPerHour)}/小时） · " +
-            $"食物 {Number(survival.Food)} · 饮水 {Number(survival.Water)}" +
-            (survival.PendingWarnings.Count > 0 ? $" · {survival.PendingWarnings.Count} 条历史警告待确认" : "") +
-            (responses.Length > 0 ? $"\n可响应：{string.Join(" / ", responses)}" : "") +
-            $"\n{observation.Actor.Id}> ";
-    }
+    public string RenderPrompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
 
     private static void RenderEvents(StringBuilder text, CycleObservation observation, bool ended) {
-        if (observation.Actor.LastResult is { } result) { text.AppendLine($"- 上次行动结果（历史）：{result}"); }
         foreach (CycleNoticeObservation notice in observation.Notices) { text.AppendLine($"- {PlayView.RenderNotice(notice, ended)}"); }
         if (observation.Survival is { PendingWarnings.Count: > 0 } survival) {
             text.AppendLine(ended ? "- 结束时未确认的历史警告：" : "- **待确认的历史警告**（补给后仍保留，当前数值以上方为准）：");

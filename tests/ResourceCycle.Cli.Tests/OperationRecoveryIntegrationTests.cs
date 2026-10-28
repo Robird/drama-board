@@ -6,6 +6,50 @@ using DramaBoard.ResourceCycle;
 namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class OperationRecoveryIntegrationTests {
+    [Fact]
+    public async Task Clamped_supply_result_missing_after_S_recovers_same_actual_gain_and_operation_identity() {
+        string directory = Path.Combine(Path.GetTempPath(), "drama-clamped-result-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            string store = Path.Combine(directory, "game");
+            string journalPath = Path.Combine(directory, "operations.jsonl");
+            var initial = CycleGameFactory.CreateSurvival();
+            CycleCharacter actor = initial.World.GetCharacter("a");
+            var replacement = new CycleCharacter(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
+                survival: CycleSurvival.Create(initial.World.Time, water: 90), continuity: actor.Continuity);
+            CycleWorld world = CycleEngine.Rebuild(initial.World.Business.Replace(initial.World.Time,
+                changedCharacters: [replacement]), initial.World.Time);
+            CycleOperationReceipt receipt;
+            using (var journal = CycleOperationJournal.Open(journalPath)) {
+                receipt = journal.Receive("batch", "provider:clamp", "a", 1, "use", "use item.water");
+            }
+            var memory = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(world, initial.Cursor);
+            var kernel = CycleEngine.CreateKernel(memory, characterController: new SupplyController(receipt));
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+            string normalResult = CycleOperationResults.Describe(kernel.LastCompletion!.Event.Facts.Single());
+            Assert.Contains("+10", normalResult);
+            using (var history = CycleDurableHistory.Create(store, world, initial.Cursor)) {
+                history.CommitEvent(kernel.LastCompletion.Event);
+                history.CommitState(kernel.World, kernel.Cursor);
+            }
+            using var reopened = CycleDurableHistory.Open(store);
+            using var operations = CycleOperationJournal.Open(journalPath);
+            operations.Reconcile(reopened.ReadCommittedOperations(operations.PendingOperationRecordIds)
+                .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
+                    commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent)));
+            CycleOperationResult result = operations.Entries.Single().Completed!;
+            Assert.Equal(normalResult, result.Result);
+            Assert.Equal(receipt.ToolCallId, result.ToolCallId);
+            Assert.Equal(receipt.OperationRecordId, operations.Entries.Single().Received.OperationRecordId);
+            Assert.False(result.ExactResult);
+            Assert.Equal(100 * CycleSurvival.Scale, reopened.State.GetCharacter("a").Survival!.WaterUnits);
+            Assert.Equal(0, reopened.State.GetCharacter("a").Backpack.Count("item.water"));
+            Assert.Equal(1, reopened.Cursor.Version.TransitionCount);
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -62,5 +106,10 @@ public sealed class OperationRecoveryIntegrationTests {
             Calls++;
             return ValueTask.FromResult(new CycleControllerOperation(receipt.ToolCallId, CycleCommand.Wait(1), receipt.OperationRecordId));
         }
+    }
+
+    private sealed class SupplyController(CycleOperationReceipt receipt) : ICycleCharacterController {
+        public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new CycleControllerOperation(receipt.ToolCallId, CycleCommand.Use("item.water"), receipt.OperationRecordId));
     }
 }

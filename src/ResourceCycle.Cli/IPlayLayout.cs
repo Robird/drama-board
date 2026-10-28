@@ -5,6 +5,10 @@ internal interface IPlayLayout {
     string Id { get; }
     string Name { get; }
     string Render(CycleObservation observation);
+    string RenderFull(CycleViewSnapshot snapshot) => Render(snapshot.Observation);
+    string RenderUpdate(CycleViewUpdate update) => update.FullTail
+        ? CycleUpdateRenderer.RenderEvents(update) + RenderFull(update.Snapshot)
+        : CycleUpdateRenderer.Render(update);
     string RenderHelp(CycleObservation observation);
     string RenderPrompt(CycleObservation observation);
 }

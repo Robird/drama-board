@@ -63,7 +63,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Equal(warned.Observation.Survival.PendingWarnings, replenished.Observation.Survival.PendingWarnings);
         string after = PlayView.Render(replenished.Observation);
         Assert.Contains("即使已经补给也会保留", after);
-        Assert.Contains("上次结果（记录当时状态）", after);
+        Assert.DoesNotContain("上次结果（记录当时状态）", after);
         Assert.NotNull(replenished.Check(CycleCommand.Use("item.water")));
         Assert.Null(replenished.Check(CycleCommand.Continue()));
 

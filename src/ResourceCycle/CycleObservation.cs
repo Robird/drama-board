@@ -9,7 +9,7 @@ public sealed record CycleActorObservation(string Id, string Name, int SkillLeve
     CycleActivity? Activity, IReadOnlyList<CycleNotice> Notices, string? LastResult, long NextActivityId);
 public sealed record CycleOtherCharacterObservation(string Id, string Name, string? GatheringResourceId, bool Waiting);
 public sealed record CyclePassageObservation(string Id, string Description, long DurationTicks, string? KnownDestinationName);
-public sealed record CyclePlaceMemory(string Name, ModelTime At, IReadOnlyList<CycleResource> Resources);
+public sealed record CyclePlaceMemory(string Name, ModelTime At, IReadOnlyList<CycleResource> Resources, string? PlaceId = null);
 public sealed record CycleNoticeObservation(CycleNotice Notice, string ResourceName, string ActorLabel,
     bool? StillGathering, int? CurrentStock, int? Capacity);
 public sealed record CycleCommandCheck(CycleCommand Command, string? Rejection, string? Warning = null);
@@ -29,6 +29,7 @@ public sealed class CycleObservation {
     public required IReadOnlyList<CycleNoticeObservation> Notices { get; init; }
     public required IReadOnlyList<CycleCommandCheck> Commands { get; init; }
     public bool IsExpedition { get; init; }
+    public string? PlaceId { get; init; }
     public string? PlaceName { get; init; }
     public string? PlaceDescription { get; init; }
     public ModelTime? ArrivalDue { get; init; }
@@ -130,7 +131,7 @@ public sealed class CycleDecisionContext {
             ItemNames = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(itemNames),
             OtherCharacters = Array.AsReadOnly(others), Notices = Array.AsReadOnly(notices),
             Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, Check(command), Warning(command))).ToArray()),
-            IsExpedition = expedition is not null,
+            IsExpedition = expedition is not null, PlaceId = place,
             PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,
             ArrivalDue = arrival,
@@ -138,7 +139,7 @@ public sealed class CycleDecisionContext {
                 passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? CycleExpeditionMap.GetPlace(passage.To).Name : null)).ToArray()),
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>
                 new CyclePlaceMemory(CycleExpeditionMap.GetPlace(visit.PlaceId).Name, visit.At,
-                    Array.AsReadOnly(visit.Resources.ToArray()))).ToArray()),
+                    Array.AsReadOnly(visit.Resources.ToArray()), visit.PlaceId)).ToArray()),
             Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason,
             Survival = CycleSurvivalRules.Observe(world, actorId),
             Weather = CycleEnvironmentRules.Observe(world, actorId), Continuity = actor.Continuity

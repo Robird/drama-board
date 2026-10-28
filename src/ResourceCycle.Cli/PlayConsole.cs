@@ -57,7 +57,9 @@ internal static class PlayConsole {
         try {
             while (true) {
                 if (kernel.World.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) {
-                    controller.RenderObservation(CycleDecisionContext.Create(kernel.World, kernel.World.Characters[0].Id).Observation);
+                    if (!controller.TerminalDelivered) {
+                        controller.RenderObservation(CycleDecisionContext.Create(kernel.World, kernel.World.Characters[0].Id).Observation);
+                    }
                     return 0;
                 }
                 StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
@@ -65,7 +67,7 @@ internal static class PlayConsole {
                     throw new InvalidOperationException($"采集世界未能产生下一步行动：{status}。");
                 }
                 CompleteOperations(operations, kernel.LastCompletion!);
-                PrintPublicChanges(kernel.LastCompletion!, survival);
+                controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival);
             }
         } catch (PlayEndedException) {
             Console.WriteLine(store is null ? $"已退出。内存中的{(survival ? "生存" : "采集")}进度未保存。" :
@@ -87,19 +89,12 @@ internal static class PlayConsole {
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
-    private static void PrintPublicChanges(OccurrenceCompletion<CycleFact> completion, bool survival) {
-        foreach (CycleFact fact in completion.Event.Facts) {
-            if (PlayView.RenderPublicChange(fact, survival) is { } text) { Console.WriteLine(text); }
-        }
-    }
-
-    private static void CompleteOperations(CycleOperationJournal operations, OccurrenceCompletion<CycleFact> completion) {
+    internal static void CompleteOperations(CycleOperationJournal operations, OccurrenceCompletion<CycleFact> completion) {
         foreach (CycleFact fact in completion.Event.Facts) {
             if (fact.OperationRecordId is not { } recordId) { continue; }
-            operations.Complete(recordId, CycleOperationStatus.Succeeded, fact.Result ?? "操作已提交。",
+            operations.Complete(recordId, CycleOperationStatus.Succeeded, CycleOperationResults.Describe(fact),
                 $"{completion.Cursor.Version.LineageId}:{completion.Cursor.Version.TransitionCount}",
                 completion.Event.CauseKey.ToString());
-            Console.WriteLine(fact.Result ?? "操作已提交。");
         }
     }
 
@@ -123,32 +118,46 @@ internal static class PlayConsole {
         private readonly TextWriter _output = outputWriter ?? Console.Out;
         private readonly CycleOperationJournal _operations = operations ?? CycleOperationJournal.CreateInMemory();
         private readonly string _batchId = Guid.NewGuid().ToString("N");
-        private (string ActorId, long? ContextSequence, ModelTime? LegacyTime)? _lastView;
-        internal string? StartupText { get; set; }
+        private readonly PlayPresentationSession _session = new(presentation, outputWriter ?? Console.Out, clearScreen);
+        internal string? StartupText { get => _session.StartupText; set => _session.StartupText = value; }
+        internal bool TerminalDelivered => _session.TerminalDelivered;
 
         internal void RenderObservation(CycleObservation observation) {
-            // Survival contexts have explicit identity; collection mode retains its time/actor horizon.
-            var identity = (observation.Actor.Id, observation.Continuity?.ContextSequence,
-                observation.Continuity is null ? observation.Time : (ModelTime?)null);
-            if (_lastView != identity) {
+            _session.ShowFull(observation);
+        }
+
+        internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
+            if (!survival) {
+                // Multiplayer experience distribution is deferred; retain its explicit full-mode fallback.
+                foreach (CycleFact fact in completion.Event.Facts) {
+                    if (fact.OperationRecordId is not null) { _output.WriteLine(CycleOperationResults.Describe(fact)); }
+                    if (PlayView.RenderPublicChange(fact, expedition: false) is { } text) { _output.WriteLine(text); }
+                }
                 _output.Flush();
-                clearScreen?.Invoke();
+                return;
             }
-            _lastView = identity;
-            if (StartupText is { } startup) {
-                _output.WriteLine(startup);
-                StartupText = null;
+            if (completion.Event.Facts.All(fact => fact.Kind == CycleEventKind.DecisionContextOpened)) { return; }
+            string actorId = world.Characters[0].Id;
+            var batch = completion.Event.Facts.SelectMany((fact, factOrdinal) => fact.ObservedEvents
+                .Where(item => item.ObserverId == actorId).Select(item => (Event: item,
+                    Source: new CycleObservedEventSource(completion.Cursor.Version.LineageId,
+                        completion.Cursor.Version.TransitionCount, factOrdinal, item.EventOrdinal,
+                        fact.OperationRecordId, fact.ToolCallId)))).ToArray();
+            foreach (CycleFact fact in completion.Event.Facts.Where(fact => fact.ActorId == actorId &&
+                fact.OperationRecordId is not null && !fact.ObservedEvents.Any(item => item.ObserverId == actorId))) {
+                _session.Reply(CycleOperationResults.Describe(fact));
             }
-            _output.WriteLine();
-            _output.WriteLine(presentation.Current.Render(observation));
+            _session.Commit(CycleDecisionContext.Create(world, actorId).Observation,
+                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray());
         }
 
         public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             CycleObservation observation = context.Observation;
-            RenderObservation(observation);
+            _session.EnterInput(observation);
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
-                _output.Write(presentation.Current.RenderPrompt(observation));
+                _output.Write(_session.Prompt(observation));
+                _output.Flush();
                 string? input = await _input.ReadLineAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (input is null) { throw new PlayEndedException(); }
@@ -158,22 +167,34 @@ internal static class PlayConsole {
                     observation.Actor.Id, observation.Continuity?.ContextSequence, toolName, input);
                 void Reply(string result, CycleOperationStatus status = CycleOperationStatus.Succeeded) {
                     _operations.Complete(receipt.OperationRecordId, status, result, worldVersion?.Invoke());
-                    _output.WriteLine(result);
+                    _session.Reply(result);
                 }
                 PlayInput parsed = PlayInput.Parse(input);
                 if (parsed.Kind == PlayInputKind.Quit) { Reply("退出当前控制台。"); throw new PlayEndedException(); }
-                if (parsed.Kind == PlayInputKind.Look) { Reply(presentation.Current.Render(observation)); continue; }
+                void Resynchronize(string? prefix = null) => _session.ShowFull(observation,
+                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix);
+                if (parsed.Kind == PlayInputKind.Look) { Resynchronize(); continue; }
                 if (parsed.Kind == PlayInputKind.Help) {
-                    Reply(PlayPresentation.MetaHelp + "\n" + presentation.DescribeLayouts() + "\n" + presentation.Current.RenderHelp(observation));
+                    Reply(PlayPresentation.MetaHelp + "\n" + presentation.DescribeLayouts() + "\n" +
+                        presentation.DescribeModes() + "\n" + presentation.Current.RenderHelp(observation));
                     continue;
                 }
                 if (parsed.Kind == PlayInputKind.Details) { Reply(PlayView.Render(observation)); continue; }
                 if (parsed.Kind == PlayInputKind.Layout) {
                     if (parsed.LayoutId is null) { Reply(presentation.DescribeLayouts()); }
                     else if (presentation.TrySelect(parsed.LayoutId)) {
-                        Reply($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n" + presentation.Current.Render(observation));
+                        Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
                     } else {
                         Reply($"未知布局：{parsed.LayoutId}。\n{presentation.DescribeLayouts()}", CycleOperationStatus.Rejected);
+                    }
+                    continue;
+                }
+                if (parsed.Kind == PlayInputKind.Mode) {
+                    if (parsed.LayoutId is null) { Reply(presentation.DescribeModes()); }
+                    else if (presentation.TrySelectMode(parsed.LayoutId)) {
+                        Resynchronize($"已切换输出模式：{parsed.LayoutId}。\n");
+                    } else {
+                        Reply($"此场景不支持输出模式：{parsed.LayoutId}。\n{presentation.DescribeModes()}", CycleOperationStatus.Rejected);
                     }
                     continue;
                 }
@@ -187,6 +208,7 @@ internal static class PlayConsole {
                     continue;
                 }
                 if (context.Warning(command) is { } warning) { _output.WriteLine($"风险提示（不禁止）：{warning}"); }
+                _session.BeginAdvancing();
                 return new CycleControllerOperation(receipt.ToolCallId, command, receipt.OperationRecordId);
             }
         }

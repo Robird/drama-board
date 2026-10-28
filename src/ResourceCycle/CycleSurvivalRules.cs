@@ -7,7 +7,7 @@ namespace DramaBoard.ResourceCycle;
 /// no supplies, and no random weather. A null FatalAt means no depletion within representable time.</summary>
 public sealed record CycleSurvivalObservation(decimal Food, decimal Water, decimal Warmth,
     int FoodPerHour, int WaterPerHour, int WarmthPerHour, bool Sheltered,
-    IReadOnlyList<string> PendingWarnings, ModelTime? FatalAt, bool WarmthWarningPending = false);
+    IReadOnlyList<string> PendingWarnings, ModelTime? FatalAt, bool WarmthWarningPending = false, int PendingWarningMask = 0);
 
 /// <summary>Application survival policy. Prediction and projection are pure; planning records concrete replacements.</summary>
 public static class CycleSurvivalRules {
@@ -27,7 +27,7 @@ public static class CycleSurvivalRules {
         bool sheltered = IsSheltered(world.Expedition?.Spatial, actorId);
         return new((decimal)body.FoodUnits / CycleSurvival.Scale, (decimal)body.WaterUnits / CycleSurvival.Scale,
             (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodPerHour, body.WaterPerHour, body.WarmthPerHour,
-            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0);
+            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0, body.PendingMask);
     }
 
     /// <summary>Known deterministic risk over a proposed activity, including scheduled day/night boundaries.</summary>
