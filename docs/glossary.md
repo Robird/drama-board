@@ -15,6 +15,8 @@
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | [CycleObservation / CycleDecisionContext](../src/ResourceCycle/CycleObservation.cs) 由游戏构造角色观察与纯命令校验；Console 布局只接收观察来渲染 Markdown。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
+| 增量观察（Incremental observation） | 在同一阅读上下文内，按序追加事件及其效果，尾部统一汇总受影响状态的最新值并明确失效信息；布局或上下文变化时可全量重同步。不是游戏状态的增量持久化。 | 用户提出的[增量 UI 目标](design/incremental-ui-milestone.md)；尚未实现。 |
+| 经历与效果关联（Experience and effect references） | 将角色可见的过程记录与受影响状态关联；当前值、历史效果和观察范围变化各自表达，不能从前后差异自动断言因果。 | [增量 UI 规则](design/incremental-ui-milestone.md)已确认，拟议事件/效果类型见[切片 A 设计](design/incremental-ui-slice-a.md)；当前 Incoming 只提供有限行动摘要，尚无通用经历条目 API。 |
 | 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CycleDecisionContinuity.ContextSequence`；`DecisionContextOpened` 封存 Pending 为 Incoming，见[信息继承合同](design/decision-context-handoff.md)。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `DraftHandoff` 与 Incoming 中的历史文字分开；`handoff` 编辑，下一次放行后传递一次并清空草稿。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，未来 LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |

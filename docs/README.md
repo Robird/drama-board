@@ -20,6 +20,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+The [Incremental UI milestone](design/incremental-ui-milestone.md) records the confirmed rules: preserve event/effect sequences, summarize each affected current value once, report actual effects, and reuse the events in recent history. Current discussion focuses on the [slice A software design](design/incremental-ui-slice-a.md): recorded effect materials, output after commit, semantic state selection, and layout/session interfaces. These implementation choices remain proposals; the feature is not implemented, and the retained history window belongs to slice B.
+
 The [Survival escape milestone](design/survival-demo-milestone.md) defines two phases: a single-character Human Console game, then a two-character experience with an LLM companion, dialogue and gifts. Phase one is complete; see the [implementation contracts](implementation/survival-demo-plan.md) and [final acceptance](experiments/survival-demo-acceptance.md), including two independent successful routes, explained failures and post-fix checks. Spatial exploration, [survival needs](design/survival-needs.md) and [weather risks](design/survival-weather.md) share a single durable game root. Phase two has not started.
 
 The [gradual modularization plan](implementation/modularization-plan.md) A–D is implemented: application boundaries, the total-unit capacity probe, and an independent Inventory assembly with explicit model registration and local tests; see [acceptance evidence](experiments/modularization-acceptance.md). Further extraction follows concrete gameplay needs. The default demo remains unlimited; saves containing Backpack schema v1/v2 are not supported by the v3 model.
