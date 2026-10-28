@@ -42,7 +42,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
     public void ShowFull(CycleObservation observation, Action<string>? beforeWrite = null, string? prefix = null) {
         var snapshot = CycleViewSnapshot.Create(observation);
         string text = (StartupText is { } startup ? startup + "\n" : "") + prefix +
-            presentation.Current.RenderFull(snapshot) + FullConsoleText(observation);
+            ConsoleHint(observation) + presentation.Current.RenderFull(snapshot) + PhaseText(observation);
         beforeWrite?.Invoke(text);
         Write(text, snapshot, newTurn: _identity != Identity(observation));
     }
@@ -55,17 +55,17 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         CycleViewUpdate update = CycleViewUpdate.Create(Baseline!, snapshot, events, Phase, fullTail, sources);
         bool phaseChanged = _deliveredPhase != Phase;
         if (!fullTail && events.Count == 0 && update.CurrentValues.Count == 0 && !phaseChanged) { return; }
-        string text = presentation.Current.RenderUpdate(update);
+        string text = (fullTail ? ConsoleHint(observation) : "") + presentation.Current.RenderUpdate(update);
         // A successful commit is not an input opportunity. Only EnterInput changes this phase.
-        if (fullTail) { text += FullConsoleText(observation); }
+        if (fullTail) { text += PhaseText(observation); }
         else if (phaseChanged) { text += PhaseText(observation); }
         Write(text, snapshot, newTurn: false);
     }
 
-    private string FullConsoleText(CycleObservation observation) {
+    private string ConsoleHint(CycleObservation observation) {
         string hint = observation.Outcome == CycleExpeditionOutcome.Exploring && Phase == PlayDeliveryPhase.ControllerInput
             ? metaCommands.RenderHint(presentation) : "";
-        return (hint.Length > 0 ? "\n" + hint + "\n" : "") + PhaseText(observation);
+        return hint.Length > 0 ? hint + "\n\n" : "";
     }
 
     private string PhaseText(CycleObservation observation) => observation.Outcome != CycleExpeditionOutcome.Exploring

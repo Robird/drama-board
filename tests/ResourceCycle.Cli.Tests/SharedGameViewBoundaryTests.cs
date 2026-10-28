@@ -20,7 +20,7 @@ public sealed class SharedGameViewBoundaryTests {
         }
         AssertGameContent(PlayView.Render(observation));
         AssertGameContent(PlayView.RenderCommands(observation));
-        AssertGameContent(ContinuityPlayView.Render(observation));
+        AssertGameContent(ContinuityPlayView.RenderHistory(observation) + ContinuityPlayView.RenderCurrent(observation));
     }
 
     [Theory]
@@ -36,7 +36,7 @@ public sealed class SharedGameViewBoundaryTests {
                 PlayDeliveryPhase.Advancing);
             Assert.Contains(handoff, layout.RenderUpdate(update));
         }
-        Assert.Contains(handoff, ContinuityPlayView.Render(observation));
+        Assert.Contains(handoff, ContinuityPlayView.RenderHistory(observation) + ContinuityPlayView.RenderCurrent(observation));
     }
 
     [Theory]

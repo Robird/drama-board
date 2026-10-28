@@ -44,7 +44,8 @@ public sealed class SurvivalWeatherViewTests {
         var weather = new CycleWeatherObservation(new ModelTime(19 * CycleTime.Hour), 2 * CycleTime.Hour, 10,
             shelteredNow, new ModelTime(17 * CycleTime.Hour), CycleWeatherKind.ColdWind, loss, shelteredThen);
         var text = new StringBuilder();
-        PlayView.RenderWeather(text, weather, ended: false);
+        PlayView.RenderWeatherHistory(text, weather);
+        PlayView.RenderCurrentWeather(text, weather);
         Assert.Contains(current, text.ToString());
         Assert.Contains(history, text.ToString());
         Assert.Contains("最近实际天气：第 0 天 17:00，寒风", text.ToString());
@@ -79,7 +80,7 @@ public sealed class SurvivalWeatherViewTests {
         var weather = new CycleWeatherObservation(new ModelTime(19 * CycleTime.Hour), 2 * CycleTime.Hour, 10,
             false, new ModelTime(17 * CycleTime.Hour), CycleWeatherKind.ColdWind, 7, false);
         var text = new StringBuilder();
-        PlayView.RenderWeather(text, weather, ended: true);
+        PlayView.RenderWeatherHistory(text, weather);
         Assert.Contains("温暖实际减少 7 点", text.ToString());
         Assert.DoesNotContain("下次窗口", text.ToString());
         Assert.DoesNotContain("当前没有庇护", text.ToString());

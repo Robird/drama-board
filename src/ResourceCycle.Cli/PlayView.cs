@@ -22,44 +22,11 @@ internal static class PlayView {
         var text = new StringBuilder();
         text.AppendLine($"# {(observation.IsExpedition ? "山林求生" : "林间苗圃")} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
         text.AppendLine();
-        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。"
-            : $"当前角色：{character.Name}（`{character.Id}`）。");
-        text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
-            $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
-        text.AppendLine();
-        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended, observation.Weather is not null); }
-        text.Append(ContinuityPlayView.Render(observation));
-        if (observation.Weather is { } weather) { RenderWeather(text, weather, ended); }
-        if (observation.IsExpedition) {
-            text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
-            text.AppendLine(observation.ArrivalDue is { } arrival
-                ? ended ? $"结束时仍在途中；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
-                    : $"正在途中；预计 {FormatTime(arrival)} 到达。移动途中不可 cancel；查看或继续不会重置行程。"
-                : $"{observation.PlaceName}：{observation.PlaceDescription}");
-            text.AppendLine();
-            if (observation.Memories.Count > 0) {
-                text.AppendLine("## 曾到访地点");
-                text.AppendLine("以下均为离开前的历史观察，远处余量可能已改变，不表示当前事实。");
-                foreach (CyclePlaceMemory memory in observation.Memories) {
-                    string stock = memory.Resources.Count == 0 ? "当时未见可采资源" : string.Join("；", memory.Resources.Select(resource => $"{resource.Name} {resource.Stock}/{resource.Capacity}"));
-                    text.AppendLine($"- {memory.Name}（{FormatTime(memory.At)}）：{stock}。");
-                }
-                text.AppendLine();
-            }
-        }
-        text.AppendLine("## 本次介入");
-        if (character.Notices.Count == 0) {
-            text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 本次旅程已结束。" :
-                observation.ArrivalDue is not null ? "- 行程进行中。" :
-                character.Activity is { } active ? $"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。" :
-                "- 当前空闲，请选择下一活动。");
-        } else {
-            foreach (CycleNoticeObservation notice in observation.Notices) {
-                text.AppendLine($"- {RenderNotice(notice, ended)}");
-            }
-            text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 本次旅程已结束；以下是结束前的历史感知。" : character.Activity is { } ongoing
-                ? $"- 你的活动没有中断；当前周期仍于 {FormatTime(ongoing.Due)} 结算。"
-                : "- 你的活动已结束；以下感知和行动结果一起呈现，请选择下一活动。");
+        text.Append(RenderKnowledge(observation));
+        text.Append(ContinuityPlayView.RenderHistory(observation));
+        text.AppendLine("## 历史通知");
+        foreach (CycleNoticeObservation notice in observation.Notices) {
+            text.AppendLine($"- {RenderNotice(notice, ended)}");
         }
         if (observation.Survival is { PendingWarnings.Count: > 0 } needs) {
             text.AppendLine(ended ? "- 生存警告（结束时尚未确认的历史记录）：" : "- 生存警告（历史记录，待确认）：");
@@ -67,17 +34,35 @@ internal static class PlayView {
             text.AppendLine("- 这些警告记录已经发生的危险；即使已经补给也会保留，当前余量以“身体状态”为准。" +
                 (observation.Outcome == CycleExpeditionOutcome.Exploring
                     ? "use 只补充食物或饮水；continue 确认警告，保留原活动和行程期限。" : "旅程已经结束，无需再确认。"));
-            if (!ended && needs.WarmthWarningPending) {
-                text.AppendLine("- 温暖警告：现有物品不能恢复温暖。" + (observation.ArrivalDue is not null
-                    ? "途中没有主动保暖操作，抵达前不能安排庇护停留；请留意温暖趋势与剩余行程。"
-                    : needs.Sheltered ? "当前已有庇护，停留可以回暖；食物和饮水仍会消耗。"
-                    : "已知的庇护中停留可以回暖，白天野外也会回暖；夜间暴露会继续降温。"));
-            }
         }
         if (!observation.IsExpedition && character.LastResult is { } result) {
             text.AppendLine($"- 上次结果（记录当时状态）：{result}");
         }
         text.AppendLine();
+        if (observation.Weather is { } pastWeather) { RenderWeatherHistory(text, pastWeather); }
+        text.AppendLine(ended ? "## 结束时的状态" : "## 当前状态与环境");
+        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。"
+            : $"当前角色：{character.Name}（`{character.Id}`）。");
+        text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
+            $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
+        text.AppendLine();
+        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended, observation.Weather is not null); }
+        if (!ended) { RenderWarmthAdvice(text, observation); }
+        if (!ended && observation.Weather is { } weather) { RenderCurrentWeather(text, weather); }
+        if (observation.IsExpedition) {
+            text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
+            text.AppendLine(observation.ArrivalDue is { } arrival
+                ? ended ? $"结束时仍在途中；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
+                    : $"正在途中；预计 {FormatTime(arrival)} 到达。移动途中不可 cancel；查看或继续不会重置行程。"
+                : $"{observation.PlaceName}：{observation.PlaceDescription}");
+            text.AppendLine();
+        }
+        if (character.Notices.Count > 0 && character.Activity is { } ongoing && !ended) {
+            text.AppendLine($"- 你的活动没有中断；当前周期仍于 {FormatTime(ongoing.Due)} 结算。");
+        } else if (character.Activity is { } active && !ended) {
+            text.AppendLine($"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。");
+        }
+        text.Append(ContinuityPlayView.RenderCurrent(observation));
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
         if (ended) {
@@ -128,8 +113,6 @@ internal static class PlayView {
             text.AppendLine($"| {resource.Name} `{resource.Id}` | {resource.Stock} / {resource.Capacity} | {(resource.GrowsInDaylight ? "白天" : "夜晚")}每 {Hours(resource.RegenerationTicks)} 小时补 1；{phase} | 每份产出 {ItemName(observation, resource.ItemId)} ×1；你需 {Minutes(duration)} 分钟；要求采药等级 {resource.RequiredLevel} |" +
                 (observation.IsExpedition ? "" : $" {members} |"));
         }
-        bool visibleWood = observation.Resources.Any(resource => resource.ItemId == "item.wood");
-        if (observation.IsExpedition && !ended && visibleWood) { text.AppendLine($"- {WoodNote}"); }
         text.AppendLine();
         if (!observation.IsExpedition || observation.OtherCharacters.Count > 0) {
             text.AppendLine("## 其他角色");
@@ -152,9 +135,6 @@ internal static class PlayView {
                 text.AppendLine($"- {ItemName(observation, item.Key)}（`{item.Key}`）×{item.Value}。");
             }
         }
-        if (observation.IsExpedition && !ended && !visibleWood && character.Backpack.Count("item.wood") > 0) {
-            text.AppendLine($"- {WoodNote}");
-        }
         text.AppendLine();
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) {
             text.AppendLine("## 结局");
@@ -165,6 +145,53 @@ internal static class PlayView {
             text.Append(RenderCommands(observation));
         }
         return text.ToString();
+    }
+
+    internal static string RenderKnowledge(CycleObservation observation) {
+        var text = new StringBuilder();
+        if (observation.Outcome == CycleExpeditionOutcome.Exploring) {
+            text.AppendLine("## 规则与已知常识");
+            text.AppendLine("行动命令与标识区分大小写，需提供完整命令和标识。");
+            text.AppendLine("采集按每份周期结算，不预留库存；all 固定为接受时的库存，不随再生增加。库存耗尽会提醒，结算时无货则结束，不会自动等待再生。");
+            if (observation.IsExpedition) {
+                text.AppendLine("通路描述是眼前线索，不保证目的地或安全；移动途中不能取消。查看、补给与确认消息不重置活动或行程期限。");
+            } else {
+                text.AppendLine("先完成先得；同刻完成按固定规则仲裁。别人只公开正在采集哪个点，不公开技能、速度或下一份完成时刻。");
+            }
+            if (observation.Survival is not null) {
+                text.AppendLine("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
+                text.AppendLine("补给不耗时，不确认历史警告；continue 确认并保留原期限，接受新的耗时行动也会确认已展示的警告。");
+                text.AppendLine("温暖无法靠物品补充；庇护内或白天野外可回暖，夜间野外继续降温。");
+            }
+            if (observation.IsExpedition && (observation.Actor.Backpack.Count("item.wood") > 0 ||
+                observation.Resources.Any(resource => resource.ItemId == "item.wood"))) {
+                text.AppendLine(WoodNote);
+            }
+            if (observation.Weather is { } weather) {
+                text.AppendLine($"天气窗口每 {Hours(weather.IntervalTicks)} 小时出现一次；结果可能平静，也可能遭遇寒风。");
+                text.AppendLine($"寒风使暴露者的温暖最多减少 {Number(weather.ExposedWarmthLoss)} 点；处于庇护内则免受这次损失。移动途中视为暴露。");
+            }
+            text.AppendLine();
+        }
+        if (observation.Memories.Count > 0) {
+            text.AppendLine("## 曾到访地点（历史观察）");
+            text.AppendLine("以下是经历留下的记录，保留观察时间；远处余量可能已改变，不表示当前事实。");
+            foreach (CyclePlaceMemory memory in observation.Memories) {
+                string stock = memory.Resources.Count == 0 ? "当时未见可采资源" :
+                    string.Join("；", memory.Resources.Select(resource => $"{resource.Name} {resource.Stock}/{resource.Capacity}"));
+                text.AppendLine($"- {memory.Name}（{FormatTime(memory.At)}）：{stock}。");
+            }
+            text.AppendLine();
+        }
+        return text.ToString();
+    }
+
+    internal static void RenderWarmthAdvice(StringBuilder text, CycleObservation observation) {
+        if (observation.Survival is not { WarmthWarningPending: true } needs) { return; }
+        text.AppendLine("- 温暖警告：现有物品不能恢复温暖。" + (observation.ArrivalDue is not null
+            ? "途中没有主动保暖操作，抵达前不能安排庇护停留；请留意温暖趋势与剩余行程。"
+            : needs.Sheltered ? "当前已有庇护，停留可以回暖；食物和饮水仍会消耗。"
+            : "已知的庇护中停留可以回暖，白天野外也会回暖；夜间暴露会继续降温。"));
     }
 
     internal static string RenderNotice(CycleNoticeObservation perceived, bool ended) {
@@ -258,7 +285,6 @@ internal static class PlayView {
             return;
         }
         text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
-        text.AppendLine("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
         text.AppendLine("致命时刻估计假设保持当前暴露或庇护状态、不补给，计入已知昼夜变化；未包含未来随机天气，也不预知抵达后的环境。");
         if (hasWeather) { text.AppendLine("寒风可能让危险比估计更早发生。"); }
         text.AppendLine();
@@ -273,15 +299,17 @@ internal static class PlayView {
         text.AppendLine();
     }
 
-    internal static void RenderWeather(StringBuilder text, CycleWeatherObservation weather, bool ended) {
+    internal static void RenderCurrentWeather(StringBuilder text, CycleWeatherObservation weather) {
         text.AppendLine("## 天气与暴露");
-        if (!ended) {
-            text.AppendLine(weather.NextWindow is { } next
-                ? $"天气窗口每 {Hours(weather.IntervalTicks)} 小时出现一次；下次窗口：{FormatTime(next)}。结果尚未发生，可能平静，也可能遭遇寒风。"
-                : "没有后续天气窗口。");
-            text.AppendLine($"寒风使暴露者的温暖最多减少 {Number(weather.ExposedWarmthLoss)} 点；处于庇护内则免受这次损失。移动途中视为暴露。");
-            text.AppendLine(weather.Sheltered ? "当前有庇护保护；离开后不再受保护。" : "当前没有庇护保护。");
-        }
+        text.AppendLine(weather.NextWindow is { } next
+            ? $"下次窗口：{FormatTime(next)}。结果尚未发生，可能平静，也可能遭遇寒风。"
+            : "没有后续天气窗口。");
+        text.AppendLine(weather.Sheltered ? "当前有庇护保护；离开后不再受保护。" : "当前没有庇护保护。");
+        text.AppendLine();
+    }
+
+    internal static void RenderWeatherHistory(StringBuilder text, CycleWeatherObservation weather) {
+        text.AppendLine("## 最近实际天气（历史记录）");
         if (weather.LastAt is { } at && weather.LastKind is { } kind) {
             string name = kind == CycleWeatherKind.ColdWind ? "寒风" : "平静";
             string impact = kind == CycleWeatherKind.Calm ? "没有天气造成的温暖损失" :

@@ -5,7 +5,7 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>Both layouts read the same sealed history, never reconstruct it from today's values.</summary>
 internal static class ContinuityPlayView {
-    public static string Render(CycleObservation observation) {
+    public static string RenderHistory(CycleObservation observation) {
         if (observation.Continuity is not { } continuity) { return ""; }
         var text = new StringBuilder();
         string resultLabel = observation.Outcome == CycleExpeditionOutcome.Exploring ? "上次推进的结果" : "终局结果";
@@ -57,15 +57,20 @@ internal static class ContinuityPlayView {
             text.AppendLine("上回合的交接文字（角色主观记录，并非游戏确认的事实）：");
             Quote(text, incoming.Handoff ?? "（无）");
         }
+        text.AppendLine();
+        return text.ToString();
+    }
+
+    public static string RenderCurrent(CycleObservation observation) {
+        if (observation.Continuity is not { } continuity) { return ""; }
+        var text = new StringBuilder();
+        text.AppendLine("## 本轮交接");
         if (continuity.Pending is { } pending) {
             text.AppendLine($"已接受的行动：{Action(pending.Action)}；正在推进，结果将在下次决策时交付。");
         }
         text.AppendLine();
         text.AppendLine("本轮交接草稿（下一次放行模拟时发送，旧交接不会自动续传）：");
         Quote(text, continuity.DraftHandoff ?? "（空）");
-        if (observation.Outcome == CycleExpeditionOutcome.Exploring) {
-            text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");
-        }
         text.AppendLine();
         return text.ToString();
     }
