@@ -22,7 +22,7 @@
 | [CycleForecasts](../../src/ResourceCycle/CycleForecasts.cs)、[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) | 运行时预测/绑定及诊断；缓存不落盘 | 保留冷开 Rebuild、增量 Complete 与全量对照，避免模块提取后各自维护世界时间或发布。 |
 | [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs) | 具体场景对象图、默认资源/角色/脚本、起始游标 | 作为组合入口保留；模块工厂最多返回其负责的子图，不另造全世界根。 |
 | [Persistence](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[PlayInput](../../src/ResourceCycle.Cli/PlayInput.cs) | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；现有控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
+| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、当时的 `PlayInput`（后按 [Console 边界合同](../design/console-command-boundary.md)拆分） | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；此阶段控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
 
 当前项目引用也提供了边界：[ResourceCycle](../../src/ResourceCycle/ResourceCycle.csproj) 引用 Inventory、Kernel 与 DG Persistence；[Inventory](../../src/Inventory/Inventory.csproj) 只引用 DG；[CLI](../../src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
 

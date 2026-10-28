@@ -31,7 +31,7 @@ public sealed class PlayPresentationTests {
         using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:details\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
         int clears = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output, () => clears++);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => clears++);
 
         CycleControllerOperation operation = await controller.ChooseCommandAsync(context, default);
 
@@ -40,7 +40,7 @@ public sealed class PlayPresentationTests {
         Assert.Single(first.Screens);
         Assert.Equal(2, second.Screens.Count);
         Assert.Single(second.Help);
-        Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help).Concat(second.Prompts),
+        Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),
             observation => Assert.Same(context.Observation, observation));
         Assert.Equal(before, world.DescribeState());
         Assert.Equal(1, clears);
@@ -55,7 +55,7 @@ public sealed class PlayPresentationTests {
         using var input = new StringReader("wait 1\n:help\nwait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
         int clears = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output,
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output,
             () => clears++);
 
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
@@ -81,7 +81,7 @@ public sealed class PlayPresentationTests {
         using var input = new StringReader("wait 1\nwait 1\nwait 1\n");
         using var output = new StringWriter();
         int clears = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), input, output,
+        var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, input, output,
             () => clears++) { StartupText = "startup-help" };
         CycleWorld first = SurvivalContext(15, 1);
         CycleWorld sameContextLaterTime = SurvivalContext(16, 1);
@@ -115,7 +115,7 @@ public sealed class PlayPresentationTests {
         CycleWorld world = CycleGameFactory.CreatePlayable().World;
         using var input = new StringReader(":layout second\nwait 1\n:look\nwait 1\n");
         using var output = new StringWriter();
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output);
         CycleDecisionContext a = CycleDecisionContext.Create(world, "a");
         CycleDecisionContext b = CycleDecisionContext.Create(world, "b");
 
@@ -135,9 +135,7 @@ public sealed class PlayPresentationTests {
         public string Name => id;
         public List<CycleObservation> Screens { get; } = [];
         public List<CycleObservation> Help { get; } = [];
-        public List<CycleObservation> Prompts { get; } = [];
         public string Render(CycleObservation observation) { Screens.Add(observation); return Id; }
-        public string RenderHelp(CycleObservation observation) { Help.Add(observation); return Id; }
-        public string RenderPrompt(CycleObservation observation) { Prompts.Add(observation); return Id; }
+        public string RenderActionHelp(CycleObservation observation) { Help.Add(observation); return Id; }
     }
 }

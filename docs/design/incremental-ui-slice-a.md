@@ -136,8 +136,7 @@ interface IPlayLayout {
     string Name { get; }
     string RenderFull(CycleViewSnapshot snapshot);
     string RenderUpdate(CycleViewUpdate update);
-    string RenderHelp(CycleObservation observation);
-    string RenderPrompt(CycleObservation observation);
+    string RenderActionHelp(CycleObservation observation);
 }
 ```
 
@@ -156,7 +155,7 @@ interface IPlayLayout {
 | 内部 `DecisionContextOpened` | 等下一次控制器入口全量换页，不先在旧屏打印一份同样的观察 |
 | 终局 | 本批终局事件/效果之后展示一次冻结完整状态，代替本批普通尾部；主循环不再重复输出终局全文 |
 
-delta 下 prompt 收敛为角色/输入标记，当前 `DecisionPlayLayout.RenderPrompt` 重复身体与可响应操作的内容转入必要的尾部状态。否则正文虽短，prompt 仍会复制主要信息。游戏推进中没有输入机会时不显示可输入提示；命令区以暂停交互的状态表达，不让暂时受阻的动作看起来立即可用。
+prompt 收敛为角色/输入标记；[Human Console 边界重构](console-command-boundary.md)后由 `PlayPresentationSession` 统一生成，不属于布局接口。身体与可响应操作由正文表达。游戏推进中没有输入机会时不显示可输入提示；命令区以暂停交互的状态表达，不让暂时受阻的动作看起来立即可用。
 
 交付阶段仅是宿主的非持久状态：返回合法操作后进入“推进中”，只有真正进入 `ChooseCommandAsync` 才进入“可输入”；本地查询/拒绝保持可输入。不能用 `NeedsDecision` 或某条命令 `Rejection == null` 代替这个阶段，因为同刻还可能先结算环境、抵达或其他完成事件。推进中可说明当前动作条件，但不能宣称现在已接受输入。阶段变化不制造领域事件、不改动作校验、不新设 Kernel 回调；界面表达会话是否接收输入即可，无需给每条命令复制一套临时受阻原因。
 

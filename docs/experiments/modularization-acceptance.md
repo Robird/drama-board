@@ -5,7 +5,7 @@
 ## 已落地的职责边界
 
 - [ItemInventory](../../src/Inventory/ItemInventory.cs) 独立承载物品数量、可选总容量与 `CheckAdd` 单份接纳查询。开始与结算两处检查保留，`Add` 自行检查并产生新快照；容量拒绝后的资源/活动/通知仍由采集编排决定。字段与 Schema 演进见下文，GameRevision 不变。
-- [PlayView](../../src/ResourceCycle.Cli/PlayView.cs) 提供纯 Markdown 观察、命令列表和公共变化；[PlayInput](../../src/ResourceCycle.Cli/PlayInput.cs) 解析完整命令语法。[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) 保留驱动、IO、EOF、重试与 `CycleActions.Check`。B 提取时保持原渲染；C 仅新增所属角色的有限容量行，默认无限画面保持。
+- [PlayView](../../src/ResourceCycle.Cli/PlayView.cs) 提供纯 Markdown 观察、命令列表和公共变化；当时的 `PlayInput` 解析完整命令语法（后按 [Console 边界合同](../design/console-command-boundary.md)拆分）。[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) 保留驱动、IO、EOF、重试与 `CycleActions.Check`。B 提取时保持原渲染；C 仅新增所属角色的有限容量行，默认无限画面保持。
 - CLI 测试独立引用 CLI；领域测试继续只引用领域库。没有新增公共展示框架或信息隔离 API。
 - [CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs) 只对业务态应用记录替换并检查事实形状/时间；[CyclePredictionMaintenance](../../src/ResourceCycle/CyclePredictionMaintenance.cs) 从业务态独立处理固定绑定、dirty 与派生预测。两者不依赖 World/controller、不反调 Engine；Engine 保留公开入口、候选政策和 Complete 顺序编排。没有新增中间状态完整校验。
 - [Inventory](../../src/Inventory/Inventory.csproj) 只依赖 DG 运行库与生成工具；[Inventory.Tests](../../tests/Inventory.Tests/Inventory.Tests.csproj) 只引用 Inventory。公开的接纳、单份 Add 和 Validate 满足实际消费者，没有新友元或通用组件基类。[游戏注册入口](../../src/ResourceCycle/Persistence/CycleDurableModels.cs) 显式组合 Kernel、Inventory 和游戏定义，游戏继续拥有根、事实、工厂、修订和磁盘提交。
@@ -17,7 +17,7 @@
 | 单份接纳、上限边界、不同物品独立、快照隔离 | [ItemInventoryTests](../../tests/Inventory.Tests/ItemInventoryTests.cs)，包含旧 Items 视图及构造入参不受后续操作影响 |
 | 开始满包拒绝；取得最后一份后下个周期拒收且不扣资源 | [GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs) 原有集成用例 |
 | 效果按记录恢复，不重新执行控制器/Plan | [MultiplayerRecoveryTests](../../tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs) 等现有真实 E-only 冷开用例 |
-| 大小写/空白/参数数量/整数边界；语法通过不等于业务合法 | [PlayInputTests](../../tests/ResourceCycle.Cli.Tests/PlayInputTests.cs) |
+| 大小写/空白/参数数量/整数边界；语法通过不等于业务合法 | 当时的 `PlayInputTests`；现行动部分见 [CycleCommandParserTests](../../tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs) |
 | 他人私有字段变化不改变本角色完整观察；自己的视图仍包含私有信息 | [PlayViewTests](../../tests/ResourceCycle.Cli.Tests/PlayViewTests.cs) 的差异世界比较 |
 | 历史加入/耗尽与当前采集/余量同时表达；渲染不确认通知 | 同一视图测试；不变性比较使用 `DescribeState()`，而非无内容的默认 ToString |
 | 无 World/controller 的记录事实应用、attention 更新和错误事实拒绝 | [CycleMaintenanceBoundaryTests](../../tests/ResourceCycle.Tests/CycleMaintenanceBoundaryTests.cs) |

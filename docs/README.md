@@ -20,7 +20,7 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
-The [Human Console command-boundary refactor](design/console-command-boundary.md) separates game-action parsing and reusable game documents from human-only meta commands and Console prompts. It is a design awaiting implementation; current commands are still always enabled. The plan adds explicit session configuration without implementing an LLM adapter.
+The [Human Console command boundary](design/console-command-boundary.md) separates game-action parsing and reusable game documents from human-only meta commands and Console prompts. A single immutable `HumanDefault` / `None` directory controls both prompts and dispatch at session construction. This does not implement an LLM adapter.
 
 The [Incremental UI milestone](design/incremental-ui-milestone.md) records the confirmed rules: preserve event/effect sequences, summarize each affected current value once, report actual effects, and reuse the events in recent history. [Slice A](design/incremental-ui-slice-a.md) implements recorded effect materials, output after commit, semantic state selection, and full/delta session modes for survival; see [acceptance evidence](experiments/incremental-ui-slice-a-acceptance.md). Next is slice B design: the retained history window, capacity, first-observed semantics and durable source identity binding. Multiplayer remains explicitly full-only.
 

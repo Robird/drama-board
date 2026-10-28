@@ -22,9 +22,8 @@ internal static class PlayView {
         var text = new StringBuilder();
         text.AppendLine($"# {(observation.IsExpedition ? "山林求生" : "林间苗圃")} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
         text.AppendLine();
-        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。" : observation.IsExpedition
-            ? $"当前控制角色：{character.Name}（`{character.Id}`）。等待输入期间世界暂停；查看和帮助不消耗时间。"
-            : $"当前控制角色：{character.Name}（`{character.Id}`）。等待输入期间世界暂停；其他人的活动不会因你查看信息而重新计时。");
+        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。"
+            : $"当前角色：{character.Name}（`{character.Id}`）。");
         text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
             $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
         text.AppendLine();
@@ -184,17 +183,14 @@ internal static class PlayView {
     }
 
     public static string RenderCommands(CycleObservation observation) {
+        if (observation.Outcome != CycleExpeditionOutcome.Exploring) { return "本局已经结束，没有可用行动。\n"; }
         var text = new StringBuilder();
         text.AppendLine("## 可用命令");
         text.AppendLine();
-        text.AppendLine(observation.IsExpedition
-            ? "输入完整命令和标识，区分大小写。查询、非法输入和退出不确认消息、不消耗时间。"
-            : "输入完整命令和标识，区分大小写。查询、非法输入和退出不确认消息、不消耗时间，也不交棒。");
+        text.AppendLine("行动命令与标识区分大小写，需提供完整命令和标识。");
         if (observation.Weather is not null) {
             text.AppendLine("行动风险提示仅计算已知趋势与昼夜变化，未包含未来随机天气；没有提示不代表没有天气风险。");
         }
-        text.AppendLine("- `:look`：重新显示完整画面。`:help`：显示命令与当前受阻原因。");
-        text.AppendLine("- `:exit`：退出；EOF 同样退出。已提交的活动和未确认消息可随存档恢复。");
         if (observation.Continuity is not null) {
             text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
         }

@@ -56,6 +56,7 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 - [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleControllerOperation(ToolCallId, Command, OperationRecordId)`。上下文包含角色观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
 - [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出和清屏所用的上次画面标识，不保存角色的跨决策语义记忆。每次调用渲染该角色界面并等待合法输入。
+- [Human Console 边界](console-command-boundary.md)已将纯行动解析、共享游戏文档和 Console 管理能力分开。`ConsoleMetaCommands.HumanDefault` / `None` 在会话构造时同时控制元命令解析和提示；退出只由 Console 所有者处理。未来 LLM 使用结构化行动或纯行动解析器，不复用 Console 输入循环；禁用元命令并不等于实现 LLM 适配。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。共享控制器沿用现有服务轮转，不修改抢资源仲裁。
 - 角色的 `CycleDecisionContinuity` 保存固定的 Incoming、本轮 DraftHandoff 和尚未交付的 Pending；`DecisionContextOpened` 通过现有请求仲裁封存结果，再交付控制器。宿主操作记录保留身份与结果，不恢复完整对话。尚无 LLM 接入、长期笔记或角色经历召回；归档 Player 实现不因本决策自动恢复使用。
 

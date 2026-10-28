@@ -26,7 +26,7 @@ internal static class PlayConsole {
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
         var presentation = PlayPresentation.ForMode(survival);
-        var controller = new ConsoleCharacterController(presentation, clearScreen: ClearInteractiveScreen,
+        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, clearScreen: ClearInteractiveScreen,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
         string title = survival ? "山林求生" : "多人采集";
@@ -48,9 +48,6 @@ internal static class PlayConsole {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent)));
-        }
-        if (kernel.World.Expedition is null or { Outcome: CycleExpeditionOutcome.Exploring }) {
-            startup += "\n" + PlayPresentation.MetaHelp;
         }
         controller.StartupText = startup;
 
@@ -111,16 +108,17 @@ internal static class PlayConsole {
     }
 
     // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
-    internal sealed class ConsoleCharacterController(PlayPresentation presentation, TextReader? inputReader = null,
+    internal sealed class ConsoleCharacterController(PlayPresentation presentation, ConsoleMetaCommands metaCommands, TextReader? inputReader = null,
         TextWriter? outputWriter = null, Action? clearScreen = null, CycleOperationJournal? operations = null,
         Func<string>? worldVersion = null) : ICycleCharacterController {
         private readonly TextReader _input = inputReader ?? Console.In;
         private readonly TextWriter _output = outputWriter ?? Console.Out;
         private readonly CycleOperationJournal _operations = operations ?? CycleOperationJournal.CreateInMemory();
         private readonly string _batchId = Guid.NewGuid().ToString("N");
-        private readonly PlayPresentationSession _session = new(presentation, outputWriter ?? Console.Out, clearScreen);
+        private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, clearScreen);
         internal string? StartupText { get => _session.StartupText; set => _session.StartupText = value; }
         internal bool TerminalDelivered => _session.TerminalDelivered;
+        internal CycleViewSnapshot? Baseline => _session.Baseline;
 
         internal void RenderObservation(CycleObservation observation) {
             _session.ShowFull(observation);
@@ -169,37 +167,49 @@ internal static class PlayConsole {
                     _operations.Complete(receipt.OperationRecordId, status, result, worldVersion?.Invoke());
                     _session.Reply(result);
                 }
-                PlayInput parsed = PlayInput.Parse(input);
-                if (parsed.Kind == PlayInputKind.Quit) { Reply("退出当前控制台。"); throw new PlayEndedException(); }
                 void Resynchronize(string? prefix = null) => _session.ShowFull(observation,
                     result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix);
-                if (parsed.Kind == PlayInputKind.Look) { Resynchronize(); continue; }
-                if (parsed.Kind == PlayInputKind.Help) {
-                    Reply(PlayPresentation.MetaHelp + "\n" + presentation.DescribeLayouts() + "\n" +
-                        presentation.DescribeModes() + "\n" + presentation.Current.RenderHelp(observation));
-                    continue;
-                }
-                if (parsed.Kind == PlayInputKind.Details) { Reply(PlayView.Render(observation)); continue; }
-                if (parsed.Kind == PlayInputKind.Layout) {
-                    if (parsed.LayoutId is null) { Reply(presentation.DescribeLayouts()); }
-                    else if (presentation.TrySelect(parsed.LayoutId)) {
-                        Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
-                    } else {
-                        Reply($"未知布局：{parsed.LayoutId}。\n{presentation.DescribeLayouts()}", CycleOperationStatus.Rejected);
+                void RejectSyntax() => Reply("无法识别命令。" + metaCommands.RejectionHint +
+                    "时间未推进；未确认消息。", CycleOperationStatus.Rejected);
+                if (input.TrimStart().StartsWith(':')) {
+                    ConsoleMetaCommand? parsed = metaCommands.Parse(input);
+                    if (parsed is null) { RejectSyntax(); continue; }
+                    switch (parsed.Kind) {
+                        case ConsoleMetaCommandKind.Exit:
+                            Reply("退出当前控制台。");
+                            throw new PlayEndedException();
+                        case ConsoleMetaCommandKind.Look:
+                            Resynchronize();
+                            break;
+                        case ConsoleMetaCommandKind.Help:
+                            Reply(metaCommands.RenderHelp(presentation) + "\n" + presentation.Current.RenderActionHelp(observation));
+                            break;
+                        case ConsoleMetaCommandKind.Details:
+                            Reply(PlayView.Render(observation));
+                            break;
+                        case ConsoleMetaCommandKind.Layout:
+                            if (parsed.Argument is null) { Reply(metaCommands.DescribeLayouts(presentation)); }
+                            else if (presentation.TrySelect(parsed.Argument)) {
+                                Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
+                            } else {
+                                Reply($"未知布局：{parsed.Argument}。\n{metaCommands.DescribeLayouts(presentation)}", CycleOperationStatus.Rejected);
+                            }
+                            break;
+                        case ConsoleMetaCommandKind.Mode:
+                            if (parsed.Argument is null) { Reply(metaCommands.DescribeModes(presentation)); }
+                            else if (presentation.TrySelectMode(parsed.Argument)) {
+                                Resynchronize($"已切换输出模式：{parsed.Argument}。\n");
+                            } else {
+                                Reply($"此场景不支持输出模式：{parsed.Argument}。\n{metaCommands.DescribeModes(presentation)}", CycleOperationStatus.Rejected);
+                            }
+                            break;
+                        default:
+                            throw new InvalidOperationException($"Unknown Console meta command: {parsed.Kind}.");
                     }
                     continue;
                 }
-                if (parsed.Kind == PlayInputKind.Mode) {
-                    if (parsed.LayoutId is null) { Reply(presentation.DescribeModes()); }
-                    else if (presentation.TrySelectMode(parsed.LayoutId)) {
-                        Resynchronize($"已切换输出模式：{parsed.LayoutId}。\n");
-                    } else {
-                        Reply($"此场景不支持输出模式：{parsed.LayoutId}。\n{presentation.DescribeModes()}", CycleOperationStatus.Rejected);
-                    }
-                    continue;
-                }
-                if (parsed.Command is not { } command) {
-                    Reply("无法识别命令。输入 :help 查看操作，:layout 查看布局。时间未推进；未确认消息。", CycleOperationStatus.Rejected);
+                if (CycleCommandParser.Parse(input) is not { } command) {
+                    RejectSyntax();
                     continue;
                 }
                 string? reason = context.Check(command);

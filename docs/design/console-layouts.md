@@ -1,8 +1,8 @@
 # Console 可切换布局
 
-本文描述当前实现。元命令的提示与解析尚不可关闭；将共享游戏文档与 Human Console 功能分离的后续设计见[元命令边界重构](console-command-boundary.md)，尚未实施。
+本文描述当前实现。共享游戏文档与 Human Console 功能已按[元命令边界合同](console-command-boundary.md)分离；会话构造时由同一份 `ConsoleMetaCommands` 目录控制提示和解析，普通试玩显式选用 `HumanDefault`，内部可传入 `None` 全部关闭。
 
-布局（Play layout）只负责把角色观察组织成文本，不读取完整世界、不校验或执行行动、不确认感知。接口为 [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)，接受角色观察、全量语义快照或更新消息；分别渲染全量、事件/效果与当前状态、帮助和输入提示。增量合同见[切片 A](incremental-ui-slice-a.md)。
+布局（Play layout）只负责把角色观察组织成文本，不读取完整世界、不校验或执行行动、不确认感知。接口为 [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)，接受角色观察、全量语义快照或更新消息；分别渲染全量、事件/效果与当前状态、游戏行动帮助。元命令提示、输入提示符和阶段说明由 Console 会话组合。增量合同见[切片 A](incremental-ui-slice-a.md)。
 
 ## 会话与命令
 
@@ -19,6 +19,8 @@
 | `:exit` | 退出；也可使用 `:quit` |
 
 元命令只接受冒号前缀形式；无冒号的 `look / help / quit / exit / details / layout` 均无效。游戏世界内的 `go / gather / use / wait / continue / cancel / handoff` 不加冒号。查看、切换、未知布局及非法元命令均留在同一次输入循环，不推进时间、不消费通知、不写游戏 E/S。EOF 沿用退出语义。退出重启后使用该模式默认布局。
+
+上表是 `HumanDefault` 能力；`None` 不提示或执行这些元命令，`:exit` / `:quit` 均记录为拒绝，随后仍可接受游戏行动。行动语法由 [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) 独立解析；`handoff :exit` 的正文不会再次分派。EOF 与宿主取消不受目录控制。配置不依据输出是否重定向；本轮未提供 CLI 禁用参数或会话中途切换。
 
 生存模式在首次交付及 `(ActorId, ContextSequence)` 变化时清屏；启动说明与帮助显示在首次清屏之后。同一回合提交后统一追加事件、缩进效果与当前状态；delta 只选受影响的状态，full 使用完整尾部。查询、重同步与模式/布局切换不清屏；`:details` 不改变基线。终局事件之后只输出一次冻结全文。未启用连续性的多人采集仍以角色/时间判断展示边界。清屏与成功写出后的基线由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 管理；输入或输出重定向时保留完整文本，终端清屏发生 I/O 错误则退回追加输出。
 

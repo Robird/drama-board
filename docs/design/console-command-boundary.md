@@ -1,22 +1,22 @@
 # Human Console 元命令边界重构
 
-状态：设计方案，已完成一轮独立审查，尚未实施。2026-10-28 基于增量 UI 切片 A 的现有代码编写；用户已赞同拆分方向。本文的新增类型名是建议名，不表示已有 API。
+状态：已实施。2026-10-28 在增量 UI 切片 A 基础上分离纯行动解析、共享游戏视图与 Human Console 管理能力；本文类型名对应当前代码。验证范围见[实施验收](../experiments/console-command-boundary-acceptance.md)。
 
 ## 1. 目标与现状
 
 元命令（Console meta command）管理真人的 Console 会话；角色行动（Command）表达角色在世界中要做什么。未来 LLM 可以共享游戏观察、事件和 Markdown 排版，但不应因复用文本而获得 Console 的退出、布局切换等能力。
 
-当前有正确的领域边界，也有尚未拆开的呈现与输入职责：
+当前职责边界如下：
 
-| 现有入口 | 事实与问题 |
+| 现有入口 | 当前职责 |
 | --- | --- |
 | [CycleCommand / ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) | 领域命令没有 Exit、Layout 等；控制器返回带操作身份的结构化行动。 |
-| [PlayInput.Parse](../../src/ResourceCycle.Cli/PlayInput.cs) | 同时解析行动与冒号元命令，不能配置关闭元命令。 |
+| [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) / [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) | 分别解析游戏行动与冒号元命令；混合 `PlayInput` 已删除。目录同时控制元命令提示与解析。 |
 | [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) | 唯一元命令执行入口；`:exit` 配对日志结果后抛出 Console 专用异常，外层 Console 运行循环捕获并返回。没有调用 `Environment.Exit`。EOF 也结束 Console。 |
-| [PlayPresentation](../../src/ResourceCycle.Cli/PlayPresentation.cs)、[DecisionPlayLayout](../../src/ResourceCycle.Cli/DecisionPlayLayout.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) | 启动、帮助、布局正文、交接提示含硬编码元命令或 Console 使用说明，仅删除 `MetaHelp` 不足以隔离。 |
-| [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) | 同时提供游戏文档、帮助和 Console 输入提示符。 |
+| [PlayPresentation](../../src/ResourceCycle.Cli/PlayPresentation.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | 前者保存布局/模式偏好及实际选项，后者组合 Console 提示、阶段和输入标记并管理交付基线。 |
+| [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) | 只生成游戏观察、更新及行动帮助，不生成元命令或宿主交互阶段指引。 |
 
-独立 LLM 控制器通过现有结构化接口接入时，不会自动获得 `:exit`。将模型文本直接接入现有 Console 输入流则会拥有整套 Console 能力。本重构消除误复用的入口，不建设同进程恶意代码隔离。
+独立 LLM 控制器通过现有结构化接口接入时，不会自动获得 `:exit`。将模型文本直接接入 `HumanDefault` Console 输入流则会拥有整套 Console 能力。此边界避免共享解析器和视图夹带管理能力，不建设同进程恶意代码隔离。
 
 ## 2. 范围和不变量
 
@@ -31,8 +31,8 @@
 
 | 组件 | 重构后的职责 | 明确不承担 |
 | --- | --- | --- |
-| `CycleCommandParser`（新增建议名） | 纯文本行动解析，产出 `CycleCommand` 或语法失败 | 元命令、退出、日志、世界合法性检查 |
-| `ConsoleMetaCommands`（新增建议名） | 有限内建元命令目录、解析，以及同源帮助文字 | 世界规则、持久状态、通用插件加载 |
+| `CycleCommandParser` | 纯文本行动解析，产出 `CycleCommand` 或语法失败（`null`） | 元命令、退出、日志、世界合法性检查 |
+| `ConsoleMetaCommands` | 有限内建元命令目录、解析，以及同源帮助文字 | 世界规则、持久状态、通用插件加载 |
 | `ConsoleCharacterController` | 接收并登记输入，路由元命令，检查行动，返回已有操作封套 | 把 Console 管理操作提交给领域 |
 | `IPlayLayout` 与游戏视图 | 只读地组织观察、事件、效果、行动条件和游戏规则 | 提示真人输入、清屏、退出、元命令广告 |
 | `PlayPresentationSession` | 组合 Console 附加文字、提示符、阶段提示、清屏与交付基线 | 根据输出位置猜测控制器类型 |
@@ -46,7 +46,7 @@
 
 去除前导空白后，以 `:` 开头的输入只交给元命令目录；未知、禁用或参数错误均在 Console 输入循环内拒绝，不回退为游戏行动。其余输入只交给行动解析器。`handoff :exit` 的冒号属于正文，必须保存为交接文字，不能再次分派。
 
-目录返回有限的解析结果（命令种类和参数），执行继续使用 Controller 内的明确分派；不为每条命令创建 handler 接口、服务容器或可加载插件。原 `PlayInput` 混合结果应拆除或替换，不保留第二条可绕过目录执行元命令的路径。
+目录返回有限的 `ConsoleMetaCommand`（命令种类和参数），执行继续使用 Controller 内的明确分派；不为每条命令创建 handler 接口、服务容器或可加载插件。原 `PlayInput` 混合结果已拆除，不保留第二条可绕过目录执行元命令的路径。
 
 ### 3.2 运行时配置：显式组合，不向布局传播布尔量
 
@@ -66,7 +66,7 @@
 
 游戏视图继续包含身份、当前/历史状态、警告、行动语法、受阻原因、已知风险及交接规则。它们可以直接用于后续 Doc UI。行动帮助与布局可以继续有各自的排版；无需合并为第二套文档树。
 
-从共享视图移走：`:help` / `:look` 等提示、退出与 EOF 说明、布局/模式管理指令、输入提示符。`IPlayLayout.RenderPrompt` 移到 Console 会话；原 `RenderHelp` 收敛为游戏行动/规则帮助（建议改名 `RenderActionHelp`）。`PlayView.RenderCommands` 同样只保留行动和规则内容。阶段提示和终局后的宿主说明由 Console 会话组合，不扩充领域观察来携带 UI 能力。
+从共享视图移走了 `:help` / `:look` 等提示、退出与 EOF 说明、布局/模式管理指令、输入提示符。`IPlayLayout.RenderPrompt` 已删除，提示符由 Console 会话生成；原 `RenderHelp` 改为游戏行动/规则帮助 `RenderActionHelp`。`PlayView.RenderCommands` 同样只保留行动和规则内容。阶段提示和终局后的宿主说明由 Console 会话组合，不扩充领域观察来携带 UI 能力。
 
 Console 根据目录生成启动提示、适当的全量画面尾部提示、`:help` 中的元命令部分，以及拒绝输入后的指引。`None` 下这些位置均不出现指向不存在能力的提示；通用拒绝仍可说明命令无效及未改变游戏状态。不要求每次增量更新重复帮助，也不固定提示所在行或具体措辞。
 
@@ -94,7 +94,7 @@ Console 根据目录生成启动提示、适当的全量画面尾部提示、`:h
 
 重同步答复的完整组合必须发生在 `ShowFull` 的 `beforeWrite` 日志回调之前，再交由同一次写出流程输出；不能先记录布局正文、再在 writer 外追加 Console 提示，造成日志中的精确答复与本次输出正文不同。日志先于写出不保证用户实际看见；继续沿用现有恢复边界。
 
-## 5. 实施顺序与验证
+## 5. 实施分片与验证合同
 
 1. 提取纯行动解析器和有限元命令目录，迁移现有解析测试；保持原行动语法和冒号唯一形式。
 2. Controller 与会话显式共享目录，落实 `HumanDefault` / `None`，保留日志和结束行为。
@@ -111,7 +111,7 @@ Console 根据目录生成启动提示、适当的全量画面尾部提示、`:h
 - 覆盖终局提交与冷开终局，确认只输出一次冻结记录且没有可继续交互的元命令提示；保留读取后取消检查的行为覆盖。
 - 维持既有查询不改基线、重同步不清屏、写出失败不安装基线、退出不发布 E/S、接收失败不分派等关键边界。复用或调整现有测试，不机械复制。
 - 工程验证运行 CLI 相关测试及受影响的操作恢复测试，并完成 solution 构建；纯 CLI 重构不以重跑全部领域测试为默认要求。若实际修改超出此边界，按影响范围补充。
-- 用真实 CLI 试玩 `--survival` 的帮助、切换、查询、handoff 和退出，再抽查 `--play` 的 full-only 帮助；`None` 无产品入口，使用集成测试驱动相同 Controller 即可，不为试玩另造启动参数。下一轮实施仍安排独立试玩复核。
+- 用真实 CLI 试玩 `--survival` 的帮助、切换、查询、handoff 和退出，再抽查 `--play` 的 full-only 帮助；`None` 无产品入口，使用集成测试驱动相同 Controller 即可，不为试玩另造启动参数。独立试玩证据归入实施验收。
 
 ## 6. 与后续工作的关系
 

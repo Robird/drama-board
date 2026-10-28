@@ -36,7 +36,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；现有采集场景使用同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。空间移动已由生存一期重开；事件窗口随当前增量 UI 目标研究，AgentCore 子状态发布仍延期。
 
-**控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态，pending E 不重做决定。`ChooseCommandAsync` 接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 并返回 `CycleControllerOperation`；`CycleDecisionContinuity` 保存 Incoming、DraftHandoff 与 Pending。[Human Console 元命令重构](docs/design/console-command-boundary.md)为当前补充设计：分离行动解析、共享游戏文档与 Console 管理能力，同一会话目录控制提示和执行，验收禁用退出后仍能提交行动；尚未实施，可独立于增量 B 推进。LLM 与完整工具会话恢复尚未施工。
+**控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态，pending E 不重做决定。`ChooseCommandAsync` 接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 并返回 `CycleControllerOperation`；`CycleDecisionContinuity` 保存 Incoming、DraftHandoff 与 Pending。[Human Console 边界](docs/design/console-command-boundary.md)已分离纯行动解析与共享游戏文档，同一 `ConsoleMetaCommands.HumanDefault` / `None` 目录在会话构造时控制提示和执行，禁用后退出仅被拒绝且仍能提交行动；证据见[验收](docs/experiments/console-command-boundary-acceptance.md)。LLM、目录热切换与完整工具会话恢复尚未施工，不阻碍增量 B。
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，合法动作 E/S 保存来源。`operations.jsonl` 与 E/S 各自提交，冷开只补结果、不重做动作；未来 LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 

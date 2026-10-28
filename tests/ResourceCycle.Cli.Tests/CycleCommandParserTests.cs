@@ -2,33 +2,7 @@ using DramaBoard.ResourceCycle;
 
 namespace DramaBoard.ResourceCycle.Cli.Tests;
 
-public sealed class PlayInputTests {
-    [Theory]
-    [InlineData("\t :help  ", "Help")]
-    [InlineData(" :exit\r\n", "Quit")]
-    [InlineData(":look", "Look")]
-    [InlineData(":help", "Help")]
-    [InlineData(":exit", "Quit")]
-    [InlineData(":quit", "Quit")]
-    [InlineData(":details", "Details")]
-    [InlineData(":layout", "Layout")]
-    public void Local_intents_have_no_game_command(string input, string kind) {
-        PlayInput parsed = PlayInput.Parse(input);
-        Assert.Equal(kind, parsed.Kind.ToString());
-        Assert.Null(parsed.Command);
-    }
-
-    [Theory]
-    [InlineData("classic")]
-    [InlineData("decision")]
-    [InlineData("unknown")]
-    public void Layout_selection_is_a_local_intent_even_when_the_name_is_unknown(string id) {
-        PlayInput parsed = PlayInput.Parse($" :layout\t{id} ");
-        Assert.Equal(PlayInputKind.Layout, parsed.Kind);
-        Assert.Equal(id, parsed.LayoutId);
-        Assert.Null(parsed.Command);
-    }
-
+public sealed class CycleCommandParserTests {
     public static TheoryData<string, CycleCommand> Actions => new() {
         { "wait 24", CycleCommand.Wait(24) },
         { "  wait\t0001\r\n", CycleCommand.Wait(1) },
@@ -43,14 +17,14 @@ public sealed class PlayInputTests {
         { "handoff 抵达后  先检查保暖。", CycleCommand.Handoff("抵达后  先检查保暖。") },
         { "  handoff\t--clear ", CycleCommand.Handoff(null) },
         { "handoff --clear 然后检查", CycleCommand.Handoff("--clear 然后检查") },
+        { "handoff :exit", CycleCommand.Handoff(":exit") },
     };
 
     [Theory]
     [MemberData(nameof(Actions))]
     public void Valid_syntax_preserves_the_intent(string input, CycleCommand expected) {
-        PlayInput parsed = PlayInput.Parse(input);
-        Assert.Equal(PlayInputKind.Action, parsed.Kind);
-        Assert.Equal(expected, parsed.Command);
+        CycleCommand? parsed = CycleCommandParser.Parse(input);
+        Assert.Equal(expected, parsed);
     }
 
     [Theory]
@@ -64,6 +38,15 @@ public sealed class PlayInputTests {
     [InlineData("details")]
     [InlineData("layout")]
     [InlineData("layout decision")]
+    [InlineData(":look")]
+    [InlineData(":help")]
+    [InlineData(":details")]
+    [InlineData(":exit")]
+    [InlineData(":quit")]
+    [InlineData(":layout")]
+    [InlineData(":layout classic")]
+    [InlineData(":mode")]
+    [InlineData(":mode full")]
     [InlineData(":continue")]
     [InlineData(":cancel")]
     [InlineData(":wait 1")]
@@ -105,9 +88,8 @@ public sealed class PlayInputTests {
     [InlineData(":handoff 备注")]
     [InlineData("handofftext")]
     public void Malformed_or_unrepresentable_input_is_not_an_action(string input) {
-        PlayInput parsed = PlayInput.Parse(input);
-        Assert.Equal(PlayInputKind.Invalid, parsed.Kind);
-        Assert.Null(parsed.Command);
+        CycleCommand? parsed = CycleCommandParser.Parse(input);
+        Assert.Null(parsed);
     }
 
     [Theory]
@@ -123,9 +105,8 @@ public sealed class PlayInputTests {
     [InlineData("use missing")]
     public void Syntactic_success_does_not_bypass_current_domain_rules(string input) {
         CycleWorld world = CycleGameFactory.CreatePlayable().World;
-        PlayInput parsed = PlayInput.Parse(input);
-        Assert.Equal(PlayInputKind.Action, parsed.Kind);
-        Assert.NotNull(parsed.Command);
-        Assert.NotNull(CycleActions.Check(world, "a", parsed.Command));
+        CycleCommand? parsed = CycleCommandParser.Parse(input);
+        Assert.NotNull(parsed);
+        Assert.NotNull(CycleActions.Check(world, "a", parsed));
     }
 }

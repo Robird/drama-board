@@ -52,7 +52,7 @@ internal static class CycleUpdateRenderer {
     }
 
     public static string Format(CycleVisibleValue value, CycleStateKey? key = null) => value.Kind switch {
-        CycleVisibleValueKind.KnownAbsent => key is { Category: "command", Field: "rejection" } ? "条件满足（是否接受输入见交互阶段）" : "无",
+        CycleVisibleValueKind.KnownAbsent => key is { Category: "command", Field: "rejection" } ? "条件满足" : "无",
         CycleVisibleValueKind.Unobserved => "不再可见",
         CycleVisibleValueKind.Boolean => value.Boolean ? "是" : "否",
         CycleVisibleValueKind.Text => TextValue(value.Text ?? "", key),

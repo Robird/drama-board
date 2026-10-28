@@ -31,8 +31,8 @@ public sealed class SurvivalNeedsViewTests {
         Assert.NotNull(context.Warning(CycleCommand.Wait(24)));
         Assert.Null(context.Warning(CycleCommand.Go("trail-6")));
         Assert.Null(context.Warning(CycleCommand.Gather("water")));
-        Assert.NotNull(context.Check(PlayInput.Parse("use missing").Command));
-        Assert.NotNull(context.Check(PlayInput.Parse("use item.wood").Command));
+        Assert.NotNull(context.Check(CycleCommandParser.Parse("use missing")!));
+        Assert.NotNull(context.Check(CycleCommandParser.Parse("use item.wood")!));
         Assert.Equal(before, world.DescribeState());
     }
 

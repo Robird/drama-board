@@ -9,14 +9,12 @@ internal interface IPlayLayout {
     string RenderUpdate(CycleViewUpdate update) => update.FullTail
         ? CycleUpdateRenderer.RenderEvents(update) + RenderFull(update.Snapshot)
         : CycleUpdateRenderer.Render(update);
-    string RenderHelp(CycleObservation observation);
-    string RenderPrompt(CycleObservation observation);
+    string RenderActionHelp(CycleObservation observation);
 }
 
 internal sealed class ClassicPlayLayout : IPlayLayout {
     public string Id => "classic";
     public string Name => "完整分栏";
     public string Render(CycleObservation observation) => PlayView.Render(observation);
-    public string RenderHelp(CycleObservation observation) => PlayView.RenderCommands(observation);
-    public string RenderPrompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
+    public string RenderActionHelp(CycleObservation observation) => PlayView.RenderCommands(observation);
 }

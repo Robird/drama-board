@@ -10,7 +10,7 @@ public sealed class IncrementalSessionTests {
     public void Terminal_commit_delivers_events_with_a_full_frozen_tail_and_marks_delivery_complete() {
         var layout = new RecordingLayout();
         using var output = new StringWriter();
-        var session = new PlayPresentationSession(new PlayPresentation(layout), output);
+        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, output);
         CycleObservation initial = Observe(CycleGameFactory.CreateSurvival().World);
         session.EnterInput(initial);
         var terminal = new CycleObservation {
@@ -37,7 +37,7 @@ public sealed class IncrementalSessionTests {
         using var input = new StringReader("handoff --clear\n");
         using var output = new StringWriter();
         using var operations = CycleOperationJournal.CreateInMemory();
-        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), input, output, operations: operations);
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         var initial = CycleGameFactory.CreateSurvival();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: controller);
@@ -56,7 +56,7 @@ public sealed class IncrementalSessionTests {
         using var output = new StringWriter();
         var presentation = PlayPresentation.ForMode(true);
         Assert.True(presentation.TrySelectMode("full"));
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output);
         var initial = CycleGameFactory.CreateSurvival();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: controller);
@@ -97,7 +97,7 @@ public sealed class IncrementalSessionTests {
         var layout = new RecordingLayout();
         using var writer = new FaultingWriter();
         int clears = 0;
-        var session = new PlayPresentationSession(new PlayPresentation(layout), writer, () => clears++);
+        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer, () => clears++);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
         session.EnterInput(observation);
         Assert.NotNull(session.Baseline);
@@ -119,7 +119,7 @@ public sealed class IncrementalSessionTests {
     public void Commit_never_claims_input_and_input_phase_is_delivered_once_on_actual_entry() {
         var layout = new RecordingLayout();
         using var writer = new StringWriter();
-        var session = new PlayPresentationSession(new PlayPresentation(layout), writer);
+        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
         session.EnterInput(observation);
         session.BeginAdvancing();
@@ -145,7 +145,7 @@ public sealed class IncrementalSessionTests {
         using var input = new StringReader("use item.water\nhandoff 明天再走\n:look\n:exit\n");
         using var output = new StringWriter();
         using var operations = CycleOperationJournal.CreateInMemory();
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output, operations: operations);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         var initial = CycleGameFactory.CreateSurvival();
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
@@ -174,7 +174,7 @@ public sealed class IncrementalSessionTests {
         using var input = new StringReader(":mode\n:mode delta\n:help\n:mode full\nwait 1\n");
         using var output = new StringWriter();
         using var operations = CycleOperationJournal.CreateInMemory();
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, input, output, operations: operations);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         CycleControllerOperation action = await controller.ChooseCommandAsync(
             CycleDecisionContext.Create(CycleGameFactory.CreatePlayable().World, "a"), default);
 
@@ -182,7 +182,7 @@ public sealed class IncrementalSessionTests {
         Assert.Equal(PlayOutputMode.Full, presentation.Mode);
         Assert.Equal(CycleOperationStatus.Rejected, operations.Entries[1].Completed!.Status);
         Assert.Contains(":mode full", output.ToString());
-        Assert.Contains("仅供 --survival", output.ToString());
+        Assert.DoesNotContain(":mode delta", output.ToString());
         Assert.Contains(":layout classic", output.ToString());
         Assert.Contains(":layout decision", output.ToString());
     }
@@ -190,7 +190,7 @@ public sealed class IncrementalSessionTests {
     [Fact]
     public void Query_details_does_not_install_baseline_or_mutate_phase() {
         using var writer = new StringWriter();
-        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), writer);
+        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
         session.EnterInput(observation);
         CycleViewSnapshot baseline = session.Baseline!;
@@ -212,7 +212,6 @@ public sealed class IncrementalSessionTests {
         public List<CycleViewUpdate> Updates { get; } = [];
         public string Render(CycleObservation observation) { Full.Add(observation); return "full"; }
         public string RenderUpdate(CycleViewUpdate update) { Updates.Add(update); return "update"; }
-        public string RenderHelp(CycleObservation observation) => "help";
-        public string RenderPrompt(CycleObservation observation) => "> ";
+        public string RenderActionHelp(CycleObservation observation) => "help";
     }
 }

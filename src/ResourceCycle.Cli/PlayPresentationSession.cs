@@ -4,7 +4,8 @@ using DramaBoard.ResourceCycle;
 internal enum PlayDeliveryPhase { Advancing, ControllerInput }
 
 /// <summary>One serial writer owns delivery and its transient semantic baseline.</summary>
-internal sealed class PlayPresentationSession(PlayPresentation presentation, TextWriter output, Action? clearScreen = null) {
+internal sealed class PlayPresentationSession(PlayPresentation presentation, ConsoleMetaCommands metaCommands,
+    TextWriter output, Action? clearScreen = null) {
     public CycleViewSnapshot? Baseline { get; private set; }
     public PlayDeliveryPhase Phase { get; private set; } = PlayDeliveryPhase.Advancing;
     public string? StartupText { get; set; }
@@ -40,13 +41,12 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Tex
     public void ShowFull(CycleObservation observation, Action<string>? beforeWrite = null, string? prefix = null) {
         var snapshot = CycleViewSnapshot.Create(observation);
         string text = (StartupText is { } startup ? startup + "\n" : "") + prefix +
-            presentation.Current.RenderFull(snapshot) + PhaseText(observation);
+            presentation.Current.RenderFull(snapshot) + FullConsoleText(observation);
         beforeWrite?.Invoke(text);
         Write(text, snapshot, clear: _identity != Identity(observation));
     }
 
-    public string Prompt(CycleObservation observation) => presentation.Mode == PlayOutputMode.Delta
-        ? $"{observation.Actor.Id}> " : presentation.Current.RenderPrompt(observation);
+    public string Prompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
 
     private void DeliverUpdate(CycleObservation observation, IReadOnlyList<CycleObservedEvent> events, bool fullTail,
         IReadOnlyList<CycleObservedEventSource>? sources = null) {
@@ -56,8 +56,15 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Tex
         if (!fullTail && events.Count == 0 && update.CurrentValues.Count == 0 && !phaseChanged) { return; }
         string text = presentation.Current.RenderUpdate(update);
         // A successful commit is not an input opportunity. Only EnterInput changes this phase.
-        if (phaseChanged || fullTail) { text += PhaseText(observation); }
+        if (fullTail) { text += FullConsoleText(observation); }
+        else if (phaseChanged) { text += PhaseText(observation); }
         Write(text, snapshot, clear: false);
+    }
+
+    private string FullConsoleText(CycleObservation observation) {
+        string hint = observation.Outcome == CycleExpeditionOutcome.Exploring && Phase == PlayDeliveryPhase.ControllerInput
+            ? metaCommands.RenderHint(presentation) : "";
+        return (hint.Length > 0 ? "\n" + hint + "\n" : "") + PhaseText(observation);
     }
 
     private string PhaseText(CycleObservation observation) => observation.Outcome != CycleExpeditionOutcome.Exploring

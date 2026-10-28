@@ -18,7 +18,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             RenderEnding(text, observation);
             return text.ToString();
         }
-        text.AppendLine($"{(observation.IsDay ? "白天" : "夜晚")} · 下次{(observation.IsDay ? "天黑" : "天亮")} {Time(observation.NextLightChange)} · 等待输入时世界暂停。");
+        text.AppendLine($"{(observation.IsDay ? "白天" : "夜晚")} · 下次{(observation.IsDay ? "天黑" : "天亮")} {Time(observation.NextLightChange)}。");
         text.AppendLine(observation.ArrivalDue is { } arrival
             ? $"**正在途中** · {Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）；移动不能取消。"
             : $"**{observation.PlaceName}**：{observation.PlaceDescription}");
@@ -102,14 +102,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             }
         }
         text.AppendLine();
-        text.AppendLine("`:look` 重看 · `:help` 完整命令与规则 · `:details` 完整观察和历史 · `:layout` 切换布局 · `:exit` 退出。查看不耗时、不确认消息。");
         return text.ToString();
     }
 
-    public string RenderHelp(CycleObservation observation) => observation.Outcome == CycleExpeditionOutcome.Exploring
-        ? PlayView.RenderCommands(observation) : "本局已经结束；可以查看冻结记录或退出。\n";
-
-    public string RenderPrompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
+    public string RenderActionHelp(CycleObservation observation) => PlayView.RenderCommands(observation);
 
     private static void RenderEvents(StringBuilder text, CycleObservation observation, bool ended) {
         foreach (CycleNoticeObservation notice in observation.Notices) { text.AppendLine($"- {PlayView.RenderNotice(notice, ended)}"); }

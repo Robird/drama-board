@@ -11,7 +11,7 @@ public sealed class PlayControllerOperationTests {
         using var journal = CycleOperationJournal.CreateInMemory();
         using var input = new StringReader("\n \t\n:help\ninvalid\n:layout unknown\nwait 0\nhandoff 观察保暖\n");
         using var output = new StringWriter();
-        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), input, output,
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output,
             operations: journal, worldVersion: () => "1:0");
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
@@ -43,11 +43,12 @@ public sealed class PlayControllerOperationTests {
     [InlineData("", 0)]
     [InlineData("\n \n", 0)]
     [InlineData(":exit\n", 1)]
+    [InlineData(":quit\n", 1)]
     public async Task Eof_does_not_invent_a_call_but_explicit_exit_has_a_paired_result(string submitted, int count) {
         using var journal = CycleOperationJournal.CreateInMemory();
         using var input = new StringReader(submitted);
         using var output = new StringWriter();
-        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), input, output, operations: journal);
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
 
         await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => controller.ChooseCommandAsync(
             CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), default).AsTask());
@@ -64,7 +65,7 @@ public sealed class PlayControllerOperationTests {
         using var journal = CycleOperationJournal.CreateForTesting(new FailingFlushStream());
         using var input = new StringReader("wait 1\n");
         using var output = new StringWriter();
-        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), input, output, operations: journal);
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
         var initial = CycleGameFactory.CreateSurvival();
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
@@ -75,6 +76,115 @@ public sealed class PlayControllerOperationTests {
         Assert.Equal(initial.Cursor, history.Cursor);
         Assert.Null(history.PendingEvent);
         Assert.True(journal.IsFaulted);
+    }
+
+    [Fact]
+    public async Task Disabled_meta_commands_reject_without_exit_resync_or_preference_changes_then_return_action() {
+        string[] disabled = [":help", ":look", ":details", ":layout", ":mode", ":exit", ":quit",
+            ":layout classic", ":mode full", ":layout decision", ":mode delta"];
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var output = new StringWriter();
+        var presentation = PlayPresentation.ForMode(true);
+        IPlayLayout layout = presentation.Current;
+        int clears = 0;
+        CycleViewSnapshot? baseline = null;
+        PlayConsole.ConsoleCharacterController? controller = null;
+        using var input = new CallbackReader(disabled.Append("handoff :exit"), () => {
+            Assert.Same(layout, presentation.Current);
+            Assert.Equal(PlayOutputMode.Delta, presentation.Mode);
+            if (baseline is null) { baseline = controller!.Baseline; }
+            Assert.NotNull(baseline);
+            Assert.Same(baseline, controller!.Baseline);
+        });
+        controller = new(presentation, ConsoleMetaCommands.None, input, output, () => clears++, journal);
+        CycleWorld world = CycleGameFactory.CreateSurvival().World;
+        string before = world.DescribeState();
+
+        CycleControllerOperation action = await controller.ChooseCommandAsync(CycleDecisionContext.Create(world, "a"), default);
+
+        Assert.Equal(CycleCommand.Handoff(":exit"), action.Command);
+        Assert.Equal(disabled.Length + 1, journal.Entries.Count);
+        Assert.All(journal.Entries.Take(disabled.Length), entry => {
+            Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status);
+            Assert.Equal(entry.Received.ToolCallId, entry.Completed.ToolCallId);
+            Assert.Contains(entry.Completed.Result, output.ToString());
+        });
+        Assert.Null(journal.Entries[^1].Completed);
+        Assert.Equal(action.ToolCallId, journal.Entries[^1].Received.ToolCallId);
+        Assert.Equal(1, clears);
+        Assert.Equal(before, world.DescribeState());
+        // This fixture contains no literal command text in its game data; input is not echoed.
+        Assert.DoesNotContain(":help", output.ToString());
+        Assert.DoesNotContain(":exit", output.ToString());
+        Assert.DoesNotContain(":layout", output.ToString());
+        Assert.DoesNotContain(":mode", output.ToString());
+    }
+
+    [Fact]
+    public async Task Console_queries_rejections_and_exit_do_not_publish_game_state_or_events() {
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var input = new StringReader(":help\n:details\n:layout\n:mode\n:look\n:layout classic\n:mode full\n:mode invalid\n:exit\n");
+        using var output = new StringWriter();
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
+            ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
+        var initial = CycleGameFactory.CreateSurvival();
+        var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
+        var kernel = CycleEngine.CreateKernel(history, characterController: controller);
+
+        await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => kernel.StepAsync(new ModelTime(long.MaxValue)).AsTask());
+
+        Assert.Same(initial.World, history.State);
+        Assert.Equal(initial.Cursor, history.Cursor);
+        Assert.Null(history.PendingEvent);
+        Assert.Equal(9, journal.Entries.Count);
+        Assert.All(journal.Entries, entry => Assert.Equal(entry.Received.ToolCallId, entry.Completed!.ToolCallId));
+    }
+
+    [Fact]
+    public async Task Cancellation_during_read_does_not_record_or_dispatch_the_returned_line() {
+        using var cancellation = new CancellationTokenSource();
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var input = new CallbackReader([":exit"], cancellation.Cancel);
+        using var output = new StringWriter();
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
+            ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => controller.ChooseCommandAsync(
+            CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), cancellation.Token).AsTask());
+
+        Assert.Empty(journal.Entries);
+    }
+
+    [Fact]
+    public async Task Resync_journal_result_contains_the_complete_console_composition_written_to_output() {
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var output = new StringWriter();
+        int beforeResync = 0;
+        int afterResync = 0;
+        int reads = 0;
+        using var input = new CallbackReader([":look", "wait 1"], () => {
+            if (reads++ == 0) { beforeResync = output.GetStringBuilder().Length; }
+            else { afterResync = output.GetStringBuilder().Length; }
+        });
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
+            ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
+        CycleObservation observation = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
+
+        await controller.ChooseCommandAsync(CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), default);
+
+        string response = journal.Entries[0].Completed!.Result;
+        Assert.Contains(":help", response);
+        Assert.Contains("现在可输入", response);
+        Assert.Equal(response + output.NewLine + observation.Actor.Id + "> ",
+            output.ToString()[beforeResync..afterResync]);
+    }
+
+    private sealed class CallbackReader(IEnumerable<string> lines, Action beforeRead) : TextReader {
+        private readonly Queue<string> _lines = new(lines);
+        public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) {
+            beforeRead();
+            return ValueTask.FromResult(_lines.TryDequeue(out string? line) ? line : null);
+        }
     }
 
     private sealed class FailingFlushStream : MemoryStream {

@@ -64,7 +64,7 @@ internal static class ContinuityPlayView {
         text.AppendLine("本轮交接草稿（下一次放行模拟时发送，旧交接不会自动续传）：");
         Quote(text, continuity.DraftHandoff ?? "（空）");
         if (observation.Outcome == CycleExpeditionOutcome.Exploring) {
-            text.AppendLine("`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；不耗时、不确认警告。`:help` 查看限制。");
+            text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");
         }
         text.AppendLine();
         return text.ToString();
