@@ -28,7 +28,7 @@ public sealed class PlayPresentationTests {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
-        using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:details\n:layout missing\n:layout second extra\nwait 1\n");
+        using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:layout first once\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
         int boundaries = 0;
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => boundaries++);
@@ -37,7 +37,7 @@ public sealed class PlayPresentationTests {
 
         Assert.Equal(CycleCommand.Wait(1), operation.Command);
         Assert.Same(second, presentation.Current);
-        Assert.Single(first.Screens);
+        Assert.Equal(2, first.Screens.Count);
         Assert.Equal(2, second.Screens.Count);
         Assert.Single(second.Help);
         Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),

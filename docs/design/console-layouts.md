@@ -14,7 +14,7 @@
 | `:layout decision` / `:layout classic` | 切换并立即重绘同一份观察 |
 | `:mode` / `:mode full` / `:mode delta` | 列出或切换输出模式；生存默认 delta，多人采集明确仅支持 full |
 | `:look` | 用当前布局重绘 |
-| `:details` | 临时查看经典完整观察，不改变布局选择 |
+| `:layout <名称> once` | 按指定布局临时显示完整观察，不改变布局、输出模式或增量基线 |
 | `:help` | 元命令帮助、当前布局及全部可用布局的切换命令、当前布局的行动帮助 |
 | `:exit` | 退出；也可使用 `:quit` |
 
@@ -22,13 +22,23 @@
 
 上表是 `HumanDefault` 能力；`None` 不提示或执行这些元命令，`:exit` / `:quit` 均记录为拒绝，随后仍可接受游戏行动。行动语法由 [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) 独立解析；`handoff :exit` 的正文不会再次分派。EOF 与宿主取消不受目录控制。配置不依据输出是否重定向；本轮未提供 CLI 禁用参数或会话中途切换。
 
-生存模式在首次交付及 `(ActorId, ContextSequence)` 变化时输出青色回合分隔线；启动说明与帮助显示在首次分隔线之后。同一回合提交后统一追加事件、缩进效果与当前状态；delta 只选受影响的状态，full 使用完整尾部。查询、重同步与模式/布局切换不额外输出分隔线；`:details` 不改变基线。终局事件之后只输出一次冻结全文。未启用连续性的多人采集仍以角色/时间判断展示边界。回合分隔与成功写出后的基线由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 管理；始终追加输出、保留滚动历史；输出重定向时使用纯文本分隔线，不发送颜色控制码。
+生存模式在首次交付及 `(ActorId, ContextSequence)` 变化时输出青色回合分隔线；启动说明与帮助显示在首次分隔线之后。同一回合提交后统一追加事件、缩进效果与当前状态；delta 只选受影响的状态，full 使用完整尾部。查询、重同步与模式/布局切换不额外输出分隔线；`:layout <名称> once` 不改变基线。终局事件之后只输出一次冻结全文。未启用连续性的多人采集仍以角色/时间判断展示边界。回合分隔与成功写出后的基线由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 管理；始终追加输出、保留滚动历史；输出重定向时使用纯文本分隔线，不发送颜色控制码。
 
 此行为用于试玩时检查单次观察是否足以决策，不等同于 LLM 上下文隔离：终端自身的回滚历史不作跨平台保证，未来 LLM 收到哪些历史消息仍由上下文构造决定。
 
 两种布局通过 [ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) 展示[决策回合的信息继承](decision-context-handoff.md)：当前观察、固定的上次行动结果、主观交接文字与本轮草稿分别呈现。本轮补给不改写历史身体值，旧交接不会自动续传；`handoff <文字>` 覆盖草稿，`handoff --clear` 清空。
 
 [操作 ID 合同](decision-context-handoff.md#44-操作-id结果配对与-completion-边界)由 Console 与 [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) 落实：非空提交在解析前隐式生成 ToolCallId 并登记，查询/拒绝/元命令也保存同 ID 结果。`--store` 使用存档下的 `operations.jsonl`；没有存档时仅保留在内存。空行和 EOF 不产生操作记录，布局偏好仍仅在当前进程中生效。
+
+## 单次布局预览（2026-10-29）
+
+`:details` 已移除，不保留别名；原用途由 `:layout classic once` 覆盖，也可用 `:layout decision once` 或预览其他已注册布局。
+
+- 语法为 `:layout [名称 [once]]`：无参数列出选项；只有名称时持续切换并全量重同步；名称后加小写 `once` 时仅展示一次完整观察。持续选择只在本次 Console 会话有效，不写入存档。
+- 预览复用指定布局的 `RenderFull(CycleViewSnapshot)`，数据来自当前角色的同一份观察。先输出所预览的布局和仍在使用的布局，随后输出游戏正文；不会临时修改 `Current` 再恢复，也不会增加回合分隔线。
+- 预览走独立查询答复，保持输出模式、增量基线和交付阶段；不推进时间、不确认警告、不发布游戏 E/S。操作入口仍生成 ToolCallId，完整答复按同 ID 配对记录。预览当前布局也遵守查询语义；需要重建基线时使用 `:look`。
+- 名称按注册表验证，`once` 按大小写精确匹配；未知名称、错误后缀或多余参数拒绝且保留原状态。`:layout once` 会将 `once` 当作布局名称查询；当前没有此布局，因此拒绝，不省略必需的名称。目录为 `None` 时预览同样禁用。
+- 帮助与布局列表均从实际注册项生成持续切换和单次预览示例。测试覆盖语法、指定渲染器、偏好/基线保持、操作配对与只读边界，不固定具体布局内容的位置。
 
 ## 信息组织
 

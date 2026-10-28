@@ -188,15 +188,16 @@ internal static class PlayConsole {
                         case ConsoleMetaCommandKind.Help:
                             Reply(metaCommands.RenderHelp(presentation) + "\n" + presentation.Current.RenderActionHelp(observation));
                             break;
-                        case ConsoleMetaCommandKind.Details:
-                            Reply(PlayView.Render(observation));
-                            break;
                         case ConsoleMetaCommandKind.Layout:
                             if (parsed.Argument is null) { Reply(metaCommands.DescribeLayouts(presentation)); }
-                            else if (presentation.TrySelect(parsed.Argument)) {
-                                Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
-                            } else {
+                            else if (presentation.FindLayout(parsed.Argument) is not { } selected) {
                                 Reply($"未知布局：{parsed.Argument}。\n{metaCommands.DescribeLayouts(presentation)}", CycleOperationStatus.Rejected);
+                            } else if (parsed.Once) {
+                                Reply($"临时查看布局：{selected.Id}（{selected.Name}）；当前布局仍为 {presentation.Current.Id}。\n" +
+                                    selected.RenderFull(CycleViewSnapshot.Create(observation)));
+                            } else {
+                                presentation.TrySelect(parsed.Argument);
+                                Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
                             }
                             break;
                         case ConsoleMetaCommandKind.Mode:

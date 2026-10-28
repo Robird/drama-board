@@ -1,6 +1,6 @@
-internal enum ConsoleMetaCommandKind { Look, Help, Details, Layout, Mode, Exit }
+internal enum ConsoleMetaCommandKind { Look, Help, Layout, Mode, Exit }
 
-internal sealed record ConsoleMetaCommand(ConsoleMetaCommandKind Kind, string? Argument = null);
+internal sealed record ConsoleMetaCommand(ConsoleMetaCommandKind Kind, string? Argument = null, bool Once = false);
 
 /// <summary>Immutable Human Console capabilities. Parsing and help share the same finite definitions.</summary>
 internal sealed class ConsoleMetaCommands {
@@ -13,10 +13,9 @@ internal sealed class ConsoleMetaCommands {
     private readonly Definition[] _definitions;
 
     public static ConsoleMetaCommands HumanDefault { get; } = new([
-        new(ConsoleMetaCommandKind.Layout, "layout", null, ArgumentShape.OptionalLayout, "无参数列出可用布局，带名称切换"),
+        new(ConsoleMetaCommandKind.Layout, "layout", null, ArgumentShape.OptionalLayout, "无参数列出布局，带名称持续切换，追加 once 仅查看一次"),
         new(ConsoleMetaCommandKind.Mode, "mode", null, ArgumentShape.OptionalMode, "无参数列出输出模式，带名称切换"),
         new(ConsoleMetaCommandKind.Look, "look", null, ArgumentShape.None, "重绘当前观察"),
-        new(ConsoleMetaCommandKind.Details, "details", null, ArgumentShape.None, "查看完整观察"),
         new(ConsoleMetaCommandKind.Help, "help", null, ArgumentShape.None, "查看规则与命令"),
         new(ConsoleMetaCommandKind.Exit, "exit", "quit", ArgumentShape.None, "退出 Console 会话"),
     ]);
@@ -27,11 +26,12 @@ internal sealed class ConsoleMetaCommands {
     public ConsoleMetaCommand? Parse(string input) {
         ArgumentNullException.ThrowIfNull(input);
         string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length is < 1 or > 2) { return null; }
+        if (parts.Length is < 1 or > 3) { return null; }
         foreach (Definition definition in _definitions) {
             if (parts[0] != definition.Syntax && (definition.Alias is null || parts[0] != $":{definition.Alias}")) { continue; }
-            if (parts.Length == 2 && definition.Argument == ArgumentShape.None) { return null; }
-            return new(definition.Kind, parts.Length == 2 ? parts[1] : null);
+            if (parts.Length > 1 && definition.Argument == ArgumentShape.None) { return null; }
+            if (parts.Length == 3 && (definition.Argument != ArgumentShape.OptionalLayout || parts[2] != "once")) { return null; }
+            return new(definition.Kind, parts.Length >= 2 ? parts[1] : null, Once: parts.Length == 3);
         }
         return null;
     }
@@ -51,8 +51,9 @@ internal sealed class ConsoleMetaCommands {
         Definition? definition = _definitions.FirstOrDefault(item => item.Kind == ConsoleMetaCommandKind.Layout);
         if (definition is null) { return ""; }
         return $"当前布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n" +
-            string.Join("\n", presentation.Layouts.Select(layout => $"- `{definition.Syntax} {layout.Id}`：{layout.Name}")) +
-            "\n切换立即重绘，仅影响本次控制台会话；不推进时间，不确认消息。";
+            string.Join("\n", presentation.Layouts.Select(layout =>
+                $"- `{definition.Syntax} {layout.Id}`：持续切换为{layout.Name}；`{definition.Syntax} {layout.Id} once`：仅查看一次。")) +
+            "\n持续切换立即重绘，仅影响本次控制台会话；once 不改变布局、输出模式或增量基线。两者均不推进时间、不确认消息。";
     }
 
     public string DescribeModes(PlayPresentation presentation) {
@@ -66,7 +67,7 @@ internal sealed class ConsoleMetaCommands {
 
     private static string Describe(Definition definition, PlayPresentation presentation) {
         string argument = definition.Argument switch {
-            ArgumentShape.OptionalLayout => " [名称]",
+            ArgumentShape.OptionalLayout => " [名称 [once]]",
             ArgumentShape.OptionalMode => $" [{string.Join('|', presentation.SupportedModes.Keys)}]",
             _ => "",
         };

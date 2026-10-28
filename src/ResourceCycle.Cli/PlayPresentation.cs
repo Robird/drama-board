@@ -31,8 +31,10 @@ internal sealed class PlayPresentation {
         return true;
     }
 
+    public IPlayLayout? FindLayout(string id) => _layouts.GetValueOrDefault(id);
+
     public bool TrySelect(string id) {
-        if (!_layouts.TryGetValue(id, out IPlayLayout? selected)) { return false; }
+        if (FindLayout(id) is not { } selected) { return false; }
         Current = selected;
         return true;
     }

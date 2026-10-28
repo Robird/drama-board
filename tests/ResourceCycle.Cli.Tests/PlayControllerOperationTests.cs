@@ -81,7 +81,7 @@ public sealed class PlayControllerOperationTests {
     [Fact]
     public async Task Disabled_meta_commands_reject_without_exit_resync_or_preference_changes_then_return_action() {
         string[] disabled = [":help", ":look", ":details", ":layout", ":mode", ":exit", ":quit",
-            ":layout classic", ":mode full", ":layout decision", ":mode delta"];
+            ":layout classic", ":mode full", ":layout decision", ":mode delta", ":layout classic once", ":layout decision once"];
         using var journal = CycleOperationJournal.CreateInMemory();
         using var output = new StringWriter();
         var presentation = PlayPresentation.ForMode(true);
@@ -123,7 +123,7 @@ public sealed class PlayControllerOperationTests {
     [Fact]
     public async Task Console_queries_rejections_and_exit_do_not_publish_game_state_or_events() {
         using var journal = CycleOperationJournal.CreateInMemory();
-        using var input = new StringReader(":help\n:details\n:layout\n:mode\n:look\n:layout classic\n:mode full\n:mode invalid\n:exit\n");
+        using var input = new StringReader(":help\n:layout classic once\n:layout\n:mode\n:look\n:layout classic\n:mode full\n:mode invalid\n:exit\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
             ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
@@ -177,6 +177,39 @@ public sealed class PlayControllerOperationTests {
         Assert.Contains("现在可输入", response);
         Assert.Equal(response + output.NewLine + observation.Actor.Id + "> ",
             output.ToString()[beforeResync..afterResync]);
+    }
+
+    [Theory]
+    [InlineData("classic")]
+    [InlineData("decision")]
+    public async Task Layout_once_is_a_logged_query_and_preserves_preferences_and_baseline(string target) {
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var output = new StringWriter();
+        var presentation = PlayPresentation.ForMode(true);
+        IPlayLayout original = presentation.Current;
+        CycleViewSnapshot? baseline = null;
+        PlayConsole.ConsoleCharacterController? controller = null;
+        string[] commands = [$":layout {target} once", ":layout missing once", ":layout once", ":details", "handoff 保持原布局"];
+        using var input = new CallbackReader(commands, () => {
+            Assert.Same(original, presentation.Current);
+            Assert.Equal(PlayOutputMode.Delta, presentation.Mode);
+            baseline ??= controller!.Baseline;
+            Assert.NotNull(baseline);
+            Assert.Same(baseline, controller!.Baseline);
+        });
+        controller = new(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
+        var context = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a");
+
+        var action = await controller.ChooseCommandAsync(context, default);
+
+        Assert.Equal(CycleCommand.Handoff("保持原布局"), action.Command);
+        var preview = journal.Entries[0];
+        Assert.Equal(CycleOperationStatus.Succeeded, preview.Completed!.Status);
+        Assert.Equal(preview.Received.ToolCallId, preview.Completed.ToolCallId);
+        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation)), preview.Completed.Result);
+        Assert.Contains(preview.Completed.Result, output.ToString());
+        Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
+        Assert.Equal(1, output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1);
     }
 
     private sealed class CallbackReader(IEnumerable<string> lines, Action beforeRead) : TextReader {
