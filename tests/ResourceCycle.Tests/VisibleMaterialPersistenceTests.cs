@@ -99,6 +99,8 @@ public sealed class VisibleMaterialPersistenceTests {
         Assert.NotNull(snapshots[1].Survival!.FoodForecast.WarningAt);
         Assert.NotNull(snapshots[2].ArrivalDue);
         Assert.Null(snapshots[2].PlaceId);
+        Assert.Equal(new CycleJourneyObservation("迷途营地", "trail-1", "沿溪水声下坡", null), snapshots[2].Journey);
+        Assert.Null(snapshots[1].Journey);
 
         using var store = new TemporaryStore();
         List<CommitId> commits = [];

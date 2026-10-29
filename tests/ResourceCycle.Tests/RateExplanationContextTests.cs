@@ -187,7 +187,7 @@ public sealed class RateExplanationContextTests {
         Resources = source.Resources, HarvestDurations = source.HarvestDurations, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue,
+        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey,
         Passages = source.Passages, Memories = source.Memories, Outcome = source.Outcome,
         EndingReason = source.EndingReason, Survival = survival, Weather = source.Weather
     };

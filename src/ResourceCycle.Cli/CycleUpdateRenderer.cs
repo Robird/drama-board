@@ -85,7 +85,7 @@ internal static class CycleUpdateRenderer {
             "GatherYielded" => $"采集获得{subject}。", "GatherFinished" => $"采集停止：{subject}。", "WaitCompleted" => "等待结束。",
             "AttentionAcknowledged" => "已确认消息和历史警告。", "ActivityCancelled" => "已取消当前活动。",
             "LightChanged" => "昼夜发生变化。", "WeatherResolved" => "天气结算。", "MoveArrived" => $"已抵达{subject}。",
-            "SurvivalWarning" => "身体触及警戒线。", "SurvivalFailed" => "生存状态耗尽。", "ExpeditionEnded" => "旅程结束。",
+            "SurvivalWarning" => $"身体警告：{SurvivalWarningView.Attributes([e])}触及警戒线。", "SurvivalFailed" => "生存状态耗尽。", "ExpeditionEnded" => "旅程结束。",
             "HandoffEdited" => "已更新下回合留言。", "ResourceRegenerated" => $"{subject}再生。", "ResourceDestroyed" => $"{subject}资源被清空。",
             _ => $"{e.Kind}：{subject}。"
         };

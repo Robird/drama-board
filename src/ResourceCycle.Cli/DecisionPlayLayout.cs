@@ -30,7 +30,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine("## 当前状态与环境");
         text.AppendLine($"{(observation.IsDay ? "白天" : "夜晚")} · 下次{(observation.IsDay ? "天黑" : "天亮")} {Time(observation.NextLightChange)}。");
         text.AppendLine(observation.ArrivalDue is { } arrival
-            ? $"**正在途中** · {Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）；移动不能取消。"
+            ? $"**正在途中** · {JourneyView.Route(observation.Journey!)}；{Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）；移动不能取消。"
             : $"**{observation.PlaceName}**：{observation.PlaceDescription}");
         if (observation.Survival is { } survival) {
             text.AppendLine();
@@ -170,7 +170,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine();
         text.AppendLine("## 结束时的状态");
         text.AppendLine($"结束时为{(observation.IsDay ? "白天" : "夜晚")}；" + (observation.ArrivalDue is { } arrival
-            ? $"仍在途中，原计划 {Time(arrival)} 抵达，行程未完成。" : $"位置：{observation.PlaceName}。{observation.PlaceDescription}"));
+            ? $"仍在途中，{JourneyView.Route(observation.Journey!)}；原计划 {Time(arrival)} 抵达，行程未完成。" : $"位置：{observation.PlaceName}。{observation.PlaceDescription}"));
         if (observation.Survival is { } survival) {
             text.AppendLine($"{Exposure(survival)}；以下为结束时冻结的余量与速率解释，不再继续变化。");
             foreach (var attribute in CycleAttributeView.FromSurvival(survival, forecastEnabled: false)) {

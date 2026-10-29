@@ -163,6 +163,7 @@ public sealed partial class CharacterContextOpening : IDurableObject {
             throw new InvalidOperationException("Invalid context opening actor, time or activity state.");
         }
         Observation.Survival?.Validate(Observation.Time);
+        Observation.ValidateJourney();
         PreviousAdvance?.Validate(actorId, DeliveredAt);
         CharacterExperience.ValidateSequence(Experiences, actorId, DeliveredAt, ref lastExperience);
     }
@@ -258,6 +259,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
             throw new InvalidOperationException("Invalid context item observation actor or time.");
         }
         Observation?.Survival?.Validate(Observation.Time);
+        Observation?.ValidateJourney();
         CharacterExperience.ValidateSequence(Experiences, actorId, Observation?.Time ?? worldTime, ref lastExperience);
     }
 }

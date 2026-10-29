@@ -32,7 +32,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 
-生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测。二期双角色胜负、对话/赠与及 LLM 尚未启动；移动不可取消、干木燃料用途依体验重开。
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测；返回原因按本次警告事件列出触发属性，途中路线来自共享冻结观察，未知目的地不泄露。二期双角色胜负、对话/赠与及 LLM 尚未启动；移动不可取消、干木燃料用途依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -44,7 +44,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；未来 LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 11（Business Schema 4、Character 5、Fact 9、PendingAdvance 2；Survival 2 保存速率贡献，SurvivalObservation 3／AttributeForecast 1 保存逐属性预测），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 12（Business Schema 4、Character 5、Fact 9、PendingAdvance 2；Survival 2 保存速率贡献，SurvivalObservation 3／AttributeForecast 1 保存逐属性预测，Observation 2／JourneyObservation 1 保存可知路线），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

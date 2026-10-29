@@ -6,6 +6,54 @@ using DramaBoard.ResourceCycle;
 namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class SurvivalNeedsViewTests {
+    [Theory]
+    [InlineData(30, 80, 80, "食物")]
+    [InlineData(80, 33, 80, "饮水")]
+    [InlineData(80, 80, 37, "温暖")]
+    [InlineData(30, 33, 37, "食物、饮水、温暖")]
+    public async Task Return_reason_names_all_new_warning_attributes_without_inference_from_current_values(
+        int food, int water, int warmth, string attributes) {
+        var initial = PreparedNeeds(CycleSurvival.Create(new ModelTime(19 * CycleTime.Hour), food, water, warmth));
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: new Commands(CycleCommand.Go("trail-2")));
+        await Until(kernel, world => world.Business.InteractionStates["a"].CurrentContext?.ContextSequence == 2);
+        var state = kernel.World.Business.InteractionStates["a"];
+        var opening = state.CurrentContext!.Opening;
+        foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
+            string text = layout.Render(opening.Observation, state);
+            Assert.Contains($"身体警告（{attributes}触及警戒线）", text);
+        }
+        // An old pending warning is not evidence that this advance returned for a new warning.
+        var withoutWarningEvents = new CharacterContextOpening(opening.Background, opening.Observation,
+            opening.PreviousAdvance, opening.DeliveredAt, opening.ActivityState,
+            opening.Experiences.Where(e => e.Event.Kind != CycleObservedEventKind.SurvivalWarning));
+        string history = ContextHistoryPlayView.RenderHistory(opening.Observation,
+            new CharacterContext(2, CharacterContextStatus.Open, withoutWarningEvents));
+        Assert.DoesNotContain("身体警告（", history);
+        Assert.DoesNotContain("返回原因：身体警告", history);
+    }
+
+    [Theory]
+    [InlineData("classic")]
+    [InlineData("decision")]
+    public async Task Known_reverse_route_is_rendered_from_frozen_material(string layoutId) {
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-1")));
+        for (int i = 0; i < 30; i++) {
+            await Step(kernel);
+            var observation = CycleDecisionContext.Observe(kernel.World, "a");
+            if (observation.Journey?.KnownDestinationName != "迷途营地") { continue; }
+            IPlayLayout layout = layoutId == "classic" ? new ClassicPlayLayout() : new DecisionPlayLayout();
+            string text = layout.Render(observation);
+            Assert.Contains("从溪流湾出发 → 迷途营地", text);
+            Assert.Contains("沿林间缓坡向上", text);
+            Assert.DoesNotContain("未知目的地", text);
+            return;
+        }
+        Assert.Fail("Return journey was not reached.");
+    }
+
     [Fact]
     public void Default_survival_shows_attribute_forecasts_without_repeating_them_on_actions() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
@@ -57,6 +105,15 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("移动途中不可 cancel", warningView);
         Assert.Null(warned.Check(CycleCommand.Use("item.water")));
         Assert.Null(warned.Check(CycleCommand.Continue()));
+        foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
+            string rendered = layout.Render(warned.Observation, warned.InteractionState);
+            Assert.Contains("返回原因：身体警告（饮水触及警戒线）", rendered);
+            Assert.Contains("从迷途营地出发", rendered);
+            Assert.Contains("未知目的地（尚未探索）", rendered);
+            Assert.Contains("trail-2", rendered);
+            Assert.Contains("沿窄径攀上风口", rendered);
+            Assert.DoesNotContain("风口山脊", rendered);
+        }
 
         await Step(kernel); // drink while the journey stays paused
         CycleDecisionContext replenished = CycleDecisionContext.Create(kernel.World, "a");
@@ -69,6 +126,9 @@ public sealed class SurvivalNeedsViewTests {
         Assert.DoesNotContain("上次结果（记录当时状态）", after);
         Assert.NotNull(replenished.Check(CycleCommand.Use("item.water")));
         Assert.Null(replenished.Check(CycleCommand.Continue()));
+        foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
+            Assert.Contains("返回原因：身体警告（饮水触及警戒线）", layout.Render(replenished.Observation, replenished.InteractionState));
+        }
 
         await Step(kernel); // acknowledgement retains the original arrival deadline
         CycleObservation continued = CycleDecisionContext.Observe(kernel.World, "a");
@@ -185,6 +245,13 @@ public sealed class SurvivalNeedsViewTests {
         string text = PlayView.Render(observation);
         Assert.Contains("结束时仍在途中", text);
         Assert.Contains("本段行程未完成，不再推进", text);
+        foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
+            string ended = layout.Render(observation);
+            Assert.Contains("从迷途营地出发 → 未知目的地（尚未探索）", ended);
+            Assert.Contains("沿窄径攀上风口", ended);
+            Assert.Contains("原计划", ended);
+            Assert.DoesNotContain("风口山脊", ended);
+        }
         Assert.Contains("移动未完成；原计划到达时刻", text);
         Assert.Contains("| 饮水 | 0 |", text);
         Assert.DoesNotContain("正在途中；预计", text);

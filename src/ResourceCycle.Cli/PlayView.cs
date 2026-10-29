@@ -46,8 +46,8 @@ internal static class PlayView {
         if (observation.IsExpedition) {
             text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
             text.AppendLine(observation.ArrivalDue is { } arrival
-                ? ended ? $"结束时仍在途中；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
-                    : $"正在途中；预计 {FormatTime(arrival)} 到达。移动途中不可 cancel；查看或继续不会重置行程。"
+                ? ended ? $"结束时仍在途中；{JourneyView.Route(observation.Journey!)}；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
+                    : $"正在途中；{JourneyView.Route(observation.Journey!)}；预计 {FormatTime(arrival)} 到达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）。移动途中不可 cancel；查看或继续不会重置行程。"
                 : $"{observation.PlaceName}：{observation.PlaceDescription}");
             text.AppendLine();
         }

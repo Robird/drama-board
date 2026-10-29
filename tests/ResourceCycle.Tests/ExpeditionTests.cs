@@ -58,8 +58,22 @@ public sealed class ExpeditionTests {
         Assert.Same(kernel.World.Expedition.Spatial, kernel.World.Spatial!.Business);
         CycleObservation observation = CycleDecisionContext.Observe(kernel.World, "a");
         Assert.Contains(observation.Resources, resource => resource.Id == "berries");
+        Assert.Null(observation.Journey);
         Assert.DoesNotContain(observation.Resources, resource => resource.Id == "wood");
         Assert.Null(CycleActions.Check(kernel.World, "a", CycleCommand.Gather("berries")));
+    }
+
+    [Fact]
+    public async Task Return_journey_retains_known_destination_and_reverse_direction() {
+        var initial = CycleGameFactory.CreateSurvival(Hour(10), enableNeeds: false, enableWeather: false);
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-1")));
+        await StepWorldEvent(kernel);
+        await Advance(kernel);
+        await StepWorldEvent(kernel);
+        CycleObservation observation = CycleDecisionContext.Observe(kernel.World, "a");
+        Assert.Equal(new CycleJourneyObservation("溪流湾", "trail-1", "沿林间缓坡向上", "迷途营地"), observation.Journey);
+        Assert.Equal(Hour(12), observation.ArrivalDue);
     }
 
     [Fact]

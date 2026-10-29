@@ -119,6 +119,7 @@ public sealed class CycleDecisionContext {
             PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,
             ArrivalDue = arrival,
+            Journey = CycleJourneyObservation.Observe(expedition, actorId),
             Passages = Array.AsReadOnly(passages.Select(passage => new CyclePassageObservation(passage.Id, passage.Description,
                 passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? CycleExpeditionMap.GetPlace(passage.To).Name : null)).ToArray()),
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>

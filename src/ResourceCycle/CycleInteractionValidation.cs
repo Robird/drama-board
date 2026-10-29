@@ -201,6 +201,8 @@ internal static class CycleInteractionValidation {
             observation.PlaceDescription == (place is null ? null : CycleExpeditionMap.GetPlace(place).Description) &&
             observation.ArrivalDue == (location is TraversingLocation moving ? moving.ArrivalDue : null),
             "Recorded location must match the visible spatial endpoint.");
+        Require(observation.Journey == CycleJourneyObservation.Observe(state.Expedition, actorId),
+            "Recorded journey must retain the traveller's route without revealing unknown destinations.");
         CycleCharacter[] others = state.Characters.Where(other => other.Id != actorId && (state.Expedition is null ||
             place is not null && state.Expedition.Spatial.Entities.Single(e => e.Id.Value == other.Id).Location is AtPlaceLocation otherPlace &&
                 otherPlace.PlaceId.Value == place)).ToArray();

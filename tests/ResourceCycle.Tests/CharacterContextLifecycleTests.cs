@@ -285,7 +285,7 @@ public sealed class CharacterContextLifecycleTests {
         Resources = source.Resources, HarvestDurations = source.HarvestDurations, ItemNames = source.ItemNames,
         OtherCharacters = otherCharacters ?? source.OtherCharacters, Notices = source.Notices, Commands = commands ?? source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue,
+        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey,
         Passages = source.Passages, Memories = source.Memories, Outcome = source.Outcome,
         EndingReason = source.EndingReason, Survival = survival ?? source.Survival, Weather = source.Weather
     };

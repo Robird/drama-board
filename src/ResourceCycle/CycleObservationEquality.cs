@@ -13,7 +13,7 @@ internal static class CycleObservationEquality {
         SameList(a.Notices, b.Notices, SameNoticeObservation) &&
         SameList(a.Commands, b.Commands, (x, y) => x == y) &&
         a.IsExpedition == b.IsExpedition && a.PlaceId == b.PlaceId && a.PlaceName == b.PlaceName &&
-        a.PlaceDescription == b.PlaceDescription && a.ArrivalDue == b.ArrivalDue &&
+        a.PlaceDescription == b.PlaceDescription && a.ArrivalDue == b.ArrivalDue && a.Journey == b.Journey &&
         SameList(a.Passages, b.Passages, (x, y) => x == y) &&
         SameList(a.Memories, b.Memories, SameMemory) &&
         a.Outcome == b.Outcome && a.EndingReason == b.EndingReason &&

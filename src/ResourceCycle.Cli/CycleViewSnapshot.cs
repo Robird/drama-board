@@ -79,6 +79,7 @@ internal sealed class CycleViewSnapshot {
         Add("location", actor, "name", Text(o.PlaceName), "位置");
         Add("location", actor, "description", Text(o.PlaceDescription), "眼前环境");
         Add("location", actor, "arrival", At(o.ArrivalDue));
+        Add("location", actor, "journey", Text(o.Journey is { } journey ? JourneyView.Route(journey) : null), "行程");
         Add("actor", actor, "skill", CycleVisibleValue.Numeric(o.Actor.SkillLevel), "采药等级");
         Add("backpack", actor, "total", CycleVisibleValue.Numeric(o.Actor.Backpack.TotalCount, "件"), "背包总量");
         Add("backpack", actor, "capacity", o.Actor.Backpack.UnitCapacity is { } cap ? CycleVisibleValue.Numeric(cap, "件") : Text("不限"), "背包容量");

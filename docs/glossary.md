@@ -14,6 +14,7 @@
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | 概念预留；当前可玩实例未接入。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 某个角色当时可知的完整状态快照；不等同于完整世界对象，也不包含上下文历史。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；CycleDecisionContext 读取已保存最新观察，另持权威命令校验。 |
+| 行程观察（Journey observation） | 角色正在行走的路线知识：出发地、通路与方向线索、已知目的地；未探索目的地不公开身份。 | [CycleJourneyObservation](../src/ResourceCycle/CycleJourneyObservation.cs) 冻结于 `CycleObservation.Journey`，与 `ArrivalDue` 同时存在；抵达后清除，途中终局保留。 |
 | 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择并冻结材料，随 Opening 持久化。完整渲染与增量均使用保存的 Opening.Background，不按当前观察重新选择规则。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
 | Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | [ConsoleMetaCommands](../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) 的 `HumanDefault` / `None` 同时控制提示与解析，`ConsoleCharacterController` 执行；纯行动由 [CycleCommandParser](../src/ResourceCycle/CycleCommandParser.cs) 解析。见[边界合同](design/console-command-boundary.md)。 |

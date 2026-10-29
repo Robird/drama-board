@@ -83,8 +83,9 @@ internal static class ContextHistoryPlayView {
         if (kinds.Contains(CycleObservedEventKind.MoveArrived)) { reasons.Add("抵达"); }
         if (kinds.Contains(CycleObservedEventKind.WaitCompleted)) { reasons.Add("活动完成"); }
         if (kinds.Contains(CycleObservedEventKind.GatherFinished)) { reasons.Add("采集停止"); }
-        if (kinds.Contains(CycleObservedEventKind.SurvivalWarning) || opening.Observation.Survival is { PendingWarnings.Count: > 0 }) {
-            reasons.Add("身体警告");
+        if (kinds.Contains(CycleObservedEventKind.SurvivalWarning)) {
+            string attributes = SurvivalWarningView.Attributes(opening.Experiences.Select(e => e.Event));
+            reasons.Add(attributes.Length > 0 ? $"身体警告（{attributes}触及警戒线）" : "身体警告");
         }
         if (opening.Observation.Notices.Any(notice => notice.Notice.Kind == CycleNoticeKind.CollectorJoined)) { reasons.Add("有人加入采集"); }
         if (opening.Observation.Notices.Any(notice => notice.Notice.Kind == CycleNoticeKind.ResourceDepleted)) { reasons.Add("资源耗尽"); }

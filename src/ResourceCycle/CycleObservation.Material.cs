@@ -63,7 +63,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 1)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 2)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -107,6 +107,14 @@ public sealed partial class CycleObservation : IDurableObject {
     public CycleSurvivalObservation? Survival { get => _survival; init => _survival = value; }
     [DurableField(21)] private CycleWeatherObservation? _weather;
     public CycleWeatherObservation? Weather { get => _weather; init => _weather = value; }
+    [DurableField(22)] private CycleJourneyObservation? _journey;
+    public CycleJourneyObservation? Journey { get => _journey; init => _journey = value; }
+    internal void ValidateJourney() {
+        if ((ArrivalDue is null) != (Journey is null) || Journey is not null && (!IsExpedition || PlaceId is not null)) {
+            throw new InvalidOperationException("Journey and visible location disagree.");
+        }
+        Journey?.Validate();
+    }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
 }
