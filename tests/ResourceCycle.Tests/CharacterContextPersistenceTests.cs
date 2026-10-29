@@ -8,6 +8,53 @@ namespace DramaBoard.ResourceCycle.Tests;
 
 public sealed class CharacterContextPersistenceTests {
     [Fact]
+    public async Task Multi_source_rates_survive_state_and_pending_event_with_old_opening_frozen() {
+        using var store = new TemporaryStore();
+        CycleWorld original = CycleGameFactory.CreateSurvival(Hour(8), enableWeather: false).World;
+        CycleCharacter actor = original.GetCharacter("a");
+        CycleSurvival body = actor.Survival!;
+        var food = new RateBreakdown([new("fixture.base", "基础消耗", -8), new("fixture.recovery", "恢复", 3)]);
+        var warmth = new RateBreakdown([new("fixture.sun", "日照", 18), new("fixture.exposure", "暴露", -12)]);
+        CycleWorld initial = CycleEngine.Rebuild(original.Business.Replace(original.Time,
+            changedCharacters: [actor.WithSurvival(body.WithRates(original.Time, food, body.WaterRate, warmth))]), original.Time);
+        CharacterContext savedOpening;
+        CycleFact recorded;
+        using (var history = CycleDurableHistory.Create(store.StorePath, initial, InitialCursor(initial))) {
+            var interrupted = CycleEngine.CreateKernel(new StopAfterEvent(history, fact => fact.Kind == CycleEventKind.ItemUsed),
+                characterController: Commands(CycleCommand.Use("item.water")));
+            await Advance(interrupted);
+            savedOpening = history.State.Business.InteractionStates["a"].CurrentContext!;
+            Assert.True(warmth.SameAs(savedOpening.Opening.Observation.Survival!.WarmthRate));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => Advance(interrupted));
+            recorded = Assert.Single(history.PendingEvent!.Facts);
+            Assert.True(food.SameAs(Assert.Single(recorded.ChangedCharacters).Survival!.FoodRate));
+            Assert.True(warmth.SameAs(history.State.GetCharacter("a").Survival!.WarmthRate));
+        }
+
+        CharacterInteractionState recoveredState;
+        using (var history = CycleDurableHistory.Open(store.StorePath)) {
+            AssertSemanticEqual(savedOpening, history.State.Business.InteractionStates["a"].CurrentContext);
+            Assert.True(warmth.SameAs(history.State.GetCharacter("a").Survival!.WarmthRate));
+            Assert.True(food.SameAs(history.State.GetCharacter("a").Survival!.FoodRate));
+            AssertSemanticEqual(recorded.InteractionChanges, Assert.Single(history.PendingEvent!.Facts).InteractionChanges);
+            var forbidden = new ForbiddenController();
+            var resumed = CycleEngine.CreateKernel(history, characterController: forbidden);
+            Assert.True(resumed.RecoverPending());
+            Assert.Equal(0, forbidden.Calls);
+            recoveredState = resumed.World.Business.InteractionStates["a"];
+            Assert.True(warmth.SameAs(recoveredState.CurrentContext!.Opening.Observation.Survival!.WarmthRate));
+            Assert.True(food.SameAs(recoveredState.CurrentContext.LatestObservation.Survival!.FoodRate));
+            Assert.True(CycleSurvivalRules.WarmthRate(false, true).SameAs(recoveredState.CurrentContext.LatestObservation.Survival.WarmthRate));
+            Assert.False(warmth.SameAs(recoveredState.CurrentContext.LatestObservation.Survival.WarmthRate));
+        }
+
+        using var final = CycleDurableHistory.Open(store.StorePath);
+        Assert.Null(final.PendingEvent);
+        AssertSemanticEqual(recoveredState, final.State.Business.InteractionStates["a"]);
+        Assert.True(food.SameAs(final.State.GetCharacter("a").Survival!.FoodRate));
+    }
+
+    [Fact]
     public async Task State_cold_open_keeps_full_current_context_and_continues_without_reopening() {
         using var store = new TemporaryStore();
         var initial = CycleGameFactory.CreateSurvival(Hour(8), enableWeather: false);

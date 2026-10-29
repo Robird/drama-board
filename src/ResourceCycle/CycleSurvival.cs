@@ -4,18 +4,20 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>One character's anchored, piecewise linear needs. A point is Scale units; rates are units per tick.</summary>
-[DurableType("DramaBoard.ResourceCycle.Survival", 1)]
+[DurableType("DramaBoard.ResourceCycle.Survival", 2)]
 public sealed partial class CycleSurvival : IDurableObject {
     public const long Scale = CycleTime.Hour;
-    public const long MaximumUnits = 100 * Scale;
+    public const int MinimumValue = 0;
+    public const int MaximumValue = 100;
+    public const long MaximumUnits = MaximumValue * Scale;
     public const long WarningUnits = 25 * Scale;
     [DurableField(1)] private ModelTime _baselineAt;
     [DurableField(2)] private long _foodUnits;
     [DurableField(3)] private long _waterUnits;
     [DurableField(4)] private long _warmthUnits;
-    [DurableField(5)] private int _foodPerHour;
-    [DurableField(6)] private int _waterPerHour;
-    [DurableField(7)] private int _warmthPerHour;
+    [DurableField(5)] private RateBreakdown _foodRate;
+    [DurableField(6)] private RateBreakdown _waterRate;
+    [DurableField(7)] private RateBreakdown _warmthRate;
     [DurableField(8)] private int _warnedMask;
     [DurableField(9)] private int _pendingMask;
     [DurableField(10)] private ModelTime? _pendingSince;
@@ -23,33 +25,42 @@ public sealed partial class CycleSurvival : IDurableObject {
     public long FoodUnits => _foodUnits;
     public long WaterUnits => _waterUnits;
     public long WarmthUnits => _warmthUnits;
-    public int FoodPerHour => _foodPerHour;
-    public int WaterPerHour => _waterPerHour;
-    public int WarmthPerHour => _warmthPerHour;
+    public RateBreakdown FoodRate => _foodRate;
+    public int FoodPerHour => FoodRate.Total;
+    public RateBreakdown WaterRate => _waterRate;
+    public int WaterPerHour => WaterRate.Total;
+    public RateBreakdown WarmthRate => _warmthRate;
+    public int WarmthPerHour => WarmthRate.Total;
     public int WarnedMask => _warnedMask;
     public int PendingMask => _pendingMask;
     public ModelTime? PendingSince => _pendingSince;
     public bool IsFatal => FoodUnits == 0 || WaterUnits == 0 || WarmthUnits == 0;
     public CycleSurvival(ModelTime baselineAt, long foodUnits, long waterUnits, long warmthUnits,
-        int foodPerHour = -5, int waterPerHour = -8, int warmthPerHour = 6,
+        RateBreakdown foodRate, RateBreakdown waterRate, RateBreakdown warmthRate,
         int warnedMask = 0, int pendingMask = 0, ModelTime? pendingSince = null) {
         _baselineAt = baselineAt; _foodUnits = foodUnits; _waterUnits = waterUnits; _warmthUnits = warmthUnits;
-        _foodPerHour = foodPerHour; _waterPerHour = waterPerHour; _warmthPerHour = warmthPerHour;
+        ArgumentNullException.ThrowIfNull(foodRate);
+        ArgumentNullException.ThrowIfNull(waterRate);
+        ArgumentNullException.ThrowIfNull(warmthRate);
+        _foodRate = foodRate; _waterRate = waterRate; _warmthRate = warmthRate;
         _warnedMask = warnedMask; _pendingMask = pendingMask; _pendingSince = pendingSince;
         Validate();
     }
-    public static CycleSurvival Create(ModelTime time, int food = 65, int water = 65, int warmth = 60, int warmthPerHour = 6) =>
-        new(time, checked(food * Scale), checked(water * Scale), checked(warmth * Scale), warmthPerHour: warmthPerHour);
+    /// <summary>Creates initial outdoor needs using the current calendar; callers may supply an explicit warmth cause.</summary>
+    public static CycleSurvival Create(ModelTime time, int food = 65, int water = 65, int warmth = 60, RateBreakdown? warmthRate = null) =>
+        new(time, checked(food * Scale), checked(water * Scale), checked(warmth * Scale),
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate,
+            warmthRate ?? CycleSurvivalRules.WarmthRate(false, CycleTime.IsDay(time)));
     public CycleSurvival Project(ModelTime at) {
         if (at < BaselineAt) { throw new ArgumentOutOfRangeException(nameof(at)); }
         long elapsed = at.Ticks - BaselineAt.Ticks;
         long food = Integrate(FoodUnits, FoodPerHour, elapsed), water = Integrate(WaterUnits, WaterPerHour, elapsed), warmth = Integrate(WarmthUnits, WarmthPerHour, elapsed);
         int armed = WarnedMask & ((food <= WarningUnits ? 1 : 0) | (water <= WarningUnits ? 2 : 0) | (warmth <= WarningUnits ? 4 : 0));
-        return new(at, food, water, warmth, FoodPerHour, WaterPerHour, WarmthPerHour, armed, PendingMask, PendingSince);
+        return new(at, food, water, warmth, FoodRate, WaterRate, WarmthRate, armed, PendingMask, PendingSince);
     }
-    public CycleSurvival WithRates(ModelTime at, int foodPerHour, int waterPerHour, int warmthPerHour) {
+    public CycleSurvival WithRates(ModelTime at, RateBreakdown foodRate, RateBreakdown waterRate, RateBreakdown warmthRate) {
         CycleSurvival value = Project(at);
-        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, foodPerHour, waterPerHour, warmthPerHour,
+        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, foodRate, waterRate, warmthRate,
             value.WarnedMask, value.PendingMask, value.PendingSince);
     }
     public CycleSurvival Supply(ModelTime at, string itemId) {
@@ -61,29 +72,30 @@ public sealed partial class CycleSurvival : IDurableObject {
             case "item.water": water = Math.Min(MaximumUnits, water + 45 * Scale); break;
             default: throw new ArgumentException("Unknown survival supply.", nameof(itemId));
         }
-        return new CycleSurvival(at, food, water, warmth, FoodPerHour, WaterPerHour, WarmthPerHour,
+        return new CycleSurvival(at, food, water, warmth, FoodRate, WaterRate, WarmthRate,
             value.WarnedMask, value.PendingMask, value.PendingSince).Project(at);
     }
     public CycleSurvival Acknowledge(ModelTime at) {
         CycleSurvival value = Project(at);
-        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, FoodPerHour, WaterPerHour, WarmthPerHour, value.WarnedMask);
+        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, FoodRate, WaterRate, WarmthRate, value.WarnedMask);
     }
     /// <summary>Plans an instantaneous exposure loss after integrating the preceding segment.</summary>
     internal CycleSurvival LoseWarmth(ModelTime at, long units) {
         ArgumentOutOfRangeException.ThrowIfNegative(units);
         CycleSurvival value = Project(at);
         return new(at, value.FoodUnits, value.WaterUnits, Math.Max(0, value.WarmthUnits - units),
-            value.FoodPerHour, value.WaterPerHour, value.WarmthPerHour, value.WarnedMask, value.PendingMask, value.PendingSince);
+            value.FoodRate, value.WaterRate, value.WarmthRate, value.WarnedMask, value.PendingMask, value.PendingSince);
     }
     public CycleSurvival Warn(ModelTime at) {
         CycleSurvival value = Project(at);
         int low = (value.FoodUnits <= WarningUnits ? 1 : 0) | (value.WaterUnits <= WarningUnits ? 2 : 0) | (value.WarmthUnits <= WarningUnits ? 4 : 0);
         int newlyWarned = low & ~value.WarnedMask;
-        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, FoodPerHour, WaterPerHour, WarmthPerHour,
+        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, FoodRate, WaterRate, WarmthRate,
             value.WarnedMask | newlyWarned, value.PendingMask | newlyWarned,
             value.PendingSince ?? (newlyWarned == 0 ? null : at));
     }
     public void Validate() {
+        RateBreakdown.ValidateSources(FoodRate, WaterRate, WarmthRate);
         if (BaselineAt.Ticks < 0 || FoodUnits < 0 || FoodUnits > MaximumUnits || WaterUnits < 0 || WaterUnits > MaximumUnits ||
             WarmthUnits < 0 || WarmthUnits > MaximumUnits || (WarnedMask & ~7) != 0 || (PendingMask & ~7) != 0 ||
             (PendingMask == 0) != (PendingSince is null) || PendingSince is { } since && (since.Ticks < 0 || since > BaselineAt)) {

@@ -34,8 +34,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             : $"**{observation.PlaceName}**：{observation.PlaceDescription}");
         if (observation.Survival is { } survival) {
             text.AppendLine();
-            text.AppendLine($"**{Exposure(survival)} · 温暖 {Number(survival.Warmth)}/100（{Trend(survival.WarmthPerHour)}/小时）**");
-            text.AppendLine($"食物 {Number(survival.Food)}/100（{Trend(survival.FoodPerHour)}/小时） · 饮水 {Number(survival.Water)}/100（{Trend(survival.WaterPerHour)}/小时）。");
+            text.AppendLine($"**{Exposure(survival)}**");
+            foreach (var attribute in CycleAttributeView.FromSurvival(survival).OrderBy(attribute => attribute.Field != "warmth")) {
+                text.AppendLine($"- {attribute.Label} {attribute.Description}。");
+            }
             text.AppendLine(survival.FatalAt is { } fatal
                 ? $"- 不补给且保持当前庇护状态，预计最早耗尽：{Time(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - observation.Time.Ticks))} 分钟）。"
                 : "- 不补给且保持当前庇护状态，可表示的时间内没有预计耗尽时刻。");
@@ -175,7 +177,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine($"结束时为{(observation.IsDay ? "白天" : "夜晚")}；" + (observation.ArrivalDue is { } arrival
             ? $"仍在途中，原计划 {Time(arrival)} 抵达，行程未完成。" : $"位置：{observation.PlaceName}。{observation.PlaceDescription}"));
         if (observation.Survival is { } survival) {
-            text.AppendLine($"{Exposure(survival)} · 温暖 {Number(survival.Warmth)}/100 · 食物 {Number(survival.Food)}/100 · 饮水 {Number(survival.Water)}/100。");
+            text.AppendLine($"{Exposure(survival)}；以下为结束时冻结的余量与速率解释，不再继续变化。");
+            foreach (var attribute in CycleAttributeView.FromSurvival(survival)) {
+                text.AppendLine($"- {attribute.Label} {attribute.Description}。");
+            }
         }
         RenderActivity(text, observation, ended: true);
         text.AppendLine();
@@ -199,7 +204,6 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
 
     private static string Exposure(CycleSurvivalObservation survival) => survival.Sheltered ? "有庇护" : "暴露在野外（无庇护）";
     private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
-    private static string Trend(int value) => value > 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
     private static string Minutes(long ticks) => Number((decimal)ticks / 60_000);
     private static string ItemName(CycleObservation observation, string itemId) => observation.ItemNames.GetValueOrDefault(itemId, itemId);
     private static string Time(ModelTime time) {

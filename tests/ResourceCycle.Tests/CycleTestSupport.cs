@@ -6,6 +6,8 @@ using DramaBoard.ResourceCycle;
 namespace DramaBoard.ResourceCycle.Tests;
 
 internal static class CycleTestSupport {
+    public static RateBreakdown Rate(int amount, string source = "fixture") =>
+        new([new(source, "测试来源", amount)]);
     public static ModelTime Hour(long hours) => new(hours * CycleTime.Hour);
     public static ModelTime Minute(long minutes) => new(minutes * 60_000);
     public static KernelCursor InitialCursor(CycleWorld world) => new(new WorldVersion(17, 0), world.Time, null, null);

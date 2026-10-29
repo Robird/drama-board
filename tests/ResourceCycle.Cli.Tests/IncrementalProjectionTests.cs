@@ -127,7 +127,9 @@ public sealed class IncrementalProjectionTests {
         ItemNames = new Dictionary<string, string> { ["item.food"] = "食物" }, OtherCharacters = [], Notices = [],
         Commands = [new(CycleCommand.Wait(1), null, commandRisk)],
         Passages = passages ?? [],
-        Survival = new(70, water, 70, -5, -6, 5, false, warning ? ["饮水曾触及警戒线"] : [], null,
+        Survival = new(70, water, 70, TestRate(-5), TestRate(-6), TestRate(5), false, warning ? ["饮水曾触及警戒线"] : [], null,
             PendingWarningMask: warning ? 2 : 0)
     };
+
+    private static RateBreakdown TestRate(int amount) => new([new("test", "测试来源", amount)]);
 }

@@ -9,7 +9,11 @@ internal static class CycleUpdateRenderer {
         if (update.CurrentValues.Count > 0) {
             text.AppendLine("当前：");
             foreach (var pair in update.CurrentValues.Where(pair => pair.Key.Category != "command")) {
-                text.AppendLine($"- {update.Label(pair.Key)}：{Format(pair.Value, pair.Key)}");
+                if (update.Snapshot.RateExplanations.ContainsKey(pair.Key)) { continue; }
+                var rateKey = new CycleStateKey(pair.Key.Category, pair.Key.ObjectId, pair.Key.Field + "-rate");
+                string value = update.Snapshot.RateExplanations.TryGetValue(rateKey, out var attribute)
+                    ? attribute.Description : Format(pair.Value, pair.Key);
+                text.AppendLine($"- {update.Label(pair.Key)}：{value}");
             }
             text.Append(RenderCommandStates(update.CurrentValues));
         }

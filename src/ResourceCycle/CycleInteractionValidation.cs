@@ -229,9 +229,11 @@ internal static class CycleInteractionValidation {
         Require((body is null) == (visible is null), "The recorded body must agree with the character's capabilities.");
         bool sheltered = CycleSurvivalRules.IsSheltered(state.Expedition?.Spatial, actor.Id);
         if (body is not null && visible is not null) {
+            visible.Validate();
             Require(visible.Food == (decimal)body.FoodUnits / CycleSurvival.Scale && visible.Water == (decimal)body.WaterUnits / CycleSurvival.Scale &&
-                visible.Warmth == (decimal)body.WarmthUnits / CycleSurvival.Scale && visible.FoodPerHour == body.FoodPerHour &&
-                visible.WaterPerHour == body.WaterPerHour && visible.WarmthPerHour == body.WarmthPerHour && visible.Sheltered == sheltered &&
+                visible.Warmth == (decimal)body.WarmthUnits / CycleSurvival.Scale && visible.FoodRate.SameAs(body.FoodRate) &&
+                visible.WaterRate.SameAs(body.WaterRate) && visible.WarmthRate.SameAs(body.WarmthRate) && visible.Sheltered == sheltered &&
+                visible.Minimum == CycleSurvival.MinimumValue && visible.Maximum == CycleSurvival.MaximumValue &&
                 visible.PendingWarningMask == body.PendingMask && visible.WarmthWarningPending == ((body.PendingMask & 4) != 0),
                 "Recorded needs must match the integrated physical endpoint.");
             string[] warnings = new[] { (1, "饱食"), (2, "水分"), (4, "温暖") }.Where(pair => (body.PendingMask & pair.Item1) != 0)

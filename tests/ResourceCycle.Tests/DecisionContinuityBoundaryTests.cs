@@ -51,7 +51,7 @@ public sealed class DecisionContinuityBoundaryTests {
         var initial = CycleGameFactory.CreateSurvival(Hour(8), enableWeather: false);
         CycleCharacter original = initial.World.GetCharacter("a");
         CycleSurvival body = new(initial.World.Time, 25 * CycleSurvival.Scale, 45 * CycleSurvival.Scale, 60 * CycleSurvival.Scale,
-            warnedMask: 1, pendingMask: 1, pendingSince: initial.World.Time);
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 1, pendingMask: 1, pendingSince: initial.World.Time);
         var actor = new CycleCharacter(original.Id, original.Name, backpack: original.Backpack,
             survival: body);
         CycleWorld world = CycleEngine.Rebuild(initial.World.Business.Replace(initial.World.Time, changedCharacters: [actor]), initial.World.Time);

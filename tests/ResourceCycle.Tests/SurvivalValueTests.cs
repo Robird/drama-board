@@ -10,7 +10,7 @@ public sealed class SurvivalValueTests {
     public void Changing_rates_integrates_the_old_segment_before_starting_the_new_one() {
         CycleSurvival initial = CycleSurvival.Create(At(17 * Hour + Hour / 2));
 
-        CycleSurvival night = initial.WithRates(At(18 * Hour), -5, -8, -12);
+        CycleSurvival night = initial.WithRates(At(18 * Hour), CycleTestSupport.Rate(-5), CycleTestSupport.Rate(-8), CycleTestSupport.Rate(-12));
         CycleSurvival later = night.Project(At(18 * Hour + Hour / 2));
 
         // Half an hour in daylight: warmth 60 + 3. Half an hour at night: 63 - 6.
@@ -25,7 +25,7 @@ public sealed class SurvivalValueTests {
 
     [Fact]
     public void Reanchoring_at_arbitrary_ticks_does_not_discard_fractional_points() {
-        CycleSurvival initial = CycleSurvival.Create(At(0));
+        CycleSurvival initial = CycleSurvival.Create(At(0), warmthRate: CycleTestSupport.Rate(6));
         CycleSurvival direct = initial.Project(At(123));
         CycleSurvival segmented = initial.Project(At(1)).Project(At(17)).Project(At(61)).Project(At(123));
 
@@ -40,8 +40,8 @@ public sealed class SurvivalValueTests {
 
     [Fact]
     public void Recovery_saturates_and_excess_warmth_is_not_bankable_after_a_rate_change() {
-        CycleSurvival initial = CycleSurvival.Create(At(0), warmth: 99);
-        CycleSurvival exposed = initial.WithRates(At(Hour), -5, -8, -12);
+        CycleSurvival initial = CycleSurvival.Create(At(0), warmth: 99, warmthRate: CycleTestSupport.Rate(6));
+        CycleSurvival exposed = initial.WithRates(At(Hour), CycleTestSupport.Rate(-5), CycleTestSupport.Rate(-8), CycleTestSupport.Rate(-12));
 
         CycleSurvival cooled = exposed.Project(At(Hour + Hour / 2));
 
@@ -51,7 +51,7 @@ public sealed class SurvivalValueTests {
 
     [Fact]
     public void Projection_uses_wide_intermediates_and_clamps_at_extreme_elapsed_time() {
-        CycleSurvival initial = CycleSurvival.Create(At(0));
+        CycleSurvival initial = CycleSurvival.Create(At(0), warmthRate: CycleTestSupport.Rate(6));
 
         CycleSurvival farFuture = initial.Project(At(long.MaxValue));
 
@@ -65,7 +65,7 @@ public sealed class SurvivalValueTests {
 
     [Fact]
     public void Acknowledgement_clears_attention_but_does_not_repeat_a_low_episode_warning() {
-        var initial = new CycleSurvival(At(0), 80 * Hour, 25 * Hour, 80 * Hour, foodPerHour: 0, warmthPerHour: 0);
+        var initial = new CycleSurvival(At(0), 80 * Hour, 25 * Hour, 80 * Hour, foodRate: CycleTestSupport.Rate(0), waterRate: CycleSurvivalRules.WaterRate, warmthRate: CycleTestSupport.Rate(0));
 
         CycleSurvival warned = initial.Warn(At(0));
         CycleSurvival acknowledged = warned.Acknowledge(At(0));
@@ -85,7 +85,7 @@ public sealed class SurvivalValueTests {
 
     [Fact]
     public void Water_supply_rearms_the_episode_but_preserves_unacknowledged_attention() {
-        var initial = new CycleSurvival(At(0), 80 * Hour, 25 * Hour, 80 * Hour, foodPerHour: 0, warmthPerHour: 0);
+        var initial = new CycleSurvival(At(0), 80 * Hour, 25 * Hour, 80 * Hour, foodRate: CycleTestSupport.Rate(0), waterRate: CycleSurvivalRules.WaterRate, warmthRate: CycleTestSupport.Rate(0));
         CycleSurvival warned = initial.Warn(At(0));
 
         CycleSurvival supplied = warned.Supply(At(0), "item.water");
@@ -107,7 +107,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Only_recovery_strictly_above_the_threshold_rearms_a_warning() {
         var initial = new CycleSurvival(At(0), 80 * Hour, 80 * Hour, 24 * Hour,
-            foodPerHour: 0, waterPerHour: 0, warmthPerHour: 1, warnedMask: 4, pendingMask: 4, pendingSince: At(0));
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(0), warmthRate: CycleTestSupport.Rate(1), warnedMask: 4, pendingMask: 4, pendingSince: At(0));
 
         CycleSurvival exactlyAtThreshold = initial.Project(At(Hour));
         CycleSurvival aboveThreshold = exactlyAtThreshold.Project(At(Hour + 1));
@@ -123,7 +123,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Supplying_another_need_does_not_rearm_one_that_remains_exactly_at_the_threshold() {
         var initial = new CycleSurvival(At(0), 50 * Hour, 25 * Hour, 80 * Hour,
-            foodPerHour: 0, waterPerHour: 0, warmthPerHour: 0, warnedMask: 2, pendingMask: 2, pendingSince: At(0));
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(0), warmthRate: CycleTestSupport.Rate(0), warnedMask: 2, pendingMask: 2, pendingSince: At(0));
 
         CycleSurvival supplied = initial.Supply(At(0), "item.food");
 
@@ -136,7 +136,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Later_warnings_keep_the_first_unacknowledged_perception_time() {
         var initial = new CycleSurvival(At(0), 25 * Hour, 26 * Hour, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -1, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-1), warmthRate: CycleTestSupport.Rate(0));
 
         CycleSurvival first = initial.Warn(At(0));
         CycleSurvival second = first.Warn(At(Hour));
@@ -150,7 +150,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Supply_cannot_revive_a_need_depleted_at_the_consumption_boundary() {
         var initial = new CycleSurvival(At(0), 80 * Hour, 8 * Hour, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -8, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0));
 
         Assert.False(initial.Project(At(Hour - 1)).IsFatal);
         Assert.True(initial.Project(At(Hour)).IsFatal);
@@ -161,7 +161,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Warning_prediction_uses_ceil_so_a_fractional_tick_is_never_announced_early() {
         var initial = new CycleSurvival(At(7), 80 * Hour, 25 * Hour + 1, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -8, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0));
 
         var next = Assert.NotNull(CycleSurvivalRules.NextThreshold(initial, At(7)));
 
@@ -174,7 +174,7 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Fatal_prediction_uses_ceil_and_skips_an_already_warned_low_episode() {
         var initial = new CycleSurvival(At(7), 80 * Hour, 9, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -8, warmthPerHour: 0, warnedMask: 2);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0), warnedMask: 2);
 
         var next = Assert.NotNull(CycleSurvivalRules.NextThreshold(initial, At(7)));
 
@@ -187,9 +187,9 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Prediction_at_the_last_representable_tick_is_kept_but_an_overflowing_due_is_absent() {
         var representable = new CycleSurvival(At(long.MaxValue - 1), 80 * Hour, 25 * Hour + 1, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -8, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0));
         var beyondRange = new CycleSurvival(At(long.MaxValue), 80 * Hour, 25 * Hour + 1, 80 * Hour,
-            foodPerHour: 0, waterPerHour: -8, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0));
 
         var next = Assert.NotNull(CycleSurvivalRules.NextThreshold(representable, representable.BaselineAt));
 
@@ -200,9 +200,9 @@ public sealed class SurvivalValueTests {
     [Fact]
     public void Fatality_wins_only_at_the_same_due_time_not_over_an_earlier_warning() {
         var alreadyFatal = new CycleSurvival(At(0), 0, 20 * Hour, 80 * Hour,
-            foodPerHour: -5, waterPerHour: -8, warmthPerHour: 0);
+            foodRate: CycleTestSupport.Rate(-5), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0));
         var fatalNextTick = new CycleSurvival(At(0), 1, 20 * Hour, 80 * Hour,
-            foodPerHour: -5, waterPerHour: -8, warmthPerHour: 0, warnedMask: 1);
+            foodRate: CycleTestSupport.Rate(-5), waterRate: CycleTestSupport.Rate(-8), warmthRate: CycleTestSupport.Rate(0), warnedMask: 1);
 
         var immediateFatal = Assert.NotNull(CycleSurvivalRules.NextThreshold(alreadyFatal, At(0)));
         var immediateWarning = Assert.NotNull(CycleSurvivalRules.NextThreshold(fatalNextTick, At(0)));

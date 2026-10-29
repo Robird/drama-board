@@ -385,7 +385,7 @@ public sealed class ObservedEventTests {
     }
     private static CycleSurvival Needs(int water = 100, int warmth = 80) => CycleSurvival.Create(Hour(8), 100, water, warmth);
     private static CycleSurvival PendingWater() => new(Hour(8), 100 * CycleSurvival.Scale, 25 * CycleSurvival.Scale,
-        80 * CycleSurvival.Scale, warnedMask: 2, pendingMask: 2, pendingSince: Hour(8));
+        80 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2, pendingMask: 2, pendingSince: Hour(8));
     private static CycleActivity Wait(ModelTime at, int hours) => new(CycleActivityKind.Wait, 1, at, hours * CycleTime.Hour, new(at.Ticks + hours * CycleTime.Hour));
     private static CycleWorld World(CycleSurvival needs, CycleActivity? activity = null, string place = "camp",
         Dictionary<string, int>? items = null, CycleEnvironment? environment = null) {

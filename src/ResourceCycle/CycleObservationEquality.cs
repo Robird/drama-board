@@ -56,7 +56,8 @@ internal static class CycleObservationEquality {
     private static bool SameSurvival(CycleSurvivalObservation? a, CycleSurvivalObservation? b) =>
         ReferenceEquals(a, b) || a is not null && b is not null &&
         a.Food == b.Food && a.Water == b.Water && a.Warmth == b.Warmth &&
-        a.FoodPerHour == b.FoodPerHour && a.WaterPerHour == b.WaterPerHour && a.WarmthPerHour == b.WarmthPerHour &&
+        a.FoodRate.SameAs(b.FoodRate) && a.WaterRate.SameAs(b.WaterRate) && a.WarmthRate.SameAs(b.WarmthRate) &&
+        a.Minimum == b.Minimum && a.Maximum == b.Maximum &&
         a.Sheltered == b.Sheltered && SameList(a.PendingWarnings, b.PendingWarnings, (x, y) => x == y) &&
         a.FatalAt == b.FatalAt && a.WarmthWarningPending == b.WarmthWarningPending &&
         a.PendingWarningMask == b.PendingWarningMask;

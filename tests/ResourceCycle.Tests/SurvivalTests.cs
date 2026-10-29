@@ -75,7 +75,7 @@ public sealed class SurvivalTests {
     [Fact]
     public async Task Exact_warning_level_is_not_rearmed_but_water_supply_above_it_allows_one_later_warning() {
         var low = new CycleSurvival(Hour(8), 60 * CycleSurvival.Scale, 25 * CycleSurvival.Scale, 80 * CycleSurvival.Scale,
-            warnedMask: 2, pendingMask: 2, pendingSince: Hour(8));
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2, pendingMask: 2, pendingSince: Hour(8));
         CycleWorld initial = World(Hour(8), low, Wait(Hour(8), 12), items: new() { ["item.food"] = 1, ["item.water"] = 1 });
         var source = Commands(CycleCommand.Use("item.food"), CycleCommand.Use("item.water"), CycleCommand.Continue(), CycleCommand.Continue());
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
@@ -192,7 +192,7 @@ public sealed class SurvivalTests {
         long duration = 3 * CycleTime.Hour;
         // Water changes by 8 fixed units per tick: death is exactly arrival + deathOffset.
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 8 * (duration + deathOffset),
-            100 * CycleSurvival.Scale, warnedMask: 2);
+            100 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
         CycleWorld initial = World(Hour(8), needs, place: "ravine");
         var source = Commands(CycleCommand.Go(Passage("ravine", "road")));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
@@ -284,7 +284,7 @@ public sealed class SurvivalTests {
     public async Task Death_event_only_recovery_preserves_unfinished_traversal_and_never_turns_it_into_an_arrival() {
         using var store = new TemporaryStore();
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 8 * CycleSurvival.Scale,
-            80 * CycleSurvival.Scale, warnedMask: 2);
+            80 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
         CycleWorld initial = World(Hour(8), needs);
         GraphSpatialState travelling;
         KernelCursor beforeDeath;
@@ -337,7 +337,7 @@ public sealed class SurvivalTests {
     }
 
     private static CycleSurvival Needs(ModelTime at, int food = 100, int water = 100, int warmth = 80, int warmthRate = 6) =>
-        CycleSurvival.Create(at, food, water, warmth, warmthRate);
+        CycleSurvival.Create(at, food, water, warmth, Rate(warmthRate));
     private static CycleSurvival Body(CycleWorld world) => world.GetCharacter("a").Survival!.Project(world.Time);
     private static CycleActivity Wait(ModelTime at, int hours) =>
         new(CycleActivityKind.Wait, 1, at, hours * CycleTime.Hour, new(at.Ticks + hours * CycleTime.Hour));

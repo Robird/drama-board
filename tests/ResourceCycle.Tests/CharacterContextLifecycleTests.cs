@@ -227,7 +227,7 @@ public sealed class CharacterContextLifecycleTests {
         var original = preparation.World.GetCharacter("a");
         var body = original.Survival!;
         var exhausted = new CycleSurvival(preparation.World.Time, 0, body.WaterUnits, body.WarmthUnits,
-            body.FoodPerHour, body.WaterPerHour, body.WarmthPerHour);
+            body.FoodRate, body.WaterRate, body.WarmthRate);
         var business = preparation.World.Business.Replace(preparation.World.Time,
             changedCharacters: [original.WithSurvival(exhausted)]);
         CycleWorld boundary = CycleEngine.Rebuild(business, business.Time);

@@ -254,11 +254,9 @@ internal static class PlayView {
         if (ended) {
             text.AppendLine(survival.Sheltered ? "结束时处于庇护中。" : "结束时暴露在野外。");
             text.AppendLine();
-            text.AppendLine("| 指标 | 结束时余量 |");
-            text.AppendLine("| --- | --- |");
-            text.AppendLine($"| 食物 | {Number(survival.Food)} |");
-            text.AppendLine($"| 饮水 | {Number(survival.Water)} |");
-            text.AppendLine($"| 温暖 | {Number(survival.Warmth)} |");
+            text.AppendLine("| 指标 | 结束时余量 | 范围 | 结束时速率（冻结，不再推进） |");
+            text.AppendLine("| --- | --- | --- | --- |");
+            RenderAttributeRows(text, survival);
             text.AppendLine();
             return;
         }
@@ -266,15 +264,20 @@ internal static class PlayView {
         text.AppendLine("致命时刻估计假设保持当前暴露或庇护状态、不补给，计入已知昼夜变化；未包含未来随机天气，也不预知抵达后的环境。");
         if (hasWeather) { text.AppendLine("寒风可能让危险比估计更早发生。"); }
         text.AppendLine();
-        text.AppendLine("| 指标 | 当前余量 | 当前趋势（点 / 小时） |");
-        text.AppendLine("| --- | --- | --- |");
-        text.AppendLine($"| 食物 | {Number(survival.Food)} | {Trend(survival.FoodPerHour)} |");
-        text.AppendLine($"| 饮水 | {Number(survival.Water)} | {Trend(survival.WaterPerHour)} |");
-        text.AppendLine($"| 温暖 | {Number(survival.Warmth)} | {Trend(survival.WarmthPerHour)} |");
+        text.AppendLine("| 指标 | 当前余量 | 范围 | 当前趋势（点 / 小时）与构成 |");
+        text.AppendLine("| --- | --- | --- | --- |");
+        RenderAttributeRows(text, survival);
         text.AppendLine(survival.FatalAt is { } fatal
             ? $"- 在上述条件下，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。暴露或庇护状态改变后需重新评估。"
             : "- 在上述条件下，可表示的时间内没有预计致命时刻；暴露或庇护状态改变后需重新评估。");
         text.AppendLine();
+    }
+
+    private static void RenderAttributeRows(StringBuilder text, CycleSurvivalObservation survival) {
+        foreach (var attribute in CycleAttributeView.FromSurvival(survival)) {
+            text.AppendLine($"| {attribute.Label} | {Number(attribute.Value)} | {attribute.Range} | {attribute.RateDescription}" +
+                (attribute.Limit.Length == 0 ? "" : $"；{attribute.Limit}") + " |");
+        }
     }
 
     internal static void RenderCurrentWeather(StringBuilder text, CycleWeatherObservation weather) {
@@ -302,7 +305,6 @@ internal static class PlayView {
     }
 
     private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
-    private static string Trend(int value) => value > 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
 
     private static string ItemName(CycleObservation observation, string itemId) => observation.ItemNames.GetValueOrDefault(itemId, itemId);
     private static string Hours(long ticks) => ((decimal)ticks / CycleTime.Hour).ToString("0.##", CultureInfo.InvariantCulture);

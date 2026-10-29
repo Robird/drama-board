@@ -138,7 +138,7 @@ public sealed class WeatherTests {
     [Fact]
     public async Task Continuous_depletion_at_arrival_and_weather_time_wins_without_arrival_or_random_draw() {
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 16 * CycleSurvival.Scale,
-            60 * CycleSurvival.Scale, warnedMask: 2);
+            60 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
         CycleWorld initial = World(Hour(8), Hour(10), place: "ridge", idle: true, needs: needs);
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Go(Passage("ridge", "cabin"))));
         await Advance(kernel);
@@ -176,7 +176,7 @@ public sealed class WeatherTests {
     [Fact]
     public async Task Weather_then_activity_completion_then_new_warning_all_settle_before_same_tick_input() {
         CycleWorld initial = World(Hour(18), Hour(20), waitHours: 2,
-            needs: CycleSurvival.Create(Hour(18), 100, 100, 59, warmthPerHour: -12));
+            needs: CycleSurvival.Create(Hour(18), 100, 100, 59, warmthRate: CycleTestSupport.Rate(-12)));
         var history = Memory(initial);
         var kernel = CycleEngine.CreateKernel(history, characterController: new ForbiddenController());
         await Advance(kernel);
@@ -224,7 +224,7 @@ public sealed class WeatherTests {
     public async Task Weather_event_only_recovery_uses_recorded_random_result_and_warmth_loss_exactly_once(bool fatal) {
         using var store = new TemporaryStore();
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 100 * CycleSurvival.Scale,
-            (fatal ? 9 : 29) * CycleSurvival.Scale, warnedMask: fatal ? 4 : 0);
+            (fatal ? 9 : 29) * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: fatal ? 4 : 0);
         CycleWorld initial = World(Hour(8), Hour(8), needs: needs);
         var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: new ForbiddenController());
         await Advance(baseline);
@@ -309,7 +309,7 @@ public sealed class WeatherTests {
             environment: new(seed, 0, nextWeather));
         CycleActivity? activity = idle ? null : new(CycleActivityKind.Wait, 1, at, waitHours * CycleTime.Hour, new(at.Ticks + waitHours * CycleTime.Hour));
         var actor = new CycleCharacter("a", "Weather fixture", activity: activity, nextActivityId: idle ? 1 : 2,
-            survival: needs ?? CycleSurvival.Create(at, 100, 100, 60, place == "cabin" ? 12 : CycleTime.IsDay(at) ? 6 : -12));
+            survival: needs ?? CycleSurvival.Create(at, 100, 100, 60, CycleSurvivalRules.WarmthRate(place == "cabin", CycleTime.IsDay(at))));
         return CycleEngine.Rebuild(initial.World.Business.Replace(at, changedCharacters: [actor], expedition: expedition), at);
     }
 

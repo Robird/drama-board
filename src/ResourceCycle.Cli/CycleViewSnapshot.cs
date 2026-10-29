@@ -7,6 +7,7 @@ using DramaBoard.ResourceCycle;
 internal sealed class CycleViewSnapshot {
     private readonly Dictionary<CycleStateKey, CycleVisibleValue> _values = [];
     private readonly Dictionary<CycleStateKey, string> _labels = [];
+    private readonly Dictionary<CycleStateKey, CycleAttributeView> _rateExplanations = [];
     public CycleObservation Observation { get; }
     public CharacterInteractionState? InteractionState { get; }
     public CharacterContext? Context { get; }
@@ -14,6 +15,7 @@ internal sealed class CycleViewSnapshot {
     public string? DraftHandoff { get; }
     public bool IncludeHistory { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> Values { get; }
+    public IReadOnlyDictionary<CycleStateKey, CycleAttributeView> RateExplanations { get; }
 
     private CycleViewSnapshot(CycleObservation observation, CharacterInteractionState? interactionState,
         CharacterContext? context = null, string? draftHandoff = null, bool includeHistory = true) {
@@ -24,6 +26,7 @@ internal sealed class CycleViewSnapshot {
         DraftHandoff = context is not null ? draftHandoff : interactionState?.DraftHandoff;
         IncludeHistory = includeHistory;
         Values = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(_values);
+        RateExplanations = new ReadOnlyDictionary<CycleStateKey, CycleAttributeView>(_rateExplanations);
         Project();
     }
 
@@ -82,6 +85,9 @@ internal sealed class CycleViewSnapshot {
             Add("inventory", item.Key, "count", CycleVisibleValue.Numeric(item.Value, "份"), $"{o.ItemNames.GetValueOrDefault(item.Key, item.Key)}库存");
         }
         if (o.Survival is { } s) {
+            foreach (var attribute in CycleAttributeView.FromSurvival(s)) {
+                _rateExplanations.Add(new("body", actor, attribute.Field + "-rate"), attribute);
+            }
             Add("body", actor, "food", Number(s.Food));
             Add("body", actor, "water", Number(s.Water));
             Add("body", actor, "warmth", Number(s.Warmth));

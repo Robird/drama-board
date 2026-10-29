@@ -78,7 +78,9 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Cold_warning_during_travel_does_not_offer_food_or_water_as_warming() {
         ModelTime start = new(19 * CycleTime.Hour);
         var initial = PreparedNeeds(new CycleSurvival(start, 65 * CycleSurvival.Scale,
-            65 * CycleSurvival.Scale, 37 * CycleSurvival.Scale, warmthPerHour: -12));
+            65 * CycleSurvival.Scale, 37 * CycleSurvival.Scale,
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate,
+            warmthRate: new RateBreakdown([new("test-cold", "测试散热", -12)])));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2")));
         await Until(kernel, world => CycleDecisionContext.Observe(world, "a").Survival!.WarmthWarningPending);
@@ -168,7 +170,9 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Death_during_travel_keeps_the_unfinished_route_as_history_without_promising_arrival() {
         ModelTime start = new(15 * CycleTime.Hour);
         var initial = PreparedNeeds(new CycleSurvival(start, 65 * CycleSurvival.Scale,
-            12 * CycleSurvival.Scale, 60 * CycleSurvival.Scale, warnedMask: 2));
+            12 * CycleSurvival.Scale, 60 * CycleSurvival.Scale,
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate,
+            CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2")));
         await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Dead);

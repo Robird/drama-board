@@ -37,7 +37,7 @@ public sealed class SurvivalForecastTests {
     public void Exposed_estimate_survives_residual_night_and_day_before_the_next_night_exhausts_warmth() {
         // Isolate warmth: 23:00=100, next 06:00=16, next 18:00=88, then 01:20=0.
         CycleWorld world = World(new(Hour(23), 100 * CycleSurvival.Scale, 100 * CycleSurvival.Scale,
-            100 * CycleSurvival.Scale, foodPerHour: 0, waterPerHour: 0, warmthPerHour: -12));
+            100 * CycleSurvival.Scale, foodRate: CycleTestSupport.Rate(0), waterRate: CycleTestSupport.Rate(0), warmthRate: CycleTestSupport.Rate(-12)));
         ModelTime expected = Minute(2960); // Day 2, 01:20.
         Assert.Equal(expected, CycleSurvivalRules.Observe(world, "a")!.FatalAt);
         Assert.Null(CycleActions.Check(world, "a", CycleCommand.Wait(24)));
@@ -48,7 +48,7 @@ public sealed class SurvivalForecastTests {
 
     [Fact]
     public void Shelter_removes_night_cooling_but_water_still_exhausts() {
-        CycleWorld world = World(CycleSurvival.Create(Hour(17), food: 100, water: 40, warmth: 10, warmthPerHour: 12), "cabin");
+        CycleWorld world = World(CycleSurvival.Create(Hour(17), food: 100, water: 40, warmth: 10, warmthRate: CycleTestSupport.Rate(12)), "cabin");
         CycleSurvivalObservation observation = CycleSurvivalRules.Observe(world, "a")!;
         Assert.True(observation.Sheltered);
         Assert.Equal(Hour(22), observation.FatalAt);

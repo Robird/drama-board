@@ -71,7 +71,7 @@ public sealed class DecisionOutcomeSummaryTests {
     public async Task Weather_summary_records_actual_loss_including_shelter_zero_and_light_change(bool sheltered) {
         var initial = CycleGameFactory.CreateSurvival(Hour(17), weatherSeed: 0);
         CycleCharacter actor = initial.World.GetCharacter("a").WithSurvival(CycleSurvival.Create(Hour(17), food: 100, water: 100,
-            warmth: 60, warmthPerHour: sheltered ? 12 : 6));
+            warmth: 60, warmthRate: CycleTestSupport.Rate(sheltered ? 12 : 6)));
         CycleExpedition expedition = initial.World.Expedition!;
         if (sheltered) {
             expedition = new(expedition.ScenarioId, GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("cabin"))]),

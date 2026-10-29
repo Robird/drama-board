@@ -149,7 +149,7 @@ public sealed class VisibleMaterialPersistenceTests {
         var replacementMemory = memory with { Resources = rememberedResources };
         var constructedActor = new CycleActorObservation(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
             actor.Activity, actorNotices, actor.LastResult, actor.NextActivityId);
-        var constructedBody = new CycleSurvivalObservation(24.5m, 45.25m, 60.125m, -5, -8, 6, false,
+        var constructedBody = new CycleSurvivalObservation(24.5m, 45.25m, 60.125m, Rate(-5), Rate(-8), Rate(6), false,
             warnings, Hour(20), true, 4);
 
         resources.Clear(); durations.Clear(); names.Clear(); others.Clear(); notices.Clear(); commands.Clear();
@@ -180,7 +180,7 @@ public sealed class VisibleMaterialPersistenceTests {
             notices: [new(CycleNoticeKind.ResourceDepleted, "berries", null, "fixture/depletion", Minute(920), "此前已耗尽")],
             lastResult: "已观察溪流", nextActivityId: 2,
             survival: new(Minute(930), CycleSurvival.Scale * 49 / 2, CycleSurvival.Scale * 181 / 4,
-                CycleSurvival.Scale * 481 / 8, warnedMask: 1, pendingMask: 1, pendingSince: Minute(920)));
+                CycleSurvival.Scale * 481 / 8, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 1, pendingMask: 1, pendingSince: Minute(920)));
         var spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("stream"))]);
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [
             new("a", "camp", Hour(14), []),

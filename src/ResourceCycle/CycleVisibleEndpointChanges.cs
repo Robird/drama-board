@@ -68,10 +68,10 @@ internal static class CycleVisibleEndpointChanges {
         if (ReferenceEquals(a, b)) { return true; }
         if (a is null || b is null) { return false; }
         // Reanchoring at the same instant can preserve all visible values. Compare the existing
-        // numeric integration, not anchor identity, and do not forecast future command outcomes.
+        // integrated values and evaluated causes, not anchor identity, and do not forecast future command outcomes.
         CycleSurvival x = a.Project(at), y = b.Project(at);
         return x.FoodUnits == y.FoodUnits && x.WaterUnits == y.WaterUnits && x.WarmthUnits == y.WarmthUnits &&
-            x.FoodPerHour == y.FoodPerHour && x.WaterPerHour == y.WaterPerHour && x.WarmthPerHour == y.WarmthPerHour &&
+            x.FoodRate.SameAs(y.FoodRate) && x.WaterRate.SameAs(y.WaterRate) && x.WarmthRate.SameAs(y.WarmthRate) &&
             x.PendingMask == y.PendingMask && x.PendingSince == y.PendingSince;
     }
 }

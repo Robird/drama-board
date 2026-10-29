@@ -6,19 +6,31 @@ namespace DramaBoard.ResourceCycle;
 
 /// <summary>Current needs and earliest depletion including known day/night changes, assuming current shelter,
 /// no supplies, and no random weather. A null FatalAt means no depletion within representable time.</summary>
-[DurableType("DramaBoard.ResourceCycle.SurvivalObservation", 1)]
+[DurableType("DramaBoard.ResourceCycle.SurvivalObservation", 2)]
 public sealed partial record CycleSurvivalObservation(
     [field: DurableField(1)] decimal Food,
     [field: DurableField(2)] decimal Water,
     [field: DurableField(3)] decimal Warmth,
-    [field: DurableField(4)] int FoodPerHour,
-    [field: DurableField(5)] int WaterPerHour,
-    [field: DurableField(6)] int WarmthPerHour,
+    [field: DurableField(4)] RateBreakdown FoodRate,
+    [field: DurableField(5)] RateBreakdown WaterRate,
+    [field: DurableField(6)] RateBreakdown WarmthRate,
     [field: DurableField(7)] bool Sheltered,
     IReadOnlyList<string> PendingWarnings,
     [field: DurableField(9)] ModelTime? FatalAt,
     [field: DurableField(10)] bool WarmthWarningPending = false,
-    [field: DurableField(11)] int PendingWarningMask = 0) : IDurableObject {
+    [field: DurableField(11)] int PendingWarningMask = 0,
+    [field: DurableField(12)] decimal Minimum = CycleSurvival.MinimumValue,
+    [field: DurableField(13)] decimal Maximum = CycleSurvival.MaximumValue) : IDurableObject {
+    public int FoodPerHour => FoodRate.Total;
+    public int WaterPerHour => WaterRate.Total;
+    public int WarmthPerHour => WarmthRate.Total;
+    public void Validate() {
+        RateBreakdown.ValidateSources(FoodRate, WaterRate, WarmthRate);
+        if (Minimum >= Maximum || Food < Minimum || Food > Maximum || Water < Minimum || Water > Maximum ||
+            Warmth < Minimum || Warmth > Maximum) {
+            throw new InvalidOperationException("Invalid observed attribute range or value.");
+        }
+    }
     [DurableField(8)] private List<string> _pendingWarnings = new(PendingWarnings);
     public IReadOnlyList<string> PendingWarnings { get => _pendingWarnings.AsReadOnly(); init => _pendingWarnings = new(value); }
 }
@@ -40,8 +52,9 @@ public static class CycleSurvivalRules {
         }
         bool sheltered = IsSheltered(world.Expedition?.Spatial, actorId);
         return new((decimal)body.FoodUnits / CycleSurvival.Scale, (decimal)body.WaterUnits / CycleSurvival.Scale,
-            (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodPerHour, body.WaterPerHour, body.WarmthPerHour,
-            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0, body.PendingMask);
+            (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodRate, body.WaterRate, body.WarmthRate,
+            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0, body.PendingMask,
+            CycleSurvival.MinimumValue, CycleSurvival.MaximumValue);
     }
 
     /// <summary>Known deterministic risk over a proposed activity, including scheduled day/night boundaries.</summary>
@@ -91,7 +104,7 @@ public static class CycleSurvivalRules {
         // Shelter needs one segment. Outdoors, at most a residual night, a day, and a full night:
         // even maximum warmth (100) cannot survive the full 12-hour night at -12 per hour.
         for (int segment = 0; segment < 3; segment++) {
-            body = body.WithRates(cursor, body.FoodPerHour, body.WaterPerHour, WarmthRate(sheltered, CycleTime.IsDay(cursor)));
+            body = body.WithRates(cursor, body.FoodRate, body.WaterRate, WarmthRate(sheltered, CycleTime.IsDay(cursor)));
             ModelTime next = end;
             if (!sheltered) {
                 // Ask the same calendar using a day-relative instant, then clip before converting back to long.
@@ -149,7 +162,7 @@ public static class CycleSurvivalRules {
         foreach (CycleCharacter previous in world.Characters) {
             if (previous.Survival is null || !changes.ContainsKey(previous.Id) && fact.Kind != CycleEventKind.LightChanged) { continue; }
             CycleCharacter actor = changes.GetValueOrDefault(previous.Id, previous);
-            CycleSurvival body = actor.Survival!.WithRates(fact.At, actor.Survival.FoodPerHour, actor.Survival.WaterPerHour,
+            CycleSurvival body = actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
                 WarmthRate(IsSheltered(spatial, actor.Id), light));
             if (fact.LastServedActorId == actor.Id && fact.Kind != CycleEventKind.ItemUsed) { body = body.Acknowledge(fact.At); }
             changes[actor.Id] = changes.ContainsKey(actor.Id) ? actor.WithSurvival(body) : actor.Change(actor.Activity, survival: body);
@@ -172,7 +185,12 @@ public static class CycleSurvivalRules {
     }
     internal static bool IsSheltered(GraphSpatialState? spatial, string actorId) =>
         spatial?.Entities.Single(e => e.Id.Value == actorId).Location is AtPlaceLocation place && CycleExpeditionMap.GetPlace(place.PlaceId.Value).Sheltered;
-    private static int WarmthRate(bool sheltered, bool day) => sheltered ? 12 : day ? 6 : -12;
+    public static RateBreakdown FoodRate { get; } = new([new("metabolism", "基础代谢", -5)]);
+    public static RateBreakdown WaterRate { get; } = new([new("metabolism", "基础代谢", -8)]);
+    public static RateBreakdown WarmthRate(bool sheltered, bool day) => sheltered ? ShelteredWarmth : day ? DayWarmth : NightWarmth;
+    private static RateBreakdown ShelteredWarmth { get; } = new([new("shelter-recovery", "庇护内回暖", 12)]);
+    private static RateBreakdown DayWarmth { get; } = new([new("day-outdoors", "白天野外回暖", 6)]);
+    private static RateBreakdown NightWarmth { get; } = new([new("night-outdoors", "夜间野外散热", -12)]);
     private static ModelTime? FatalTime(CycleSurvival body, ModelTime at) => new[] {
         Due(body.FoodUnits, body.FoodPerHour, 0, at), Due(body.WaterUnits, body.WaterPerHour, 0, at), Due(body.WarmthUnits, body.WarmthPerHour, 0, at)
     }.Where(due => due is not null).Min();

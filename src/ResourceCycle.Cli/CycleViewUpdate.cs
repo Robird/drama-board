@@ -36,6 +36,15 @@ internal sealed class CycleViewUpdate {
         foreach (var key in previous.Values.Keys.Concat(current.Values.Keys).Distinct()) {
             if (previous.Resolve(key) != current.Resolve(key)) { keys.Add(key); }
         }
+        foreach (var rateKey in previous.RateExplanations.Keys.Concat(current.RateExplanations.Keys).Distinct()) {
+            var valueKey = new CycleStateKey(rateKey.Category, rateKey.ObjectId, rateKey.Field[..^5]);
+            bool changed = !previous.RateExplanations.TryGetValue(rateKey, out var before) ||
+                !current.RateExplanations.TryGetValue(rateKey, out var after) || !before.SameAs(after);
+            if (changed || keys.Contains(rateKey) || keys.Contains(valueKey)) {
+                keys.Add(valueKey);
+                keys.Add(rateKey);
+            }
+        }
         string actor = current.Observation.Actor.Id;
         if (keys.Any(key => key.Category is "body" or "inventory")) {
             var warnings = new CycleStateKey("body", actor, "warnings");

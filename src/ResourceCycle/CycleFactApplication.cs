@@ -146,8 +146,9 @@ internal static class CycleFactApplication {
         (a.Kind, a.Id, a.StartedAt, a.DurationTicks, a.Due, a.ResourceId, a.TargetCount, a.CompletedCount, a.SelectedAll, a.CycleIndex) ==
         (b.Kind, b.Id, b.StartedAt, b.DurationTicks, b.Due, b.ResourceId, b.TargetCount, b.CompletedCount, b.SelectedAll, b.CycleIndex);
     private static bool SameSurvival(CycleSurvival? a, CycleSurvival? b) => ReferenceEquals(a, b) || a is not null && b is not null &&
-        (a.BaselineAt, a.FoodUnits, a.WaterUnits, a.WarmthUnits, a.FoodPerHour, a.WaterPerHour, a.WarmthPerHour, a.WarnedMask, a.PendingMask, a.PendingSince) ==
-        (b.BaselineAt, b.FoodUnits, b.WaterUnits, b.WarmthUnits, b.FoodPerHour, b.WaterPerHour, b.WarmthPerHour, b.WarnedMask, b.PendingMask, b.PendingSince);
+        (a.BaselineAt, a.FoodUnits, a.WaterUnits, a.WarmthUnits, a.WarnedMask, a.PendingMask, a.PendingSince) ==
+        (b.BaselineAt, b.FoodUnits, b.WaterUnits, b.WarmthUnits, b.WarnedMask, b.PendingMask, b.PendingSince) &&
+        a.FoodRate.SameAs(b.FoodRate) && a.WaterRate.SameAs(b.WaterRate) && a.WarmthRate.SameAs(b.WarmthRate);
     private static (CycleNoticeKind, string, string?, string, ModelTime, string, int) NoticeFields(CycleNotice n) =>
         (n.Kind, n.ResourceId, n.ActorId, n.SourceId, n.At, n.Reason, n.Count);
 }
