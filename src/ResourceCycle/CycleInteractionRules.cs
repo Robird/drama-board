@@ -138,6 +138,6 @@ internal static class CycleInteractionRules {
         };
 
     internal static CycleObservedEvent LocalEvent(CycleObservedEvent entry, int ordinal) => new(ordinal, entry.ObserverId,
-        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects);
+        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects, entry.Communication);
 
 }

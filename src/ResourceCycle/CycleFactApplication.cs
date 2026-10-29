@@ -53,7 +53,7 @@ internal static class CycleFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited;
+        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
         bool rejected = fact.Kind == CycleEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
         if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
@@ -72,10 +72,18 @@ internal static class CycleFactApplication {
             (CycleCommandKind.Continue, CycleEventKind.AttentionAcknowledged) or
             (CycleCommandKind.Go, CycleEventKind.MoveStarted) or
             (CycleCommandKind.Use, CycleEventKind.ItemUsed) or
-            (CycleCommandKind.Handoff, CycleEventKind.HandoffEdited))) {
+            (CycleCommandKind.Handoff, CycleEventKind.HandoffEdited) or
+            (CycleCommandKind.Say, CycleEventKind.SpeechSent) or
+            (CycleCommandKind.Give, CycleEventKind.ItemGiven))) {
             throw new InvalidOperationException("The accepted raw input must parse to the recorded operation kind.");
         }
+        bool communication = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+        if (!communication && (fact.TargetActorId is not null || fact.SpeechText is not null || fact.ItemId is not null || fact.ItemCount != 0)) {
+            throw new InvalidOperationException("Only communication facts may carry a target or transferred payload.");
+        }
         bool valid = fact.Kind switch {
+            CycleEventKind.SpeechSent or CycleEventKind.ItemGiven => actorEffect && fact.ChangedCharacters.Count == 2 &&
+                fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.LightChanged => fact.Light is not null && fact.Script is null && fact.ActorId is null && fact.ResourceId is null &&
                 fact.ChangedCharacters.All(c => c.Survival is not null),
             CycleEventKind.ResourceRegenerated => oneResource && fact.Light is null && fact.Script is null && fact.ActorId is null && fact.ChangedCharacters.Count == 0,
@@ -96,13 +104,14 @@ internal static class CycleFactApplication {
             _ => false
         };
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
+        ValidateCommunicationState(business, fact, communication);
         if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
             CycleCharacter before = business.GetCharacter(fact.ActorId!);
             CycleCharacter after = fact.ChangedCharacters[0];
             if (fact.At != business.Time || !CycleActions.NeedsDecision(business, before.Id) ||
                 before.Id != after.Id || before.Name != after.Name || before.SkillLevel != after.SkillLevel ||
                 before.Backpack.UnitCapacity != after.Backpack.UnitCapacity || !before.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal).SequenceEqual(after.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal)) ||
-                !SameActivity(before.Activity, after.Activity) || !SameSurvival(before.Survival, after.Survival) ||
+                !SameActivity(before.Activity, after.Activity) || !SameSurvival(before.Survival, after.Survival) || before.Communication != after.Communication ||
                 !before.Notices.Select(NoticeFields).SequenceEqual(after.Notices.Select(NoticeFields)) ||
                 before.LastResult != after.LastResult || before.NextActivityId != after.NextActivityId ||
                 after.DecisionGeneration != checked(before.DecisionGeneration + 1) || fact.Visits.Count != 0) {
@@ -129,6 +138,53 @@ internal static class CycleFactApplication {
         }
         if (fact.Kind == CycleEventKind.WeatherResolved) { ValidateWeather(business, fact); }
         else if (fact.Environment is not null) { throw new InvalidOperationException("Only weather can replace the environment stream."); }
+    }
+    private static void ValidateCommunicationState(CycleBusinessState business, CycleFact fact, bool communication) {
+        if (!communication) {
+            foreach (CycleCharacter changed in fact.ChangedCharacters) {
+                CycleCommunicationState before = business.GetCharacter(changed.Id).Communication;
+                bool acknowledge = !changed.IsActive || changed.Id == fact.ActorId && fact.Kind is
+                    CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted;
+                if (changed.Communication != (acknowledge ? before.Acknowledge() : before)) {
+                    throw new InvalidOperationException("Only accepted communication spends budget; only explicit acknowledgement clears its attention.");
+                }
+            }
+            return;
+        }
+        CycleCommand command = CycleCommandParser.Parse(fact.RawInput!) ?? throw new InvalidOperationException("Communication requires its original parsed operation.");
+        if (fact.At != business.Time || fact.ActorId is null || !CycleActions.NeedsDecision(business, fact.ActorId) ||
+            !CycleCommunicationRules.CanTarget(business, fact.ActorId, fact.TargetActorId) || command.TargetActorId != fact.TargetActorId ||
+            !fact.ChangedCharacters.Any(c => c.Id == fact.TargetActorId)) {
+            throw new InvalidOperationException("Communication must connect two active participants at one actual place and their recorded operation.");
+        }
+        CycleCharacter sender = business.GetCharacter(fact.ActorId), target = business.GetCharacter(fact.TargetActorId!);
+        bool speech = fact.Kind == CycleEventKind.SpeechSent;
+        if (CycleCommunicationRules.Remaining(sender, fact.At) <= 0 ||
+            (speech ? !CycleCommunicationRules.ValidSpeech(fact.SpeechText) || fact.SpeechText != command.SpeechText || fact.ItemId is not null || fact.ItemCount != 0 :
+                fact.SpeechText is not null || string.IsNullOrWhiteSpace(fact.ItemId) || fact.ItemCount <= 0 || fact.ItemId != command.ItemId || fact.ItemCount != command.Count)) {
+            throw new InvalidOperationException("Invalid communication payload or exhausted same-time sending budget.");
+        }
+        foreach (CycleCharacter prior in new[] { sender, target }) {
+            CycleCharacter after = fact.ChangedCharacters.Single(c => c.Id == prior.Id);
+            bool own = prior.Id == sender.Id;
+            CycleCommunicationState expected = own ? prior.Communication.Sent(fact.At) : prior.Communication.Receive();
+            if (after.Communication != expected || prior.Name != after.Name || prior.SkillLevel != after.SkillLevel ||
+                prior.Ending != after.Ending || prior.NextActivityId != after.NextActivityId ||
+                after.DecisionGeneration != checked(prior.DecisionGeneration + 1) || !SameActivity(prior.Activity, after.Activity) ||
+                !SameSurvival(prior.Survival?.Project(fact.At), after.Survival) ||
+                !prior.Notices.Select(NoticeFields).SequenceEqual(after.Notices.Select(NoticeFields)) ||
+                after.LastResult != (own ? fact.Result : prior.LastResult) || prior.Backpack.UnitCapacity != after.Backpack.UnitCapacity) {
+                throw new InvalidOperationException("Communication must preserve participants' activities, warnings and unrelated character state.");
+            }
+            foreach (string item in prior.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Append(fact.ItemId ?? "").Where(id => id.Length != 0).Distinct(StringComparer.Ordinal)) {
+                long delta = !speech && item == fact.ItemId ? (own ? -(long)fact.ItemCount : fact.ItemCount) : 0;
+                long count = (long)prior.Backpack.Count(item) + delta;
+                if (count < 0 || count > int.MaxValue || after.Backpack.Count(item) != count) {
+                    throw new InvalidOperationException("A gift must transfer exactly its recorded quantity atomically; speech cannot change inventory.");
+                }
+            }
+            after.Backpack.Validate();
+        }
     }
     private static void ValidateWeather(CycleBusinessState business, CycleFact fact) {
         CycleEnvironment previous = business.Expedition?.Environment ?? throw new InvalidOperationException("Weather is not enabled.");

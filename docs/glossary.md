@@ -31,6 +31,8 @@
 | 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝没有观察/经历，只保留本角色本轮最近 3 次已提交操作中的拒绝；成功与感知条目不因此删除。 |
 | 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | `CharacterInteractionState.UndeliveredExperiences` 保存 `CharacterExperience`；ExperienceSequence 按角色分配，Closed/未开始时累计，新 Opening 消费。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `CharacterInteractionState.DraftHandoff` 与 `Opening.PreviousAdvance.Handoff` 分开；下一次放行记录并清空草稿，不自动续传。 |
+| 署名通信（Signed communication） | 同地活跃角色间显式说话或赠物；话语内容是角色陈述，不自动成为已探索地图或世界真相。 | `say` / `give`；[CycleObservedCommunication](../src/ResourceCycle/CycleObservedEvent.cs) 通过既有 Context 交付，不设独立 Inbox。 |
+| 通信额度与待响应（Communication budget / attention） | 每角色每模型时刻有限发送；接收可合并为一个待响应标记，但逐条经历保留。确认保留原活动期限，不返还同刻额度。 | [CycleCommunicationState](../src/ResourceCycle/CycleCommunicationRules.cs) 的 `BudgetAt / SentCount / AttentionPending`；当前每时刻 4 次，时间前进按需恢复有效额度。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
 | 原始操作提交（Submission） | 控制器产生的行动文本和已捕获身份；语法或合法性失败也进入同一提交边界。 | `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`；共享 `CycleCommandParser` 产生命令，`OperationRejected` 产生纯拒绝条目；Console 元命令不通过此入口。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [CycleCommand、CycleActions.Check](../src/ResourceCycle/CycleActions.cs) |

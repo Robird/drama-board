@@ -104,7 +104,9 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm `
 
 Both characters share time, resources and weather, with separate positions, needs, inventories, contexts and map knowledge. Escape or death freezes only that character; the other continues. When both finish, the host reports all escaped, partial escape or no escape. Different exits are allowed. Global results stay outside character knowledge; distant endings are not broadcast to the other explorer.
 
-Use the same mode and store to resume. Single-character and duo stores require their matching entry point. Mixed mode uses the same model configuration as the single-character mode; `--max-calls` limits model calls, and Human `:exit`/EOF pauses the world. See [the dual-character contract](docs/implementation/survival-duo.md). Dialogue, gifts and cooperation playtesting remain the next 2C slice.
+Use the same mode and store to resume. Single-character and duo stores require their matching entry point. Mixed mode uses the same model configuration as the single-character mode; `--max-calls` limits model calls, and Human `:exit`/EOF pauses the world. See [the dual-character contract](docs/implementation/survival-duo.md).
+
+At the same place, use `say <actor-id> <text>` to speak and `give <actor-id> <item-id> <count>` to transfer supplies atomically. Each character can send four successful communications per model instant. Received communication requests a decision without cancelling the current activity; `continue` acknowledges it and keeps the original deadline. An idle character must still arrange a timed action to let time advance. Important agreements belong in `handoff` if they should survive the next context. See [the communication contract](docs/implementation/survival-communication-plan.md) and [engineering/preflight evidence](docs/experiments/survival-communication-acceptance.md); genuine Human/LLM cooperation acceptance remains pending.
 
 ## Small world scenario
 

@@ -17,7 +17,7 @@ internal static class CycleObservationEquality {
         SameList(a.Passages, b.Passages, (x, y) => x == y) &&
         SameList(a.Memories, b.Memories, SameMemory) &&
         a.Outcome == b.Outcome && a.EndingReason == b.EndingReason &&
-        SameSurvival(a.Survival, b.Survival) && a.Weather == b.Weather;
+        SameSurvival(a.Survival, b.Survival) && a.Weather == b.Weather && a.Communication == b.Communication;
 
     private static bool SameActor(CycleActorObservation a, CycleActorObservation b) =>
         a.Id == b.Id && a.Name == b.Name && a.SkillLevel == b.SkillLevel &&

@@ -16,6 +16,12 @@ internal static class CycleObservedEvents {
             if (!before.IsActive) { continue; }
             CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == before.Id) ?? before;
             bool ended = !after.IsActive;
+            int priorRemaining = CycleCommunicationRules.Remaining(before, world.Time);
+            int elapsedRemaining = CycleCommunicationRules.Remaining(before, fact.At);
+            if (world.Expedition is not null && priorRemaining != elapsedRemaining) {
+                Emit(CycleObservedEventKind.CommunicationBudgetRenewed,
+                    [new(new("communication", before.Id, "remaining"), Number(priorRemaining, "次"), Number(elapsedRemaining, "次"))], from: world.Time);
+            }
             CycleSurvival? integrated = before.Survival?.Project(fact.At);
             CycleSurvival? final = after.Survival?.Project(fact.At);
             List<CycleObservedEffect> process = [];
@@ -23,11 +29,12 @@ internal static class CycleObservedEvents {
             if (process.Count > 0) { Emit(CycleObservedEventKind.BodyChanged, process, from: world.Time); }
 
             bool own = fact.ActorId == before.Id;
+            bool received = fact.TargetActorId == before.Id && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
             bool publicEvent = fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
-            if (!own && !publicEvent) { continue; }
+            if (!own && !received && !publicEvent) { continue; }
             var direct = new List<CycleObservedEffect>();
             var ending = new List<CycleObservedEffect>();
             List<CycleObservedEffect> lifecycle = ended ? ending : direct;
@@ -37,7 +44,7 @@ internal static class CycleObservedEvents {
             CycleObservedEventKind kind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             // Direct physiology is independent of the preceding elapsed-time interval.
             if (integrated is not null && final is not null) { AddVitals(direct, before.Id, integrated, final); }
-            if (own) {
+            if (own || received) {
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
                     if (fact.Kind == CycleEventKind.ItemUsed && before.Backpack.Count(item) != after.Backpack.Count(item)) {
@@ -57,6 +64,12 @@ internal static class CycleObservedEvents {
                 }
             }
             Add(lifecycle, new("notice", before.Id, "count"), Number(before.Notices.Count, "条"), Number(after.Notices.Count, "条"));
+            if (world.Expedition is not null) {
+                Add(direct, new("communication", before.Id, "remaining"), Number(elapsedRemaining, "次"),
+                    Number(CycleCommunicationRules.Remaining(after, fact.At), "次"));
+                Add(lifecycle, new("communication", before.Id, "pending"), CycleVisibleValue.Flag(before.Communication.AttentionPending),
+                    CycleVisibleValue.Flag(after.Communication.AttentionPending));
+            }
             if (visibleResource && fact.ChangedResources.SingleOrDefault(r => r.Id == fact.ResourceId) is { } changedResource) {
                 Add(direct, new("resource", changedResource.Id, "stock"), Number(world.GetResource(changedResource.Id).Stock, "份"), Number(changedResource.Stock, "份"));
             }
@@ -105,7 +118,11 @@ internal static class CycleObservedEvents {
 
             void Emit(CycleObservedEventKind eventKind, IEnumerable<CycleObservedEffect> effects, string? id = null,
                 string? name = null, string? detail = null, ModelTime? from = null) =>
-                events.Add(new(events.Count, before.Id, eventKind, from ?? fact.At, fact.At, id, name, detail, effects));
+                events.Add(new(events.Count, before.Id, eventKind, from ?? fact.At, fact.At, id, name, detail, effects,
+                    eventKind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven
+                        ? new(fact.ActorId!, world.GetCharacter(fact.ActorId!).Name, fact.TargetActorId!,
+                            world.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount)
+                        : null));
         }
         return fact.WithObservedEvents(events);
     }

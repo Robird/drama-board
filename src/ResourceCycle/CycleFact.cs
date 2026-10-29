@@ -8,7 +8,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CycleOperationDisposition { Succeeded, Rejected }
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 10)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 11)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -30,6 +30,14 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(20)] private List<CharacterInteractionState> _interactionChanges;
     [DurableField(21)] private string? _rawInput;
     [DurableField(22)] private CycleOperationDisposition? _operationDisposition;
+    [DurableField(23)] private string? _targetActorId;
+    [DurableField(24)] private string? _speechText;
+    [DurableField(25)] private string? _itemId;
+    [DurableField(26)] private int _itemCount;
+    public string? TargetActorId => _targetActorId;
+    public string? SpeechText => _speechText;
+    public string? ItemId => _itemId;
+    public int ItemCount => _itemCount;
     public string? RawInput => _rawInput;
     public CycleOperationDisposition? OperationDisposition => _operationDisposition;
     public IReadOnlyList<CharacterInteractionState> InteractionChanges => _interactionChanges.AsReadOnly();
@@ -56,7 +64,9 @@ public sealed partial class CycleFact : IDurableObject {
         IEnumerable<GraphSpatialFact>? spatialFacts = null, IEnumerable<CycleVisit>? visits = null,
         CycleEnvironment? environment = null,
         string? toolCallId = null, string? operationRecordId = null, CycleGatherStopReason? gatherStopReason = null, IEnumerable<CycleObservedEvent>? observedEvents = null,
-        IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, CycleOperationDisposition? operationDisposition = null) {
+        IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, CycleOperationDisposition? operationDisposition = null,
+        string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0) {
+        _targetActorId = targetActorId; _speechText = speechText; _itemId = itemId; _itemCount = itemCount;
         _interactionChanges = interactionChanges?.ToList() ?? [];
         _rawInput = rawInput; _operationDisposition = operationDisposition;
         _kind = kind; _at = at; _actorId = actorId; _resourceId = resourceId; _light = light;
@@ -67,19 +77,19 @@ public sealed partial class CycleFact : IDurableObject {
         _toolCallId = toolCallId; _operationRecordId = operationRecordId; _gatherStopReason = gatherStopReason; _observedEvents = observedEvents?.ToList() ?? [];
     }
     internal CycleFact WithVisits(IEnumerable<CycleVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
     internal CycleFact WithCharacters(IEnumerable<CycleCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition);
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
     internal CycleFact WithOperation(CycleControllerOperation operation, CycleOperationDisposition disposition = CycleOperationDisposition.Succeeded) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition);
+        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition, TargetActorId, SpeechText, ItemId, ItemCount);
     internal CycleFact WithObservedEvents(IEnumerable<CycleObservedEvent> events) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
     internal CycleFact WithInteractions(IEnumerable<CharacterInteractionState> changes) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
     public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}]" +
-        (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason};disposition={OperationDisposition}";
+        (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason};disposition={OperationDisposition};target={TargetActorId};speech={SpeechText};item={ItemId}:{ItemCount}";
 }
 
 /// <summary>Runtime diagnostics, deliberately outside business snapshots.</summary>

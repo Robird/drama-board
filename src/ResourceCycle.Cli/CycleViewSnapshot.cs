@@ -111,6 +111,10 @@ internal sealed class CycleViewSnapshot {
         Add("activity", actor, "started", At(activity?.StartedAt));
         Add("activity", actor, "selected-all", activity is null ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Flag(activity.SelectedAll));
         Add("notice", actor, "count", CycleVisibleValue.Numeric(o.Notices.Count, "条"));
+        if (o.Communication is { } communication) {
+            Add("communication", actor, "remaining", CycleVisibleValue.Numeric(communication.RemainingSends, "次"), "本时刻剩余通信发送额度");
+            Add("communication", actor, "pending", CycleVisibleValue.Flag(communication.AttentionPending), "通信待响应");
+        }
         foreach (var n in o.Notices) {
             string id = string.Join('|', n.Notice.SourceId, n.Notice.Kind, n.Notice.ResourceId, n.Notice.ActorId ?? "");
             Add("notice-detail", id, "kind", Text(n.Notice.Kind.ToString()), "历史通知类别");
@@ -147,7 +151,7 @@ internal sealed class CycleViewSnapshot {
             }
         }
         foreach (var other in o.OtherCharacters) {
-            Add("other", other.Id, "name", Text(other.Name));
+            Add("other", other.Id, "name", Text(other.Name), "同地角色 " + other.Id);
             Add("other", other.Id, "gathering", Text(other.GatheringResourceId), other.Name + "采集");
             Add("other", other.Id, "waiting", CycleVisibleValue.Flag(other.Waiting), other.Name + "等待");
         }

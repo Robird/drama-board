@@ -78,6 +78,14 @@ internal static class CycleUpdateRenderer {
     };
 
     internal static string EventDescription(CycleObservedEvent e) {
+        if (e.Communication is { } communication) {
+            string sender = CharacterContextRenderer.DataLiteral(communication.SenderName) + "（" + CharacterContextRenderer.DataLiteral(communication.SenderId) + "）";
+            string recipient = CharacterContextRenderer.DataLiteral(communication.RecipientName) + "（" + CharacterContextRenderer.DataLiteral(communication.RecipientId) + "）";
+            if (communication.SpeechText is { } speech) {
+                return $"{sender} 对 {recipient} 说（角色话语，未经世界证实）：{CharacterContextRenderer.DataLiteral(speech)}";
+            }
+            return $"{sender} 赠给 {recipient} {communication.ItemCount} 份物品 {CharacterContextRenderer.DataLiteral(communication.ItemId!)}。";
+        }
         string subject = e.SubjectName ?? e.SubjectId ?? "";
         string title = e.Kind.ToString() switch {
             "BodyChanged" => $"{Time(e.From.Ticks)} → {Time(e.At.Ticks)} 的身体变化。", "ItemUsed" => $"使用了{subject}。",
@@ -87,6 +95,7 @@ internal static class CycleUpdateRenderer {
             "LightChanged" => "昼夜发生变化。", "WeatherResolved" => "天气结算。", "MoveArrived" => $"已抵达{subject}。",
             "SurvivalWarning" => $"身体警告：{SurvivalWarningView.Attributes([e])}触及警戒线。", "SurvivalFailed" => "生存状态耗尽。", "ExpeditionEnded" => "旅程结束。",
             "HandoffEdited" => "已更新下回合留言。", "ResourceRegenerated" => $"{subject}再生。", "ResourceDestroyed" => $"{subject}资源被清空。",
+            "CommunicationBudgetRenewed" => "时间已推进，本时刻通信额度恢复。",
             _ => $"{e.Kind}：{subject}。"
         };
         return e.Detail is { Length: > 0 } detail ? title + " " + (detail switch {

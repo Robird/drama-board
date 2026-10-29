@@ -15,7 +15,7 @@ internal static class CycleVisibleEndpointChanges {
         if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
             a.NextActivityId != b.NextActivityId || !SameInventory(a.Backpack, b.Backpack) ||
             !SameActivity(a.Activity, b.Activity) || !SameList(a.Notices, b.Notices, SameNotice) ||
-            !SameBody(a.Survival, b.Survival, before.Time)) { return true; }
+            !SameBody(a.Survival, b.Survival, before.Time) || a.Communication != b.Communication) { return true; }
 
         CycleExpedition? oldExpedition = before.Expedition, newExpedition = after.Expedition;
         if ((oldExpedition is null) != (newExpedition is null)) { return true; }

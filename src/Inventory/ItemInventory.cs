@@ -3,7 +3,7 @@ using Atelia.DurableGraph;
 
 namespace DramaBoard.Inventory;
 
-/// <summary>The result of attempting to accept one unit into an inventory snapshot.</summary>
+/// <summary>The result of attempting to accept a quantity into an inventory snapshot.</summary>
 public enum InventoryAdmission { Allowed, ItemQuantityLimit, CapacityLimit }
 
 /// <summary>An immutable item-count snapshot with an optional total-unit capacity.</summary>
@@ -26,26 +26,30 @@ public sealed partial class ItemInventory : IDurableObject {
         return _items.GetValueOrDefault(itemId);
     }
 
-    /// <summary>Checks whether this snapshot can accept one more unit of the given item.</summary>
+    /// <summary>Checks whether this snapshot can accept the entire requested quantity of the given item.</summary>
     /// <remarks>This query reserves nothing. Check again against the settlement snapshot.
     /// The per-item representation limit takes precedence when both limits are reached.</remarks>
-    public InventoryAdmission CheckAdd(string itemId) {
-        if (Count(itemId) == int.MaxValue) { return InventoryAdmission.ItemQuantityLimit; }
-        return UnitCapacity is { } capacity && TotalCount >= capacity
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is not positive.</exception>
+    public InventoryAdmission CheckAdd(string itemId, int count = 1) {
+        int available = Count(itemId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        if (available > int.MaxValue - count) { return InventoryAdmission.ItemQuantityLimit; }
+        return UnitCapacity is { } capacity && count > capacity - TotalCount
             ? InventoryAdmission.CapacityLimit : InventoryAdmission.Allowed;
     }
 
-    /// <summary>Returns a new snapshot with one more unit; the original snapshot remains unchanged.</summary>
-    /// <exception cref="OverflowException">The item quantity has reached its representation limit.</exception>
-    /// <exception cref="InvalidOperationException">The total-unit capacity is exhausted.</exception>
-    public ItemInventory Add(string itemId) {
-        switch (CheckAdd(itemId)) {
+    /// <summary>Returns a new snapshot with the entire requested quantity added; the original snapshot remains unchanged.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is not positive.</exception>
+    /// <exception cref="OverflowException">The requested quantity would exceed the item's representation limit.</exception>
+    /// <exception cref="InvalidOperationException">The requested quantity would exceed the total-unit capacity.</exception>
+    public ItemInventory Add(string itemId, int count = 1) {
+        switch (CheckAdd(itemId, count)) {
             case InventoryAdmission.ItemQuantityLimit:
                 throw new OverflowException("The item quantity has reached its representation limit.");
             case InventoryAdmission.CapacityLimit:
                 throw new InvalidOperationException("The backpack's total-unit capacity is exhausted.");
         }
-        var items = new Dictionary<string, int>(_items, StringComparer.Ordinal) { [itemId] = checked(Count(itemId) + 1) };
+        var items = new Dictionary<string, int>(_items, StringComparer.Ordinal) { [itemId] = checked(Count(itemId) + count) };
         return new(items, UnitCapacity);
     }
 

@@ -82,7 +82,7 @@ public sealed class PlayViewTests {
         CycleCharacter viewer = new("a", "Alice", activity: Gather(1), notices: [Joined()], nextActivityId: 2);
         CycleWorld world = World(viewer, new("b", "Bob"));
         string commands = RenderCommands(world, "a");
-        Assert.Contains("- `continue`：确认感知并交还控制权，保留活动和进度；可执行。", commands);
+        Assert.Contains("- `continue`：确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间；可执行。", commands);
         Assert.Contains("- `gather sunflower all`", commands);
         Assert.Contains("受阻：已有耗时活动，请先 cancel。", commands);
         Assert.Contains("小时数 1–24 受阻", commands);

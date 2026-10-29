@@ -63,7 +63,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 2)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 3)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -109,6 +109,8 @@ public sealed partial class CycleObservation : IDurableObject {
     public CycleWeatherObservation? Weather { get => _weather; init => _weather = value; }
     [DurableField(22)] private CycleJourneyObservation? _journey;
     public CycleJourneyObservation? Journey { get => _journey; init => _journey = value; }
+    [DurableField(23)] private CycleCommunicationObservation? _communication;
+    public CycleCommunicationObservation? Communication { get => _communication; init => _communication = value; }
     internal void ValidateJourney() {
         if ((ArrivalDue is null) != (Journey is null) || Journey is not null && (!IsExpedition || PlaceId is not null)) {
             throw new InvalidOperationException("Journey and visible location disagree.");
@@ -117,4 +119,18 @@ public sealed partial class CycleObservation : IDurableObject {
     }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
+}
+
+/// <summary>Private communication budget; targets and transferable items use existing visible character and inventory domains.</summary>
+[DurableType("DramaBoard.ResourceCycle.CommunicationObservation", 1)]
+public sealed partial record CycleCommunicationObservation(
+    [field: DurableField(1)] int RemainingSends,
+    [field: DurableField(2)] int SendLimit,
+    [field: DurableField(3)] bool AttentionPending,
+    [field: DurableField(4)] int MaximumSpeechScalars) : IDurableObject {
+    internal void Validate() {
+        if (SendLimit <= 0 || RemainingSends < 0 || RemainingSends > SendLimit || MaximumSpeechScalars <= 0) {
+            throw new InvalidOperationException("Invalid frozen communication limits or remaining budget.");
+        }
+    }
 }

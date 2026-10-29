@@ -19,10 +19,12 @@ internal static class CyclePlanning {
     public static CycleFact Decision(CycleWorld world, string actorId, CycleCommand command) {
         CycleCharacter actor = world.GetCharacter(actorId);
         switch (command.Kind) {
+            case CycleCommandKind.Say or CycleCommandKind.Give:
+                return CycleCommunicationRules.Plan(world, actorId, command);
             case CycleCommandKind.Continue: {
                 string result = "已确认感知，当前活动与截止时刻保持不变。";
                 return new(CycleEventKind.AttentionAcknowledged, world.Time, actorId,
-                    changedCharacters: [actor.Change(actor.Activity, notices: [], result: result)], lastServedActorId: actorId, result: result);
+                    changedCharacters: [actor.Change(actor.Activity, notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId, result: result);
             }
             case CycleCommandKind.Cancel: {
                 CycleActivity current = actor.Activity!;
@@ -30,7 +32,7 @@ internal static class CyclePlanning {
                     ? $"已取消采集，目标 {current.TargetCount} 份，已取得 {current.CompletedCount} 份；未完成的一份不结算。"
                     : "已取消等待。";
                 return new(CycleEventKind.ActivityCancelled, world.Time, actorId,
-                    changedCharacters: [actor.Change(null, notices: [], result: result)], lastServedActorId: actorId, result: result);
+                    changedCharacters: [actor.Change(null, notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId, result: result);
             }
             case CycleCommandKind.Wait: {
                 long duration = command.Hours * CycleTime.Hour;
@@ -38,7 +40,7 @@ internal static class CyclePlanning {
                     new(checked(world.Time.Ticks + duration)));
                 string result = $"开始等待 {command.Hours} 小时，预计 {activity.Due} 完成。";
                 return new(CycleEventKind.WaitStarted, world.Time, actorId,
-                    changedCharacters: [actor.Change(activity, notices: [], result: result, nextActivityId: checked(actor.NextActivityId + 1))],
+                    changedCharacters: [actor.Change(activity, notices: [], result: result, nextActivityId: checked(actor.NextActivityId + 1), communication: actor.Communication.Acknowledge())],
                     lastServedActorId: actorId, result: result);
             }
             case CycleCommandKind.Gather:
@@ -48,7 +50,7 @@ internal static class CyclePlanning {
                     world.Expedition!.Spatial, new(actorId), new(command.PassageId!), 1, world.Time);
                 string result = $"沿通路 {command.PassageId} 出发；本段移动不可取消。";
                 return new(CycleEventKind.MoveStarted, world.Time, actorId,
-                    changedCharacters: [actor.Change(null, notices: [], result: result)], lastServedActorId: actorId,
+                    changedCharacters: [actor.Change(null, notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId,
                     result: result, spatialFacts: accepted.Facts);
             }
             case CycleCommandKind.Use: {
@@ -109,7 +111,7 @@ internal static class CyclePlanning {
             new(checked(world.Time.Ticks + duration)), resource.Id, target, selectedAll: command.All);
         string result = $"开始采集 {resource.Name}，目标固定为 {target} 份，下一份于 {activity.Due} 结算；不预留库存。";
         var changes = new Dictionary<string, CycleCharacter>(StringComparer.Ordinal) {
-            [actor.Id] = actor.Change(activity, notices: [], result: result, nextActivityId: checked(actor.NextActivityId + 1))
+            [actor.Id] = actor.Change(activity, notices: [], result: result, nextActivityId: checked(actor.NextActivityId + 1), communication: actor.Communication.Acknowledge())
         };
         var notice = new CycleNotice(CycleNoticeKind.CollectorJoined, resource.Id, actor.Id,
             $"join:{actor.Id}:{activity.Id}", world.Time, $"{actor.Name} 开始在此采集。");

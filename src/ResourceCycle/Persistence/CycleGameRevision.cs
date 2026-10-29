@@ -2,7 +2,7 @@ namespace DramaBoard.ResourceCycle;
 
 /// <summary>Application semantics version, independent of durable schema and simulation WorldVersion.</summary>
 public static class CycleGameRevision {
-    public const int Current = 13;
+    public const int Current = 14;
 
     /// <summary>Upgrades restored representations without executing or publishing pending work.</summary>
     /// <remarks>

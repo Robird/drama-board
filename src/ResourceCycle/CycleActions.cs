@@ -4,11 +4,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.CommandKind", 1)]
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff }
+[DurableType("DramaBoard.ResourceCycle.CommandKind", 2)]
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.ResourceCycle.Command", 1)]
+[DurableType("DramaBoard.ResourceCycle.Command", 2)]
 public sealed partial record CycleCommand(
     [field: DurableField(1)] CycleCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
@@ -17,7 +17,11 @@ public sealed partial record CycleCommand(
     [field: DurableField(5)] bool All = false,
     [field: DurableField(6)] string? PassageId = null,
     [field: DurableField(7)] string? ItemId = null,
-    [field: DurableField(8)] string? HandoffText = null) : IDurableObject {
+    [field: DurableField(8)] string? HandoffText = null,
+    [field: DurableField(9)] string? TargetActorId = null,
+    [field: DurableField(10)] string? SpeechText = null) : IDurableObject {
+    public static CycleCommand Say(string targetActorId, string text) => new(CycleCommandKind.Say, TargetActorId: targetActorId, SpeechText: text);
+    public static CycleCommand Give(string targetActorId, string itemId, int count) => new(CycleCommandKind.Give, TargetActorId: targetActorId, ItemId: itemId, Count: count);
     public static CycleCommand Wait(int hours) => new(CycleCommandKind.Wait, Hours: hours);
     public static CycleCommand Gather(string resourceId, int count = 1) => new(CycleCommandKind.Gather, ResourceId: resourceId, Count: count);
     public static CycleCommand GatherAll(string resourceId) => new(CycleCommandKind.Gather, ResourceId: resourceId, All: true);
@@ -55,7 +59,7 @@ public static class CycleActions {
     internal static bool NeedsDecision(CycleBusinessState business, string actorId) {
         CycleCharacter actor = business.GetCharacter(actorId);
         return actor.IsActive &&
-            (actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
+            (actor.Communication.AttentionPending || actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
     }
 
     public static long HarvestDuration(CycleResource resource, CycleCharacter actor) {
@@ -77,20 +81,28 @@ public static class CycleActions {
         if (travelling && command.Kind is not (CycleCommandKind.Continue or CycleCommandKind.Use or CycleCommandKind.Handoff)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
         if (command.Kind != CycleCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
-        if (command.Kind != CycleCommandKind.Use && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
+        if (command.Kind is not (CycleCommandKind.Use or CycleCommandKind.Give) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
+        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
+        if (command.Kind != CycleCommandKind.Say && command.SpeechText is not null) { return "这个行动不接受话语参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
         if ((contextSequence ?? world.Business.InteractionStates[actorId].CurrentContext?.ContextSequence) == long.MaxValue &&
             (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go ||
                 command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling))) { return "决策回合编号已达到支持上限。"; }
         switch (command.Kind) {
+            case CycleCommandKind.Say:
+                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.TargetActorId)) { return "说话需要角色编号与文本。"; }
+                return CycleCommunicationRules.Check(world, actor, command);
+            case CycleCommandKind.Give:
+                if (command.Hours != 0 || command.ResourceId is not null || command.All || command.Count <= 0 || string.IsNullOrWhiteSpace(command.TargetActorId) || string.IsNullOrWhiteSpace(command.ItemId)) { return "赠与需要角色编号、物品编号与正整数数量。"; }
+                return CycleCommunicationRules.Check(world, actor, command);
             case CycleCommandKind.Handoff:
                 if (!SupportsHandoff(world)) { return "此场景未启用交接文字。"; }
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "handoff 只接受交接文字。"; }
                 return !CharacterInteractionState.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
             case CycleCommandKind.Continue:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "continue 不接受参数。"; }
-                return actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0
-                    ? null : "当前没有需要确认的活动感知或身体警告。";
+                return actor.Communication.AttentionPending || actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0
+                    ? null : "当前没有需要确认的交流、活动感知或身体警告。";
             case CycleCommandKind.Cancel:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "cancel 不接受参数。"; }
                 return actor.Activity is null ? "当前没有可取消的活动。" : null;

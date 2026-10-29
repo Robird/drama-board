@@ -30,6 +30,8 @@ public static class CycleOperationResults {
                 CycleObservedEventKind.WaitStarted => "开始等待。",
                 CycleObservedEventKind.GatherStarted => $"开始采集{e.SubjectName}。",
                 CycleObservedEventKind.MoveStarted => "开始移动。",
+                CycleObservedEventKind.SpeechSent => $"已向 {e.Communication!.RecipientName}（{e.Communication.RecipientId}）发送署名话语。",
+                CycleObservedEventKind.ItemGiven => $"已将 {e.Communication!.ItemId} ×{e.Communication.ItemCount} 赠与 {e.Communication.RecipientName}（{e.Communication.RecipientId}）。",
                 _ => e.Kind.ToString()
             };
             return string.Join(Environment.NewLine, new[] { heading }.Concat(e.Effects.Select(effect =>
@@ -49,6 +51,8 @@ public static class CycleOperationResults {
     private static string Label(CycleStateKey key) => (key.Category, key.Field) switch {
         ("body", "food") => "饱食", ("body", "water") => "水分", ("body", "warmth") => "温暖",
         ("inventory", "count") => key.ObjectId,
+        ("communication", "remaining") => "本时刻剩余交流次数",
+        ("communication", "pending") => "待响应通信",
         _ => $"{key.Category}/{key.Field}"
     };
 }

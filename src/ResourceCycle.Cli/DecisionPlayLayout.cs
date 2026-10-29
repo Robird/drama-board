@@ -54,7 +54,8 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         RenderResources(text, observation);
         text.AppendLine("## 眼前的行动");
-        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认消息与历史警告，保留活动及原定期限");
+        CommunicationView.Render(text, observation);
+        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；闲置时确认不推进时间");
         if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
             AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), "取消采集或等待，保留已获得物品，放弃未完成的一份");
         }

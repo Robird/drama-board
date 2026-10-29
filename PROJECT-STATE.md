@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-29；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已验收；二期 2A LLM 接线、2B 双角色生存与路由已落地；下一片为 2C 同地交流、赠与及真实合作。
+> 最近整理：2026-10-30；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已验收；二期 2A LLM 接线、2B 双角色生存与路由已落地；2C 同地交流、赠与已实施，继续真实合作试玩。
 
 ## 最终目标
 
@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：继续[二期目标](docs/design/survival-demo-milestone.md)的 2C 交流赠与及实际合作；从[交流实施方案](docs/implementation/survival-communication-plan.md)推进：每角色每模型时刻有限发送，收到通信唤醒但不取消活动，复用轮转与明确放行；不要从开始活动推断拒绝同刻首次交流。2A 的[适配库与宿主](docs/implementation/survival-llm-controller.md)复用持久 Context，以独立请求返回一个 JSON 行动；真实 Codex `gpt-6.1-sol` 自主旅程见[验收](docs/experiments/survival-llm-acceptance.md)。2B [双角色合同](docs/implementation/survival-duo.md)和[验收](docs/experiments/survival-duo-acceptance.md)已覆盖个人终局、空间退休、单次天气多角色效果、独立材料、混合路由及 S/E 冷开；这些不证明真实 Human＋LLM 合作。2C 还需同地对白/赠与、原活动期限保持、赠与 E-only，以及至少一次真实人类与模型共同逃离；不能以 coding agent 代输入冒充人类验收。
+**当前焦点**：继续[二期目标](docs/design/survival-demo-milestone.md) 2C 的真实合作试玩；[交流合同](docs/implementation/survival-communication-plan.md)与[验收记录](docs/experiments/survival-communication-acceptance.md)已落地同地 say/give、有限发送、接收唤醒但保留活动、署名 Context 与原子恢复。真实模型预演发现合作约定需主动写入 handoff，提示打磨后已完成一局保留分工、互赠补给的共同逃离；证据仍是 coding agent 代 Human 入口。2A [适配库与宿主](docs/implementation/survival-llm-controller.md)和 2B [双角色合同](docs/implementation/survival-duo.md)均可复用。尚需至少一次实际人类控制 a、真实模型控制 b 的合作通关，记录交流或赠物如何改变选择；coding agent 代输入只作预演，不能替代该验收。
 
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
@@ -34,7 +34,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；后续依真实模型体验比较决策质量与上下文成本；宿主审计不等于角色记忆，原生工具会话恢复仍延期。
 
-生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测；返回原因按本次警告事件列出触发属性，途中路线来自共享冻结观察，未知目的地不泄露。二期双角色个人结局已实施，对话/赠与尚未实施；移动不可取消、干木燃料用途依体验重开。
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测；返回原因按本次警告事件列出触发属性，途中路线来自共享冻结观察，未知目的地不泄露。二期双角色个人结局与同地对话/赠与已实施；移动不可取消、干木燃料用途依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -46,7 +46,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 13（Business Schema 4、Character 6、Fact 10、Expedition 3、Environment 2、CharacterEnding 1、WeatherEffect 1、PendingAdvance 2；Survival 2 保存速率贡献，SurvivalObservation 3／AttributeForecast 1 保存逐属性预测，Observation 2／JourneyObservation 1 保存可知路线），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 14（Business Schema 4、Character 7、Fact 11、Command/CommandKind 2、EventKind 9、ObservedEvent/ObservedEventKind 2、CommunicationState/CommunicationObservation/ObservedCommunication 1、Expedition 3、Environment 2、CharacterEnding 1、WeatherEffect 1、PendingAdvance 2；Survival 2 保存速率贡献，SurvivalObservation 3／AttributeForecast 1 保存逐属性预测，Observation 3／JourneyObservation 1 保存可知路线），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
@@ -57,7 +57,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **Player 与玩法扩展**：二期在双角色与混合控制基础上继续交流赠与，先复用 handoff；完整笔记编辑器、长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包按真实需求重开。旧实现保持归档并按需调查复用；出现激活过多的试玩证据后再设计通知过滤。
+- **Player 与玩法扩展**：二期交流赠与继续通过真实合作检验，跨回合约定先复用 handoff；完整笔记编辑器、长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包按真实需求重开。旧实现保持归档并按需调查复用；出现激活过多的试玩证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：2A 已验证未发布 E 可重新调用、已发布 E 不重问或重复效果；可玩 fork/倒带、完整 Player closure、原生模型会话恢复和完整异常/retry 历史仍延期。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。

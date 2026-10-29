@@ -132,7 +132,9 @@ public sealed class CycleDecisionContext {
                     Array.AsReadOnly(visit.Resources.ToArray()), visit.PlaceId)).ToArray()),
             Outcome = actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = actor.Ending?.Reason,
             Survival = CycleSurvivalRules.Observe(world, actorId),
-            Weather = CycleEnvironmentRules.Observe(world, actorId)
+            Weather = CycleEnvironmentRules.Observe(world, actorId),
+            Communication = expedition is null ? null : new(CycleCommunicationRules.Remaining(actor, world.Time),
+                CycleCommunicationRules.SendLimit, actor.Communication.AttentionPending, CycleCommunicationRules.MaximumSpeechScalars)
         };
         return (observation, Check, Warning);
     }

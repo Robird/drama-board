@@ -200,6 +200,7 @@ internal static class PlayView {
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
             text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
         }
+        CommunicationView.Render(text, observation);
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (CyclePassageObservation passage in observation.Passages) {
@@ -208,7 +209,7 @@ internal static class PlayView {
                     (passage.KnownDestinationName is { } known ? $"；曾到访的目的地：{known}" : "；目的地尚未探索"));
             }
         }
-        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认感知并交还控制权，保留活动和进度");
+        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间");
         if (observation.ArrivalDue is null) {
             AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), observation.IsExpedition
                 ? "取消采集或等待，保留已经获得的物品；随后选择新活动，移动不能取消"

@@ -1,6 +1,6 @@
 # 生存逃离 Demo 里程碑
 
-状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订；2A 已完成真实模型通关与恢复[验收](../experiments/survival-llm-acceptance.md)，2B 双角色生存与混合路由也已[验收](../experiments/survival-duo-acceptance.md)。下一片为 §3.4 的 2C；交流赠与与真实人类合作尚未完成。
+状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订；2A 已完成真实模型通关与恢复[验收](../experiments/survival-llm-acceptance.md)，2B 双角色生存与混合路由也已[验收](../experiments/survival-duo-acceptance.md)。2C 交流赠与已实施并进入[试玩打磨](../experiments/survival-communication-acceptance.md)；真实人类与模型合作通关仍待完成，二期尚未验收。
 
 ## 1. 目标与设计空间
 
@@ -143,7 +143,7 @@
 
 ### 3.4 2C：交流、赠与与合作试玩
 
-下一片从[交流实施方案](../implementation/survival-communication-plan.md)开始：以每角色每模型时刻的有限发送额度约束通信，不吞掉接收方第一次交互机会；复用 Context 和正常唤醒。该方案尚未施工。
+领域与 Console 已按[交流实施方案](../implementation/survival-communication-plan.md)实现：以每角色每模型时刻的有限发送额度约束通信，不吞掉接收方第一次交互机会；复用 Context 和正常唤醒。当前继续真实模型预演和人类合作试玩，不把工程接线完成视为本片验收。
 
 **目标：** 提供同地点、不耗模型时间的说话和物品赠与，形成真实 Human＋LLM 合作。
 
@@ -164,7 +164,7 @@
 
 ## 4. 二期 Goal 的启动范围记录
 
-以下表述已用于启动二期迭代，目标继续覆盖 2A–2C；当前从 2B 接续，不重复启动已完成的 2A。
+以下表述已用于启动二期迭代，目标继续覆盖 2A–2C；当前继续 2C 的体验与合作验收，不重复启动已完成的 2A、2B。
 
 > 以 `docs/design/survival-demo-milestone.md` §3 为依据，带领 subagents 从 2A 单角色 LLM 接线开始，逐片设计、实施、验证和试玩，再完成 2B 双角色生存与 2C 交流协作。复用当前持久 Context 和相邻 atelia-completion；每片先核对源码，自主调整局部设计，按需提交并维护项目状态。只有三片完成标准均有证据才结束二期，不把 mock、模型接通或独立通关当作协作完成。若真实端点、凭据或 Human 试玩条件缺失，明确报告未满足的验收条件，不虚构实测。
 

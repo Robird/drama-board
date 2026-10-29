@@ -164,6 +164,7 @@ public sealed partial class CharacterContextOpening : IDurableObject {
         }
         Observation.Survival?.Validate(Observation.Time);
         Observation.ValidateJourney();
+        Observation.Communication?.Validate();
         PreviousAdvance?.Validate(actorId, DeliveredAt);
         CharacterExperience.ValidateSequence(Experiences, actorId, DeliveredAt, ref lastExperience);
     }
@@ -190,6 +191,10 @@ public sealed partial class CharacterExperience : IDurableObject {
                 entry.From.Ticks < 0 || entry.At < entry.From || entry.At > worldTime) {
                 throw new InvalidOperationException("Invalid actor experience identity, order or interval.");
             }
+            if ((entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven) != (entry.Communication is not null)) {
+                throw new InvalidOperationException("Communication experiences must retain their signed content.");
+            }
+            entry.Communication?.Validate(actorId, entry.Kind);
             foreach (CycleObservedEffect effect in entry.Effects) {
                 if (effect is null || string.IsNullOrWhiteSpace(effect.Key.Category) ||
                     string.IsNullOrWhiteSpace(effect.Key.ObjectId) || string.IsNullOrWhiteSpace(effect.Key.Field)) {
@@ -260,6 +265,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
         }
         Observation?.Survival?.Validate(Observation.Time);
         Observation?.ValidateJourney();
+        Observation?.Communication?.Validate();
         CharacterExperience.ValidateSequence(Experiences, actorId, Observation?.Time ?? worldTime, ref lastExperience);
     }
 }

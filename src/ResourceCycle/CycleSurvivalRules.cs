@@ -173,9 +173,13 @@ public static class CycleSurvivalRules {
             if (!previous.IsActive || previous.Survival is null || !changes.ContainsKey(previous.Id) && fact.Kind != CycleEventKind.LightChanged) { continue; }
             CycleCharacter actor = changes.GetValueOrDefault(previous.Id, previous);
             if (!actor.IsActive) { continue; }
-            CycleSurvival body = actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
-                WarmthRate(IsSheltered(spatial, actor.Id), light));
-            if (fact.LastServedActorId == actor.Id && fact.Kind != CycleEventKind.ItemUsed) { body = body.Acknowledge(fact.At); }
+            // Communication changes neither exposure nor physiology rules. Preserve the current causes,
+            // including valid scenario-specific rate decompositions, while reanchoring elapsed values.
+            CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven
+                ? actor.Survival!.Project(fact.At)
+                : actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
+                    WarmthRate(IsSheltered(spatial, actor.Id), light));
+            if (fact.LastServedActorId == actor.Id && fact.Kind is not (CycleEventKind.ItemUsed or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven)) { body = body.Acknowledge(fact.At); }
             changes[actor.Id] = changes.ContainsKey(actor.Id) ? actor.WithSurvival(body) : actor.Change(actor.Activity, survival: body);
         }
         return changes.Count == 0 ? fact : fact.WithCharacters(world.Characters.Where(c => changes.ContainsKey(c.Id)).Select(c => changes[c.Id]));

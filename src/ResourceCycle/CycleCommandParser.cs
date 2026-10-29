@@ -13,6 +13,14 @@ public static class CycleCommandParser {
                 return CycleCommand.Handoff(handoff == "--clear" ? null : handoff);
             }
         }
+        if (trimmed.StartsWith("say", StringComparison.Ordinal) && trimmed.Length > 3 && char.IsWhiteSpace(trimmed[3])) {
+            string remaining = trimmed[4..].TrimStart();
+            int separator = 0;
+            while (separator < remaining.Length && !char.IsWhiteSpace(remaining[separator])) { separator++; }
+            if (separator > 0 && separator < remaining.Length) {
+                return CycleCommand.Say(remaining[..separator], remaining[separator..].Trim());
+            }
+        }
         string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (parts is ["wait", var hours] && int.TryParse(hours, NumberStyles.None, CultureInfo.InvariantCulture, out int waitHours)) {
             return CycleCommand.Wait(waitHours);
@@ -23,16 +31,21 @@ public static class CycleCommandParser {
         if (parts is ["gather", var resourceId, var quantity] && int.TryParse(quantity, NumberStyles.None, CultureInfo.InvariantCulture, out int count)) {
             return CycleCommand.Gather(resourceId, count);
         }
+        if (parts is ["give", var targetActorId, var itemId, var itemQuantity] && int.TryParse(itemQuantity, NumberStyles.None, CultureInfo.InvariantCulture, out int itemCount)) {
+            return CycleCommand.Give(targetActorId, itemId, itemCount);
+        }
         return parts switch {
             ["continue"] => CycleCommand.Continue(),
             ["cancel"] => CycleCommand.Cancel(),
             ["go", var passageId] => CycleCommand.Go(passageId),
-            ["use", var itemId] => CycleCommand.Use(itemId),
+            ["use", var usedItemId] => CycleCommand.Use(usedItemId),
             _ => null,
         };
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(CycleCommand command) => command.Kind switch {
+        CycleCommandKind.Say => $"say {command.TargetActorId} {command.SpeechText}",
+        CycleCommandKind.Give => $"give {command.TargetActorId} {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Gather => $"gather {command.ResourceId} {(command.All ? "all" : command.Count.ToString(CultureInfo.InvariantCulture))}",
         CycleCommandKind.Go => $"go {command.PassageId}",

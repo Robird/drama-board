@@ -37,7 +37,7 @@ internal static class CharacterContextEquality {
     private static bool SameEvent(CycleObservedEvent a, CycleObservedEvent b) =>
         a.EventOrdinal == b.EventOrdinal && a.ObserverId == b.ObserverId && a.Kind == b.Kind &&
         a.From == b.From && a.At == b.At && a.SubjectId == b.SubjectId && a.SubjectName == b.SubjectName &&
-        a.Detail == b.Detail && SameList(a.Effects, b.Effects,
+        a.Detail == b.Detail && a.Communication == b.Communication && SameList(a.Effects, b.Effects,
             (x, y) => x.Key == y.Key && x.Before == y.Before && x.After == y.After);
 
     private static bool SameList<T>(IReadOnlyList<T> a, IReadOnlyList<T> b, Func<T, T, bool> same) {

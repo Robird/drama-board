@@ -179,6 +179,10 @@ internal static class CycleInteractionValidation {
 
     private static void ValidateObservation(CycleBusinessState state, string actorId, CycleObservation observation) {
         CycleCharacter actor = state.GetCharacter(actorId);
+        Require(observation.Communication == (state.Expedition is null ? null : new CycleCommunicationObservation(
+            CycleCommunicationRules.Remaining(actor, state.Time), CycleCommunicationRules.SendLimit,
+            actor.Communication.AttentionPending, CycleCommunicationRules.MaximumSpeechScalars)),
+            "Recorded communication must match the observer's own budget and attention state.");
         Require(observation.Time == state.Time && observation.Actor.Id == actorId && observation.Actor.Name == actor.Name &&
             observation.IsDay == state.Light.IsDay && observation.NextLightChange == state.Light.NextChange &&
             observation.Outcome == (actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring) &&

@@ -1,6 +1,79 @@
 namespace DramaBoard.Inventory.Tests;
 
 public sealed class ItemInventoryTests {
+    [Fact]
+    public void Batch_add_fills_capacity_without_changing_the_original_snapshot_or_view() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2, ["FOOD"] = 1 }, unitCapacity: 6);
+        IReadOnlyDictionary<string, int> originalView = inventory.Items;
+
+        Assert.Equal(InventoryAdmission.Allowed, inventory.CheckAdd("food", 3));
+        ItemInventory added = inventory.Add("food", 3);
+
+        Assert.NotSame(inventory, added);
+        Assert.Equal(5, added.Count("food"));
+        Assert.Equal(1, added.Count("FOOD"));
+        Assert.Equal(6L, added.TotalCount);
+        Assert.Equal(6L, added.UnitCapacity);
+        Assert.Equal(InventoryAdmission.CapacityLimit, added.CheckAdd("water"));
+        Assert.Equal(2, originalView["food"]);
+        Assert.Equal(3L, inventory.TotalCount);
+    }
+
+    [Fact]
+    public void Batch_exceeding_capacity_is_rejected_without_adding_the_part_that_fits() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = 2 }, unitCapacity: 4);
+        IReadOnlyDictionary<string, int> originalView = inventory.Items;
+
+        Assert.Equal(InventoryAdmission.CapacityLimit, inventory.CheckAdd("water", 3));
+        Assert.Throws<InvalidOperationException>(() => inventory.Add("water", 3));
+
+        Assert.Equal(2, Assert.Single(originalView).Value);
+        Assert.False(inventory.Items.ContainsKey("water"));
+        Assert.Equal(4L, inventory.UnitCapacity);
+        Assert.Equal(InventoryAdmission.Allowed, inventory.CheckAdd("water", 2));
+    }
+
+    [Fact]
+    public void Batch_quantity_limit_is_checked_before_capacity_without_integer_overflow() {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = int.MaxValue - 1 }, unitCapacity: int.MaxValue);
+
+        Assert.Equal(InventoryAdmission.Allowed, inventory.CheckAdd("food", 1));
+        Assert.Equal(int.MaxValue, inventory.Add("food", 1).Count("food"));
+        Assert.Equal(InventoryAdmission.ItemQuantityLimit, inventory.CheckAdd("food", 2));
+        Assert.Throws<OverflowException>(() => inventory.Add("food", 2));
+        Assert.Equal(InventoryAdmission.ItemQuantityLimit, inventory.CheckAdd("food", int.MaxValue));
+        Assert.Throws<OverflowException>(() => inventory.Add("food", int.MaxValue));
+        Assert.Equal(int.MaxValue - 1, inventory.Count("food"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2L * int.MaxValue)]
+    [InlineData(long.MaxValue)]
+    public void Maximum_batch_uses_long_total_capacity_and_supports_an_entire_new_stack(long? capacity) {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = int.MaxValue }, unitCapacity: capacity);
+
+        Assert.Equal(InventoryAdmission.Allowed, inventory.CheckAdd("water", int.MaxValue));
+        ItemInventory added = inventory.Add("water", int.MaxValue);
+
+        Assert.Equal(int.MaxValue, added.Count("water"));
+        Assert.Equal(2L * int.MaxValue, added.TotalCount);
+        Assert.Equal(capacity, added.UnitCapacity);
+        Assert.Equal(0, inventory.Count("water"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void Batch_admission_and_add_require_a_positive_quantity(int count) {
+        var inventory = new ItemInventory(new Dictionary<string, int> { ["food"] = int.MaxValue }, unitCapacity: int.MaxValue);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => inventory.CheckAdd("food", count));
+        Assert.Throws<ArgumentOutOfRangeException>(() => inventory.Add("food", count));
+        Assert.Equal(int.MaxValue, Assert.Single(inventory.Items).Value);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(7)]

@@ -20,7 +20,7 @@ public sealed class CycleRevisionTests {
         WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), CycleGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(13, CycleGameRevision.Current);
+        Assert.Equal(14, CycleGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));
