@@ -35,7 +35,7 @@ internal static class PlayView {
         text.AppendLine();
         if (observation.Weather is { } pastWeather) { RenderWeatherHistory(text, pastWeather); }
         text.AppendLine(ended ? "## 结束时的状态" : "## 当前状态与环境");
-        text.AppendLine(ended ? "旅程已经结束；以下为结束时的冻结记录，世界不再推进。"
+        text.AppendLine(ended ? "此角色的旅程已经结束；以下为结束时的冻结记录，其他角色仍可继续探索。"
             : $"当前角色：{character.Name}（`{character.Id}`）。");
         text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
             $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
@@ -67,7 +67,7 @@ internal static class PlayView {
                     $"采集未完成：{unfinished.ResourceId}，已取得 {unfinished.CompletedCount}/{unfinished.TargetCount} 份";
                 text.AppendLine($"- {description}；原周期截止时刻：{FormatTime(unfinished.Due)}。此记录已冻结，不再结算。");
             } else {
-                text.AppendLine("- 结束时没有未完成的活动。");
+                text.AppendLine("- 此角色已停止安排活动；原推进及中断情况见终局记录。");
             }
         } else if (observation.ArrivalDue is { } due) {
             text.AppendLine($"- 正在移动，预计 {FormatTime(due)} 到达；当前不可采集、等待或取消移动。");
@@ -108,16 +108,7 @@ internal static class PlayView {
                 (observation.IsExpedition ? "" : $" {members} |"));
         }
         text.AppendLine();
-        if (!observation.IsExpedition || observation.OtherCharacters.Count > 0) {
-            text.AppendLine("## 其他角色");
-            foreach (CycleOtherCharacterObservation other in observation.OtherCharacters) {
-                string status = other.GatheringResourceId is { } resourceId
-                    ? $"正在采集 {observation.Resources.Single(resource => resource.Id == resourceId).Name}"
-                    : other.Waiting ? "正在等待" : "空闲";
-                text.AppendLine($"- {other.Name}（`{other.Id}`）：{status}。");
-            }
-            text.AppendLine();
-        }
+        RenderOtherCharacters(text, observation);
         text.AppendLine("## 你的背包");
         if (character.Backpack.UnitCapacity is { } capacity) {
             text.AppendLine($"- 容量：{character.Backpack.TotalCount} / {capacity} 件。");
@@ -134,7 +125,7 @@ internal static class PlayView {
             text.AppendLine("## 结局");
             text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "获救。" : "旅程结束。只是这一次未能走出山林。");
             text.AppendLine(observation.EndingReason);
-            text.AppendLine("本局已经结束，不再推进普通活动。");
+            text.AppendLine("此角色的旅程已经结束，不再安排或结算活动。");
         } else {
             text.Append(RenderCommands(observation));
         }
@@ -187,8 +178,20 @@ internal static class PlayView {
             (ended ? "这是结束前的耗尽记录。" : "消息描述已发生的耗尽，不会取消你的在途周期。");
     }
 
+    internal static void RenderOtherCharacters(StringBuilder text, CycleObservation observation) {
+        if (observation.IsExpedition && observation.OtherCharacters.Count == 0) { return; }
+        text.AppendLine("## 其他角色");
+        foreach (CycleOtherCharacterObservation other in observation.OtherCharacters) {
+            string status = other.GatheringResourceId is { } resourceId
+                ? $"正在采集 {observation.Resources.FirstOrDefault(resource => resource.Id == resourceId)?.Name ?? resourceId}"
+                : other.Waiting ? "正在等待" : "空闲";
+            text.AppendLine($"- {other.Name}（`{other.Id}`）：{status}。");
+        }
+        text.AppendLine();
+    }
+
     public static string RenderCommands(CycleObservation observation) {
-        if (observation.Outcome != CycleExpeditionOutcome.Exploring) { return "本局已经结束，没有可用行动。\n"; }
+        if (observation.Outcome != CycleExpeditionOutcome.Exploring) { return "此角色的旅程已经结束，没有可用行动。\n"; }
         var text = new StringBuilder();
         text.AppendLine("## 可用命令");
         text.AppendLine();

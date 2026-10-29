@@ -75,7 +75,7 @@ public static class CycleEngine {
     private sealed class CycleRule(CycleMetrics metrics, ICycleCharacterController? characterController) : IOccurrenceRule<CycleWorld, CyclePrediction, CycleFact> {
         private readonly SpatialOccurrenceRule _spatialRule = new(CycleExpeditionMap.Graph);
         public IReadOnlyList<OccurrenceCandidate<CyclePrediction>> Forecast(CycleWorld world, SimulationRules rules) {
-            if (world.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) { return []; }
+            if (world.ExpeditionSummary != CycleExpeditionSummary.Exploring) { return []; }
             var predictions = world.Forecasts.Predictions.ToList();
             if (world.Spatial is not null) {
                 predictions.AddRange(_spatialRule.Forecast(world.Spatial, rules).Select(candidate =>

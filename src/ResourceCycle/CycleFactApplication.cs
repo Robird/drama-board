@@ -25,7 +25,7 @@ internal static class CycleFactApplication {
             foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
                 spatial = CycleExpeditionMap.Reducer.Apply(spatial, instant, spatialFact);
             }
-            expedition = expedition.Change(spatial, fact.Visits, fact.Outcome, fact.EndingReason, fact.Environment);
+            expedition = expedition.Change(spatial, fact.Visits, fact.Environment);
         }
         return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
             fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges);
@@ -87,7 +87,10 @@ internal static class CycleFactApplication {
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
-            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed or CycleEventKind.WeatherResolved =>
+            CycleEventKind.WeatherResolved => fact.ActorId is null && fact.ChangedCharacters.Count > 0 &&
+                fact.ChangedCharacters.All(c => c.Survival is not null) && fact.ChangedResources.Count == 0 &&
+                fact.Light is null && fact.Script is null && fact.ResourceId is null,
+            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedCharacters[0].Survival is not null &&
                 fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             _ => false
@@ -115,33 +118,75 @@ internal static class CycleFactApplication {
                 fact.ChangedCharacters.Single(c => c.Id == fact.ActorId).Activity is not null)) {
             throw new InvalidOperationException("A gathering stop reason requires a completed gathering activity.");
         }
-        bool movement = fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived;
-        if (movement) {
-            if (business.Expedition is null || fact.SpatialFacts.Count != 1 ||
+        ValidateEndingsAndSpatial(business, fact);
+        if (business.Expedition is null && fact.Visits.Count != 0 ||
+            fact.Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != fact.Visits.Count ||
+            fact.Visits.Any(v => !business.GetCharacter(v.ActorId).IsActive)) {
+            throw new InvalidOperationException("Unexpected expedition observation.");
+        }
+        if (fact.Kind == CycleEventKind.SurvivalFailed && fact.ChangedCharacters[0].Ending?.Outcome != CycleExpeditionOutcome.Dead) {
+            throw new InvalidOperationException("A fatal survival fact must record the personal ending.");
+        }
+        if (fact.Kind == CycleEventKind.WeatherResolved) { ValidateWeather(business, fact); }
+        else if (fact.Environment is not null) { throw new InvalidOperationException("Only weather can replace the environment stream."); }
+    }
+    private static void ValidateWeather(CycleBusinessState business, CycleFact fact) {
+        CycleEnvironment previous = business.Expedition?.Environment ?? throw new InvalidOperationException("Weather is not enabled.");
+        CycleEnvironment next = fact.Environment ?? throw new InvalidOperationException("Weather must record its next state.");
+        string[] active = business.Characters.Where(c => c.IsActive).Select(c => c.Id).Order(StringComparer.Ordinal).ToArray();
+        if (previous.NextDue != fact.At || next.Seed != previous.Seed || next.Sequence != checked(previous.Sequence + 1) || next.LastAt != fact.At ||
+            !active.SequenceEqual(fact.ChangedCharacters.Select(c => c.Id).Order(StringComparer.Ordinal)) ||
+            !active.SequenceEqual(next.LastEffects.Select(e => e.ActorId).Order(StringComparer.Ordinal))) {
+            throw new InvalidOperationException("Weather must advance once and include every active participant exactly once.");
+        }
+        foreach (CycleWeatherEffect effect in next.LastEffects) {
+            CycleCharacter prior = business.GetCharacter(effect.ActorId);
+            CycleCharacter changed = fact.ChangedCharacters.Single(c => c.Id == effect.ActorId);
+            CycleSurvival body = prior.Survival!.Project(fact.At);
+            bool sheltered = CycleSurvivalRules.IsSheltered(business.Expedition!.Spatial, prior.Id);
+            long loss = next.LastCold && !sheltered ? Math.Min(body.WarmthUnits, CycleEnvironmentRules.ExposureLoss * CycleSurvival.Scale) : 0;
+            CycleSurvival result = changed.Survival!;
+            if (body.IsFatal || effect.Sheltered != sheltered || effect.WarmthLossUnits != loss ||
+                result.FoodUnits != body.FoodUnits || result.WaterUnits != body.WaterUnits || result.WarmthUnits != body.WarmthUnits - loss ||
+                (changed.Ending?.Outcome == CycleExpeditionOutcome.Dead) != result.IsFatal) {
+                throw new InvalidOperationException("Weather effects must match recorded exposure and body changes.");
+            }
+        }
+    }
+    private static void ValidateEndingsAndSpatial(CycleBusinessState business, CycleFact fact) {
+        var endingIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (CycleCharacter changed in fact.ChangedCharacters) {
+            CycleCharacter prior = business.GetCharacter(changed.Id);
+            if (!prior.IsActive) { throw new InvalidOperationException("A retired character cannot be changed by later gameplay."); }
+            if (changed.Ending is not { } ending) { continue; }
+            if (business.Expedition is null || ending.At != fact.At ||
+                (ending.Outcome == CycleExpeditionOutcome.Escaped ? fact.Kind != CycleEventKind.MoveArrived :
+                    ending.Outcome != CycleExpeditionOutcome.Dead || fact.Kind is not (CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved))) {
+                throw new InvalidOperationException("A personal ending must match its cause and boundary.");
+            }
+            SpatialLocation beforeLocation = business.Expedition.Spatial.Entities.Single(e => e.Id.Value == changed.Id).Location;
+            SpatialLocation expected = ending.Outcome == CycleExpeditionOutcome.Escaped && beforeLocation is TraversingLocation traversal
+                ? new AtPlaceLocation(traversal.TargetPlaceId) : beforeLocation;
+            if (!expected.Equals(ending.Location)) { throw new InvalidOperationException("The ending must retain the exact historical endpoint."); }
+            endingIds.Add(changed.Id);
+        }
+        int index = 0;
+        if (fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived) {
+            if (business.Expedition is null || fact.SpatialFacts.Count == 0 ||
                 (fact.Kind == CycleEventKind.MoveStarted
                     ? fact.SpatialFacts[0] is not TraversalStartedFact started || started.EntityId.Value != fact.ActorId
                     : fact.SpatialFacts[0] is not TraversalArrivedFact arrived || arrived.EntityId.Value != fact.ActorId)) {
                 throw new InvalidOperationException("Movement requires a matching recorded spatial fact.");
             }
-        } else if (fact.SpatialFacts.Count != 0) { throw new InvalidOperationException("Unexpected spatial facts."); }
-        if (fact.Kind is not (CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved) && (fact.Outcome is not null || fact.EndingReason is not null) ||
-            business.Expedition is null && fact.Visits.Count != 0 ||
-            fact.Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != fact.Visits.Count) {
-            throw new InvalidOperationException("Unexpected expedition observation or ending.");
+            index = 1;
         }
-        if (fact.Kind == CycleEventKind.SurvivalFailed && (fact.Outcome != CycleExpeditionOutcome.Dead || string.IsNullOrWhiteSpace(fact.EndingReason))) {
-            throw new InvalidOperationException("A fatal survival fact must record the ending.");
+        string[] removed = fact.SpatialFacts.Skip(index).Select(f => f is EntityRemovedFact removal ? removal.EntityId.Value :
+            throw new InvalidOperationException("Only personal endings may retire spatial entities.")).ToArray();
+        if (removed.Distinct(StringComparer.Ordinal).Count() != removed.Length || !endingIds.SetEquals(removed)) {
+            throw new InvalidOperationException("Every personal ending must atomically retire exactly its spatial entity.");
         }
-        if (fact.Kind == CycleEventKind.WeatherResolved) {
-            CycleEnvironment previous = business.Expedition?.Environment ?? throw new InvalidOperationException("Weather is not enabled.");
-            CycleEnvironment next = fact.Environment ?? throw new InvalidOperationException("Weather must record its next state.");
-            if (previous.NextDue != fact.At || next.Seed != previous.Seed || next.Sequence != checked(previous.Sequence + 1) || next.LastAt != fact.At ||
-                (fact.Outcome == CycleExpeditionOutcome.Dead) != fact.ChangedCharacters[0].Survival!.Project(fact.At).IsFatal ||
-                (fact.Outcome is null ? fact.EndingReason is not null : fact.Outcome != CycleExpeditionOutcome.Dead || string.IsNullOrWhiteSpace(fact.EndingReason))) {
-                throw new InvalidOperationException("Weather must advance its stream once and preserve its concrete result and ending.");
-            }
-        } else if (fact.Environment is not null) { throw new InvalidOperationException("Only weather can replace the environment stream."); }
     }
+
     private static bool SameActivity(CycleActivity? a, CycleActivity? b) => ReferenceEquals(a, b) || a is not null && b is not null &&
         (a.Kind, a.Id, a.StartedAt, a.DurationTicks, a.Due, a.ResourceId, a.TargetCount, a.CompletedCount, a.SelectedAll, a.CycleIndex) ==
         (b.Kind, b.Id, b.StartedAt, b.DurationTicks, b.Due, b.ResourceId, b.TargetCount, b.CompletedCount, b.SelectedAll, b.CycleIndex);

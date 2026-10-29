@@ -70,7 +70,7 @@ public sealed class SurvivalViewTests {
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-3"), CycleCommand.Go("trail-4")));
-        await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Escaped);
+        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Escaped);
         CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
         string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.Contains("山脚公路", text);

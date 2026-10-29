@@ -13,7 +13,9 @@ internal static class CycleObservedEvents {
             afterSpatial = CycleExpeditionMap.Reducer.Apply(afterSpatial!, new(fact.At, 0), movement);
         }
         foreach (CycleCharacter before in world.Characters) {
+            if (!before.IsActive) { continue; }
             CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == before.Id) ?? before;
+            bool ended = !after.IsActive;
             CycleSurvival? integrated = before.Survival?.Project(fact.At);
             CycleSurvival? final = after.Survival?.Project(fact.At);
             List<CycleObservedEffect> process = [];
@@ -23,10 +25,12 @@ internal static class CycleObservedEvents {
             bool own = fact.ActorId == before.Id;
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
-            bool publicEvent = fact.Kind == CycleEventKind.LightChanged || visibleResource &&
+            bool publicEvent = fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
             if (!own && !publicEvent) { continue; }
             var direct = new List<CycleObservedEffect>();
+            var ending = new List<CycleObservedEffect>();
+            List<CycleObservedEffect> lifecycle = ended ? ending : direct;
             string? subjectId = fact.ResourceId;
             string? subjectName = subjectId is null ? null : world.GetResource(subjectId).Name;
             string? detail = null;
@@ -42,16 +46,17 @@ internal static class CycleObservedEvents {
                 }
             }
             if (integrated is not null && final is not null) {
-                Add(direct, new("body", before.Id, "food-rate"), Number(integrated.FoodPerHour, "点/小时"), Number(final.FoodPerHour, "点/小时"));
-                Add(direct, new("body", before.Id, "water-rate"), Number(integrated.WaterPerHour, "点/小时"), Number(final.WaterPerHour, "点/小时"));
-                Add(direct, new("body", before.Id, "warmth-rate"), Number(integrated.WarmthPerHour, "点/小时"), Number(final.WarmthPerHour, "点/小时"));
+                Add(lifecycle, new("body", before.Id, "food-rate"), Number(integrated.FoodPerHour, "点/小时"), Number(final.FoodPerHour, "点/小时"));
+                Add(lifecycle, new("body", before.Id, "water-rate"), Number(integrated.WaterPerHour, "点/小时"), Number(final.WaterPerHour, "点/小时"));
+                Add(lifecycle, new("body", before.Id, "warmth-rate"), Number(integrated.WarmthPerHour, "点/小时"), Number(final.WarmthPerHour, "点/小时"));
+                SpatialLocation? finalLocation = after.Ending?.Location ?? afterSpatial?.Entities.SingleOrDefault(e => e.Id.Value == before.Id)?.Location;
                 Add(direct, new("body", before.Id, "sheltered"), CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(world.Expedition!.Spatial, before.Id)),
-                    CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(afterSpatial!, before.Id)));
+                    CycleVisibleValue.Flag(finalLocation is AtPlaceLocation sheltered && CycleExpeditionMap.GetPlace(sheltered.PlaceId.Value).Sheltered));
                 foreach ((int mask, string field) in new[] { (1, "warning-food"), (2, "warning-water"), (4, "warning-warmth") }) {
-                    Add(direct, new("body", before.Id, field), CycleVisibleValue.Flag((integrated.PendingMask & mask) != 0), CycleVisibleValue.Flag((final.PendingMask & mask) != 0));
+                    Add(lifecycle, new("body", before.Id, field), CycleVisibleValue.Flag((integrated.PendingMask & mask) != 0), CycleVisibleValue.Flag((final.PendingMask & mask) != 0));
                 }
             }
-            Add(direct, new("notice", before.Id, "count"), Number(before.Notices.Count, "条"), Number(after.Notices.Count, "条"));
+            Add(lifecycle, new("notice", before.Id, "count"), Number(before.Notices.Count, "条"), Number(after.Notices.Count, "条"));
             if (visibleResource && fact.ChangedResources.SingleOrDefault(r => r.Id == fact.ResourceId) is { } changedResource) {
                 Add(direct, new("resource", changedResource.Id, "stock"), Number(world.GetResource(changedResource.Id).Stock, "份"), Number(changedResource.Stock, "份"));
             }
@@ -60,7 +65,7 @@ internal static class CycleObservedEvents {
             }
             if (own && fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived) {
                 SpatialLocation priorLocation = world.Expedition!.Spatial.Entities.Single(e => e.Id.Value == before.Id).Location;
-                SpatialLocation nextLocation = afterSpatial!.Entities.Single(e => e.Id.Value == before.Id).Location;
+                SpatialLocation nextLocation = after.Ending?.Location ?? afterSpatial!.Entities.Single(e => e.Id.Value == before.Id).Location;
                 Add(direct, new("location", before.Id, "place"), PlaceValue(priorLocation), PlaceValue(nextLocation));
                 Add(direct, new("location", before.Id, "arrival"), ArrivalValue(priorLocation), ArrivalValue(nextLocation));
                 subjectId = nextLocation is AtPlaceLocation atPlace ? atPlace.PlaceId.Value : null;
@@ -71,7 +76,8 @@ internal static class CycleObservedEvents {
                     Text(draftAfter));
             }
             if (fact.Kind == CycleEventKind.WeatherResolved) {
-                detail = fact.Environment!.LastCold ? fact.Environment.LastSheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
+                CycleWeatherEffect weather = fact.Environment!.LastEffects.Single(effect => effect.ActorId == before.Id);
+                detail = fact.Environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
             if (fact.Kind == CycleEventKind.GatherFinished) { detail = fact.GatherStopReason?.ToString(); }
             // A successful final yield owns the transfer; its separate ending owns the lifecycle removal.
@@ -80,20 +86,21 @@ internal static class CycleObservedEvents {
                     Add(direct, new("activity", before.Id, "completed"), Number(gathering.CompletedCount, "份"), Number(gathering.CompletedCount + 1, "份"));
                 }
                 Emit(kind, direct, subjectId, subjectName, detail);
-                var ended = new List<CycleObservedEffect>();
-                AddActivity(ended, before.Id, before.Activity, null, finalYield: true);
-                Emit(CycleObservedEventKind.GatherFinished, ended, subjectId, subjectName, fact.GatherStopReason?.ToString());
+                var gatheringEnded = new List<CycleObservedEffect>();
+                AddActivity(gatheringEnded, before.Id, before.Activity, null, finalYield: true);
+                Emit(CycleObservedEventKind.GatherFinished, gatheringEnded, subjectId, subjectName, fact.GatherStopReason?.ToString());
             } else {
-                if (own) { AddActivity(direct, before.Id, before.Activity, after.Activity); }
+                if (own || ended) { AddActivity(lifecycle, before.Id, before.Activity, after.Activity); }
                 // Empty acknowledgement/handoff operations have an operation answer, but no experienced change.
                 if (direct.Count > 0 || fact.Kind is not (CycleEventKind.AttentionAcknowledged or CycleEventKind.HandoffEdited)) {
                     Emit(kind, direct, subjectId, subjectName, detail);
                 }
             }
-            if (world.Expedition is { } expedition && fact.Outcome is { } outcome && outcome != expedition.Outcome) {
-                Emit(CycleObservedEventKind.ExpeditionEnded,
-                    [new(new("world", "world", "outcome"), CycleVisibleValue.Literal(expedition.Outcome.ToString()), CycleVisibleValue.Literal(outcome.ToString()))],
-                    detail: fact.EndingReason);
+            if (ended) {
+                // This legacy presentation key belongs to this observer's journey, never the global summary.
+                ending.Add(new(new("world", "world", "outcome"), CycleVisibleValue.Literal(CycleExpeditionOutcome.Exploring.ToString()),
+                    CycleVisibleValue.Literal(after.Ending!.Outcome.ToString())));
+                Emit(CycleObservedEventKind.ExpeditionEnded, ending, detail: after.Ending.Reason);
             }
 
             void Emit(CycleObservedEventKind eventKind, IEnumerable<CycleObservedEffect> effects, string? id = null,

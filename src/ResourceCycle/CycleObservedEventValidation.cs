@@ -13,6 +13,7 @@ internal static class CycleObservedEventValidation {
         var previousByObserver = new Dictionary<string, Dictionary<CycleStateKey, CycleVisibleValue>>(StringComparer.Ordinal);
         var targetByObserver = new Dictionary<string, Dictionary<CycleStateKey, CycleVisibleValue>>(StringComparer.Ordinal);
         foreach (CycleCharacter actor in before.Characters) {
+            if (!actor.IsActive) { continue; }
             string id = actor.Id;
             CycleCharacter next = after.GetCharacter(id);
             var keys = Keys(before, actor, next, fact).Distinct().ToArray();
@@ -31,7 +32,7 @@ internal static class CycleObservedEventValidation {
             }
             bool matchingKind = entry.Kind.ToString() == fact.Kind.ToString() || entry.Kind == CycleObservedEventKind.BodyChanged ||
                 entry.Kind == CycleObservedEventKind.GatherFinished && fact.Kind == CycleEventKind.GatherYielded && fact.GatherStopReason is not null ||
-                entry.Kind == CycleObservedEventKind.ExpeditionEnded && fact.Outcome is not null;
+                entry.Kind == CycleObservedEventKind.ExpeditionEnded && !after.GetCharacter(entry.ObserverId).IsActive;
             if (!matchingKind || !eventKinds.Add((entry.ObserverId, entry.Kind)) || entry.Effects.Select(e => e.Key).Distinct().Count() != entry.Effects.Count) {
                 throw new InvalidOperationException("An event must own its cause and each effect only once.");
             }
@@ -70,7 +71,7 @@ internal static class CycleObservedEventValidation {
         }
         foreach ((string actorId, var current) in previousByObserver) {
             CycleSurvival? anchor = before.GetCharacter(actorId).Survival;
-            bool perceivesCause = fact.ActorId == actorId || fact.Kind == CycleEventKind.LightChanged ||
+            bool perceivesCause = fact.ActorId == actorId || fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved ||
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed &&
                 fact.ResourceId is { } resourceId && previousByObserver[actorId].ContainsKey(new("resource", resourceId, "stock"));
             bool unchangedAcknowledgement = fact.Kind is CycleEventKind.AttentionAcknowledged or CycleEventKind.HandoffEdited &&
@@ -87,7 +88,7 @@ internal static class CycleObservedEventValidation {
             var primaryKind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             if (eventKinds.Contains((actorId, primaryKind)) != expectsPrimary ||
                 eventKinds.Contains((actorId, CycleObservedEventKind.ExpeditionEnded)) !=
-                    (perceivesCause && fact.Outcome is not null && before.Expedition?.Outcome != fact.Outcome)) {
+                    (perceivesCause && !after.GetCharacter(actorId).IsActive)) {
                 throw new InvalidOperationException("The observed cause or ending is missing or not visible to this observer.");
             }
             foreach (string field in new[] { "food", "water", "warmth" }) {
@@ -107,7 +108,7 @@ internal static class CycleObservedEventValidation {
         if (entry.Kind == CycleObservedEventKind.BodyChanged) {
             if (before.GetCharacter(entry.ObserverId).Survival is null || entry.Effects.Count == 0) { throw new InvalidOperationException("An elapsed physiological interval requires a body and an actual change."); }
         } else if (entry.Kind == CycleObservedEventKind.ExpeditionEnded) {
-            detail = fact.EndingReason;
+            detail = after.GetCharacter(entry.ObserverId).Ending!.Reason;
         } else {
             id = fact.ResourceId;
             name = id is null ? null : before.GetResource(id).Name;
@@ -116,14 +117,15 @@ internal static class CycleObservedEventValidation {
                 id = actor.Backpack.Items.Keys.SingleOrDefault(item => actor.Backpack.Count(item) > next.Backpack.Count(item));
                 name = id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id };
             } else if (entry.Kind is CycleObservedEventKind.MoveStarted or CycleObservedEventKind.MoveArrived) {
-                SpatialLocation location = after.Expedition!.Spatial.Entities.Single(e => e.Id.Value == entry.ObserverId).Location;
+                SpatialLocation location = CycleActions.Location(after, entry.ObserverId)!;
                 id = location is AtPlaceLocation place ? place.PlaceId.Value : null;
                 name = id is null ? null : CycleExpeditionMap.GetPlace(id).Name;
             } else if (entry.Kind == CycleObservedEventKind.GatherFinished) {
                 detail = fact.GatherStopReason?.ToString();
             } else if (entry.Kind == CycleObservedEventKind.WeatherResolved) {
                 CycleEnvironment environment = fact.Environment!;
-                detail = environment.LastCold ? environment.LastSheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
+                CycleWeatherEffect weather = environment.LastEffects.Single(effect => effect.ActorId == entry.ObserverId);
+                detail = environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
         }
         if (entry.SubjectId != id || entry.SubjectName != name || entry.Detail != detail) {
@@ -132,7 +134,9 @@ internal static class CycleObservedEventValidation {
     }
     private static bool Owns(CycleObservedEventKind kind, CycleStateKey key) => kind switch {
         CycleObservedEventKind.BodyChanged => key.Category == "body" && key.Field is "food" or "water" or "warmth",
-        CycleObservedEventKind.ExpeditionEnded => key == new CycleStateKey("world", "world", "outcome"),
+        CycleObservedEventKind.ExpeditionEnded => key == new CycleStateKey("world", "world", "outcome") ||
+            key.Category is "activity" or "notice" || key.Category == "body" &&
+                (key.Field.EndsWith("-rate", StringComparison.Ordinal) || key.Field.StartsWith("warning-", StringComparison.Ordinal)),
         CycleObservedEventKind.HandoffEdited => key.Category == "continuity",
         CycleObservedEventKind.ItemUsed => key.Category == "inventory" || key.Category == "body" && key.Field is "food" or "water",
         CycleObservedEventKind.ResourceRegenerated or CycleObservedEventKind.ResourceDestroyed => key.Category is "resource" or "notice",
@@ -153,12 +157,12 @@ internal static class CycleObservedEventValidation {
             foreach (string field in new[] { "food", "water", "warmth", "food-rate", "water-rate", "warmth-rate", "sheltered", "warning-food", "warning-water", "warning-warmth" }) { yield return new("body", actor.Id, field); }
         }
         bool own = fact.ActorId == actor.Id;
+        bool ending = !next.IsActive;
         bool resourceCause = fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
         // Other characters' actions may update this observer's visible stock or notices. Their
         // observation snapshot owns those updates until a dedicated perceived cause is modeled.
         if (own) {
             foreach (string item in actor.Backpack.Items.Keys.Concat(next.Backpack.Items.Keys).Distinct(StringComparer.Ordinal)) { yield return new("inventory", item, "count"); }
-            foreach (string field in new[] { "kind", "due", "completed", "target" }) { yield return new("activity", actor.Id, field); }
             // Draft consumption belongs to a captured character operation, not terminal lifecycle cleanup.
             if (fact.OperationRecordId is not null) { yield return new("continuity", actor.Id, "draft"); }
             if (before.Expedition is not null) {
@@ -166,11 +170,14 @@ internal static class CycleObservedEventValidation {
                 yield return new("location", actor.Id, "arrival");
             }
         }
-        if (own || resourceCause) { yield return new("notice", actor.Id, "count"); }
+        if (own || ending) {
+            foreach (string field in new[] { "kind", "due", "completed", "target" }) { yield return new("activity", actor.Id, field); }
+        }
+        if (own || ending || resourceCause) { yield return new("notice", actor.Id, "count"); }
         yield return new("world", "world", "light");
         if (before.Expedition is not null) { yield return new("world", "world", "outcome"); }
         if (own || resourceCause) {
-            SpatialLocation? location = before.Expedition?.Spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;
+            SpatialLocation? location = CycleActions.Location(before, actor.Id);
             foreach (CycleResource resource in before.Resources.Where(r => before.Expedition is null ||
                 location is AtPlaceLocation place && CycleExpeditionMap.GetResourcePlace(r.Id) == place.PlaceId.Value)) {
                 yield return new("resource", resource.Id, "stock");
@@ -182,7 +189,7 @@ internal static class CycleObservedEventValidation {
         CycleCharacter actor = state.GetCharacter(observer);
         CycleSurvival? body = actor.Survival?.Project(state.Time);
         CycleActivity? activity = actor.Activity;
-        SpatialLocation? location = state.Expedition?.Spatial.Entities.Single(e => e.Id.Value == observer).Location;
+        SpatialLocation? location = CycleActions.Location(state, observer);
         if (key.Category is "body" or "activity" or "location" or "notice" or "continuity" && key.ObjectId != observer) {
             throw new InvalidOperationException("Private effects belong to their observer.");
         }
@@ -191,7 +198,7 @@ internal static class CycleObservedEventValidation {
             ("body", "food-rate") => CycleVisibleValue.Numeric(body!.FoodPerHour, "点/小时"),
             ("body", "water-rate") => CycleVisibleValue.Numeric(body!.WaterPerHour, "点/小时"),
             ("body", "warmth-rate") => CycleVisibleValue.Numeric(body!.WarmthPerHour, "点/小时"),
-            ("body", "sheltered") => CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(state.Expedition!.Spatial, observer)),
+            ("body", "sheltered") => CycleVisibleValue.Flag(location is AtPlaceLocation shelter && CycleExpeditionMap.GetPlace(shelter.PlaceId.Value).Sheltered),
             ("body", "warning-food") => CycleVisibleValue.Flag((body!.PendingMask & 1) != 0),
             ("body", "warning-water") => CycleVisibleValue.Flag((body!.PendingMask & 2) != 0),
             ("body", "warning-warmth") => CycleVisibleValue.Flag((body!.PendingMask & 4) != 0),
@@ -203,7 +210,8 @@ internal static class CycleObservedEventValidation {
             ("notice", "count") => CycleVisibleValue.Numeric(actor.Notices.Count, "条"),
             ("continuity", "draft") => Text(state.InteractionStates[observer].DraftHandoff),
             ("world", "light") => CycleVisibleValue.Flag(state.Light.IsDay),
-            ("world", "outcome") => CycleVisibleValue.Literal(state.Expedition!.Outcome.ToString()),
+            // The key is actor-scoped presentation material despite its historical category name.
+            ("world", "outcome") => CycleVisibleValue.Literal((actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring).ToString()),
             ("location", "place") => location is AtPlaceLocation at ? Text(at.PlaceId.Value) : CycleVisibleValue.KnownAbsent,
             ("location", "arrival") => location is TraversingLocation moving ? CycleVisibleValue.Numeric(moving.ArrivalDue.Ticks, "ticks") : CycleVisibleValue.KnownAbsent,
             ("resource", "stock") => CycleVisibleValue.Numeric(state.GetResource(key.ObjectId).Stock, "份"),

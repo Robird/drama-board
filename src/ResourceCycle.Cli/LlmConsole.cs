@@ -17,27 +17,31 @@ internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = n
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
     public static async Task<int> RunAsync(string? store, LlmHostOptions options, CancellationToken cancellationToken,
-        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null) {
+        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, bool duo = false, TextReader? inputReader = null) {
         TextWriter output = outputWriter ?? Console.Out;
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
-            ? CycleDurableHistory.Open(store) : CreateStore(store);
+            ? CycleDurableHistory.Open(store) : CreateStore(store, duo);
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
-            var initial = CycleGameFactory.CreateSurvival();
+            var initial = CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1);
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
-        if (history.State.Expedition is null || history.State.Characters.Count != 1) {
-            throw new ArgumentException("--survival --llm 需要单角色生存存档。");
-        }
-        string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
+        SurvivalHost.RequireMode(history.State, duo);
+        string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", duo ? "duo-llm-runs" : "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
         using var audit = new LlmRunAudit(logPath, output);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
-        var kernel = CycleEngine.CreateKernel(history, characterController: forwarding);
+        var human = duo ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            inputReader: inputReader, outputWriter: output, operations: operations,
+            worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}") : null;
+        ICycleCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
+            new Dictionary<string, ICycleCharacterController> { ["a"] = human, ["b"] = forwarding });
+        var kernel = CycleEngine.CreateKernel(history, characterController: routed);
         bool recovered = kernel.RecoverPending(cancellationToken);
+        SurvivalHost.RequireMode(kernel.World, duo);
         if (durable is not null) {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
@@ -45,32 +49,41 @@ internal static class LlmConsole {
         }
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
             Version = kernel.Version.ToString(), Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
-        output.WriteLine($"LLM 旁观模式；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm 和连接配置。");
+        output.WriteLine($"{(duo ? "双角色模式：a = Human，b = LLM" : "LLM 旁观模式")}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 {(duo ? "--duo" : "--survival")} --llm 和连接配置。");
         CompletionConnectionRegistry? registry = null;
+        var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
+        void DeliverTerminals() {
+            human?.RenderCommitted(kernel.World, "a");
+            foreach (CycleCharacter character in kernel.World.Characters.Where(character => !character.IsActive)) {
+                if ((human is null || character.Id != "a") && deliveredTerminals.Add(character.Id)) {
+                    Terminal(kernel.World, character.Id, audit);
+                }
+            }
+        }
         try {
-            if (kernel.World.Expedition!.Outcome != CycleExpeditionOutcome.Exploring) {
-                Terminal(kernel.World, audit);
-                return 0;
-            }
-            string model;
-            ICompletionClient client;
-            if (suppliedClient is not null) {
-                client = suppliedClient;
-                model = options.Model ?? "gpt-6.1-sol";
-            } else {
-                (registry, string connectionId, model) = await ConnectAsync(options, cancellationToken);
-                client = registry.GetClient(connectionId);
-                audit.Write("binding", new { ConnectionId = connectionId, ModelId = model });
-            }
-            var controller = new LlmCharacterController(client, model,
-                context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
-                new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
-                    MaxContextCharacters = options.MaxContextCharacters }, audit.Trace);
-            forwarding.Inner = controller;
+            // Initialize the external client only on an actual live LLM decision. A saved terminal b
+            // and an early Human EOF require neither credentials nor a network client.
+            forwarding.Inner = new LazyController(async () => {
+                string model;
+                ICompletionClient client;
+                if (suppliedClient is not null) {
+                    client = suppliedClient;
+                    model = options.Model ?? "gpt-6.1-sol";
+                } else {
+                    (registry, string connectionId, model) = await ConnectAsync(options, cancellationToken);
+                    client = registry.GetClient(connectionId);
+                    audit.Write("binding", new { ActorId = duo ? "b" : "a", ConnectionId = connectionId, ModelId = model });
+                }
+                return new LlmCharacterController(client, model,
+                    context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
+                    new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
+                        MaxContextCharacters = options.MaxContextCharacters }, audit.Trace);
+            });
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (kernel.World.Expedition!.Outcome != CycleExpeditionOutcome.Exploring) {
-                    Terminal(kernel.World, audit);
+                DeliverTerminals();
+                if (!kernel.World.Characters.Any(character => character.IsActive)) {
+                    audit.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, SurvivalHost.Summary(kernel.World));
                     return 0;
                 }
                 StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
@@ -84,6 +97,10 @@ internal static class LlmConsole {
                         $"{fact.At} · {fact.Kind}" + (fact.OperationRecordId is null ? "" : $" · {fact.OperationDisposition}\n{CycleOperationResults.Describe(fact)}"));
                 }
             }
+        } catch (PlayConsole.PlayEndedException) {
+            audit.Write("host-stop", new { Reason = "human-session-ended", Saved = store is not null });
+            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --duo --llm 与同一存档及连接配置。");
+            return 0;
         } catch (LlmControllerPausedException error) {
             audit.Write("host-stop", new { Reason = error.ReasonCode, error.CallsMade, Saved = store is not null });
             output.WriteLine("LLM 已暂停，未代选行动。已提交状态保持；续局需重新指定连接与预算。");
@@ -111,14 +128,14 @@ internal static class LlmConsole {
         }
     }
 
-    private static CycleDurableHistory CreateStore(string path) {
-        var initial = CycleGameFactory.CreateSurvival();
+    private static CycleDurableHistory CreateStore(string path, bool duo) {
+        var initial = CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1);
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
-    private static void Terminal(CycleWorld world, LlmRunAudit audit) {
-        string text = CharacterContextRenderer.RenderFull(world.Business.InteractionStates[world.Characters[0].Id], new DecisionPlayLayout());
-        audit.Write("terminal", new { Outcome = world.Expedition!.Outcome.ToString(), Context = text });
+    private static void Terminal(CycleWorld world, string actorId, LlmRunAudit audit) {
+        string text = CharacterContextRenderer.RenderFull(world.Business.InteractionStates[actorId], new DecisionPlayLayout());
+        audit.Write("terminal", new { ActorId = actorId, Outcome = world.GetCharacter(actorId).Ending!.Outcome.ToString(), Context = text });
         audit.Output.WriteLine(text);
     }
 
@@ -162,6 +179,14 @@ internal static class LlmConsole {
             journal.Receive("llm/" + operation.OperationRecordId, operation.ToolCallId, context.InteractionState.ActorId,
                 context.Context.ContextSequence, LlmCharacterController.ToolName, operation.RawInput, operation.OperationRecordId);
             return operation;
+        }
+    }
+
+    private sealed class LazyController(Func<Task<ICycleCharacterController>> create) : ICycleCharacterController {
+        private ICycleCharacterController? _inner;
+        public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
+            _inner ??= await create();
+            return await _inner.ChooseCommandAsync(context, cancellationToken);
         }
     }
 }

@@ -39,14 +39,16 @@
 | 决策请求 / 待决策（Decision request） | 当前应给予角色控制器交互机会。可因空闲或有待响应感知产生。 | `NeedsDecision`、`CyclePredictionKind.RequestDecision`；没有独立持久请求对象。 |
 | 唤醒（Wake-up） | 服务决策请求：展示角色材料并等待操作提交；拒绝保持原服务机会。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
 | 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，轮流选择下一个被服务者。保证服务机会，不保证资源公平分配。 | `CycleBusinessState.LastServedActorId`；查询和非法输入不交棒。 |
+| 个人终局（Character ending） | 角色获救或死亡的权威记录，停止本人的活动、需求和决策；保存结束时刻、原因与历史位置。 | `CycleCharacter.Ending` / `CycleCharacterEnding`；同时退休 Spatial 实体，其他人可继续。 |
+| 整局总结（Expedition summary） | 从所有个人终局派生的宿主结果；不是局内角色自动知道的信息。 | `CycleWorld.ExpeditionSummary`；Exploring / AllEscaped / PartiallyEscaped / NoneEscaped，不单独持久化。 |
 
-**“多人”需要说明计数对象。** 当前 ResourceCycle 的采集场景是“单个人类、共用 Console、多个 Character”，生存探索一期则为单角色；不能由三个角色推导出三个独立 Player 实例。未来多个 LLM 控制器与多个角色的绑定关系另行设计。需要精确表达时，用“多角色”或“多控制器”，不单写“多 Player”。
+**“多人”需要说明计数对象。** 当前 ResourceCycle 采集场景和 `--duo` 都可由单个人类共用 Console 控制多个 Character；`--duo --llm` 将 a 绑定 Human、b 绑定 LLM，角色记忆仍分别在游戏图中。单人 `--survival` 保留；不能由角色数推导出同样数量的控制器实例。需要精确表达时，用“多角色”或“多控制器”，不单写“多 Player”。
 
 **唤醒不等于打断。** `continue` 确认感知、保留活动及原定到期时刻；`cancel` 取消当前活动、保留已获成果。收到感知和活动继续存在可以同时成立。
 
 **生存警告有两种标记。** `CycleSurvival.WarnedMask` 表示当前低值区间已经提醒，`PendingMask` 表示尚待确认的历史提醒。确认只清后者；余量严格恢复到警告线以上才允许再次提醒。途中补给保留原空间期限，也不自动确认历史警告。具体规则见[生存需求](design/survival-needs.md)。
 
-**控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；角色观察和纯命令校验已接入，LLM 工具会话尚未实施。
+**控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；角色观察和纯命令校验已接入，LLM 适配器使用独立 Context 请求；完整原生工具会话恢复仍未实施。
 
 ## 时间、预测与调度
 

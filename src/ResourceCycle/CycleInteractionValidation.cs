@@ -18,7 +18,7 @@ internal static class CycleInteractionValidation {
             CycleObservedEvent[] events = fact.ObservedEvents.Where(entry => entry.ObserverId == actorId).ToArray();
             bool own = fact.ActorId == actorId && fact.OperationRecordId is not null;
             bool opening = fact.Kind == CycleEventKind.DecisionContextOpened && fact.ActorId == actorId;
-            bool terminal = fact.Outcome is CycleExpeditionOutcome.Dead or CycleExpeditionOutcome.Escaped;
+            bool terminal = before.GetCharacter(actorId).IsActive && !after.GetCharacter(actorId).IsActive;
             bool visibleChange = prior.CurrentContext?.Status == CharacterContextStatus.Open && CycleVisibleEndpointChanges.Changed(before, after, actorId);
             Require(recorded is not null || !(own || opening || terminal || events.Length > 0 || visibleChange),
                 "A committed operation or observable change is missing its interaction replacement.");
@@ -181,8 +181,8 @@ internal static class CycleInteractionValidation {
         CycleCharacter actor = state.GetCharacter(actorId);
         Require(observation.Time == state.Time && observation.Actor.Id == actorId && observation.Actor.Name == actor.Name &&
             observation.IsDay == state.Light.IsDay && observation.NextLightChange == state.Light.NextChange &&
-            observation.Outcome == (state.Expedition?.Outcome ?? CycleExpeditionOutcome.Exploring) &&
-            observation.EndingReason == state.Expedition?.EndingReason && observation.IsExpedition == (state.Expedition is not null),
+            observation.Outcome == (actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring) &&
+            observation.EndingReason == actor.Ending?.Reason && observation.IsExpedition == (state.Expedition is not null),
             "Recorded observation does not match its actor and publication boundary.");
         // These are recorded endpoint checks, not a call to the perception builder or its command queries.
         Require(observation.Actor.SkillLevel == actor.SkillLevel && observation.Actor.LastResult == actor.LastResult &&
@@ -191,20 +191,20 @@ internal static class CycleInteractionValidation {
             CycleObservationEquality.SameActivity(observation.Actor.Activity, actor.Activity) &&
             observation.Actor.Notices.Count == actor.Notices.Count && observation.Actor.Notices.Zip(actor.Notices).All(pair =>
                 CycleObservationEquality.SameNotice(pair.First, pair.Second)), "Recorded private observation differs from its endpoint.");
-        string? place = (state.Expedition?.Spatial.Entities.Single(e => e.Id.Value == actorId).Location as AtPlaceLocation)?.PlaceId.Value;
+        SpatialLocation? location = CycleActions.Location(state, actorId);
+        string? place = (location as AtPlaceLocation)?.PlaceId.Value;
         CycleResource[] visible = state.Resources.Where(resource => state.Expedition is null ||
             place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
         Require(observation.Resources.Count == visible.Length && observation.Resources.Zip(visible).All(pair =>
             CycleObservationEquality.SameResource(pair.First, pair.Second)), "Recorded resources must match the visible endpoint.");
-        SpatialLocation? location = state.Expedition?.Spatial.Entities.Single(e => e.Id.Value == actorId).Location;
         Require(observation.PlaceId == place && observation.PlaceName == (place is null ? null : CycleExpeditionMap.GetPlace(place).Name) &&
             observation.PlaceDescription == (place is null ? null : CycleExpeditionMap.GetPlace(place).Description) &&
             observation.ArrivalDue == (location is TraversingLocation moving ? moving.ArrivalDue : null),
             "Recorded location must match the visible spatial endpoint.");
-        Require(observation.Journey == CycleJourneyObservation.Observe(state.Expedition, actorId),
+        Require(observation.Journey == CycleJourneyObservation.Observe(state.Expedition, actorId, location),
             "Recorded journey must retain the traveller's route without revealing unknown destinations.");
-        CycleCharacter[] others = state.Characters.Where(other => other.Id != actorId && (state.Expedition is null ||
-            place is not null && state.Expedition.Spatial.Entities.Single(e => e.Id.Value == other.Id).Location is AtPlaceLocation otherPlace &&
+        CycleCharacter[] others = state.Characters.Where(other => other.IsActive && other.Id != actorId && (state.Expedition is null ||
+            place is not null && CycleActions.Location(state, other.Id) is AtPlaceLocation otherPlace &&
                 otherPlace.PlaceId.Value == place)).ToArray();
         Require(observation.OtherCharacters.Count == others.Length && observation.OtherCharacters.Zip(others).All(pair =>
             pair.First.Id == pair.Second.Id && pair.First.Name == pair.Second.Name &&
@@ -229,7 +229,7 @@ internal static class CycleInteractionValidation {
         CycleSurvival? body = actor.Survival?.Project(state.Time);
         CycleSurvivalObservation? visible = observation.Survival;
         Require((body is null) == (visible is null), "The recorded body must agree with the character's capabilities.");
-        bool sheltered = CycleSurvivalRules.IsSheltered(state.Expedition?.Spatial, actor.Id);
+        bool sheltered = CycleActions.Location(state, actor.Id) is AtPlaceLocation at && CycleExpeditionMap.GetPlace(at.PlaceId.Value).Sheltered;
         if (body is not null && visible is not null) {
             visible.Validate(observation.Time);
             Require(visible.Food == (decimal)body.FoodUnits / CycleSurvival.Scale && visible.Water == (decimal)body.WaterUnits / CycleSurvival.Scale &&
@@ -246,12 +246,13 @@ internal static class CycleInteractionValidation {
         CycleWeatherObservation? weather = observation.Weather;
         Require((environment is null) == (weather is null), "The recorded weather must agree with scenario capabilities.");
         if (environment is not null && weather is not null) {
-            Require(weather.NextWindow == environment.NextDue && weather.IntervalTicks == CycleEnvironmentRules.IntervalTicks &&
+            CycleWeatherEffect? effect = environment.LastEffects.SingleOrDefault(entry => entry.ActorId == actor.Id);
+            Require(weather.NextWindow == (actor.IsActive ? environment.NextDue : null) && weather.IntervalTicks == CycleEnvironmentRules.IntervalTicks &&
                 weather.ExposedWarmthLoss == CycleEnvironmentRules.ExposureLoss && weather.Sheltered == sheltered &&
-                weather.LastAt == environment.LastAt && weather.LastKind == (environment.LastAt is null ? null :
+                weather.LastAt == (effect is null ? null : environment.LastAt) && weather.LastKind == (effect is null ? null :
                     environment.LastCold ? CycleWeatherKind.ColdWind : CycleWeatherKind.Calm) &&
-                weather.LastActualWarmthLoss == (decimal)environment.LastWarmthLossUnits / CycleSurvival.Scale &&
-                weather.LastWasSheltered == environment.LastSheltered, "Recorded weather must match the already resolved result.");
+                weather.LastActualWarmthLoss == (decimal)(effect?.WarmthLossUnits ?? 0) / CycleSurvival.Scale &&
+                weather.LastWasSheltered == (effect?.Sheltered ?? false), "Recorded weather must match the already resolved result.");
         }
     }
 

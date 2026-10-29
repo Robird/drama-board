@@ -59,8 +59,8 @@ public sealed class SurvivalRegenerationTests {
             checkpointCursor = kernel.Cursor;
             Assert.Equal(Minute(750), checkpoint.Time);
             Assert.Equal("stream", CycleActions.CurrentPlace(checkpoint, "a"));
-            Assert.Equal(CycleExpeditionOutcome.Exploring, checkpoint.Expedition!.Outcome);
-            Assert.Equal(2, checkpoint.Expedition.Environment!.Sequence);
+            Assert.True(checkpoint.GetCharacter("a").IsActive);
+            Assert.Equal(2, checkpoint.Expedition!.Environment!.Sequence);
             Assert.Equal(CycleEnvironmentRules.DefaultSeed, checkpoint.Expedition.Environment.Seed);
             Assert.Equal(5, checkpoint.GetResource("berries").Stock);
             Assert.Equal(Minute(930), Assert.Single(checkpoint.Forecasts.Predictions,

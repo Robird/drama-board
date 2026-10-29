@@ -24,48 +24,57 @@ public sealed partial class CycleVisit : IDurableObject {
     public override string ToString() => $"{ActorId}:{PlaceId}@{At.Ticks}[{string.Join(';', Resources)}]";
 }
 
-/// <summary>Persistent scenario identity, authoritative spatial subgraph, observations and ending.</summary>
-[DurableType("DramaBoard.ResourceCycle.Expedition", 2)]
+/// <summary>Persistent scenario identity, active spatial subgraph, observations and shared environment.</summary>
+[DurableType("DramaBoard.ResourceCycle.Expedition", 3)]
 public sealed partial class CycleExpedition : IDurableObject {
     [DurableField(1)] private string _scenarioId;
     [DurableField(2)] private GraphSpatialState _spatial;
     [DurableField(3)] private List<CycleVisit> _visits;
-    [DurableField(4)] private CycleExpeditionOutcome _outcome;
-    [DurableField(5)] private string? _endingReason;
     [DurableField(6)] private CycleEnvironment? _environment;
     public string ScenarioId => _scenarioId;
     public GraphSpatialState Spatial => _spatial;
     public IReadOnlyList<CycleVisit> Visits => _visits.AsReadOnly();
-    public CycleExpeditionOutcome Outcome => _outcome;
-    public string? EndingReason => _endingReason;
     public CycleEnvironment? Environment => _environment;
     public CycleExpedition(string scenarioId, GraphSpatialState spatial, IEnumerable<CycleVisit> visits,
-        CycleExpeditionOutcome outcome = CycleExpeditionOutcome.Exploring, string? endingReason = null, CycleEnvironment? environment = null) {
-        _scenarioId = scenarioId; _spatial = spatial; _visits = [.. visits]; _outcome = outcome; _endingReason = endingReason;
+        CycleEnvironment? environment = null) {
+        _scenarioId = scenarioId; _spatial = spatial; _visits = [.. visits];
         _environment = environment;
     }
     internal CycleExpedition Change(GraphSpatialState spatial, IEnumerable<CycleVisit> visits,
-        CycleExpeditionOutcome? outcome = null, string? endingReason = null, CycleEnvironment? environment = null) {
+        CycleEnvironment? environment = null) {
         var replacements = visits.ToDictionary(v => (v.ActorId, v.PlaceId));
         return new(ScenarioId, spatial, Visits.Where(v => !replacements.ContainsKey((v.ActorId, v.PlaceId)))
             .Concat(replacements.Values).OrderBy(v => v.ActorId, StringComparer.Ordinal).ThenBy(v => v.PlaceId, StringComparer.Ordinal),
-            outcome ?? Outcome, endingReason ?? EndingReason, environment ?? Environment);
+            environment ?? Environment);
     }
     internal bool SameState(CycleExpedition other) => ScenarioId == other.ScenarioId && Spatial.Equals(other.Spatial) &&
-        Outcome == other.Outcome && EndingReason == other.EndingReason && Visits.SequenceEqual(other.Visits) && ReferenceEquals(Environment, other.Environment);
+        Visits.SequenceEqual(other.Visits) && ReferenceEquals(Environment, other.Environment);
     internal void Validate(CycleBusinessState business) {
-        if (ScenarioId != CycleExpeditionMap.ScenarioId || !Enum.IsDefined(Outcome) ||
-            (Outcome == CycleExpeditionOutcome.Exploring) != (EndingReason is null) || business.Characters.Count != 1 ||
-            Spatial.Entities.Count != business.Characters.Count || Spatial.ScheduledPassageEntryChanges.Count != 0 ||
+        if (ScenarioId != CycleExpeditionMap.ScenarioId || business.Characters.Count is < 1 or > 2 ||
+            Spatial.Entities.Count != business.Characters.Count(c => c.IsActive) || Spatial.ScheduledPassageEntryChanges.Count != 0 ||
             Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != Visits.Count) {
             throw new InvalidOperationException("Invalid expedition scenario, participants, observations or ending.");
         }
         GraphSpatialStateValidator.ValidateComplete(CycleExpeditionMap.Graph, Spatial);
-        Environment?.Validate(business.Time);
+        Environment?.Validate(business.Time, business.Characters);
         if (Environment is not null && business.Characters.Any(c => c.Survival is null)) {
             throw new InvalidOperationException("Weather requires survival needs for each participant.");
         }
         foreach (CycleCharacter actor in business.Characters) {
+            if (actor.Ending is { } ending) {
+                if (Spatial.TryGetEntity(new(actor.Id), out _) ||
+                    ending.Outcome == CycleExpeditionOutcome.Escaped && (ending.Location is not AtPlaceLocation exit || !CycleExpeditionMap.GetPlace(exit.PlaceId.Value).IsExit)) {
+                    throw new InvalidOperationException("Ended participants must be retired; escape requires an exit.");
+                }
+                if (ending.Location is AtPlaceLocation endedPlace) { _ = CycleExpeditionMap.GetPlace(endedPlace.PlaceId.Value); }
+                else if (ending.Location is TraversingLocation movement) {
+                    _ = CycleExpeditionMap.Graph.GetPassage(movement.PassageId);
+                    if (movement.AnchorTime > ending.At || movement.ArrivalDue < ending.At) {
+                        throw new InvalidOperationException("An ended traversal is a historical snapshot at the ending instant.");
+                    }
+                } else { throw new InvalidOperationException("Invalid ending location."); }
+                continue;
+            }
             if (!Spatial.TryGetEntity(new(actor.Id), out SpatialEntity? entity) ||
                 entity!.Location is TraversingLocation && actor.Activity is not null) {
                 throw new InvalidOperationException("A character must have one spatial location and at most one timed activity.");
@@ -75,11 +84,7 @@ public sealed partial class CycleExpedition : IDurableObject {
                     CycleExpeditionMap.GetResourcePlace(gathering.ResourceId!) != gatheringPlace.PlaceId.Value)) {
                 throw new InvalidOperationException("Gathering requires the resource's actual place.");
             }
-            if (Outcome == CycleExpeditionOutcome.Escaped && (actor.Activity is not null ||
-                entity.Location is not AtPlaceLocation exit || !CycleExpeditionMap.GetPlace(exit.PlaceId.Value).IsExit ||
-                string.IsNullOrWhiteSpace(EndingReason))) {
-                throw new InvalidOperationException("An escaped character must be safely at an exit without ongoing work.");
-            }
+
         }
         foreach (CycleVisit visit in Visits) {
             if (!business.Characters.Any(c => c.Id == visit.ActorId) || !CycleExpeditionMap.Graph.Contains(new PlaceId(visit.PlaceId)) ||
@@ -92,7 +97,7 @@ public sealed partial class CycleExpedition : IDurableObject {
             throw new InvalidOperationException("Every expedition resource must belong to a defined place.");
         }
     }
-    public override string ToString() => $"{ScenarioId}:{Outcome}:{EndingReason};positions=[{string.Join(';', Spatial.Entities.Select(e => $"{e.Id}:{e.MovementGeneration}:{DescribeLocation(e.Location)}"))}];visits=[{string.Join(';', Visits)}]" +
+    public override string ToString() => $"{ScenarioId};positions=[{string.Join(';', Spatial.Entities.Select(e => $"{e.Id}:{e.MovementGeneration}:{DescribeLocation(e.Location)}"))}];visits=[{string.Join(';', Visits)}]" +
         (Environment is null ? "" : $";environment={Environment}");
     private static string DescribeLocation(SpatialLocation location) => location switch {
         AtPlaceLocation at => at.PlaceId.Value,

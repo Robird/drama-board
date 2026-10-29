@@ -1,6 +1,7 @@
 using Atelia.DurableGraph;
 using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
@@ -75,7 +76,7 @@ public sealed partial class CycleNotice : IDurableObject {
     public override string ToString() => $"{Kind}:{ResourceId}:{ActorId}:{SourceId}:{At.Ticks}:{Count}:{Reason}";
 }
 
-[DurableType("DramaBoard.ResourceCycle.Character", 5)]
+[DurableType("DramaBoard.ResourceCycle.Character", 6)]
 public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(1)] private string _id;
     [DurableField(2)] private string _name;
@@ -87,6 +88,9 @@ public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(8)] private string? _lastResult;
     [DurableField(9)] private long _nextActivityId;
     [DurableField(10)] private CycleSurvival? _survival;
+    [DurableField(11)] private CycleCharacterEnding? _ending;
+    public CycleCharacterEnding? Ending => _ending;
+    public bool IsActive => Ending is null;
     public string Id => _id;
     public string Name => _name;
     public int SkillLevel => _skillLevel;
@@ -97,23 +101,28 @@ public sealed partial class CycleCharacter : IDurableObject {
     public string? LastResult => _lastResult;
     public long NextActivityId => _nextActivityId;
     public CycleSurvival? Survival => _survival;
-    public bool NeedsDecision => Activity is null || _notices.Count > 0;
+    public bool NeedsDecision => IsActive && (Activity is null || _notices.Count > 0);
     public CycleCharacter(string id, string name, int skillLevel = 0, ItemInventory? backpack = null,
         CycleActivity? activity = null, IEnumerable<CycleNotice>? notices = null, long decisionGeneration = 0,
-        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null) {
+        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null, CycleCharacterEnding? ending = null) {
         _id = id; _name = name; _skillLevel = skillLevel; _backpack = backpack ?? new(); _activity = activity;
         _notices = notices?.ToList() ?? []; _decisionGeneration = decisionGeneration; _lastResult = lastResult; _nextActivityId = nextActivityId;
-        _survival = survival;
+        _survival = survival; _ending = ending;
     }
     internal CycleCharacter Change(CycleActivity? activity, ItemInventory? backpack = null,
         IEnumerable<CycleNotice>? notices = null, string? result = null, long? nextActivityId = null, CycleSurvival? survival = null) =>
         new(Id, Name, SkillLevel, backpack ?? Backpack, activity, notices ?? _notices,
-            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival);
+            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival, Ending);
     internal CycleCharacter WithSurvival(CycleSurvival survival) => new(Id, Name, SkillLevel, Backpack, Activity,
-        Notices, DecisionGeneration, LastResult, NextActivityId, survival);
+        Notices, DecisionGeneration, LastResult, NextActivityId, survival, Ending);
     internal CycleCharacter AdvanceDecisionGeneration() =>
         new(Id, Name, SkillLevel, Backpack, Activity, Notices, checked(DecisionGeneration + 1),
-            LastResult, NextActivityId, Survival);
+            LastResult, NextActivityId, Survival, Ending);
+    internal CycleCharacter End(CycleExpeditionOutcome outcome, ModelTime at, string reason, SpatialLocation location) {
+        if (!IsActive || outcome == CycleExpeditionOutcome.Exploring) { throw new InvalidOperationException("A personal ending is final."); }
+        return new(Id, Name, SkillLevel, Backpack, null, [], checked(DecisionGeneration + 1), reason,
+            NextActivityId, Survival?.Freeze(at), new(outcome, at, reason, location));
+    }
     internal CycleCharacter Notify(CycleNotice notice) {
         CycleNotice? previous = _notices.SingleOrDefault(n => n.AggregationKey == notice.AggregationKey);
         if (previous?.SourceId == notice.SourceId) { return this; }
@@ -130,11 +139,18 @@ public sealed partial class CycleCharacter : IDurableObject {
                 string.IsNullOrWhiteSpace(n.Reason) || n.At.Ticks < 0 || n.At > time || n.Count <= 0)) {
             throw new InvalidOperationException("Invalid character or pending perception state.");
         }
+        if (Ending is { } ending && (!Enum.IsDefined(ending.Outcome) || ending.Outcome == CycleExpeditionOutcome.Exploring ||
+            ending.At.Ticks < 0 || ending.At > time || string.IsNullOrWhiteSpace(ending.Reason) || ending.Location is null ||
+            ending.Outcome == CycleExpeditionOutcome.Dead && Survival is null ||
+            Activity is not null || Notices.Count != 0 || Survival is { } body && (body.BaselineAt != ending.At ||
+                body.FoodPerHour != 0 || body.WaterPerHour != 0 || body.WarmthPerHour != 0 || body.PendingMask != 0))) {
+            throw new InvalidOperationException("Invalid personal ending or unfrozen ended character.");
+        }
         Backpack.Validate();
         Activity?.Validate(time);
         Survival?.Validate();
         if (Survival?.BaselineAt > time) { throw new InvalidOperationException("Survival anchor cannot be in the future."); }
     }
     public override string ToString() => $"{Id}:{Name}:{SkillLevel};backpack={Backpack};activity={Activity};decision={DecisionGeneration};next={NextActivityId};notices=[{string.Join(';', _notices)}];result={LastResult}" +
-        (Survival is null ? "" : $";survival={Survival}");
+        (Survival is null ? "" : $";survival={Survival}") + $";ending={Ending}";
 }

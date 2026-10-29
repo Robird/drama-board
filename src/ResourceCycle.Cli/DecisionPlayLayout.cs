@@ -49,6 +49,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         RenderActivity(text, observation, ended: false);
         text.AppendLine($"采药等级 {observation.Actor.SkillLevel}（基础速度的 {100m + 25m * observation.Actor.SkillLevel:0}%）。");
         text.AppendLine();
+        PlayView.RenderOtherCharacters(text, observation);
         RenderSupplies(text, observation, ended: false);
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         RenderResources(text, observation);
@@ -125,7 +126,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
     private static void RenderActivity(StringBuilder text, CycleObservation observation, bool ended) {
         if (observation.ArrivalDue is not null) { return; }
         if (observation.Actor.Activity is not { } activity) {
-            text.AppendLine(ended ? "结束时没有未完成活动。" : "当前空闲，可选择下方行动。");
+            text.AppendLine(ended ? "此角色已停止安排活动；原推进及中断情况见终局记录。" : "当前空闲，可选择下方行动。");
         } else if (activity.Kind == CycleActivityKind.Wait) {
             text.AppendLine(ended ? $"未完成的等待已冻结；原截止 {Time(activity.Due)}。" : $"正在等待 · {Time(activity.Due)} 完成。");
         } else {
@@ -163,7 +164,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         CycleObservation observation = snapshot.Observation;
         text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**旅程结束。只是这一次未能走出山林。**");
         text.AppendLine(observation.EndingReason);
-        text.AppendLine("以下为结束时的冻结记录；世界不再推进。未完成的活动不会继续结算。");
+        text.AppendLine("以下为此角色结束时的冻结记录；未完成的活动不会继续结算。其他角色仍可继续探索。");
         if (snapshot.IncludeHistory) { text.Append(ContextHistoryPlayView.RenderHistory(observation, snapshot.Context)); }
         text.AppendLine("## 结束前的历史通知与最近天气");
         RenderEvents(text, observation, ended: true);

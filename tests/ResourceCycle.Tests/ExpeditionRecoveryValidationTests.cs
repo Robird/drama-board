@@ -17,8 +17,7 @@ public sealed class ExpeditionRecoveryValidationTests {
         CycleExpedition expedition = initial.World.Expedition!;
         CycleCharacter actor = initial.World.GetCharacter("a");
         GraphSpatialState spatial = expedition.Spatial;
-        CycleExpeditionOutcome outcome = CycleExpeditionOutcome.Exploring;
-        string? ending = null;
+        CycleCharacterEnding? ending = null;
         switch (invalidBoundary) {
             case "gather-from-camp":
                 // Individually valid activity and known resource, but the actor is elsewhere.
@@ -26,14 +25,13 @@ public sealed class ExpeditionRecoveryValidationTests {
                     Hour(9), "berries", 1), nextActivityId: 2);
                 break;
             case "escape-from-camp":
-                outcome = CycleExpeditionOutcome.Escaped;
-                ending = "Forged escape before reaching safety.";
+                spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, []);
+                ending = new(CycleExpeditionOutcome.Escaped, Hour(8), "Forged escape before reaching safety.", new AtPlaceLocation(new("camp")));
                 break;
             case "escape-while-working":
-                spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("road"))]);
+                spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, []);
                 actor = actor.Change(new(CycleActivityKind.Wait, 1, Hour(8), CycleTime.Hour, Hour(9)), nextActivityId: 2);
-                outcome = CycleExpeditionOutcome.Escaped;
-                ending = "An exit cannot leave ordinary timed work pending.";
+                ending = new(CycleExpeditionOutcome.Escaped, Hour(8), "An exit cannot leave ordinary timed work pending.", new AtPlaceLocation(new("road")));
                 break;
             case "scheduled-passage-change":
                 string passage = CycleExpeditionMap.GetPassages("camp")[0].Id;
@@ -44,8 +42,23 @@ public sealed class ExpeditionRecoveryValidationTests {
             default:
                 throw new ArgumentOutOfRangeException(nameof(invalidBoundary));
         }
+        if (ending is not null) {
+            // Deliberately bypass End, which normally clears activity and captures a valid terminal boundary.
+            actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity, actor.Notices,
+                actor.DecisionGeneration, actor.LastResult, actor.NextActivityId, actor.Survival, ending);
+        }
         var candidate = business.Replace(business.Time, changedCharacters: [actor],
-            expedition: new(expedition.ScenarioId, spatial, expedition.Visits, outcome, ending));
+            expedition: new(expedition.ScenarioId, spatial, expedition.Visits));
+        if (ending is not null) {
+            // Keep the separate ending/context invariant satisfied so rejection still tests
+            // the forged escape location or unfinished activity, not an unrelated missing context.
+            var raw = new CycleWorld(candidate, initial.World.Forecasts);
+            CycleObservation observation = CycleDecisionContext.ObserveOpening(raw, actor.Id, 1);
+            var opening = new CharacterContextOpening(CycleBackground.For(observation), observation, null,
+                business.Time, CycleOutcomeActivityState.Terminal);
+            candidate = candidate.Replace(business.Time, interactionChanges: [
+                new(actor.Id, new(1, CharacterContextStatus.Terminal, opening))]);
+        }
         Assert.Throws<InvalidOperationException>(() => new CycleDurableRoot(candidate, initial.Cursor));
 
         using var store = new TemporaryStore();
@@ -68,7 +81,7 @@ public sealed class ExpeditionRecoveryValidationTests {
         var restored = Assert.IsType<CycleDurableRoot>(inspected.LoadState(head.Id));
         Assert.Equal(initial.Cursor, restored.Cursor);
         Assert.Equal(spatial, restored.Business.Expedition!.Spatial);
-        Assert.Equal(outcome, restored.Business.Expedition.Outcome);
+        Assert.Equal(ending, restored.Business.GetCharacter("a").Ending);
         Assert.Equal(actor.Activity?.ToString(), restored.Business.GetCharacter("a").Activity?.ToString());
     }
 }

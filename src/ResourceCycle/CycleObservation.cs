@@ -42,7 +42,12 @@ public sealed class CycleDecisionContext {
     }
 
     /// <summary>Builds the same visible snapshot without retaining decision history or query delegates.</summary>
-    public static CycleObservation Observe(CycleWorld world, string actorId) => Project(world, actorId).Observation;
+    public static CycleObservation Observe(CycleWorld world, string actorId) {
+        // A retired character never acquires a fresh view of the continuing world.
+        if (!world.GetCharacter(actorId).IsActive && world.Business.InteractionStates[actorId].CurrentContext is
+            { Status: CharacterContextStatus.Terminal } terminal) { return terminal.LatestObservation; }
+        return Project(world, actorId).Observation;
+    }
     internal static CycleObservation ObserveOpening(CycleWorld world, string actorId, long contextSequence) => Project(world, actorId, contextSequence).Observation;
 
     private static (CycleObservation Observation, Func<CycleCommand?, string?> Check, Func<CycleCommand, string?> Warning)
@@ -50,7 +55,8 @@ public sealed class CycleDecisionContext {
         ArgumentNullException.ThrowIfNull(world);
         CycleCharacter actor = world.GetCharacter(actorId);
         CycleExpedition? expedition = world.Expedition;
-        string? place = CycleActions.CurrentPlace(world, actorId);
+        SpatialLocation? location = CycleActions.Location(world, actorId);
+        string? place = (location as AtPlaceLocation)?.PlaceId.Value;
         CycleResource[] resources = world.Resources.Where(resource => expedition is null ||
             place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
         CyclePassageDefinition[] passages = expedition is not null && place is not null
@@ -66,7 +72,7 @@ public sealed class CycleDecisionContext {
         }
         string? Warning(CycleCommand command) => Check(command) is null
             ? CycleSurvivalRules.ActionWarning(world, actorId, command) : null;
-        CycleOtherCharacterObservation[] others = world.Characters.Where(other => other.Id != actorId &&
+        CycleOtherCharacterObservation[] others = world.Characters.Where(other => other.IsActive && other.Id != actorId &&
             (expedition is null || place is not null && CycleActions.CurrentPlace(world, other.Id) == place))
             .Select(other => new CycleOtherCharacterObservation(other.Id, other.Name,
                 other.Activity is { Kind: CycleActivityKind.Gather } gathering ? gathering.ResourceId : null,
@@ -98,15 +104,14 @@ public sealed class CycleDecisionContext {
                 .Order(StringComparer.Ordinal).Select(CycleCommand.Use));
         }
         CycleVisit[] visits = expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
-        ModelTime? arrival = expedition?.Spatial.Entities.Single(entity => entity.Id.Value == actorId).Location
-            is TraversingLocation moving ? moving.ArrivalDue : null;
+        ModelTime? arrival = location is TraversingLocation moving ? moving.ArrivalDue : null;
         var itemNames = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(id => id, id => expedition is null
                 ? world.Resources.FirstOrDefault(resource => resource.ItemId == id)?.Name ?? id
                 : id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id }, StringComparer.Ordinal);
         var observation = new CycleObservation {
-            Time = world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
+            Time = actor.Ending?.At ?? world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
             Actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity,
                 Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId),
             Resources = Array.AsReadOnly(resources),
@@ -119,13 +124,13 @@ public sealed class CycleDecisionContext {
             PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,
             ArrivalDue = arrival,
-            Journey = CycleJourneyObservation.Observe(expedition, actorId),
+            Journey = CycleJourneyObservation.Observe(expedition, actorId, location),
             Passages = Array.AsReadOnly(passages.Select(passage => new CyclePassageObservation(passage.Id, passage.Description,
                 passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? CycleExpeditionMap.GetPlace(passage.To).Name : null)).ToArray()),
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>
                 new CyclePlaceMemory(CycleExpeditionMap.GetPlace(visit.PlaceId).Name, visit.At,
                     Array.AsReadOnly(visit.Resources.ToArray()), visit.PlaceId)).ToArray()),
-            Outcome = expedition?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = expedition?.EndingReason,
+            Outcome = actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = actor.Ending?.Reason,
             Survival = CycleSurvivalRules.Observe(world, actorId),
             Weather = CycleEnvironmentRules.Observe(world, actorId)
         };

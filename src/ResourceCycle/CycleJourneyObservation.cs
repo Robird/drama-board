@@ -10,8 +10,9 @@ public sealed partial record CycleJourneyObservation(
     [field: DurableField(2)] string PassageId,
     [field: DurableField(3)] string PassageDescription,
     [field: DurableField(4)] string? KnownDestinationName) : IDurableObject {
-    internal static CycleJourneyObservation? Observe(CycleExpedition? expedition, string actorId) {
-        if (expedition?.Spatial.Entities.Single(e => e.Id.Value == actorId).Location is not TraversingLocation moving) {
+    internal static CycleJourneyObservation? Observe(CycleExpedition? expedition, string actorId, SpatialLocation? location = null) {
+        location ??= expedition?.Spatial.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location;
+        if (expedition is null || location is not TraversingLocation moving) {
             return null;
         }
         var passage = CycleExpeditionMap.Graph.GetPassage(moving.PassageId);

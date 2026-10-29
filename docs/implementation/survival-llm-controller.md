@@ -1,6 +1,6 @@
 # 生存 2A：独立 Context 调用与 LLM 控制器
 
-对应[二期目标 §3.2](../design/survival-demo-milestone.md#32-2a单角色-llm-接线)。本片只接单角色；双角色规则、控制器路由和交流赠与仍属于 2B/2C。
+对应[二期目标 §3.2](../design/survival-demo-milestone.md#32-2a单角色-llm-接线)。2A 接通单角色；[2B 双角色宿主](survival-duo.md)复用本适配器和配置，将 `--survival --llm` 换为 `--duo --llm` 即选择 a=Human、b=LLM。交流赠与仍属于 2C。
 
 ## 运行
 
@@ -15,7 +15,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
 
 自定义连接使用 `--catalog <V3目录文件> --connection <精确ID>`；不根据目录顺序或默认值回退。未提供 `--model` 时沿用所选连接的模型。只有所选连接才解析环境配置；目录中的 Codex 连接使用 Completion 的 `ATELIA_CODEX_SUBSCRIPTION_*` 环境配置，不与内置路径的 `--auth-file` 混用。
 
-同一命令、同一 `--store` 即为续局。省略存档仅内存运行。日志默认保存在存档下的 `llm-runs`；无存档则使用 `artifacts/llm-runs`。`--llm-log <新文件路径>` 可指定本次证据文件，已存在文件不会覆盖。
+同一命令、同一 `--store` 即为续局。省略存档仅内存运行。日志默认保存在存档下的 `llm-runs`，双人用 `duo-llm-runs`；无存档则使用 `artifacts` 下同名目录。`--llm-log <新文件路径>` 可指定本次证据文件，已存在文件不会覆盖。
 
 ## 分层和调用顺序
 
@@ -34,7 +34,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
 
 协议错误可在限额内纠正；网络失败、本地请求拒绝、非 Completed 或流中断立即停止，不透明重试。Ctrl+C 取消当前调用。退出码：正常旅程结束 `0`、宿主/连接失败 `1`、限额或已分类调用失败暂停 `2`、取消 `130`。任何停止都不自动选择 wait 或 continue；角色已接受的活动可在下次请求前正常推进，调用预算约束模型调用而非每个世界事件。
 
-恢复顺序为：加载游戏 → `RecoverPending` → 用已提交游戏事实修复操作收据 → 初始化模型连接 → 服务下一请求。已终局存档直接重绘，无需认证或再次调用模型。
+恢复顺序为：加载游戏 → 校验入口角色身份 → `RecoverPending` → 用已提交游戏事实修复操作收据 → 服务下一请求；模型连接在首次实际 LLM 决策时才初始化。已终局存档直接重绘，无需认证或再次调用模型；双人模式中 LLM 角色已经结束或 Human 提前退出，也不触碰模型认证。
 
 | 中断位置 | 恢复行为 |
 | --- | --- |

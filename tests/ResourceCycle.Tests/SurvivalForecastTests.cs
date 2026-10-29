@@ -18,7 +18,7 @@ public sealed class SurvivalForecastTests {
         var kernel = CycleEngine.CreateKernel(Memory(world),
             characterController: Commands(CycleCommand.Wait(6), CycleCommand.Continue()));
         bool sawSunset = false;
-        for (int steps = 0; steps < 12 && kernel.World.Expedition!.Outcome != CycleExpeditionOutcome.Dead; steps++) {
+        for (int steps = 0; steps < 12 && kernel.World.GetCharacter("a").IsActive; steps++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(24)));
             if (Assert.Single(kernel.LastCompletion!.Event.Facts).Kind == CycleEventKind.LightChanged) {
                 sawSunset = true;
@@ -28,7 +28,7 @@ public sealed class SurvivalForecastTests {
             }
         }
         Assert.True(sawSunset);
-        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(expected, kernel.World.Time);
         Assert.Equal(0, kernel.World.GetCharacter("a").Survival!.WarmthUnits);
     }
@@ -58,12 +58,16 @@ public sealed class SurvivalForecastTests {
     }
 
     [Fact]
-    public void Already_dead_zero_warmth_is_not_revived_by_a_daylight_estimate() {
-        CycleWorld world = World(CycleSurvival.Create(Hour(8), food: 100, water: 100, warmth: 0), dead: true);
+    public async Task Already_dead_zero_warmth_is_not_revived_by_a_daylight_estimate() {
+        CycleWorld initial = World(CycleSurvival.Create(Hour(8), food: 100, water: 100, warmth: 0));
+        var kernel = CycleEngine.CreateKernel(Memory(initial));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(8)));
+        CycleWorld world = kernel.World;
+        Assert.Equal(CharacterContextStatus.Terminal, world.Business.InteractionStates["a"].CurrentContext!.Status);
         CycleSurvivalObservation observation = CycleSurvivalRules.Observe(world, "a")!;
         Assert.Equal(0m, observation.Warmth);
         Assert.Equal(Hour(8), observation.FatalAt);
-        Assert.Equal(CycleExpeditionOutcome.Dead, world.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, world.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(0, world.GetCharacter("a").Survival!.WarmthUnits);
     }
 
@@ -171,13 +175,12 @@ public sealed class SurvivalForecastTests {
         Assert.Throws<InvalidOperationException>(() => new CycleAttributeForecast(Hour(7), Hour(9)).Validate(Hour(8)));
     }
 
-    private static CycleWorld World(CycleSurvival body, string place = "camp", bool dead = false, bool weather = false) {
+    private static CycleWorld World(CycleSurvival body, string place = "camp", bool weather = false) {
         var initial = CycleGameFactory.CreateSurvival(body.BaselineAt, enableWeather: weather);
         var spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new(place))]);
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
             [new("a", place, body.BaselineAt, initial.World.Resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == place))],
-            outcome: dead ? CycleExpeditionOutcome.Dead : CycleExpeditionOutcome.Exploring,
-            endingReason: dead ? "失温耗尽" : null, environment: initial.World.Expedition!.Environment);
+            environment: initial.World.Expedition!.Environment);
         CycleCharacter actor = initial.World.GetCharacter("a").WithSurvival(body);
         return CycleEngine.Rebuild(initial.World.Business.Replace(body.BaselineAt,
             changedCharacters: [actor], expedition: expedition), body.BaselineAt);

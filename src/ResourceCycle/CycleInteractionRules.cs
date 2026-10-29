@@ -53,7 +53,7 @@ internal static class CycleInteractionRules {
                 .Select((entry, index) => new CharacterExperience(nextExperience++, LocalEvent(entry, index))).ToArray();
             // Material contains only this observer's local ordinal, never gaps revealing other recipients.
             if (nextExperience <= 0) { throw new InvalidOperationException("Experience identity exhausted."); }
-            bool terminal = fact.Outcome is CycleExpeditionOutcome.Dead or CycleExpeditionOutcome.Escaped;
+            bool terminal = actor.IsActive && !candidate.GetCharacter(actor.Id).IsActive;
             if (terminal) {
                 CharacterContext context = CreateContext(candidate, state, state.UndeliveredExperiences.Concat(experiences), terminal: true);
                 changes.Add(new(actor.Id, context, nextExperienceSequence: nextExperience));

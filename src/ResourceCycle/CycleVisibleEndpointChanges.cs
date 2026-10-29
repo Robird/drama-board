@@ -12,7 +12,7 @@ internal static class CycleVisibleEndpointChanges {
         if (before.Time != after.Time || before.Light.IsDay != after.Light.IsDay ||
             before.Light.NextChange != after.Light.NextChange) { return true; }
         CycleCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);
-        if (a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
+        if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
             a.NextActivityId != b.NextActivityId || !SameInventory(a.Backpack, b.Backpack) ||
             !SameActivity(a.Activity, b.Activity) || !SameList(a.Notices, b.Notices, SameNotice) ||
             !SameBody(a.Survival, b.Survival, before.Time)) { return true; }
@@ -22,8 +22,7 @@ internal static class CycleVisibleEndpointChanges {
         string? oldPlace = Place(before, actorId), newPlace = Place(after, actorId);
         if (oldPlace != newPlace || Arrival(before, actorId) != Arrival(after, actorId)) { return true; }
         if (oldExpedition is not null && newExpedition is not null &&
-            (oldExpedition.Outcome != newExpedition.Outcome || oldExpedition.EndingReason != newExpedition.EndingReason ||
-            !SameWeather(oldExpedition.Environment, newExpedition.Environment) ||
+            (!SameWeather(oldExpedition.Environment, newExpedition.Environment, actorId) ||
             !SameList(HistoricalVisits(oldExpedition, actorId, oldPlace), HistoricalVisits(newExpedition, actorId, newPlace), SameVisit))) {
             return true;
         }
@@ -32,11 +31,11 @@ internal static class CycleVisibleEndpointChanges {
     }
 
     private static string? Place(CycleBusinessState state, string actorId) =>
-        state.Expedition?.Spatial.Entities.Single(entity => entity.Id.Value == actorId).Location
+        CycleActions.Location(state, actorId)
             is AtPlaceLocation at ? at.PlaceId.Value : null;
 
     private static ModelTime? Arrival(CycleBusinessState state, string actorId) =>
-        state.Expedition?.Spatial.Entities.Single(entity => entity.Id.Value == actorId).Location
+        CycleActions.Location(state, actorId)
             is TraversingLocation moving ? moving.ArrivalDue : null;
 
     private static CycleResource[] VisibleResources(CycleBusinessState state, string? place) =>
@@ -44,7 +43,7 @@ internal static class CycleVisibleEndpointChanges {
             place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
 
     private static CycleCharacter[] VisibleOthers(CycleBusinessState state, string actorId, string? place) =>
-        state.Characters.Where(other => other.Id != actorId && (state.Expedition is null ||
+        state.Characters.Where(other => other.IsActive && other.Id != actorId && (state.Expedition is null ||
             place is not null && Place(state, other.Id) == place)).ToArray();
 
     private static bool SamePublicCharacter(CycleCharacter a, CycleCharacter b) =>
@@ -59,10 +58,10 @@ internal static class CycleVisibleEndpointChanges {
     private static bool SameVisit(CycleVisit a, CycleVisit b) =>
         a.PlaceId == b.PlaceId && a.At == b.At && SameList(a.Resources, b.Resources, SameResource);
 
-    private static bool SameWeather(CycleEnvironment? a, CycleEnvironment? b) =>
+    private static bool SameWeather(CycleEnvironment? a, CycleEnvironment? b, string actorId) =>
         ReferenceEquals(a, b) || a is not null && b is not null &&
         a.NextDue == b.NextDue && a.LastAt == b.LastAt && a.LastCold == b.LastCold &&
-        a.LastWarmthLossUnits == b.LastWarmthLossUnits && a.LastSheltered == b.LastSheltered;
+        a.LastEffects.SingleOrDefault(effect => effect.ActorId == actorId) == b.LastEffects.SingleOrDefault(effect => effect.ActorId == actorId);
 
     private static bool SameBody(CycleSurvival? a, CycleSurvival? b, ModelTime at) {
         if (ReferenceEquals(a, b)) { return true; }

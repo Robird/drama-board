@@ -134,7 +134,7 @@ public sealed class DecisionContinuityPersistenceTests {
                     Assert.Equal(CharacterContextStatus.Terminal, continuity.CurrentContext!.Status);
                     Assert.Contains(continuity.CurrentContext.Opening.Experiences, e => e.Event.Kind == CycleObservedEventKind.SurvivalFailed);
                     Assert.Equal(previousContextSequence + 1, continuity.CurrentContext.ContextSequence);
-                    Assert.Equal(CycleExpeditionOutcome.Dead, recovered.World.Expedition!.Outcome);
+                    Assert.Equal(CycleExpeditionOutcome.Dead, recovered.World.GetCharacter("a").Ending!.Outcome);
                     Assert.Equal(StepStatus.Exhausted, await recovered.StepAsync(Hour(240)));
                     break;
             }

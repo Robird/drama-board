@@ -6,16 +6,17 @@ using DramaBoard.ResourceCycle;
 /// <summary>One asynchronous owner drives the Kernel; input and rendering never mutate the world.</summary>
 internal static class PlayConsole {
     public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken, bool survival = false,
-        Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null) {
+        Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null,
+        bool duo = false) {
         TextWriter output = outputWriter ?? Console.Out;
         bool restoring = store is not null && Directory.Exists(store);
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
-            ? CycleDurableHistory.Open(store) : CreateStore(store, survival);
+            ? CycleDurableHistory.Open(store) : CreateStore(store, survival, duo);
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) {
             history = durable;
         } else {
-            var initial = survival ? CycleGameFactory.CreateSurvival() : CycleGameFactory.CreatePlayable();
+            var initial = survival ? CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1) : CycleGameFactory.CreatePlayable();
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
         if (history.State.Characters.Count == 0) {
@@ -24,6 +25,7 @@ internal static class PlayConsole {
         if ((history.State.Expedition is not null) != survival) {
             throw new ArgumentException(survival ? "这是原采集场景存档，请使用 --play。" : "这是生存场景存档，请使用 --survival。");
         }
+        if (survival) { SurvivalHost.RequireMode(history.State, duo); }
 
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
@@ -32,7 +34,7 @@ internal static class PlayConsole {
             writeBoundary: outputWriter is null ? WriteBoundary : null,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
-        string title = survival ? "山林求生" : "多人采集";
+        string title = survival ? duo ? "双人山林求生" : "山林求生" : "多人采集";
         string startup = (store is null
             ? $"{title} · 本次仅在内存中运行；退出后不保留进度。"
             : $"{title} · 存档：{store} · 每次成功转换自动保存。" +
@@ -53,13 +55,13 @@ internal static class PlayConsole {
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
         controller.StartupText = startup;
+        if (survival) { SurvivalHost.RequireMode(kernel.World, duo); }
 
         try {
             while (true) {
-                if (kernel.World.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) {
-                    if (!controller.TerminalDelivered) {
-                        controller.RenderObservation(CycleDecisionContext.Create(kernel.World, kernel.World.Characters[0].Id));
-                    }
+                controller.RenderCommitted(kernel.World);
+                if (survival && !kernel.World.Characters.Any(character => character.IsActive)) {
+                    controller.HostReply(SurvivalHost.Summary(kernel.World));
                     return 0;
                 }
                 StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
@@ -72,7 +74,7 @@ internal static class PlayConsole {
             }
         } catch (PlayEndedException) {
             controller.HostReply(store is null ? $"已退出。内存中的{(survival ? "生存" : "采集")}进度未保存。" :
-                $"已退出。已完成的行动均已保存，可使用同一 {(survival ? "--survival" : "--play")} --store 路径继续。");
+                $"已退出。已完成的行动均已保存，可使用同一 {(duo ? "--duo" : survival ? "--survival" : "--play")} --store 路径继续。");
             return 0;
         }
     }
@@ -85,8 +87,8 @@ internal static class PlayConsole {
         }
     }
 
-    private static CycleDurableHistory CreateStore(string path, bool survival) {
-        var initial = survival ? CycleGameFactory.CreateSurvival() : CycleGameFactory.CreatePlayable();
+    private static CycleDurableHistory CreateStore(string path, bool survival, bool duo) {
+        var initial = survival ? CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1) : CycleGameFactory.CreatePlayable();
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
@@ -133,9 +135,10 @@ internal static class PlayConsole {
 
         internal void HostReply(string text) => _session.Reply(text);
 
-        internal void RenderCommitted(CycleWorld world) {
+        internal void RenderCommitted(CycleWorld world, string? actorId = null) {
             // Delivery reads committed per-character material only. World facts and diagnostics are not UI inputs.
             foreach (CharacterInteractionState state in world.Business.InteractionStates.Values) {
+                if (actorId is not null && state.ActorId != actorId) { continue; }
                 _session.Commit(state);
             }
         }

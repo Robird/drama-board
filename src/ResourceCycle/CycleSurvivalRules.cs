@@ -65,20 +65,22 @@ public static class CycleSurvivalRules {
         _ => null
     };
     public static CycleSurvivalObservation? Observe(CycleWorld world, string actorId) {
-        CycleSurvival? anchor = world.GetCharacter(actorId).Survival;
+        CycleCharacter actor = world.GetCharacter(actorId);
+        CycleSurvival? anchor = actor.Survival;
         if (anchor is null) { return null; }
-        CycleSurvival body = anchor.Project(world.Time);
+        ModelTime observedAt = actor.Ending?.At ?? world.Time;
+        CycleSurvival body = anchor.Project(observedAt);
         var warnings = new List<string>();
         foreach ((int mask, string name) in new[] { (1, "饱食"), (2, "水分"), (4, "温暖") }) {
             if ((body.PendingMask & mask) != 0) { warnings.Add($"{name}曾降至警戒线（本组最早提醒于 {body.PendingSince}）。"); }
         }
-        bool sheltered = IsSheltered(world.Expedition?.Spatial, actorId);
+        bool sheltered = CycleActions.Location(world, actorId) is AtPlaceLocation atPlace && CycleExpeditionMap.GetPlace(atPlace.PlaceId.Value).Sheltered;
         return new((decimal)body.FoodUnits / CycleSurvival.Scale, (decimal)body.WaterUnits / CycleSurvival.Scale,
             (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodRate, body.WaterRate, body.WarmthRate,
             sheltered, warnings.AsReadOnly(),
-            ForecastConstant(body.FoodUnits, body.FoodPerHour, world.Time),
-            ForecastConstant(body.WaterUnits, body.WaterPerHour, world.Time),
-            ForecastWarmth(body.WarmthUnits, world.Time, sheltered),
+            ForecastConstant(body.FoodUnits, body.FoodPerHour, observedAt),
+            ForecastConstant(body.WaterUnits, body.WaterPerHour, observedAt),
+            actor.IsActive ? ForecastWarmth(body.WarmthUnits, observedAt, sheltered) : ForecastConstant(body.WarmthUnits, 0, observedAt),
             (body.PendingMask & 4) != 0, body.PendingMask, CycleSurvival.MinimumValue, CycleSurvival.MaximumValue);
     }
 
@@ -154,8 +156,9 @@ public static class CycleSurvivalRules {
         CycleSurvival body = fatal ? actor.Survival!.Project(prediction.Due) : actor.Survival!.Warn(prediction.Due);
         string reason = fatal ? body.WaterUnits == 0 ? "脱水耗尽" : body.FoodUnits == 0 ? "饥饿耗尽" : "失温耗尽" : "身体降至警戒线，请检查补给与环境。";
         return new(fatal ? CycleEventKind.SurvivalFailed : CycleEventKind.SurvivalWarning, prediction.Due, actor.Id,
-            changedCharacters: [actor.Change(actor.Activity, result: reason, survival: body)], result: reason,
-            outcome: fatal ? CycleExpeditionOutcome.Dead : null, endingReason: fatal ? $"{actor.Name}因{reason}而未能走出山林。" : null);
+            changedCharacters: [fatal ? actor.WithSurvival(body).End(CycleExpeditionOutcome.Dead, prediction.Due,
+                $"{actor.Name}因{reason}而未能走出山林。", CycleActions.Location(world, actor.Id)!) : actor.Change(actor.Activity, result: reason, survival: body)],
+            result: reason, spatialFacts: fatal ? [new EntityRemovedFact(new(actor.Id))] : []);
     }
 
     /// <summary>Changes anchors only while planning; recorded facts contain all effects needed for recovery.</summary>
@@ -167,8 +170,9 @@ public static class CycleSurvivalRules {
         }
         bool light = fact.Light?.IsDay ?? world.Light.IsDay;
         foreach (CycleCharacter previous in world.Characters) {
-            if (previous.Survival is null || !changes.ContainsKey(previous.Id) && fact.Kind != CycleEventKind.LightChanged) { continue; }
+            if (!previous.IsActive || previous.Survival is null || !changes.ContainsKey(previous.Id) && fact.Kind != CycleEventKind.LightChanged) { continue; }
             CycleCharacter actor = changes.GetValueOrDefault(previous.Id, previous);
+            if (!actor.IsActive) { continue; }
             CycleSurvival body = actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
                 WarmthRate(IsSheltered(spatial, actor.Id), light));
             if (fact.LastServedActorId == actor.Id && fact.Kind != CycleEventKind.ItemUsed) { body = body.Acknowledge(fact.At); }
@@ -180,18 +184,21 @@ public static class CycleSurvivalRules {
         foreach (CycleCharacter actor in business.Characters) {
             if (actor.Survival is not { } body) { continue; }
             if (business.Expedition is null) { throw new InvalidOperationException("Survival needs require an expedition."); }
-            if (business.Expedition.Outcome == CycleExpeditionOutcome.Exploring &&
+            if (actor.IsActive &&
                 NextThreshold(body, body.BaselineAt) is { } threshold && threshold.Due < business.Time) {
                 throw new InvalidOperationException("An unprocessed survival threshold precedes the completed boundary.");
             }
-            if (business.Expedition.Outcome == CycleExpeditionOutcome.Dead && (!body.Project(business.Time).IsFatal ||
-                string.IsNullOrWhiteSpace(business.Expedition.EndingReason))) {
+            if (actor.Ending?.Outcome == CycleExpeditionOutcome.Dead && (!body.Project(business.Time).IsFatal ||
+                string.IsNullOrWhiteSpace(actor.Ending.Reason))) {
                 throw new InvalidOperationException("Death requires recorded depletion and a reason.");
+            }
+            if (actor.Ending?.Outcome == CycleExpeditionOutcome.Escaped && body.IsFatal) {
+                throw new InvalidOperationException("A depleted character cannot escape at the same boundary.");
             }
         }
     }
     internal static bool IsSheltered(GraphSpatialState? spatial, string actorId) =>
-        spatial?.Entities.Single(e => e.Id.Value == actorId).Location is AtPlaceLocation place && CycleExpeditionMap.GetPlace(place.PlaceId.Value).Sheltered;
+        spatial?.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location is AtPlaceLocation place && CycleExpeditionMap.GetPlace(place.PlaceId.Value).Sheltered;
     public static RateBreakdown FoodRate { get; } = new([new("metabolism", "基础代谢", -5)]);
     public static RateBreakdown WaterRate { get; } = new([new("metabolism", "基础代谢", -8)]);
     public static RateBreakdown WarmthRate(bool sheltered, bool day) => sheltered ? ShelteredWarmth : day ? DayWarmth : NightWarmth;

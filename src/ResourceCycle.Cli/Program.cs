@@ -20,7 +20,8 @@ try {
               --store PATH          创建或恢复单根存档；省略则仅内存运行
               --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
               --survival            单角色山林探索；可配合 --store 续玩，不接受批处理选项
-              --llm                 用 LLM 控制 --survival；默认 Codex Responses / gpt-6.1-sol
+              --duo                 双角色山林探索；共用 Console，配合 --llm 时 a 由人类、b 由模型控制
+              --llm                 --survival 控制 a；--duo 控制 b；默认 Codex Responses / gpt-6.1-sol
               --model ID            模型 ID；自定义目录默认沿用所选连接的模型
               --auth-file PATH      内置 Codex 连接的认证文件；默认使用 Codex 的标准路径
               --catalog PATH        Completion V3 连接目录；必须配合 --connection ID 精确选择
@@ -50,9 +51,9 @@ try {
     };
     Console.CancelKeyPress += cancelHandler;
     try {
-        if (options.Play || options.Survival) {
-            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token); }
-            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival);
+        if (options.Play || options.Survival || options.Duo) {
+            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, duo: options.Duo); }
+            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival || options.Duo, duo: options.Duo);
         }
         using CycleDurableHistory? durable = options.Store is { } store
             ? Directory.Exists(store)
@@ -123,14 +124,14 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null) {
+    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, bool Duo = false) {
     public static Options Parse(string[] args) {
         string? store = null;
         string? snapshot = null;
         long hour = 88;
         int steps = 10_000;
         bool full = false, trace = false, help = false, play = false, survival = false;
-        bool llm = false;
+        bool llm = false, duo = false;
         string? model = null, authFile = null, catalog = null, connection = null, llmLog = null;
         int maxCalls = 128, maxFailures = 3, maxContextCharacters = 200_000;
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -157,6 +158,7 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--help": help = true; break;
                 case "--play": play = true; break;
                 case "--survival": survival = true; break;
+                case "--duo": duo = true; break;
                 case "--llm": llm = true; break;
                 case "--model": model = Value(); break;
                 case "--auth-file": authFile = Path.GetFullPath(Value()); break;
@@ -169,20 +171,20 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 default: throw new ArgumentException($"未知参数：{option}；使用 --help 查看用法。");
             }
         }
-        if (!help && play && survival) { throw new ArgumentException("--play 与 --survival 不能同时使用。"); }
-        if (!help && llm && !survival) { throw new ArgumentException("--llm 必须配合 --survival。"); }
+        if (!help && (play && (survival || duo) || survival && duo)) { throw new ArgumentException("--play、--survival、--duo 请选择一种。"); }
+        if (!help && llm && !survival && !duo) { throw new ArgumentException("--llm 必须配合 --survival 或 --duo。"); }
         if (!help && !llm && seen.Any(option => option is "--model" or "--auth-file" or "--catalog" or "--connection" or
             "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log")) {
             throw new ArgumentException("模型配置和预算参数必须配合 --llm。");
         }
         if (!help && ((catalog is null) != (connection is null))) { throw new ArgumentException("--catalog 与 --connection 必须一起指定。"); }
         if (!help && catalog is not null && authFile is not null) { throw new ArgumentException("--auth-file 仅用于内置 Codex 连接；目录连接使用 Completion 的认证配置。"); }
-        if (!help && (play || survival) && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
-            throw new ArgumentException("--play / --survival 仅能配合 --store；批处理参数不适用于交互游戏。");
+        if (!help && (play || survival || duo) && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
+            throw new ArgumentException("批处理参数不适用于 --play / --survival / --duo 交互游戏。");
         }
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
         return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival,
-            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog) : null);
+            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog) : null, duo);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

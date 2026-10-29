@@ -118,6 +118,10 @@ public sealed partial class CycleBusinessState : IDurableObject {
         foreach (CycleResource resource in _resources) { resource.Validate(Time, Light.IsDay); }
         foreach (CycleCharacter actor in _characters) {
             actor.Validate(Time);
+            if ((!actor.IsActive) != (_interactionStates[actor.Id].CurrentContext?.Status == CharacterContextStatus.Terminal) ||
+                !actor.IsActive && Expedition is null) {
+                throw new InvalidOperationException("Personal ending and terminal context must be published together in an expedition.");
+            }
             if ((actor.Activity?.ResourceId is { } target && !_resources.Any(r => r.Id == target)) ||
                 actor.Notices.Any(n => !_resources.Any(r => r.Id == n.ResourceId) ||
                     (n.ActorId is not null && !_characters.Any(c => c.Id == n.ActorId)))) {
@@ -140,6 +144,10 @@ public sealed class CycleWorld {
     public CycleForecasts Forecasts { get; }
     public SpatialSimulationState? Spatial { get; }
     public CycleExpedition? Expedition => Business.Expedition;
+    public CycleExpeditionSummary ExpeditionSummary => Expedition is null || Characters.Any(c => c.IsActive)
+        ? CycleExpeditionSummary.Exploring : Characters.All(c => c.Ending?.Outcome == CycleExpeditionOutcome.Escaped)
+        ? CycleExpeditionSummary.AllEscaped : Characters.Any(c => c.Ending?.Outcome == CycleExpeditionOutcome.Escaped)
+        ? CycleExpeditionSummary.PartiallyEscaped : CycleExpeditionSummary.NoneEscaped;
     public ModelTime Time => Business.Time;
     public CycleLight Light => Business.Light;
     public IReadOnlyList<CycleResource> Resources => Business.Resources;

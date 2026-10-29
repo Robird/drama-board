@@ -69,9 +69,11 @@ internal static class CyclePlanning {
         var traversal = (TraversingLocation)world.Expedition!.Spatial.Entities.Single(e => e.Id == arrived.EntityId).Location;
         CyclePlaceDefinition place = CycleExpeditionMap.GetPlace(traversal.TargetPlaceId.Value);
         string result = $"抵达{place.Name}。{place.Description}";
-        return new(CycleEventKind.MoveArrived, at, actor.Id, changedCharacters: [actor.Change(null, result: result)],
-            result: result, spatialFacts: facts, outcome: place.IsExit ? CycleExpeditionOutcome.Escaped : null,
-            endingReason: place.IsExit ? $"你抵达{place.Name}，安全回到了人类社会。" : null);
+        CycleCharacter changed = place.IsExit
+            ? actor.End(CycleExpeditionOutcome.Escaped, at, $"你抵达{place.Name}，安全回到了人类社会。", new AtPlaceLocation(new(place.Id)))
+            : actor.Change(null, result: result);
+        return new(CycleEventKind.MoveArrived, at, actor.Id, changedCharacters: [changed],
+            result: result, spatialFacts: place.IsExit ? facts.Append(new EntityRemovedFact(new(actor.Id))) : facts);
     }
 
     /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>
@@ -84,7 +86,9 @@ internal static class CyclePlanning {
         var resources = world.Resources.Select(r => fact.ChangedResources.SingleOrDefault(c => c.Id == r.Id) ?? r).ToArray();
         var visits = new List<CycleVisit>();
         foreach (CycleCharacter actor in world.Characters) {
-            SpatialLocation location = spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;
+            if (!actor.IsActive) { continue; }
+            CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == actor.Id) ?? actor;
+            SpatialLocation location = spatial.Entities.SingleOrDefault(e => e.Id.Value == actor.Id)?.Location ?? after.Ending!.Location;
             // Keep the departure snapshot too; moving does not reveal the destination.
             if (fact.Kind == CycleEventKind.MoveStarted && actor.Id == fact.ActorId) {
                 location = world.Expedition.Spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;

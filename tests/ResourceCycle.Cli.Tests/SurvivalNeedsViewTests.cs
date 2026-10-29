@@ -212,17 +212,19 @@ public sealed class SurvivalNeedsViewTests {
         var initial = CycleGameFactory.CreateSurvival();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new IgnoreWarnings());
-        await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Dead);
-        CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
-        string text = PlayView.Render(observation);
+        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Dead);
+        CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
+        CycleObservation observation = context.Observation;
+        string text = PlayView.Render(observation, context.InteractionState);
         Assert.Contains("## 结局", text);
         Assert.False(string.IsNullOrWhiteSpace(observation.EndingReason));
         Assert.Contains(observation.EndingReason!, text);
         Assert.DoesNotContain("## 可用命令", text);
         Assert.DoesNotContain("可以先 use", text);
-        Assert.NotNull(observation.Actor.Activity);
-        Assert.Contains("等待未完成", text);
-        Assert.Contains("此记录已冻结，不再结算", text);
+        Assert.Null(observation.Actor.Activity);
+        Assert.Equal(CharacterContextStatus.Terminal, context.Context.Status);
+        Assert.NotNull(context.Context.Opening.PreviousAdvance?.ActivityId);
+        Assert.Contains("未完成的活动不再推进", text);
         Assert.DoesNotContain("正在等待", text);
         Assert.DoesNotContain("预计最早致命时刻", text);
         Assert.DoesNotContain("当前趋势", text);
@@ -238,7 +240,7 @@ public sealed class SurvivalNeedsViewTests {
             CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2")));
-        await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Dead);
+        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Dead);
         CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.ArrivalDue);
         Assert.True(observation.ArrivalDue > observation.Time);

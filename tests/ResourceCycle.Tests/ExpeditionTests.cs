@@ -107,10 +107,12 @@ public sealed class ExpeditionTests {
         var source = Commands(places.Zip(places.Skip(1), (from, to) => CycleCommand.Go(Passage(from, to))).ToArray());
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: source);
-        await AdvanceUntil(kernel, world => world.Expedition!.Outcome != CycleExpeditionOutcome.Exploring);
-        Assert.Equal(CycleExpeditionOutcome.Escaped, kernel.World.Expedition!.Outcome);
-        Assert.Equal(destination, Assert.IsType<AtPlaceLocation>(Location(kernel.World)).PlaceId.Value);
-        Assert.False(string.IsNullOrWhiteSpace(kernel.World.Expedition.EndingReason));
+        await AdvanceUntil(kernel, world => !world.GetCharacter("a").IsActive);
+        Assert.Equal(CycleExpeditionOutcome.Escaped, kernel.World.GetCharacter("a").Ending!.Outcome);
+        Assert.Equal(destination, Assert.IsType<AtPlaceLocation>(kernel.World.GetCharacter("a").Ending!.Location).PlaceId.Value);
+        Assert.Empty(kernel.World.Expedition!.Spatial.Entities);
+        Assert.Equal(CycleExpeditionSummary.AllEscaped, kernel.World.ExpeditionSummary);
+        Assert.False(string.IsNullOrWhiteSpace(kernel.World.GetCharacter("a").Ending!.Reason));
         Assert.Equal(3, source.Calls);
         string terminal = kernel.World.DescribeState();
         KernelCursor cursor = kernel.Cursor;
@@ -195,7 +197,7 @@ public sealed class ExpeditionTests {
             PredictionMode.Incremental, characterController: Driver());
         var full = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(second.World, second.Cursor),
             PredictionMode.Full, characterController: Driver());
-        for (int steps = 0; incremental.World.Expedition!.Outcome == CycleExpeditionOutcome.Exploring; steps++) {
+        for (int steps = 0; incremental.World.GetCharacter("a").IsActive; steps++) {
             Assert.True(steps < 100);
             await Advance(incremental);
             await Advance(full);
@@ -206,7 +208,7 @@ public sealed class ExpeditionTests {
             Assert.Equal(Describe(full.LastCompletion!.Event), Describe(incremental.LastCompletion!.Event));
             AssertSpatialFacts(full.LastCompletion.Event, incremental.LastCompletion.Event);
         }
-        Assert.Equal(CycleExpeditionOutcome.Escaped, full.World.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Escaped, full.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(2, full.World.GetCharacter("a").Backpack.Count("item.food"));
     }
 
@@ -223,7 +225,7 @@ public sealed class ExpeditionTests {
             characterController: Driver());
         do { await Advance(baseline); }
         while (Assert.Single(baseline.LastCompletion!.Event.Facts).Kind != stopAt ||
-            exitArrival && baseline.World.Expedition!.Outcome != CycleExpeditionOutcome.Escaped);
+            exitArrival && baseline.World.GetCharacter("a").Ending?.Outcome != CycleExpeditionOutcome.Escaped);
         string beforeCrash;
         KernelCursor cursorBeforeCrash;
         int callsBeforeCrash;
@@ -265,7 +267,7 @@ public sealed class ExpeditionTests {
             Assert.Same(reopened.State, recovered.World);
             Assert.Same(recovered.World.Expedition!.Spatial, recovered.World.Spatial!.Business);
             Assert.Equal(exitArrival ? 4 : stopAt == CycleEventKind.MoveStarted ? 1 : 2, recovered.World.Expedition.Visits.Count);
-            Assert.Equal(exitArrival ? CycleExpeditionOutcome.Escaped : CycleExpeditionOutcome.Exploring, recovered.World.Expedition.Outcome);
+            Assert.Equal(exitArrival ? CycleExpeditionOutcome.Escaped : (CycleExpeditionOutcome?)null, recovered.World.GetCharacter("a").Ending?.Outcome);
             finalText = recovered.World.DescribeState();
             finalCursor = recovered.Cursor;
         }
@@ -323,7 +325,7 @@ public sealed class ExpeditionTests {
         public void CommitEvent(OccurrenceEvent<CycleFact> occurrence) {
             inner.CommitEvent(occurrence);
             if (occurrence.Facts.Any(fact => fact.Kind == stopAt &&
-                (!exitArrival || fact.Outcome == CycleExpeditionOutcome.Escaped))) { throw new InjectedCrash(); }
+                (!exitArrival || fact.ChangedCharacters.Any(actor => actor.Ending?.Outcome == CycleExpeditionOutcome.Escaped)))) { throw new InjectedCrash(); }
         }
         public void CommitState(CycleWorld state, KernelCursor cursor) => inner.CommitState(state, cursor);
     }

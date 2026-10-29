@@ -85,7 +85,7 @@ public sealed class ObservedEventTests {
         AssertNumeric(elapsed, 60, 72);
         AssertNumeric(exposure, 72, 62);
         Assert.Equal(elapsed.After, exposure.Before);
-        Assert.Equal(10 * CycleSurvival.Scale, fact.Environment!.LastWarmthLossUnits);
+        Assert.Equal(10 * CycleSurvival.Scale, Assert.Single(fact.Environment!.LastEffects, effect => effect.ActorId == "a").WarmthLossUnits);
         Assert.Null(fact.ToolCallId);
         Assert.Null(fact.OperationRecordId);
     }

@@ -1,0 +1,13 @@
+// durable-graph-schema-history:9
+// schema-begin
+// schema-id-base64:RHJhbWFCb2FyZC5SZXNvdXJjZUN5Y2xlLkVudmlyb25tZW50
+// version:2
+// kind:1
+// arity:0
+// field:1|10
+// field:2|3
+// field:3|18|q(nRHJhbWFCb2FyZC5LZXJuZWwuTW9kZWxUaW1l())|1
+// field:4|18|q(nRHJhbWFCb2FyZC5LZXJuZWwuTW9kZWxUaW1l())|1
+// field:5|1
+// field:8|15|l(nRHJhbWFCb2FyZC5SZXNvdXJjZUN5Y2xlLldlYXRoZXJFZmZlY3Q=())
+// schema-end

@@ -1,6 +1,6 @@
 # 生存逃离 Demo 里程碑
 
-状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订；2A 已接入并完成真实模型通关与恢复验收（见[证据](../experiments/survival-llm-acceptance.md)），下一片为 §3.3 的 2B。
+状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订；2A 已完成真实模型通关与恢复[验收](../experiments/survival-llm-acceptance.md)，2B 双角色生存与混合路由也已[验收](../experiments/survival-duo-acceptance.md)。下一片为 §3.4 的 2C；交流赠与与真实人类合作尚未完成。
 
 ## 1. 目标与设计空间
 
@@ -131,6 +131,8 @@
 
 ### 3.3 2B：双角色生存与控制器路由
 
+当前已实现，入口为 `--duo` 与 `--duo --llm`，见[合同](../implementation/survival-duo.md)与[证据](../experiments/survival-duo-acceptance.md)。真实模型混合入口由 coding agent 操作 Human 端验证，不作为 2C 的实际人类合作证据。
+
 **目标：** 在一个 Kernel、模型时间和发布根中容纳两名生存角色，先用同一 Human Console 或脚本验证规则，再接 Human/LLM 混合控制。角色各自拥有位置、背包、需求、活动、Context 与已知地图；共享一个控制器实例也不能串记忆。
 
 采用最小个人终局政策：个人获救或死亡后停止该角色的普通活动、需求消耗和决策，其他未结束角色继续；全部角色结束后汇总结局。两人均获救为共同成功，否则区分部分获救与无人获救。允许从不同出口获救；已获救角色本期不返场，死亡不复活，不引入拖拽伤员或救援系统。对幸存角色的观察不能无条件泄漏远处同伴位置或个人终局，整局结束后的总结与角色在局内知道什么分开。
@@ -140,6 +142,8 @@
 **本片验收：** 两人独立移动与采集、相同天气下不同庇护效果、同刻请求稳定服务；一人先获救/死亡后另一人继续并最终汇总。覆盖共享控制器交替服务、Human/LLM 绑定、角色可见性、双角色 S 冷开与关键 E-only 恢复。原多人采集和单人生存入口保持可运行。
 
 ### 3.4 2C：交流、赠与与合作试玩
+
+下一片从[交流实施方案](../implementation/survival-communication-plan.md)开始：以每角色每模型时刻的有限发送额度约束通信，不吞掉接收方第一次交互机会；复用 Context 和正常唤醒。该方案尚未施工。
 
 **目标：** 提供同地点、不耗模型时间的说话和物品赠与，形成真实 Human＋LLM 合作。
 

@@ -32,10 +32,11 @@ public sealed class WeatherTests {
         Assert.Throws<InvalidOperationException>(() => CycleDurableHistory.Open(store.StorePath));
 
         // Null is reserved for limits of the address/time representation, not a gameplay off-switch.
-        new CycleEnvironment(ColdSeed, long.MaxValue, null, lastAt: Hour(8)).Validate(Hour(8));
+        CycleWeatherEffect[] previousEffects = [new("a", 0, false)];
+        new CycleEnvironment(ColdSeed, long.MaxValue, null, lastAt: Hour(8), lastEffects: previousEffects).Validate(Hour(8), initial.Characters);
         var lastRepresentableWindow = new ModelTime(long.MaxValue - CycleEnvironmentRules.IntervalTicks + 1);
-        new CycleEnvironment(ColdSeed, 1, null, lastAt: lastRepresentableWindow).Validate(lastRepresentableWindow);
-        Assert.Throws<InvalidOperationException>(() => new CycleEnvironment(ColdSeed, 1, null, lastAt: Hour(8)).Validate(Hour(8)));
+        new CycleEnvironment(ColdSeed, 1, null, lastAt: lastRepresentableWindow, lastEffects: previousEffects).Validate(lastRepresentableWindow, initial.Characters);
+        Assert.Throws<InvalidOperationException>(() => new CycleEnvironment(ColdSeed, 1, null, lastAt: Hour(8), lastEffects: previousEffects).Validate(Hour(8), initial.Characters));
     }
 
     [Theory]
@@ -51,10 +52,10 @@ public sealed class WeatherTests {
         Assert.Equal(CycleEventKind.WeatherResolved, LastKind(exposed));
         Assert.Equal(cold, Environment(exposed.World).LastCold);
         Assert.Equal(cold, Environment(protectedKernel.World).LastCold);
-        Assert.False(Environment(exposed.World).LastSheltered);
-        Assert.True(Environment(protectedKernel.World).LastSheltered);
-        Assert.Equal((cold ? 10 : 0) * CycleSurvival.Scale, Environment(exposed.World).LastWarmthLossUnits);
-        Assert.Equal(0, Environment(protectedKernel.World).LastWarmthLossUnits);
+        Assert.False(Environment(exposed.World).LastEffects.Single().Sheltered);
+        Assert.True(Environment(protectedKernel.World).LastEffects.Single().Sheltered);
+        Assert.Equal((cold ? 10 : 0) * CycleSurvival.Scale, Environment(exposed.World).LastEffects.Single().WarmthLossUnits);
+        Assert.Equal(0, Environment(protectedKernel.World).LastEffects.Single().WarmthLossUnits);
         Assert.Equal((cold ? 62 : 72) * CycleSurvival.Scale, Body(exposed.World).WarmthUnits);
         Assert.Equal(84 * CycleSurvival.Scale, Body(protectedKernel.World).WarmthUnits);
         Assert.Equal(1, Environment(exposed.World).Sequence);
@@ -108,9 +109,9 @@ public sealed class WeatherTests {
         var kernel = CycleEngine.CreateKernel(history, characterController:
             Commands(CycleCommand.Go(Passage("ridge", "cabin")), CycleCommand.Wait(1)));
         await Until(kernel, world => Environment(world).Sequence == 1 && CycleActions.CurrentPlace(world, "a") == "cabin");
-        Assert.Equal(sheltered, Environment(kernel.World).LastSheltered);
+        Assert.Equal(sheltered, Environment(kernel.World).LastEffects.Single().Sheltered);
         Assert.True(Environment(kernel.World).LastCold);
-        Assert.Equal((sheltered ? 0 : 10) * CycleSurvival.Scale, Environment(kernel.World).LastWarmthLossUnits);
+        Assert.Equal((sheltered ? 0 : 10) * CycleSurvival.Scale, Environment(kernel.World).LastEffects.Single().WarmthLossUnits);
         if (weatherOffset == 0) {
             Assert.Equal(new[] { CycleEventKind.MoveArrived, CycleEventKind.WeatherResolved }, history.CompletedEvents
                 .Where(e => e.TargetInstant.ModelTime == Hour(10)).SelectMany(e => e.Facts).Select(f => f.Kind));
@@ -125,7 +126,7 @@ public sealed class WeatherTests {
         CycleWorld initial = World(Hour(8), new(Hour(11).Ticks + weatherOffset), place: "ravine", idle: true);
         var source = Commands(CycleCommand.Go(Passage("ravine", "road")));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
-        await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Escaped);
+        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Escaped);
         Assert.Equal(Hour(11), kernel.World.Time);
         Assert.Equal(expectedSequence, Environment(kernel.World).Sequence);
         Assert.Equal(1, source.Calls);
@@ -145,10 +146,12 @@ public sealed class WeatherTests {
         GraphSpatialState travelling = kernel.World.Expedition!.Spatial;
         await Advance(kernel);
         Assert.Equal(CycleEventKind.SurvivalFailed, LastKind(kernel));
-        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(Hour(10), kernel.World.Time);
         Assert.Equal(0, Environment(kernel.World).Sequence);
-        Assert.Equal(travelling, kernel.World.Expedition.Spatial);
+        Assert.Empty(kernel.World.Expedition!.Spatial.Entities);
+        Assert.Equal(Assert.Single(travelling.Entities).Location, kernel.World.GetCharacter("a").Ending!.Location);
+        Assert.Single(kernel.World.Expedition.Visits); // Death did not produce the coincident arrival.
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Hour(12)));
     }
 
@@ -255,9 +258,9 @@ public sealed class WeatherTests {
             Assert.Equal(baseline.World.Expedition!.Spatial, recovery.World.Expedition!.Spatial);
             Assert.Equal(baseline.Cursor, recovery.Cursor);
             Assert.Equal(1, Environment(recovery.World).Sequence);
-            Assert.Equal((fatal ? 9 : 10) * CycleSurvival.Scale, Environment(recovery.World).LastWarmthLossUnits);
+            Assert.Equal((fatal ? 9 : 10) * CycleSurvival.Scale, Environment(recovery.World).LastEffects.Single().WarmthLossUnits);
             Assert.Equal((fatal ? 0 : 19) * CycleSurvival.Scale, Body(recovery.World).WarmthUnits);
-            Assert.Equal(fatal ? CycleExpeditionOutcome.Dead : CycleExpeditionOutcome.Exploring, recovery.World.Expedition.Outcome);
+            Assert.Equal(fatal ? CycleExpeditionOutcome.Dead : (CycleExpeditionOutcome?)null, recovery.World.GetCharacter("a").Ending?.Outcome);
         }
         using var final = CycleDurableHistory.Open(store.StorePath);
         Assert.Null(final.PendingEvent);

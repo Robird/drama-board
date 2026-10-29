@@ -86,6 +86,12 @@ public sealed partial class CycleSurvival : IDurableObject {
         return new(at, value.FoodUnits, value.WaterUnits, Math.Max(0, value.WarmthUnits - units),
             value.FoodRate, value.WaterRate, value.WarmthRate, value.WarnedMask, value.PendingMask, value.PendingSince);
     }
+    /// <summary>Ends all continuous needs at a recorded personal endpoint.</summary>
+    internal CycleSurvival Freeze(ModelTime at) {
+        CycleSurvival value = Project(at);
+        var stopped = new RateBreakdown([new("journey-ended", "个人旅程已结束", 0)]);
+        return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, stopped, stopped, stopped, value.WarnedMask);
+    }
     public CycleSurvival Warn(ModelTime at) {
         CycleSurvival value = Project(at);
         int low = (value.FoodUnits <= WarningUnits ? 1 : 0) | (value.WaterUnits <= WarningUnits ? 2 : 0) | (value.WarmthUnits <= WarningUnits ? 4 : 0);

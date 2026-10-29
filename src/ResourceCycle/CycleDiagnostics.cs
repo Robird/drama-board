@@ -18,10 +18,14 @@ public static class CycleDiagnostics {
         text.AppendLine("## Characters");
         foreach (CycleCharacter actor in world.Characters) {
             text.AppendLine($"- {actor.Id}: {actor.Activity?.ToString() ?? "idle"}; request generation {actor.DecisionGeneration}; needs decision={actor.NeedsDecision}");
+            if (actor.Ending is { } ending) {
+                text.AppendLine($"  - ended: {ending.Outcome} at {ending.At}; {ending.Reason}; historical location: {ending.Location}");
+            }
             text.AppendLine($"  - backpack: {actor.Backpack}; notices: [{string.Join(';', actor.Notices)}]");
             text.AppendLine($"  - last result: {actor.LastResult}");
         }
         text.AppendLine($"Last served: {world.Business.LastServedActorId ?? "none"}");
+        if (world.Expedition is not null) { text.AppendLine($"Expedition summary: {world.ExpeditionSummary}"); }
         text.AppendLine();
         text.AppendLine("## Predictors and dependencies");
         text.AppendLine("Fixed coarse subscriptions are filtered by affected child identity; absent outputs remain subscribed.");

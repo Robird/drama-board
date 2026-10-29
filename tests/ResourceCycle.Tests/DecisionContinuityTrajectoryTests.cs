@@ -68,7 +68,7 @@ public sealed class DecisionContinuityTrajectoryTests {
         var incremental = CycleEngine.CreateKernel(incrementalHistory, PredictionMode.Incremental, characterController: incrementalSource);
         var full = CycleEngine.CreateKernel(fullHistory, PredictionMode.Full, characterController: fullSource);
 
-        for (int step = 0; incremental.World.Expedition!.Outcome == CycleExpeditionOutcome.Exploring; step++) {
+        for (int step = 0; incremental.World.GetCharacter("a").IsActive; step++) {
             Assert.True(step < 100);
             int previousCalls = incrementalSource.Calls;
             Assert.Equal(StepStatus.Committed, await incremental.StepAsync(Hour(240)));
@@ -92,7 +92,7 @@ public sealed class DecisionContinuityTrajectoryTests {
         Assert.Contains(facts, f => f.Kind == CycleEventKind.SurvivalWarning);
         Assert.Contains(facts, f => f.Kind == CycleEventKind.LightChanged);
         Assert.Equal(CycleEventKind.SurvivalFailed, facts[^1].Kind);
-        Assert.Equal(CycleExpeditionOutcome.Dead, full.World.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, full.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(4, incrementalSource.Calls);
         Assert.Equal(3, facts.Count(f => f.Kind == CycleEventKind.DecisionContextOpened));
         CharacterInteractionState final = incremental.World.Business.InteractionStates["a"];

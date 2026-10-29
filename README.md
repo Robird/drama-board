@@ -89,7 +89,22 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
 
 This uses Completion's Codex Responses client and standard Codex auth-file discovery; `--auth-file PATH` selects an explicit file. The same command resumes the store. Each model call receives the character's full retained Context and submits one `act` tool call; the game validates and commits it. Spectator output separates generated operations from committed results, and each host run saves a separate JSONL audit. Credentials never enter the game graph or audit.
 
-Call limits, cancellation and failed responses stop without choosing a substitute action. Custom V3 connection catalogs require both `--catalog PATH` and `--connection ID`. See [configuration and recovery](docs/implementation/survival-llm-controller.md) and [two real model journeys](docs/experiments/survival-llm-acceptance.md). This is phase 2A: a single model-controlled character. Mixed Human/LLM survival, dialogue and gifts remain in phases 2B/2C.
+Call limits, cancellation and failed responses stop without choosing a substitute action. Custom V3 connection catalogs require both `--catalog PATH` and `--connection ID`. See [configuration and recovery](docs/implementation/survival-llm-controller.md) and [two real model journeys](docs/experiments/survival-llm-acceptance.md).
+
+## Two explorers in one survival world
+
+```powershell
+# One Human Console takes turns controlling a and b:
+dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --store artifacts/my-duo
+
+# Human controls a; the model controls b:
+dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm `
+  --model gpt-6.1-sol --store artifacts/my-mixed-duo --max-calls 128
+```
+
+Both characters share time, resources and weather, with separate positions, needs, inventories, contexts and map knowledge. Escape or death freezes only that character; the other continues. When both finish, the host reports all escaped, partial escape or no escape. Different exits are allowed. Global results stay outside character knowledge; distant endings are not broadcast to the other explorer.
+
+Use the same mode and store to resume. Single-character and duo stores require their matching entry point. Mixed mode uses the same model configuration as the single-character mode; `--max-calls` limits model calls, and Human `:exit`/EOF pauses the world. See [the dual-character contract](docs/implementation/survival-duo.md). Dialogue, gifts and cooperation playtesting remain the next 2C slice.
 
 ## Small world scenario
 

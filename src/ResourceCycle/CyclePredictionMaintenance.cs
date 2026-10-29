@@ -19,6 +19,14 @@ internal static class CyclePredictionMaintenance {
             }
         }
         dirty.Add(ConsumedOwner(fact));
+        // Ending changes remove every forecast owned by that actor, regardless of the source event.
+        foreach (CycleCharacter actor in after.Characters) {
+            if (before.GetCharacter(actor.Id).IsActive != actor.IsActive) {
+                dirty.Add($"actor:{actor.Id}:activity");
+                dirty.Add($"actor:{actor.Id}:attention");
+                if (actor.Survival is not null) { dirty.Add($"actor:{actor.Id}:survival"); }
+            }
+        }
     }
 
     /// <summary>Recomputes each selected owner against the final business state, preserving unchanged prediction instances.</summary>
@@ -150,8 +158,8 @@ internal static class CyclePredictionMaintenance {
             return environment.NextDue is { } due ? new(owner, CyclePredictionKind.Weather, "world", due, environment.Sequence) : null;
         }
         if (owner.EndsWith(":survival", StringComparison.Ordinal)) {
-            if (business.Expedition?.Outcome != CycleExpeditionOutcome.Exploring) { return null; }
             CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":survival".Length]);
+            if (!actor.IsActive) { return null; }
             return CycleSurvivalRules.NextThreshold(actor.Survival!, business.Time) is { } threshold
                 ? new(owner, threshold.Fatal ? CyclePredictionKind.SurvivalFatal : CyclePredictionKind.SurvivalWarning,
                     actor.Id, threshold.Due, actor.DecisionGeneration) : null;
@@ -171,7 +179,7 @@ internal static class CyclePredictionMaintenance {
         }
         if (owner.StartsWith("actor:", StringComparison.Ordinal) && owner.EndsWith(":activity", StringComparison.Ordinal)) {
             CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":activity".Length]);
-            return actor.Activity is { } activity ? new(owner, CyclePredictionKind.CompleteActivity, actor.Id, activity.Due, activity.Id, activity.CycleIndex) : null;
+            return actor.IsActive && actor.Activity is { } activity ? new(owner, CyclePredictionKind.CompleteActivity, actor.Id, activity.Due, activity.Id, activity.CycleIndex) : null;
         }
         if (owner.StartsWith("actor:", StringComparison.Ordinal) && owner.EndsWith(":attention", StringComparison.Ordinal)) {
             CycleCharacter actor = business.GetCharacter(owner["actor:".Length..^":attention".Length]);

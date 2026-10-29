@@ -31,7 +31,7 @@ public sealed partial class CycleBackground : IDurableObject {
                 : "先完成先得；同刻完成按固定规则仲裁。别人只公开正在采集哪个点，不公开技能、速度或下一份完成时刻。"
         ];
         if (observation.Survival is not null) {
-            rules.Add("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
+            rules.Add("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则该角色死亡。抵达安全出口可获救；个人结束后不再行动，其他角色仍可继续。");
             rules.Add("补给不耗时，不确认历史警告；continue 确认并保留原期限，接受新的耗时行动也会确认已展示的警告。");
             rules.Add("温暖无法靠物品补充；庇护内或白天野外可回暖，夜间野外继续降温。");
         }

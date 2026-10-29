@@ -187,7 +187,7 @@ public sealed class VisibleMaterialPersistenceTests {
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [
             new("a", "camp", Hour(14), []),
             new("a", "cabin", Hour(13), initial.Resources.Where(resource => CycleExpeditionMap.GetResourcePlace(resource.Id) == "cabin"))
-        ], environment: new(0, 1, Minute(990), Minute(870), true, CycleSurvival.Scale * 17 / 2));
+        ], environment: new(0, 1, Minute(990), Minute(870), true, [new("a", CycleSurvival.Scale * 17 / 2, false)]));
         return CycleEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [actor], expedition: expedition), initial.Time);
     }
 

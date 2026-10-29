@@ -42,6 +42,10 @@ public interface ICycleCharacterController {
 public static class CycleActions {
     /// <summary>Scenario capability, independent of whether an actor has decision history.</summary>
     public static bool SupportsHandoff(CycleWorld world) => world.Expedition is not null;
+    /// <summary>Active position or historical ending position. Never use this fallback for interaction eligibility.</summary>
+    public static SpatialLocation? Location(CycleWorld world, string actorId) => Location(world.Business, actorId);
+    public static SpatialLocation? Location(CycleBusinessState business, string actorId) =>
+        business.Expedition?.Spatial.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location ?? business.GetCharacter(actorId).Ending?.Location;
     public static bool IsTravelling(CycleWorld world, string actorId) => IsTravelling(world.Business, actorId);
     internal static bool IsTravelling(CycleBusinessState business, string actorId) =>
         business.Expedition?.Spatial.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location is TraversingLocation;
@@ -50,7 +54,7 @@ public static class CycleActions {
     public static bool NeedsDecision(CycleWorld world, string actorId) => NeedsDecision(world.Business, actorId);
     internal static bool NeedsDecision(CycleBusinessState business, string actorId) {
         CycleCharacter actor = business.GetCharacter(actorId);
-        return (business.Expedition is null || business.Expedition.Outcome == CycleExpeditionOutcome.Exploring) &&
+        return actor.IsActive &&
             (actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
     }
 
@@ -67,7 +71,7 @@ public static class CycleActions {
         CycleCharacter? actor = world.Characters.SingleOrDefault(c => c.Id == actorId);
         if (actor is null) { return "当前世界没有这个角色。"; }
         if (command is null) { return "没有提供行动。"; }
-        if (world.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) { return "旅程已经结束。"; }
+        if (!actor.IsActive) { return "旅程已经结束。"; }
         if (!NeedsDecision(world, actorId)) { return "角色正在活动，当前没有需要响应的感知。"; }
         bool travelling = IsTravelling(world, actorId);
         if (travelling && command.Kind is not (CycleCommandKind.Continue or CycleCommandKind.Use or CycleCommandKind.Handoff)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }

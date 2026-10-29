@@ -167,7 +167,7 @@ public sealed class SurvivalTests {
         var incrementalHistory = Memory(Initial());
         var incremental = CycleEngine.CreateKernel(incrementalHistory, PredictionMode.Incremental, characterController: Driver());
         var full = CycleEngine.CreateKernel(Memory(Initial()), PredictionMode.Full, characterController: Driver());
-        for (int steps = 0; incremental.World.Expedition!.Outcome == CycleExpeditionOutcome.Exploring; steps++) {
+        for (int steps = 0; incremental.World.GetCharacter("a").IsActive; steps++) {
             Assert.True(steps < 30);
             await Advance(incremental);
             await Advance(full);
@@ -177,7 +177,7 @@ public sealed class SurvivalTests {
             Assert.Equal(full.Cursor, incremental.Cursor);
             Assert.Equal(Describe(full.LastCompletion!.Event), Describe(incremental.LastCompletion!.Event));
         }
-        Assert.Equal(CycleExpeditionOutcome.Dead, incremental.World.Expedition!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, incremental.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(Minute(23 * 60 + 30), incremental.World.Time);
         Assert.Equal(0, Body(incremental.World).WarmthUnits);
         Assert.Equal(26 * CycleSurvival.Scale, Body(incremental.World).WaterUnits);
@@ -196,8 +196,8 @@ public sealed class SurvivalTests {
         CycleWorld initial = World(Hour(8), needs, place: "ravine");
         var source = Commands(CycleCommand.Go(Passage("ravine", "road")));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
-        await AdvanceUntil(kernel, world => world.Expedition!.Outcome != CycleExpeditionOutcome.Exploring);
-        Assert.Equal(escaped ? CycleExpeditionOutcome.Escaped : CycleExpeditionOutcome.Dead, kernel.World.Expedition!.Outcome);
+        await AdvanceUntil(kernel, world => !world.GetCharacter("a").IsActive);
+        Assert.Equal(escaped ? CycleExpeditionOutcome.Escaped : CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(new ModelTime(Hour(11).Ticks + (escaped ? 0 : deathOffset)), kernel.World.Time);
         Assert.Equal(escaped ? 8 : 0, Body(kernel.World).WaterUnits);
         Assert.Equal(escaped ? CycleEventKind.MoveArrived : CycleEventKind.SurvivalFailed, LastKind(kernel));
@@ -281,7 +281,7 @@ public sealed class SurvivalTests {
     }
 
     [Fact]
-    public async Task Death_event_only_recovery_preserves_unfinished_traversal_and_never_turns_it_into_an_arrival() {
+    public async Task Death_event_only_recovery_retires_traversal_and_keeps_its_history_without_inventing_arrival() {
         using var store = new TemporaryStore();
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 8 * CycleSurvival.Scale,
             80 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
@@ -299,7 +299,7 @@ public sealed class SurvivalTests {
             Assert.IsType<InjectedCrash>(error.InnerException);
             Assert.True(kernel.IsFaulted);
             Assert.Equal(1, source.Calls);
-            Assert.Equal(CycleExpeditionOutcome.Exploring, history.State.Expedition!.Outcome);
+            Assert.True(history.State.GetCharacter("a").IsActive);
             Assert.Equal(beforeDeath, history.Cursor);
         }
 
@@ -308,7 +308,7 @@ public sealed class SurvivalTests {
             Assert.Equal(travelling, reopened.State.Expedition!.Spatial);
             Assert.Equal(beforeDeath, reopened.Cursor);
             Assert.Equal(CycleEventKind.SurvivalFailed, Assert.Single(reopened.PendingEvent!.Facts).Kind);
-            Assert.Empty(Assert.Single(reopened.PendingEvent.Facts).SpatialFacts);
+            Assert.Equal("a", Assert.IsType<EntityRemovedFact>(Assert.Single(Assert.Single(reopened.PendingEvent.Facts).SpatialFacts)).EntityId.Value);
             var recovery = new SimulationKernel<CycleWorld, CyclePrediction, CycleFact>(reopened,
                 new SimulationRules(0, 1024), [new ForbiddenPlanning()], CycleEngine.Fold,
                 (before, instant, facts, folded) => CycleEngine.Complete(before, instant, facts, folded, PredictionMode.Incremental),
@@ -317,8 +317,11 @@ public sealed class SurvivalTests {
             Assert.False(recovery.RecoverPending());
             Assert.Equal(Hour(9), recovery.World.Time);
             Assert.Equal(0, Body(recovery.World).WaterUnits);
-            Assert.Equal(CycleExpeditionOutcome.Dead, recovery.World.Expedition!.Outcome);
-            Assert.Equal(travelling, recovery.World.Expedition.Spatial);
+            Assert.Equal(CycleExpeditionOutcome.Dead, recovery.World.GetCharacter("a").Ending!.Outcome);
+            Assert.Empty(recovery.World.Expedition!.Spatial.Entities);
+            Assert.Equal(Assert.Single(travelling.Entities).Location, recovery.World.GetCharacter("a").Ending!.Location);
+            Assert.Equal(Hour(9), recovery.World.GetCharacter("a").Ending!.At);
+            Assert.Equal(CycleExpeditionSummary.NoneEscaped, recovery.World.ExpeditionSummary);
             Assert.Single(recovery.World.Expedition.Visits); // No invented destination observation.
             Assert.Null(CycleActions.CurrentPlace(recovery.World, "a"));
             afterDeath = recovery.Cursor;
@@ -330,8 +333,9 @@ public sealed class SurvivalTests {
         using var final = CycleDurableHistory.Open(store.StorePath);
         Assert.Null(final.PendingEvent);
         Assert.Equal(afterDeath, final.Cursor);
-        Assert.Equal(travelling, final.State.Expedition!.Spatial);
-        Assert.Equal(CycleExpeditionOutcome.Dead, final.State.Expedition.Outcome);
+        Assert.Empty(final.State.Expedition!.Spatial.Entities);
+        Assert.Equal(Assert.Single(travelling.Entities).Location, final.State.GetCharacter("a").Ending!.Location);
+        Assert.Equal(CycleExpeditionOutcome.Dead, final.State.GetCharacter("a").Ending!.Outcome);
         Assert.Equal(StepStatus.Exhausted, await CycleEngine.CreateKernel(final,
             characterController: new ForbiddenController()).StepAsync(Hour(24)));
     }
