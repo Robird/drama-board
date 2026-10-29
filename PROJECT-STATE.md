@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-29；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已通过[工程与独立试玩验收](docs/experiments/survival-demo-acceptance.md)；二期双角色与 LLM 同伴尚未启动。
+> 最近整理：2026-10-29；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已验收；二期目标已修订，下一片为 2A 单角色 LLM 接线，实施尚未启动。
 
 ## 最终目标
 
@@ -26,9 +26,11 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：继续通过 HumanConsole 试玩打磨共享角色材料，稳定后进入 LlmCharacterController 设计。[属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局：当前值、实际速率来源、警戒／耗尽时刻集中在属性附近，行动仅补充离开庇护等条件变化；见[最新验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)。现有玩法数值不变；Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
+**当前焦点**：按[二期目标](docs/design/survival-demo-milestone.md)准备下一轮迭代，依次推进 2A 单角色 LLM 接线、2B 双角色生存、2C 交流赠与及实际合作。2A 复用持久 Context 和相邻 Completion，先采用每次操作重新投影完整保留材料的独立调用、单个 JSON 行动工具；配置、失败暂停和 E/S 恢复边界见目标文档。验收先取得真实模型连续决策与中断证据，再扩多角色，不自动启动原生工具会话恢复或长期记忆框架。本轮仅修订目标，尚未施工。
 
-[角色上下文 Model](docs/design/character-context-model.md)已通过[验收](docs/experiments/character-context-model-acceptance.md)。角色信息真相为冻结 Opening＋保留的有序 Items，Console 游标仅优化绘制；纯输出独立于终端实录。后续在扩展历史保留窗口或接入 LLM 时，分别裁决容量与同刻 1024 转换护栏、工具协议与外部调用恢复，不以呈现重构宣称这些已完成。
+[属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
+
+[角色上下文 Model](docs/design/character-context-model.md)已通过[验收](docs/experiments/character-context-model-acceptance.md)。角色信息真相为冻结 Opening＋保留的有序 Items，Console 游标仅优化绘制；纯输出独立于终端实录。2A 的调用预算、失败暂停与恢复测试须实际实施；现有同刻 1024 转换护栏不代替调用预算。其他材料容量与历史保留按真实运行证据另行裁决，不以呈现重构宣称这些已完成。
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 
@@ -55,9 +57,9 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **Player 与玩法扩展**：多地点、生存与消费已在一期组合；LLM、对话、赠与和简单笔记留给二期，旧实现保持归档并按需调查复用。长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包仍按实际需求重开。真实重新加入仍可再次提醒；出现激活过多的试玩证据后再设计通知过滤。
+- **Player 与玩法扩展**：二期按目标文档接 LLM、双角色与交流赠与，先复用 handoff；完整笔记编辑器、长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包按真实需求重开。旧实现保持归档并按需调查复用；出现激活过多的试玩证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
-- **分支、续局与外部调用**：可玩 fork/倒带、完整 Player closure、LLM 调用恢复、异常/retry 历史按真实需求重开；DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
+- **分支、续局与外部调用**：2A 验证未发布 E 可重新调用、已发布 E 不重问或重复效果；可玩 fork/倒带、完整 Player closure、原生模型会话恢复和完整异常/retry 历史仍延期。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。
 - **持久 Script VM**：研究材料已归档；只有需要持久执行状态时才重新选择方案。
 
