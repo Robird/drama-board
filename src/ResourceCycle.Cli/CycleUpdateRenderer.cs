@@ -9,11 +9,11 @@ internal static class CycleUpdateRenderer {
         if (update.CurrentValues.Count > 0) {
             text.AppendLine("当前：");
             var history = update.CurrentValues.Where(pair => IsIncoming(pair.Key)).ToArray();
-            bool removedHistory = history.Length > 0 && update.Snapshot.Observation.Continuity?.Incoming is null &&
+            bool removedHistory = history.Length > 0 && update.Snapshot.Continuity?.Incoming is null &&
                 history.All(pair => pair.Value.Kind == CycleVisibleValueKind.KnownAbsent);
             if (removedHistory) {
                 text.AppendLine("- 上次推进摘要不再作为本轮继承结果。" +
-                    (update.Snapshot.Observation.Continuity?.Pending is not null ? "本次行动结果待交付。" : ""));
+                    (update.Snapshot.Continuity?.Pending is not null ? "本次行动结果待交付。" : ""));
             }
             foreach (var pair in update.CurrentValues.Where(pair => pair.Key.Category != "command")) {
                 if (removedHistory && IsIncoming(pair.Key)) { continue; }

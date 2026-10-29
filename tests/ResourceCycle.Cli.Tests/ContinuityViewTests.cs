@@ -5,6 +5,19 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class ContinuityViewTests {
     [Fact]
+    public void Handoff_help_uses_scenario_commands_instead_of_history_presence() {
+        CycleObservation survival = CycleDecisionContext.Observe(CycleGameFactory.CreateSurvival().World, "a");
+        CycleObservation gathering = CycleDecisionContext.Observe(CycleGameFactory.CreatePlayable().World, "a");
+        var history = new CycleDecisionContinuity();
+        foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
+            Assert.Contains("`handoff <文字>`", layout.Render(survival));
+            Assert.Contains("`handoff <文字>`", layout.RenderActionHelp(survival));
+            Assert.DoesNotContain("`handoff <文字>`", layout.Render(gathering, history));
+            Assert.DoesNotContain("`handoff <文字>`", layout.RenderActionHelp(gathering));
+        }
+    }
+
+    [Fact]
     public void Both_layouts_expose_sealed_action_handoff_and_current_draft_without_mutating_history() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         CycleCharacter actor = world.GetCharacter("a");
@@ -23,13 +36,15 @@ public sealed class ContinuityViewTests {
         var replacement = new CycleCharacter(actor.Id, actor.Name, actor.SkillLevel, backpack: new(),
             survival: actor.Survival, continuity: continuity);
         world = CycleEngine.Rebuild(world.Business.Replace(world.Time, changedCharacters: [replacement]), world.Time);
-        CycleObservation observation = CycleDecisionContext.Create(world, "a").Observation;
+        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleObservation observation = context.Observation;
         Assert.Empty(observation.Actor.Backpack.Items);
-        Assert.Equal("饮水", observation.ItemNames["item.water"]);
+        Assert.DoesNotContain("item.water", observation.ItemNames.Keys);
+        Assert.Equal("饮水", ContinuityPlayView.ItemName(observation, "item.water"));
         string historyBefore = incoming.ToString();
 
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
-            string rendered = layout.Render(observation);
+            string rendered = layout.Render(observation, context.Continuity);
             // Semantic presence only: no section ordering, coordinates, line count or screen snapshot.
             Assert.Contains("wait 1", rendered);
             Assert.Contains("历史出发点", rendered);
@@ -39,8 +54,11 @@ public sealed class ContinuityViewTests {
             Assert.Contains("handoff --clear", rendered);
             Assert.Contains("原活动仍在进行", rendered);
             Assert.Contains("天气实际温暖损失", rendered);
+            Assert.Contains("背包 饮水 `item.water`", rendered);
         }
+        var snapshot = CycleViewSnapshot.Create(observation, context.Continuity);
+        Assert.Equal("上次行动前饮水库存", snapshot.Label(new("incoming-before-inventory", "item.water", "count")));
         Assert.Equal(historyBefore, incoming.ToString());
-        Assert.Same(incoming, observation.Continuity!.Incoming);
+        Assert.Same(incoming, context.Continuity!.Incoming);
     }
 }

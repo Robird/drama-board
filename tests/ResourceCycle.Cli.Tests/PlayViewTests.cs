@@ -98,7 +98,10 @@ public sealed class PlayViewTests {
         Assert.Equal("\n世界变化 · 第 0 天 18:00：天黑了；月光草满足再生光照条件，太阳花暂停再生。", PlayView.RenderPublicChange(sunset));
     }
 
-    private static string Render(CycleWorld world, string actorId) => PlayView.Render(CycleDecisionContext.Create(world, actorId).Observation);
+    private static string Render(CycleWorld world, string actorId) {
+        CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
+        return PlayView.Render(context.Observation, context.Continuity);
+    }
     private static string RenderCommands(CycleWorld world, string actorId) => PlayView.RenderCommands(CycleDecisionContext.Create(world, actorId).Observation);
 
     private static CycleWorld World(params CycleCharacter[] actors) => CycleGameFactory.CreatePlayable(Hour(16), actors).World;

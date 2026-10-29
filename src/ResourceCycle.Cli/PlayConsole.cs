@@ -36,7 +36,7 @@ internal static class PlayConsole {
                 (restoring ? survival
                     ? "之前的控制台对话未重放；已保存的行动结果、交接文字与草稿已恢复。"
                     : "之前的控制台对话未重放；已提交的游戏状态已恢复。" : "")) + "\n" + (survival
-            ? "你在山林中迷途。观察路标、探索通路，寻找人类社会。眼前事实与旧观察分开显示；等待输入期间世界暂停。"
+            ? "眼前事实与旧观察分开显示；等待输入期间世界暂停。"
             : "共用控制台轮流扮演角色；画面只显示当前角色的技能、活动细节和背包。等待输入期间世界暂停。");
         if (operations.DiscardedTailBytes > 0) {
             startup += $"\n操作记录末尾有 {operations.DiscardedTailBytes} 字节未完整写入，已丢弃；游戏进度仍按已提交 E/S 恢复。";
@@ -55,7 +55,7 @@ internal static class PlayConsole {
             while (true) {
                 if (kernel.World.Expedition is { Outcome: not CycleExpeditionOutcome.Exploring }) {
                     if (!controller.TerminalDelivered) {
-                        controller.RenderObservation(CycleDecisionContext.Create(kernel.World, kernel.World.Characters[0].Id).Observation);
+                        controller.RenderObservation(CycleDecisionContext.Create(kernel.World, kernel.World.Characters[0].Id));
                     }
                     return 0;
                 }
@@ -124,8 +124,8 @@ internal static class PlayConsole {
         internal bool TerminalDelivered => _session.TerminalDelivered;
         internal CycleViewSnapshot? Baseline => _session.Baseline;
 
-        internal void RenderObservation(CycleObservation observation) {
-            _session.ShowFull(observation);
+        internal void RenderObservation(CycleDecisionContext context) {
+            _session.ShowFull(context.Observation, continuity: context.Continuity);
         }
 
         internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
@@ -149,13 +149,14 @@ internal static class PlayConsole {
                 fact.OperationRecordId is not null && !fact.ObservedEvents.Any(item => item.ObserverId == actorId))) {
                 _session.Reply(CycleOperationResults.Describe(fact));
             }
-            _session.Commit(CycleDecisionContext.Create(world, actorId).Observation,
-                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray());
+            CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
+            _session.Commit(context.Observation,
+                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray(), context.Continuity);
         }
 
         public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             CycleObservation observation = context.Observation;
-            _session.EnterInput(observation);
+            _session.EnterInput(observation, context.Continuity);
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
                 _output.Write(_session.Prompt(observation));
@@ -166,13 +167,13 @@ internal static class PlayConsole {
                 if (string.IsNullOrWhiteSpace(input)) { continue; }
                 string toolName = input.TrimStart().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
                 CycleOperationReceipt receipt = _operations.Receive(_batchId, "call_" + Guid.NewGuid().ToString("N"),
-                    observation.Actor.Id, observation.Continuity?.ContextSequence, toolName, input);
+                    observation.Actor.Id, context.Continuity?.ContextSequence, toolName, input);
                 void Reply(string result, CycleOperationStatus status = CycleOperationStatus.Succeeded) {
                     _operations.Complete(receipt.OperationRecordId, status, result, worldVersion?.Invoke());
                     _session.Reply(result);
                 }
                 void Resynchronize(string? prefix = null) => _session.ShowFull(observation,
-                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix);
+                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix, context.Continuity);
                 void RejectSyntax() => Reply("无法识别命令。" + metaCommands.RejectionHint +
                     "时间未推进；未确认消息。", CycleOperationStatus.Rejected);
                 if (input.TrimStart().StartsWith(':')) {
@@ -194,7 +195,7 @@ internal static class PlayConsole {
                                 Reply($"未知布局：{parsed.Argument}。\n{metaCommands.DescribeLayouts(presentation)}", CycleOperationStatus.Rejected);
                             } else if (parsed.Once) {
                                 Reply($"临时查看布局：{selected.Id}（{selected.Name}）；当前布局仍为 {presentation.Current.Id}。\n" +
-                                    selected.RenderFull(CycleViewSnapshot.Create(observation)));
+                                    selected.RenderFull(CycleViewSnapshot.Create(observation, context.Continuity)));
                             } else {
                                 presentation.TrySelect(parsed.Argument);
                                 Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");

@@ -1,0 +1,47 @@
+using System.Globalization;
+
+namespace DramaBoard.ResourceCycle;
+
+/// <summary>Shared game background selected only from a character's visible observation.</summary>
+/// <remarks>Contains semantic text, without Console management, layout markup or live world references.
+/// Dynamic rule parameters are copied into the returned material when it is created.</remarks>
+public sealed class CycleBackground {
+    public string Title { get; }
+    public string Introduction { get; }
+    public IReadOnlyList<string> Rules { get; }
+
+    private CycleBackground(string title, string introduction, IEnumerable<string> rules) {
+        Title = title;
+        Introduction = introduction;
+        Rules = Array.AsReadOnly(rules.ToArray());
+    }
+
+    public static CycleBackground For(CycleObservation observation) {
+        ArgumentNullException.ThrowIfNull(observation);
+        List<string> rules = [
+            "行动命令与标识区分大小写，需提供完整命令和标识。",
+            "采集按每份周期结算，不预留库存；all 固定为接受时的库存，不随再生增加。库存耗尽会提醒，结算时无货则结束，不会自动等待再生。",
+            observation.IsExpedition
+                ? "通路描述是眼前线索，不保证目的地或安全；移动途中不能取消。查看、补给与确认消息不重置活动或行程期限。"
+                : "先完成先得；同刻完成按固定规则仲裁。别人只公开正在采集哪个点，不公开技能、速度或下一份完成时刻。"
+        ];
+        if (observation.Survival is not null) {
+            rules.Add("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。");
+            rules.Add("补给不耗时，不确认历史警告；continue 确认并保留原期限，接受新的耗时行动也会确认已展示的警告。");
+            rules.Add("温暖无法靠物品补充；庇护内或白天野外可回暖，夜间野外继续降温。");
+        }
+        if (observation.IsExpedition && (observation.Actor.Backpack.Count("item.wood") > 0 ||
+            observation.Resources.Any(resource => resource.ItemId == "item.wood"))) {
+            rules.Add("干木目前不能生火或直接取暖；在庇护中停留可以回暖，仍会消耗食物和饮水。");
+        }
+        if (observation.Weather is { } weather) {
+            rules.Add($"天气窗口每 {Number((decimal)weather.IntervalTicks / CycleTime.Hour)} 小时出现一次；结果可能平静，也可能遭遇寒风。");
+            rules.Add($"寒风使暴露者的温暖最多减少 {Number(weather.ExposedWarmthLoss)} 点；处于庇护内则免受这次损失。移动途中视为暴露。");
+        }
+        return new CycleBackground(observation.IsExpedition ? "山林求生" : "林间苗圃",
+            observation.IsExpedition ? "你在山林中迷途。观察路标、探索通路，寻找人类社会。"
+                : "林间苗圃的资源由在场角色共同采集。", rules);
+    }
+
+    private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}

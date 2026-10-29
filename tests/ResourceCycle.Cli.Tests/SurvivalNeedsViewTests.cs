@@ -11,7 +11,7 @@ public sealed class SurvivalNeedsViewTests {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
         string before = world.DescribeState();
-        string text = PlayView.Render(context.Observation);
+        string text = PlayView.Render(context.Observation, context.Continuity);
         Assert.NotNull(context.Observation.Survival);
         Assert.Contains("## 身体状态", text);
         Assert.Contains("| 食物 |", text);
@@ -47,7 +47,7 @@ public sealed class SurvivalNeedsViewTests {
         CycleDecisionContext warned = CycleDecisionContext.Create(kernel.World, "a");
         ModelTime warningAt = warned.Observation.Time;
         ModelTime? arrival = warned.Observation.ArrivalDue;
-        string warningView = PlayView.Render(warned.Observation);
+        string warningView = PlayView.Render(warned.Observation, warned.Continuity);
         Assert.Contains("生存警告（历史记录，待确认）", warningView);
         Assert.Contains("use item.water", warningView);
         Assert.DoesNotContain("- `cancel`", warningView);
@@ -61,7 +61,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Equal(arrival, replenished.Observation.ArrivalDue);
         Assert.True(replenished.Observation.Survival!.Water > warned.Observation.Survival!.Water);
         Assert.Equal(warned.Observation.Survival.PendingWarnings, replenished.Observation.Survival.PendingWarnings);
-        string after = PlayView.Render(replenished.Observation);
+        string after = PlayView.Render(replenished.Observation, replenished.Continuity);
         Assert.Contains("即使已经补给也会保留", after);
         Assert.DoesNotContain("上次结果（记录当时状态）", after);
         Assert.NotNull(replenished.Check(CycleCommand.Use("item.water")));

@@ -42,6 +42,7 @@ public sealed class PlayPresentationTests {
         Assert.Single(second.Help);
         Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),
             observation => Assert.Same(context.Observation, observation));
+        Assert.All(first.Continuities.Concat(second.Continuities), continuity => Assert.Same(context.Continuity, continuity));
         Assert.Equal(before, world.DescribeState());
         Assert.Equal(1, boundaries);
     }
@@ -70,7 +71,7 @@ public sealed class PlayPresentationTests {
 
         // Terminal observations use this same boundary even though no further input is requested.
         controller.RenderObservation(CycleDecisionContext.Create(
-            CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b").Observation);
+            CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b"));
         Assert.Equal(4, boundaries);
         Assert.Equal(5, layout.Screens.Count);
     }
@@ -96,7 +97,7 @@ public sealed class PlayPresentationTests {
         Assert.Equal(1, BoundaryCount());
         await controller.ChooseCommandAsync(CycleDecisionContext.Create(nextContextSameTime, "a"), default);
         Assert.Equal(2, BoundaryCount());
-        controller.RenderObservation(CycleDecisionContext.Create(nextContextSameTime, "a").Observation);
+        controller.RenderObservation(CycleDecisionContext.Create(nextContextSameTime, "a"));
         Assert.Equal(2, BoundaryCount());
         Assert.Contains("startup-help", output.ToString()); // Earlier output remains in the transcript.
         Assert.DoesNotContain("\u001b", output.ToString(), StringComparison.Ordinal);
@@ -138,7 +139,8 @@ public sealed class PlayPresentationTests {
         public string Name => id;
         public List<CycleObservation> Screens { get; } = [];
         public List<CycleObservation> Help { get; } = [];
-        public string Render(CycleObservation observation) { Screens.Add(observation); return Id; }
+        public List<CycleDecisionContinuity?> Continuities { get; } = [];
+        public string Render(CycleObservation observation, CycleDecisionContinuity? continuity = null) { Screens.Add(observation); Continuities.Add(continuity); return Id; }
         public string RenderActionHelp(CycleObservation observation) { Help.Add(observation); return Id; }
     }
 }

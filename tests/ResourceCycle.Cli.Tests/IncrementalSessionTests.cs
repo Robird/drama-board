@@ -12,17 +12,17 @@ public sealed class IncrementalSessionTests {
         using var output = new StringWriter();
         var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, output);
         CycleObservation initial = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(initial);
+        session.EnterInput(initial, new CycleDecisionContinuity());
         var terminal = new CycleObservation {
             Time = initial.Time, IsDay = initial.IsDay, NextLightChange = initial.NextLightChange,
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,
             ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
-            Commands = [], IsExpedition = true, Continuity = initial.Continuity,
+            Commands = [], IsExpedition = true,
             Outcome = CycleExpeditionOutcome.Dead, EndingReason = "已耗尽"
         };
         var ending = new CycleObservedEvent(4, "a", CycleObservedEventKind.ExpeditionEnded, initial.Time, initial.Time);
         session.BeginAdvancing();
-        session.Commit(terminal, [ending]);
+        session.Commit(terminal, [ending], continuity: new CycleDecisionContinuity());
 
         CycleViewUpdate update = Assert.Single(layout.Updates);
         Assert.True(update.FullTail);
@@ -79,12 +79,12 @@ public sealed class IncrementalSessionTests {
             Commands = original.Commands.Select(entry => entry.Command == CycleCommand.Wait(24)
                 ? entry with { Warning = "长等待专属风险" } : entry).ToArray(),
             IsExpedition = true, PlaceId = original.PlaceId, PlaceName = original.PlaceName, PlaceDescription = original.PlaceDescription,
-            Passages = original.Passages, Survival = original.Survival, Weather = original.Weather, Continuity = original.Continuity,
+            Passages = original.Passages, Survival = original.Survival, Weather = original.Weather,
             Memories = [new("旧果园", original.Time, [new CycleResource("old-berries", "旧果树", "item.food", true,
                 CycleTime.Hour, 9, 7)], "old-orchard")]
         };
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
-            string full = layout.RenderFull(CycleViewSnapshot.Create(observation));
+            string full = layout.RenderFull(CycleViewSnapshot.Create(observation, new CycleDecisionContinuity()));
             Assert.Contains("长等待专属风险", full);
             Assert.Contains("旧果园", full);
             Assert.Contains("旧果树", full);
@@ -99,16 +99,16 @@ public sealed class IncrementalSessionTests {
         int boundaries = 0;
         var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer, () => boundaries++);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation);
+        session.EnterInput(observation, new CycleDecisionContinuity());
         Assert.NotNull(session.Baseline);
         Assert.Single(layout.Full);
         writer.Fail = true;
         session.BeginAdvancing();
 
-        Assert.Throws<IOException>(() => session.Commit(observation, []));
+        Assert.Throws<IOException>(() => session.Commit(observation, [], continuity: new CycleDecisionContinuity()));
         Assert.Null(session.Baseline);
         writer.Fail = false;
-        session.EnterInput(observation);
+        session.EnterInput(observation, new CycleDecisionContinuity());
 
         Assert.Equal(2, layout.Full.Count);
         Assert.NotNull(session.Baseline);
@@ -121,15 +121,15 @@ public sealed class IncrementalSessionTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation);
+        session.EnterInput(observation, new CycleDecisionContinuity());
         session.BeginAdvancing();
-        session.Commit(observation, []);
-        session.Commit(observation, []);
+        session.Commit(observation, [], continuity: new CycleDecisionContinuity());
+        session.Commit(observation, [], continuity: new CycleDecisionContinuity());
         Assert.All(layout.Updates, update => Assert.Equal(PlayDeliveryPhase.Advancing, update.Phase));
         Assert.Equal(1, Count(writer.ToString(), "现在可输入"));
 
-        session.EnterInput(observation);
-        session.EnterInput(observation);
+        session.EnterInput(observation, new CycleDecisionContinuity());
+        session.EnterInput(observation, new CycleDecisionContinuity());
 
         Assert.Equal(2, Count(writer.ToString(), "现在可输入"));
         Assert.Equal(PlayDeliveryPhase.ControllerInput, layout.Updates[^1].Phase);
@@ -192,9 +192,9 @@ public sealed class IncrementalSessionTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation);
+        session.EnterInput(observation, new CycleDecisionContinuity());
         CycleViewSnapshot baseline = session.Baseline!;
-        _ = PlayView.Render(observation);
+        _ = PlayView.Render(observation, new CycleDecisionContinuity());
         Assert.Same(baseline, session.Baseline);
         Assert.Equal(PlayDeliveryPhase.ControllerInput, session.Phase);
     }
@@ -210,7 +210,7 @@ public sealed class IncrementalSessionTests {
         public string Name => Id;
         public List<CycleObservation> Full { get; } = [];
         public List<CycleViewUpdate> Updates { get; } = [];
-        public string Render(CycleObservation observation) { Full.Add(observation); return "full"; }
+        public string Render(CycleObservation observation, CycleDecisionContinuity? continuity = null) { Full.Add(observation); return "full"; }
         public string RenderUpdate(CycleViewUpdate update) { Updates.Add(update); return "update"; }
         public string RenderActionHelp(CycleObservation observation) => "help";
     }

@@ -14,13 +14,13 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
     private (string Actor, long? Context, ModelTime? LegacyTime)? _identity;
     private PlayDeliveryPhase? _deliveredPhase;
 
-    public void EnterInput(CycleObservation observation) {
+    public void EnterInput(CycleObservation observation, CycleDecisionContinuity? continuity = null) {
         Phase = PlayDeliveryPhase.ControllerInput;
-        if (Baseline is null || _identity != Identity(observation) || !observation.IsExpedition) {
-            ShowFull(observation);
+        if (Baseline is null || _identity != Identity(observation, continuity) || !observation.IsExpedition) {
+            ShowFull(observation, continuity: continuity);
             return;
         }
-        DeliverUpdate(observation, [], fullTail: false);
+        DeliverUpdate(observation, [], fullTail: false, continuity: continuity);
     }
 
     public void BeginAdvancing() => Phase = PlayDeliveryPhase.Advancing;
@@ -31,27 +31,27 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
     }
 
     public void Commit(CycleObservation observation, IReadOnlyList<CycleObservedEvent> events,
-        IReadOnlyList<CycleObservedEventSource>? sources = null) {
+        IReadOnlyList<CycleObservedEventSource>? sources = null, CycleDecisionContinuity? continuity = null) {
         // ContextOpened is delivered at the next controller entry, never on the old screen.
-        if (_identity != Identity(observation) && observation.Outcome == CycleExpeditionOutcome.Exploring) { return; }
-        if (Baseline is null) { ShowFull(observation); return; }
+        if (_identity != Identity(observation, continuity) && observation.Outcome == CycleExpeditionOutcome.Exploring) { return; }
+        if (Baseline is null) { ShowFull(observation, continuity: continuity); return; }
         DeliverUpdate(observation, events, presentation.Mode == PlayOutputMode.Full ||
-            observation.Outcome != CycleExpeditionOutcome.Exploring, sources);
+            observation.Outcome != CycleExpeditionOutcome.Exploring, sources, continuity);
     }
 
-    public void ShowFull(CycleObservation observation, Action<string>? beforeWrite = null, string? prefix = null) {
-        var snapshot = CycleViewSnapshot.Create(observation);
+    public void ShowFull(CycleObservation observation, Action<string>? beforeWrite = null, string? prefix = null, CycleDecisionContinuity? continuity = null) {
+        var snapshot = CycleViewSnapshot.Create(observation, continuity);
         string text = (StartupText is { } startup ? startup + "\n" : "") + prefix +
             ConsoleHint(observation) + presentation.Current.RenderFull(snapshot) + PhaseText(observation);
         beforeWrite?.Invoke(text);
-        Write(text, snapshot, newTurn: _identity != Identity(observation));
+        Write(text, snapshot, newTurn: _identity != Identity(observation, continuity));
     }
 
     public string Prompt(CycleObservation observation) => $"{observation.Actor.Id}> ";
 
     private void DeliverUpdate(CycleObservation observation, IReadOnlyList<CycleObservedEvent> events, bool fullTail,
-        IReadOnlyList<CycleObservedEventSource>? sources = null) {
-        var snapshot = CycleViewSnapshot.Create(observation);
+        IReadOnlyList<CycleObservedEventSource>? sources = null, CycleDecisionContinuity? continuity = null) {
+        var snapshot = CycleViewSnapshot.Create(observation, continuity);
         CycleViewUpdate update = CycleViewUpdate.Create(Baseline!, snapshot, events, Phase, fullTail, sources);
         bool phaseChanged = _deliveredPhase != Phase;
         if (!fullTail && events.Count == 0 && update.CurrentValues.Count == 0 && !phaseChanged) { return; }
@@ -83,7 +83,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
             output.WriteLine(text);
             output.Flush();
             Baseline = snapshot;
-            _identity = Identity(snapshot.Observation);
+            _identity = Identity(snapshot.Observation, snapshot.Continuity);
             _deliveredPhase = Phase;
             StartupText = null;
             TerminalDelivered = snapshot.Observation.Outcome != CycleExpeditionOutcome.Exploring;
@@ -94,7 +94,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         }
     }
 
-    private static (string Actor, long? Context, ModelTime? LegacyTime) Identity(CycleObservation observation) =>
-        (observation.Actor.Id, observation.Continuity?.ContextSequence,
-            observation.Continuity is null ? observation.Time : null);
+    private static (string Actor, long? Context, ModelTime? LegacyTime) Identity(CycleObservation observation, CycleDecisionContinuity? continuity) =>
+        (observation.Actor.Id, continuity?.ContextSequence,
+            continuity is null ? observation.Time : null);
 }

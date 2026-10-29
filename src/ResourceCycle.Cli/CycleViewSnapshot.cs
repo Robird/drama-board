@@ -8,15 +8,17 @@ internal sealed class CycleViewSnapshot {
     private readonly Dictionary<CycleStateKey, CycleVisibleValue> _values = [];
     private readonly Dictionary<CycleStateKey, string> _labels = [];
     public CycleObservation Observation { get; }
+    public CycleDecisionContinuity? Continuity { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> Values { get; }
 
-    private CycleViewSnapshot(CycleObservation observation) {
+    private CycleViewSnapshot(CycleObservation observation, CycleDecisionContinuity? continuity) {
         Observation = observation;
+        Continuity = continuity;
         Values = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(_values);
         Project();
     }
 
-    public static CycleViewSnapshot Create(CycleObservation observation) => new(observation);
+    public static CycleViewSnapshot Create(CycleObservation observation, CycleDecisionContinuity? continuity = null) => new(observation, continuity);
 
     public string? KnownLabel(CycleStateKey key) => _values.ContainsKey(key) ? Label(key) : null;
 
@@ -147,7 +149,7 @@ internal sealed class CycleViewSnapshot {
             Add("weather", "world", "last-loss", Number(w.LastActualWarmthLoss), "最近实际温暖损失");
             Add("weather", "world", "last-sheltered", CycleVisibleValue.Flag(w.LastWasSheltered), "最近寒风时有庇护");
         }
-        if (o.Continuity is { } continuity) {
+        if (Continuity is { } continuity) {
             Add("continuity", actor, "draft", Text(continuity.DraftHandoff));
             Add("continuity", actor, "sequence", CycleVisibleValue.Numeric(continuity.ContextSequence), "决策回合");
             Add("continuity", actor, "pending", Text(continuity.Pending?.Action.Kind.ToString()), "已接受行动");
@@ -193,7 +195,7 @@ internal sealed class CycleViewSnapshot {
         Add(category, actor, "target", CycleVisibleValue.Numeric(endpoint.TargetCount, "份"), label + "采集目标");
         Add(category, actor, "due", At(endpoint.ActivityDue), label + "活动期限");
         foreach (var item in endpoint.Backpack) {
-            Add(category + "-inventory", item.Key, "count", CycleVisibleValue.Numeric(item.Value, "份"), label + Observation.ItemNames.GetValueOrDefault(item.Key, item.Key) + "库存");
+            Add(category + "-inventory", item.Key, "count", CycleVisibleValue.Numeric(item.Value, "份"), label + ContinuityPlayView.ItemName(Observation, item.Key) + "库存");
         }
     }
 

@@ -13,7 +13,8 @@
 | 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；采集场景同一 Console 服务三个角色，探索场景服务一个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | 概念预留；当前可玩实例未接入。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
-| 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | [CycleObservation / CycleDecisionContext](../src/ResourceCycle/CycleObservation.cs) 由游戏构造角色观察与纯命令校验；Console 布局只接收观察来渲染 Markdown。 |
+| 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | [CycleObservation](../src/ResourceCycle/CycleObservation.cs) 是无 Continuity/委托的纯可见材料；CycleDecisionContext 另持命令校验与过渡历史。Console 布局显式接收观察和历史，不接收校验委托。 |
+| 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择共享材料，供布局使用；未来随 Opening 冻结。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
 | Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | [ConsoleMetaCommands](../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) 的 `HumanDefault` / `None` 同时控制提示与解析，`ConsoleCharacterController` 执行；纯行动由 [CycleCommandParser](../src/ResourceCycle.Cli/CycleCommandParser.cs) 解析。见[边界合同](design/console-command-boundary.md)。 |
 | 增量观察（Incremental observation） | 在同一阅读上下文内，按序追加事件及其效果，尾部统一汇总受影响状态的最新值并明确失效信息；布局或上下文变化时可全量重同步。不是游戏状态的增量持久化。 | 生存模式默认 delta；[CycleViewSnapshot](../src/ResourceCycle.Cli/CycleViewSnapshot.cs) / [CycleViewUpdate](../src/ResourceCycle.Cli/CycleViewUpdate.cs) 与 [PlayPresentationSession](../src/ResourceCycle.Cli/PlayPresentationSession.cs)，见[切片 A 合同](design/incremental-ui-slice-a.md)。 |

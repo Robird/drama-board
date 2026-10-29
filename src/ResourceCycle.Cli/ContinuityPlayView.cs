@@ -5,8 +5,8 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>Both layouts read the same sealed history, never reconstruct it from today's values.</summary>
 internal static class ContinuityPlayView {
-    public static string RenderHistory(CycleObservation observation) {
-        if (observation.Continuity is not { } continuity) { return ""; }
+    public static string RenderHistory(CycleObservation observation, CycleDecisionContinuity? continuity = null) {
+        if (continuity is null) { return ""; }
         var text = new StringBuilder();
         string resultLabel = observation.Outcome == CycleExpeditionOutcome.Exploring ? "上次推进的结果" : "终局结果";
         text.AppendLine($"## 决策回合 {continuity.ContextSequence} · {resultLabel}");
@@ -36,7 +36,7 @@ internal static class ContinuityPlayView {
             var itemIds = incoming.Before.Backpack.Keys.Concat(incoming.After.Backpack.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
             foreach (string itemId in itemIds) {
                 int before = incoming.Before.Backpack.GetValueOrDefault(itemId), after = incoming.After.Backpack.GetValueOrDefault(itemId);
-                text.AppendLine($"- 背包 {observation.ItemNames.GetValueOrDefault(itemId, itemId)} `{itemId}`：{before} → {after}（净变化 {Signed(after - before)}）。");
+                text.AppendLine($"- 背包 {ItemName(observation, itemId)} `{itemId}`：{before} → {after}（净变化 {Signed(after - before)}）。");
             }
             if (incoming.After.ActivityId is not null) {
                 string progress = incoming.After.TargetCount > 0
@@ -47,7 +47,7 @@ internal static class ContinuityPlayView {
             CycleOutcomeSummary summary = incoming.Summary;
             string lowerBound = summary.IsSaturated ? "至少 " : "";
             if (summary.GatherItemId is { } item) {
-                text.AppendLine($"- 本段采集所得：{observation.ItemNames.GetValueOrDefault(item, item)} ×{lowerBound}{summary.GatheredCount}。");
+                text.AppendLine($"- 本段采集所得：{ItemName(observation, item)} ×{lowerBound}{summary.GatheredCount}。");
             }
             if (summary.GatherStopReason is { } stop) {
                 text.AppendLine($"- 采集结束原因：{StopReason(stop)}。");
@@ -61,8 +61,8 @@ internal static class ContinuityPlayView {
         return text.ToString();
     }
 
-    public static string RenderCurrent(CycleObservation observation) {
-        if (observation.Continuity is not { } continuity) { return ""; }
+    public static string RenderCurrent(CycleObservation observation, CycleDecisionContinuity? continuity = null) {
+        if (continuity is null) { return ""; }
         var text = new StringBuilder();
         text.AppendLine("## 本轮交接");
         if (continuity.Pending is { } pending) {
@@ -74,6 +74,11 @@ internal static class ContinuityPlayView {
         text.AppendLine();
         return text.ToString();
     }
+
+    internal static string ItemName(CycleObservation observation, string itemId) =>
+        observation.ItemNames.GetValueOrDefault(itemId) ?? itemId switch {
+            "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => itemId
+        };
 
     private static void Quote(StringBuilder text, string value) {
         foreach (string line in value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n')) {

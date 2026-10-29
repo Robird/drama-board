@@ -1,6 +1,6 @@
 # 角色上下文 Model 与信息交付重构
 
-状态：2026-10-29 设计方案，尚未实施。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文细化为待实施合同，经模型化简、发布恢复和信息可见性三路只读审查修订，类型名称均为建议名。当前实现基线为 `0912377`。本文承接[问题工作单](../worksets/controller-context-visibility.md)，不把未来能力写成现有 API。
+状态：2026-10-29 实施中；共享可见观察与背景入口已拆出，持久 Context 及其交付尚未实施。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文细化为待实施合同，经模型化简、发布恢复和信息可见性三路只读审查修订，类型名称均为建议名。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)，不把未来能力写成现有 API。
 
 ## 1. 目标与明确不做的事
 
@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CycleDecisionContinuity](../../src/ResourceCycle/CycleDecisionContinuity.cs) | S 中有固定 Incoming、DraftHandoff、Pending，没有 Context Item 列表 | 用 Business 根下按角色归属的交互状态替换 Continuity；不再并列维护另一套完整连续性模型 |
 | [CycleFact](../../src/ResourceCycle/CycleFact.cs) / [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
-| [CycleObservation](../../src/ResourceCycle/CycleObservation.cs) | 非持久当前投影；夹带 Continuity；校验委托另在 CycleDecisionContext | 拆出可冻结的纯可见观察数据，避免 Context → Observation → Context 引用环 |
+| [CycleObservation](../../src/ResourceCycle/CycleObservation.cs) | 已拆为不含 Continuity/委托的纯可见投影；旧历史和校验暂由 CycleDecisionContext 相邻持有 | 将纯观察落实为持久字段，避免 Context → Observation → Context 引用环 |
 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 直接消费逐次提交并在旧画面输出；管理与游戏材料混合 | 改为消费已提交 Context 的新材料；世界提交不再直接冒充对角色的交付 |
 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
@@ -207,6 +207,8 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 ## 9. 实施分片
 
 按可独立检查的边界实施，避免先造新模型却长期维持两个连续性权威。
+
+分片 1 已拆出 `CycleDecisionContext.Observe` 与 `CycleBackground`，CLI 的历史参数与观察显式分离；对象图隔离及旧观察不随瞬时操作改变的证据见 [ObservationMaterialTests](../../tests/ResourceCycle.Tests/ObservationMaterialTests.cs)。观察目前仍是运行时数据，不宣称已持久化。下一步进入分片 2A：为观察及嵌套材料添加 DurableGraph 声明，使用具体集合 backing fields，随后接入同根 InteractionStates 与 InteractionChanges。世界效果→感知→交互的规划顺序随该接线落地，Fold/Complete 只安装记录值。
 
 | 分片 | 交付与范围 | 验收门槛 |
 | --- | --- | --- |

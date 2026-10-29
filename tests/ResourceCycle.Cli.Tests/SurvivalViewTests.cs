@@ -10,7 +10,7 @@ public sealed class SurvivalViewTests {
     public void Initial_view_describes_visible_trails_without_revealing_destinations_or_remote_resources() {
         CycleWorld world = CycleGameFactory.CreateSurvival(enableNeeds: false).World;
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
-        string text = PlayView.Render(context.Observation);
+        string text = PlayView.Render(context.Observation, context.Continuity);
         Assert.Contains("# 山林求生", text);
         Assert.Contains("迷途营地", text);
         Assert.Contains("go trail-1", text);
@@ -36,11 +36,11 @@ public sealed class SurvivalViewTests {
         await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "stream");
         CycleDecisionContext atStream = CycleDecisionContext.Create(kernel.World, "a");
         Assert.Contains(atStream.Observation.Resources, resource => resource.Id == "berries");
-        Assert.Contains("gather berries 1", PlayView.Render(atStream.Observation));
+        Assert.Contains("gather berries 1", PlayView.Render(atStream.Observation, atStream.Continuity));
         await Step(kernel); // leave stream
         await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "camp");
         CycleDecisionContext atCamp = CycleDecisionContext.Create(kernel.World, "a");
-        string text = PlayView.Render(atCamp.Observation);
+        string text = PlayView.Render(atCamp.Observation, atCamp.Continuity);
         Assert.Contains("## 曾到访地点", text);
         Assert.Contains("历史观察", text);
         Assert.Contains("溪流湾（第", text);
@@ -72,7 +72,7 @@ public sealed class SurvivalViewTests {
             characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-3"), CycleCommand.Go("trail-4")));
         await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Escaped);
         CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
-        string text = PlayView.Render(context.Observation);
+        string text = PlayView.Render(context.Observation, context.Continuity);
         Assert.Contains("山脚公路", text);
         Assert.Contains("## 结局", text);
         Assert.Contains("获救", text);

@@ -29,6 +29,8 @@ public interface ICycleCharacterController {
 }
 
 public static class CycleActions {
+    /// <summary>Scenario capability, independent of whether an actor has decision history.</summary>
+    public static bool SupportsHandoff(CycleWorld world) => world.Expedition is not null;
     public static bool IsTravelling(CycleWorld world, string actorId) => IsTravelling(world.Business, actorId);
     internal static bool IsTravelling(CycleBusinessState business, string actorId) =>
         business.Expedition?.Spatial.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location is TraversingLocation;
@@ -66,7 +68,8 @@ public static class CycleActions {
                 command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling))) { return "决策回合编号已达到支持上限。"; }
         switch (command.Kind) {
             case CycleCommandKind.Handoff:
-                if (actor.Continuity is null) { return "此场景未启用交接文字。"; }
+                if (!SupportsHandoff(world)) { return "此场景未启用交接文字。"; }
+                if (actor.Continuity is null) { return "角色交接状态尚未建立。"; }
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "handoff 只接受交接文字。"; }
                 return !CycleDecisionContinuity.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
             case CycleCommandKind.Continue:

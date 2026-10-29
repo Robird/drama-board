@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：用户已认可世界事实、角色感知与持久决策材料分层，Human/LLM 共用 Model；方案经三路审查收敛，并按用户裁决补入纯拒绝短期保留规则，尚未实施。按同一 Business 根内的角色交互子图、共享观察、待交付经历和 Console 带外边界分片施工；下一步先拆共享观察材料，再完成持久 Context/恢复闭环及 Console 接线，验证角色隔离和每轮自足。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，不再并行维护设计待办。
+**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：用户已认可世界事实、角色感知与持久决策材料分层，Human/LLM 共用 Model；共享观察已与旧 Continuity/校验委托分离，游戏内背景由 `CycleBackground` 提供，Console 显式接收历史参数；完整 Context 仍未持久化。下一步进入分片 2A：为观察材料落实 DurableGraph 字段，接入同一 Business 根的 InteractionStates 与事实 InteractionChanges，完成合法操作、待交付经历、终局及 S/E 恢复；再推进 2B 的原始输入/拒绝与保留窗口，以及 Console 的 Model 消费与带外边界。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，不再并行维护设计待办。
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)已落地，工程及独立试玩证据见[验收](docs/experiments/incremental-ui-slice-a-acceptance.md)。事件与实际效果随 E 保存，正常/恢复答复同源；生存 Console 提交后统一呈现事件、缩进效果与去重当前值，支持 `:mode full|delta`，默认 delta。后续按[阶段目标](docs/design/incremental-ui-milestone.md)设计 B：复用同一事件材料，裁决跨回合历史窗口与容量、首次获知语义、持久来源绑定及裁剪；n 尚未定，倾向按决策回合分组。A 尚未在角色 S 中保留历史窗口，冷开全量而不重放旧屏幕。保持新回合自足，不重开动作后收尾或 `:end`；B 完成后复验历史与 Incoming 的重复程度，LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 

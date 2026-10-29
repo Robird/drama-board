@@ -114,7 +114,7 @@ public sealed class DecisionContinuityTrajectoryTests {
     private sealed class SurvivalScript : ICycleCharacterController {
         public int Calls { get; private set; }
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
-            Assert.Null(context.Observation.Continuity!.Pending);
+            Assert.Null(context.Continuity!.Pending);
             CycleCommand command = ++Calls switch {
                 1 => CycleCommand.Handoff("记录本次等待的身体变化"),
                 2 => CycleCommand.Wait(24),

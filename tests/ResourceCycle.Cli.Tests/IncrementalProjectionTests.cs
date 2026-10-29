@@ -12,8 +12,8 @@ public sealed class IncrementalProjectionTests {
         var action = new CycleAcceptedAction("a", 1, "call", "record", CycleAcceptedActionKind.Wait, new(0), hours: 1, activityId: 1);
         var pending = new CyclePendingAction(action, endpoint);
         var incoming = new CycleActionOutcome(pending, new(0), endpoint, CycleOutcomeActivityState.Completed);
-        var previous = CycleViewSnapshot.Create(Observation(continuity: new(2, incoming)));
-        var current = CycleViewSnapshot.Create(Observation(continuity: new(2, pending: pending)));
+        var previous = CycleViewSnapshot.Create(Observation(), new(2, incoming));
+        var current = CycleViewSnapshot.Create(Observation(), new(2, pending: pending));
         var update = CycleViewUpdate.Create(previous, current, [], PlayDeliveryPhase.Advancing);
         var key = new CycleStateKey("incoming-before", "a", "food");
 
@@ -133,14 +133,14 @@ public sealed class IncrementalProjectionTests {
 
     private static CycleObservation Observation(IReadOnlyDictionary<string, int>? items = null,
         IReadOnlyList<CycleResource>? resources = null, CycleActivity? activity = null, decimal water = 75,
-        bool warning = false, string? commandRisk = null, CycleDecisionContinuity? continuity = null,
+        bool warning = false, string? commandRisk = null,
         IReadOnlyList<CyclePassageObservation>? passages = null) => new() {
         Time = new(0), IsDay = true, NextLightChange = new(12 * CycleTime.Hour),
         Actor = new("a", "旅人", 0, new ItemInventory(items), activity, [], null, 1),
         Resources = resources ?? [], HarvestDurations = (resources ?? []).ToDictionary(r => r.Id, r => r.HarvestTicks),
         ItemNames = new Dictionary<string, string> { ["item.food"] = "食物" }, OtherCharacters = [], Notices = [],
         Commands = [new(CycleCommand.Wait(1), null, commandRisk)],
-        Continuity = continuity, Passages = passages ?? [],
+        Passages = passages ?? [],
         Survival = new(70, water, 70, -5, -6, 5, false, warning ? ["饮水曾触及警戒线"] : [], null,
             PendingWarningMask: warning ? 2 : 0)
     };

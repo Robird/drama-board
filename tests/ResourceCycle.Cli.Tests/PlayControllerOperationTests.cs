@@ -206,7 +206,7 @@ public sealed class PlayControllerOperationTests {
         var preview = journal.Entries[0];
         Assert.Equal(CycleOperationStatus.Succeeded, preview.Completed!.Status);
         Assert.Equal(preview.Received.ToolCallId, preview.Completed.ToolCallId);
-        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation)), preview.Completed.Result);
+        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation, context.Continuity)), preview.Completed.Result);
         Assert.Contains(preview.Completed.Result, output.ToString());
         Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
         Assert.Equal(1, output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1);

@@ -17,7 +17,7 @@ public sealed class SurvivalWeatherViewTests {
         Assert.NotNull(weather.NextWindow);
         Assert.Null(weather.LastAt);
         Assert.Null(weather.LastKind);
-        string text = PlayView.Render(context.Observation);
+        string text = PlayView.Render(context.Observation, context.Continuity);
         Assert.Contains("## 天气与暴露", text);
         Assert.Contains("下次窗口", text);
         Assert.Contains("可能平静，也可能遭遇寒风", text);

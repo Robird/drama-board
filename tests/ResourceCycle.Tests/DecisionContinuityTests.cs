@@ -75,10 +75,10 @@ public sealed class DecisionContinuityTests {
     }
 
     [Fact]
-    public async Task Handoff_unicode_limit_clear_and_actor_isolation_are_domain_rules() {
+    public async Task Handoff_unicode_limit_and_clear_are_domain_rules() {
+        CycleWorld initial = CycleGameFactory.CreateSurvival(Hour(8), enableNeeds: false, enableWeather: false).World;
         var a = new CycleCharacter("a", "Alice", continuity: new(draftHandoff: "A的计划"));
-        var b = new CycleCharacter("b", "Bob", continuity: new(draftHandoff: "B的计划"));
-        CycleWorld world = CycleWorld.CreatePlayable(Hour(8), [a, b]);
+        CycleWorld world = CycleEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [a]), initial.Time);
         string exactlyLimit = string.Concat(Enumerable.Repeat("😀", 2000));
         Assert.Null(CycleActions.Check(world, "a", CycleCommand.Handoff(exactlyLimit)));
         Assert.NotNull(CycleActions.Check(world, "a", CycleCommand.Handoff(exactlyLimit + "字")));
@@ -89,11 +89,7 @@ public sealed class DecisionContinuityTests {
         var kernel = CycleEngine.CreateKernel(Memory(world), characterController: source);
         await Advance(kernel);
         Assert.Null(kernel.World.GetCharacter("a").Continuity!.DraftHandoff);
-        Assert.Same(b, kernel.World.GetCharacter("b"));
-        Assert.Equal("B的计划", kernel.World.GetCharacter("b").Continuity!.DraftHandoff);
         Assert.Equal(1, kernel.World.GetCharacter("a").Continuity!.ContextSequence);
-        Assert.DoesNotContain("B的计划", System.Text.Json.JsonSerializer.Serialize(CycleDecisionContext.Create(kernel.World, "a").Observation,
-            new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
     }
 
     private static CycleFact LastFact(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) =>
