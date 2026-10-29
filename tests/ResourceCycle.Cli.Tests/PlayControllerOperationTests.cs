@@ -21,7 +21,7 @@ public sealed class PlayControllerOperationTests {
             if (i > 0) { Assert.Null(journal.Entries[^1].Completed); }
             PlayConsole.CompleteOperations(journal, kernel.LastCompletion!);
             int beforeFeedback = output.GetStringBuilder().Length;
-            controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: true);
+            controller.RenderCommitted(kernel.World);
             if (i is 1 or 2) {
                 string response = journal.Entries[^1].Completed!.Result;
                 Assert.Equal(1, output.ToString()[beforeFeedback..].Split(response).Length - 1);
@@ -86,9 +86,10 @@ public sealed class PlayControllerOperationTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
         PlayConsole.CompleteOperations(journal, kernel.LastCompletion!);
         output.GetStringBuilder().Clear();
-        controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: false);
+        controller.RenderCommitted(kernel.World);
         string rejectedResult = Assert.Single(journal.Entries).Completed!.Result;
-        Assert.Equal(rejectedResult + output.NewLine, output.ToString());
+        Assert.Contains(rejectedResult, output.ToString());
+        Assert.DoesNotContain("正在处理结算", output.ToString());
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
         Assert.Equal("a", journal.Entries[^1].Received.ActorId);
         Assert.Equal(1L, journal.Entries[^1].Received.ContextSequence);
@@ -105,9 +106,15 @@ public sealed class PlayControllerOperationTests {
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
 
-        await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => controller.ChooseCommandAsync(
-            ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), default).AsTask());
+        var context = ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a");
+        await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => controller.ChooseCommandAsync(context, default).AsTask());
 
+        Assert.Equal(CharacterContextStatus.Open, context.Context.Status);
+        Assert.Empty(context.Context.Items);
+        Assert.Null(context.InteractionState.PendingAdvance);
+        Assert.Contains("会话关闭", output.ToString());
+        Assert.Contains(PlayPresentationSession.OutOfBandStart, output.ToString());
+        Assert.DoesNotContain("LLM 上下文结束", output.ToString());
         Assert.Equal(count, journal.Entries.Count);
         Assert.All(journal.Entries, entry => {
             Assert.Equal(entry.Received.ToolCallId, entry.Completed!.ToolCallId);
@@ -154,7 +161,7 @@ public sealed class PlayControllerOperationTests {
             Assert.NotNull(baseline);
             Assert.Same(baseline, controller!.Baseline);
         });
-        controller = new(presentation, ConsoleMetaCommands.None, input, output, () => boundaries++, journal);
+        controller = new(presentation, ConsoleMetaCommands.None, input, output, _ => boundaries++, journal);
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
 
@@ -234,10 +241,14 @@ public sealed class PlayControllerOperationTests {
         await controller.ChooseCommandAsync(ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), default);
 
         string response = journal.Entries[0].Completed!.Result;
-        Assert.Contains(":help", response);
-        Assert.Contains("现在可输入", response);
-        Assert.Equal(response + output.NewLine + observation.Actor.Id + "> ",
-            output.ToString()[beforeResync..afterResync]);
+        Assert.DoesNotContain(":help", response);
+        Assert.DoesNotContain("现在可输入", response);
+        string delivered = output.ToString()[beforeResync..afterResync];
+        Assert.Contains(response, delivered);
+        Assert.Contains(PlayPresentationSession.OutOfBandStart, delivered);
+        Assert.Contains(PlayPresentationSession.OutOfBandEnd, delivered);
+        Assert.DoesNotContain("LLM 上下文开始", delivered);
+        Assert.DoesNotContain("LLM 上下文结束", delivered);
     }
 
     [Theory]
@@ -270,7 +281,7 @@ public sealed class PlayControllerOperationTests {
         Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation, context.InteractionState)), preview.Completed.Result);
         Assert.Contains(preview.Completed.Result, output.ToString());
         Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
-        Assert.Equal(1, output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1);
+        Assert.Equal(1, output.ToString().Split("LLM 上下文开始").Length - 1);
     }
 
     private sealed class CallbackReader(IEnumerable<string> lines, Action beforeRead) : TextReader {

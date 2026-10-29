@@ -7,12 +7,12 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class IncrementalSessionTests {
     [Fact]
-    public void Terminal_commit_delivers_events_with_a_full_frozen_tail_and_marks_delivery_complete() {
-        var layout = new RecordingLayout();
+    public void Terminal_commit_replaces_prior_display_with_its_own_paired_scope_and_never_requests_input() {
         using var output = new StringWriter();
-        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, output);
+        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, output);
         CycleObservation initial = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(initial, ViewContextFixture.State(initial));
+        var opened = ViewContextFixture.State(initial);
+        session.EnterInput(opened);
         var terminal = new CycleObservation {
             Time = initial.Time, IsDay = initial.IsDay, NextLightChange = initial.NextLightChange,
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,
@@ -21,15 +21,21 @@ public sealed class IncrementalSessionTests {
             Outcome = CycleExpeditionOutcome.Dead, EndingReason = "已耗尽"
         };
         var ending = new CycleObservedEvent(4, "a", CycleObservedEventKind.ExpeditionEnded, initial.Time, initial.Time);
-        session.BeginAdvancing();
-        session.Commit(terminal, [ending], interactionState: ViewContextFixture.State(terminal));
-
-        CycleViewUpdate update = Assert.Single(layout.Updates);
-        Assert.True(update.FullTail);
-        Assert.Same(ending, Assert.Single(update.Events));
+        var state = new CharacterInteractionState("a", new CharacterContext(2, CharacterContextStatus.Terminal,
+            new CharacterContextOpening(CycleBackground.For(terminal), terminal, null, terminal.Time,
+                CycleOutcomeActivityState.Terminal, [new CharacterExperience(1, ending)])), nextExperienceSequence: 2);
+        output.GetStringBuilder().Clear();
+        session.Commit(state);
+        Assert.Contains(CharacterContextRenderer.EndMarker(opened), output.ToString());
+        Assert.Contains(CharacterContextRenderer.BeginMarker(state), output.ToString());
+        Assert.Contains(CharacterContextRenderer.EndMarker(state), output.ToString());
+        Assert.DoesNotContain("现在可输入", output.ToString());
         Assert.True(session.TerminalDelivered);
         Assert.Same(terminal, session.Baseline!.Observation);
-        Assert.Equal(PlayDeliveryPhase.Advancing, update.Phase);
+        output.GetStringBuilder().Clear();
+        session.Commit(state);
+        Assert.Empty(output.ToString());
+        Assert.Throws<InvalidOperationException>(() => session.EnterInput(state));
     }
 
     [Fact]
@@ -46,7 +52,7 @@ public sealed class IncrementalSessionTests {
         CycleFact fact = Assert.Single(kernel.LastCompletion!.Event.Facts);
         Assert.Empty(fact.ObservedEvents);
         PlayConsole.CompleteOperations(operations, kernel.LastCompletion);
-        controller.RenderCommitted(kernel.World, kernel.LastCompletion, survival: true);
+        controller.RenderCommitted(kernel.World);
         Assert.Contains(CycleOperationResults.Describe(fact), output.ToString());
         Assert.Equal(CycleOperationStatus.Succeeded, operations.Entries.Single().Completed!.Status);
     }
@@ -64,7 +70,11 @@ public sealed class IncrementalSessionTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
         output.GetStringBuilder().Clear();
-        controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: true);
+        controller.RenderCommitted(kernel.World);
+        Assert.Contains("LLM 上下文结束", output.ToString());
+        Assert.DoesNotContain("开始等待", output.ToString());
+        output.GetStringBuilder().Clear();
+        controller.RenderCommitted(kernel.World);
         Assert.Empty(output.ToString());
         Assert.NotNull(kernel.World.Business.InteractionStates["a"].PendingAdvance);
         Assert.Equal(CharacterContextStatus.Closed, kernel.World.Business.InteractionStates["a"].CurrentContext!.Status);
@@ -94,47 +104,59 @@ public sealed class IncrementalSessionTests {
     }
 
     [Fact]
-    public void Failed_write_invalidates_baseline_and_next_delivery_is_full() {
-        var layout = new RecordingLayout();
+    public void Failed_output_does_not_consume_items_and_retry_redraws_saved_material_without_new_scope() {
         using var writer = new FaultingWriter();
-        int boundaries = 0;
-        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer, () => boundaries++);
+        var boundaries = new List<string>();
+        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer, boundaries.Add);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-        Assert.NotNull(session.Baseline);
-        Assert.Single(layout.Full);
+        var initial = ViewContextFixture.State(observation);
+        session.EnterInput(initial);
+        var item = new CharacterContextItem(1, 1, "handoff --clear", "call", "record", "saved-result", observation: observation);
+        var changed = new CharacterInteractionState("a", new CharacterContext(1, CharacterContextStatus.Open,
+            initial.CurrentContext!.Opening, [item], 2, 1));
         writer.Fail = true;
-        session.BeginAdvancing();
-
-        Assert.Throws<IOException>(() => session.Commit(observation, [], interactionState: ViewContextFixture.State(observation)));
+        Assert.Throws<IOException>(() => session.Commit(changed));
         Assert.Null(session.Baseline);
+        Assert.Equal(0, session.ConsumedItemSequence);
         writer.Fail = false;
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-
-        Assert.Equal(2, layout.Full.Count);
+        writer.GetStringBuilder().Clear();
+        session.EnterInput(changed);
+        Assert.Contains("saved-result", writer.ToString());
+        Assert.Equal(1, session.ConsumedItemSequence);
         Assert.NotNull(session.Baseline);
-        Assert.Equal(1, boundaries); // Recovery resynchronizes without inventing a new decision context.
+        Assert.Single(boundaries);
+        writer.GetStringBuilder().Clear();
+        session.Commit(changed);
+        session.EnterInput(changed);
+        Assert.Empty(writer.ToString());
     }
 
     [Fact]
-    public void Commit_never_claims_input_and_input_phase_is_delivered_once_on_actual_entry() {
-        var layout = new RecordingLayout();
+    public void Committed_item_is_consumed_once_and_meta_previews_do_not_change_cursor_or_model() {
         using var writer = new StringWriter();
-        var session = new PlayPresentationSession(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, writer);
+        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
         CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-        session.BeginAdvancing();
-        session.Commit(observation, [], interactionState: ViewContextFixture.State(observation));
-        session.Commit(observation, [], interactionState: ViewContextFixture.State(observation));
-        Assert.All(layout.Updates, update => Assert.Equal(PlayDeliveryPhase.Advancing, update.Phase));
-        Assert.Equal(1, Count(writer.ToString(), "现在可输入"));
-
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-
-        Assert.Equal(2, Count(writer.ToString(), "现在可输入"));
-        Assert.Equal(PlayDeliveryPhase.ControllerInput, layout.Updates[^1].Phase);
-        Assert.Single(layout.Full);
+        var initial = ViewContextFixture.State(observation);
+        session.EnterInput(initial);
+        var item = new CharacterContextItem(1, 1, "bad-attempt", "call", "record", "unique-rejection", isRejected: true);
+        var changed = new CharacterInteractionState("a", new CharacterContext(1, CharacterContextStatus.Open,
+            initial.CurrentContext!.Opening, [item], 2, 1));
+        session.Commit(changed);
+        session.Commit(changed);
+        session.EnterInput(changed);
+        Assert.Equal(1, Count(writer.ToString(), "unique-rejection"));
+        Assert.DoesNotContain("正在处理结算", writer.ToString());
+        Assert.Equal(1, session.ConsumedItemSequence);
+        var baseline = session.Baseline;
+        writer.GetStringBuilder().Clear();
+        session.ShowCurrent(changed, prefix: "preview");
+        session.Reply("help");
+        Assert.Same(baseline, session.Baseline);
+        Assert.Equal(1, session.ConsumedItemSequence);
+        Assert.Same(item, Assert.Single(changed.CurrentContext!.Items));
+        Assert.Contains(PlayPresentationSession.OutOfBandStart, writer.ToString());
+        Assert.DoesNotContain("LLM 上下文开始", writer.ToString());
+        Assert.DoesNotContain("LLM 上下文结束", writer.ToString());
     }
 
     [Theory]
@@ -153,7 +175,7 @@ public sealed class IncrementalSessionTests {
         for (int i = 0; i < 3; i++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
             PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
-            controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: true);
+            controller.RenderCommitted(kernel.World);
         }
         string beforeLook = output.ToString();
         Assert.Equal(1, Count(beforeLook, "# 山林求生"));
@@ -188,31 +210,10 @@ public sealed class IncrementalSessionTests {
         Assert.Contains(":layout decision", output.ToString());
     }
 
-    [Fact]
-    public void Query_details_does_not_install_baseline_or_mutate_phase() {
-        using var writer = new StringWriter();
-        var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
-        CycleObservation observation = Observe(CycleGameFactory.CreateSurvival().World);
-        session.EnterInput(observation, ViewContextFixture.State(observation));
-        CycleViewSnapshot baseline = session.Baseline!;
-        _ = PlayView.Render(observation, ViewContextFixture.State(observation));
-        Assert.Same(baseline, session.Baseline);
-        Assert.Equal(PlayDeliveryPhase.ControllerInput, session.Phase);
-    }
-
     private static CycleObservation Observe(CycleWorld world) => CycleDecisionContext.Observe(world, "a");
     private static int Count(string text, string fragment) => text.Split(fragment, StringSplitOptions.None).Length - 1;
     private sealed class FaultingWriter : StringWriter {
         public bool Fail { get; set; }
         public override void Flush() { if (Fail) { throw new IOException("Injected write failure."); } }
-    }
-    private sealed class RecordingLayout : IPlayLayout {
-        public string Id => "recording";
-        public string Name => Id;
-        public List<CycleObservation> Full { get; } = [];
-        public List<CycleViewUpdate> Updates { get; } = [];
-        public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) { Full.Add(observation); return "full"; }
-        public string RenderUpdate(CycleViewUpdate update) { Updates.Add(update); return "update"; }
-        public string RenderActionHelp(CycleObservation observation) => "help";
     }
 }

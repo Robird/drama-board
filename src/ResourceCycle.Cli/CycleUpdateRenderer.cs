@@ -55,6 +55,7 @@ internal static class CycleUpdateRenderer {
     };
 
     private static string TextValue(string text, CycleStateKey? key) => key switch {
+        { Category: "continuity", Field: "draft" } => CharacterContextRenderer.DataLiteral(text),
         { Category: "activity", Field: "kind" } or { Category: "continuity", Field: "pending" } => text switch {
             "Wait" => "等待", "Gather" => "采集", "Go" => "移动", "Continue" => "确认后继续", _ => text
         },

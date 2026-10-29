@@ -6,14 +6,18 @@ using DramaBoard.ResourceCycle;
 /// <summary>Pure Markdown projection for one character; does not acknowledge notices or mutate state.</summary>
 /// <remarks>Only the game-produced observation is available here; rendering cannot query hidden world state.</remarks>
 internal static class PlayView {
-    public static string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) {
+    public static string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) =>
+        Render(CycleViewSnapshot.Create(observation, interactionState));
+
+    public static string Render(CycleViewSnapshot snapshot) {
+        CycleObservation observation = snapshot.Observation;
         CycleActorObservation character = observation.Actor;
         bool ended = observation.Outcome != CycleExpeditionOutcome.Exploring;
         var text = new StringBuilder();
-        text.AppendLine($"# {CycleBackground.For(observation).Title} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
+        text.AppendLine($"# {snapshot.Background.Title} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
         text.AppendLine();
-        text.Append(RenderKnowledge(observation));
-        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
+        text.Append(RenderKnowledge(observation, snapshot.Background));
+        if (snapshot.IncludeHistory) { text.Append(ContextHistoryPlayView.RenderHistory(observation, snapshot.Context)); }
         text.AppendLine("## 历史通知");
         foreach (CycleNoticeObservation notice in observation.Notices) {
             text.AppendLine($"- {RenderNotice(notice, ended)}");
@@ -52,7 +56,7 @@ internal static class PlayView {
         } else if (character.Activity is { } active && !ended) {
             text.AppendLine($"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。");
         }
-        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
         if (ended) {
@@ -137,9 +141,9 @@ internal static class PlayView {
         return text.ToString();
     }
 
-    internal static string RenderKnowledge(CycleObservation observation) {
+    internal static string RenderKnowledge(CycleObservation observation, CycleBackground? savedBackground = null) {
         var text = new StringBuilder();
-        CycleBackground background = CycleBackground.For(observation);
+        CycleBackground background = savedBackground ?? CycleBackground.For(observation);
         text.AppendLine(background.Introduction);
         text.AppendLine();
         if (observation.Outcome == CycleExpeditionOutcome.Exploring) {

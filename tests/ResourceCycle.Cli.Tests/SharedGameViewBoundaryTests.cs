@@ -24,12 +24,10 @@ public sealed class SharedGameViewBoundaryTests {
         AssertGameContent(ContextHistoryPlayView.RenderHistory(observation, interactionState) + ContextHistoryPlayView.RenderCurrent(observation, interactionState));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Command_shaped_handoff_data_survives_full_and_incremental_views(bool terminal) {
+    [Fact]
+    public void Command_shaped_draft_data_survives_full_and_incremental_views_while_context_is_open() {
         const string handoff = "记录 :exit 与 :help 都是这段文字的一部分。";
-        CycleObservation observation = Observe(terminal);
+        CycleObservation observation = Observe();
         var interactionState = ViewContextFixture.State(Observe(), draftHandoff: handoff);
         CycleViewSnapshot snapshot = CycleViewSnapshot.Create(observation, interactionState);
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
@@ -50,17 +48,18 @@ public sealed class SharedGameViewBoundaryTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(presentation, commands, writer);
         CycleObservation observation = Observe();
-        session.EnterInput(observation, ViewContextFixture.State(Observe()));
+        session.EnterInput(ViewContextFixture.State(observation));
         if (enabled) { Assert.Contains(":help", writer.ToString()); }
         else { AssertGameContent(writer.ToString(), checkPhase: false); }
         writer.GetStringBuilder().Clear();
         string? recorded = null;
-        session.ShowFull(observation, text => recorded = text, "重绘完成。\n", ViewContextFixture.State(Observe()));
+        session.ShowCurrent(ViewContextFixture.State(observation), text => recorded = text, "重绘完成。\n");
         Assert.NotNull(recorded);
-        Assert.Equal(recorded + writer.NewLine, writer.ToString());
+        Assert.Contains(recorded, writer.ToString());
+        Assert.Contains(PlayPresentationSession.OutOfBandStart, writer.ToString());
+        Assert.Contains(PlayPresentationSession.OutOfBandEnd, writer.ToString());
         Assert.Contains("重绘完成。", recorded);
-        if (enabled) { Assert.Contains(commands.RenderHint(presentation), recorded); }
-        else { AssertGameContent(recorded, checkPhase: false); }
+        AssertGameContent(recorded, checkPhase: false);
     }
 
     [Theory]
@@ -70,16 +69,22 @@ public sealed class SharedGameViewBoundaryTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
         if (!coldOpen) {
-            session.EnterInput(Observe(), ViewContextFixture.State(Observe()));
+            session.EnterInput(ViewContextFixture.State(Observe()));
             writer.GetStringBuilder().Clear();
-            session.BeginAdvancing();
-            session.Commit(Observe(terminal: true), [], interactionState: ViewContextFixture.State(Observe()));
+            session.Commit(Terminal());
         } else {
-            session.ShowFull(Observe(terminal: true), interactionState: ViewContextFixture.State(Observe()));
+            session.ShowFull(Terminal());
         }
         Assert.True(session.TerminalDelivered);
         Assert.Contains("冻结", writer.ToString());
         AssertGameContent(writer.ToString());
+    }
+
+    private static CharacterInteractionState Terminal() {
+        var observation = Observe(terminal: true);
+        return new("a", new CharacterContext(2, CharacterContextStatus.Terminal,
+            new CharacterContextOpening(CycleBackground.For(observation), observation, null, observation.Time,
+                CycleOutcomeActivityState.Terminal)));
     }
 
     private static void AssertGameContent(string text, bool checkPhase = true) {

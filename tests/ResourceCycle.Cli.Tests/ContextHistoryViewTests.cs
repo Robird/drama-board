@@ -84,4 +84,35 @@ public sealed class ContextHistoryViewTests {
         Assert.DoesNotContain("首次决策", history);
     }
 
+    [Theory]
+    [InlineData("decision")]
+    [InlineData("classic")]
+    public void Terminal_keeps_historical_handoff_and_final_experience_without_a_future_draft_or_input(string layoutId) {
+        var original = CycleDecisionContext.Observe(CycleGameFactory.CreateSurvival().World, "a");
+        var observation = new CycleObservation {
+            Time = original.Time, IsDay = original.IsDay, NextLightChange = original.NextLightChange,
+            Actor = original.Actor, Resources = original.Resources, HarvestDurations = original.HarvestDurations,
+            ItemNames = original.ItemNames, OtherCharacters = original.OtherCharacters, Notices = original.Notices,
+            Commands = [], IsExpedition = true, Outcome = CycleExpeditionOutcome.Dead, EndingReason = "终局原因"
+        };
+        var advance = new PendingAdvance("a", 1, 1, CycleCommand.Wait(1), "wait 1", "call", "record", original.Time,
+            "原地等待", activityId: 1, handoff: "旧交接里提到 :exit 只是文字");
+        var ending = new CharacterExperience(1, new CycleObservedEvent(0, "a", CycleObservedEventKind.ExpeditionEnded,
+            original.Time, observation.Time, detail: "末条感知独有文字"));
+        var state = new CharacterInteractionState("a", new CharacterContext(2, CharacterContextStatus.Terminal,
+            new CharacterContextOpening(CycleBackground.For(observation), observation, advance, observation.Time,
+                CycleOutcomeActivityState.Terminal, [ending])), nextExperienceSequence: 2);
+        string text = CharacterContextRenderer.RenderFull(state, PlayPresentation.ForMode(true).FindLayout(layoutId)!);
+        Assert.Contains(advance.Handoff!, text);
+        Assert.Contains("旅程", text);
+        Assert.Contains("终局原因", text);
+        Assert.Contains("末条感知独有文字", text);
+        Assert.Contains(CharacterContextRenderer.BeginMarker(state), text);
+        Assert.Contains(CharacterContextRenderer.EndMarker(state), text);
+        Assert.DoesNotContain("本轮交接草稿", text);
+        Assert.DoesNotContain("下一次放行模拟时发送", text);
+        Assert.DoesNotContain("handoff --clear", text);
+        Assert.DoesNotContain("现在可输入", text);
+    }
+
 }

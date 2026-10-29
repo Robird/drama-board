@@ -9,6 +9,7 @@ This directory preserves evidence that is not a current implementation instructi
 - [Agent memory notebook](legacy/agent-memory-notebook.md) preserves the retired handoff snapshot.
 - [Assistant infrastructure notes](legacy/assistant-infrastructure-notes.md) preserve an early assistant dialogue and its proposals.
 - [Grid Spatial Framework](legacy/grid-spatial-framework.md) preserves the superseded Grid model.
+- [Controller context visibility feedback](legacy/controller-context-visibility.md) preserves the original Console boundary questions, resolved by the [Character context Model](../design/character-context-model.md) and its [acceptance](../experiments/character-context-model-acceptance.md).
 
 The `legacy/` subtree and repository-root `archive/firstboard-llm/` and `archive/player-runtime/` units are excluded from default local text search. Inspect their content explicitly with `rg --no-ignore -n "keyword" <path>`.
 

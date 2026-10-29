@@ -31,7 +31,7 @@ public sealed class PlayPresentationTests {
         using var input = new StringReader(":layout\n:layout second\n:look\n:help\n:layout first once\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
         int boundaries = 0;
-        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => boundaries++);
+        var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, _ => boundaries++);
 
         CycleControllerOperation operation = await controller.ChooseCommandAsync(context, default);
 
@@ -42,13 +42,13 @@ public sealed class PlayPresentationTests {
         Assert.Single(second.Help);
         Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),
             observation => Assert.Same(context.Observation, observation));
-        Assert.All(first.InteractionStates.Concat(second.InteractionStates), interactionState => Assert.Same(context.InteractionState, interactionState));
+        Assert.All(first.Snapshots.Concat(second.Snapshots), snapshot => Assert.Same(context.Context, snapshot.Context));
         Assert.Equal(before, world.DescribeState());
         Assert.Equal(1, boundaries);
     }
 
     [Fact]
-    public async Task New_time_or_actor_adds_boundary_but_same_time_interactions_remain() {
+    public async Task Distinct_saved_contexts_begin_once_and_repeated_input_does_not_redraw() {
         var layout = new RecordingLayout("test");
         var presentation = new PlayPresentation(layout);
         CycleWorld earlier = CycleGameFactory.CreatePlayable(new ModelTime(16 * CycleTime.Hour)).World;
@@ -57,7 +57,7 @@ public sealed class PlayPresentationTests {
         using var output = new StringWriter();
         int boundaries = 0;
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output,
-            () => boundaries++);
+            _ => boundaries++);
 
         await controller.ChooseCommandAsync(ViewContextFixture.Create(earlier, "a"), default);
         await controller.ChooseCommandAsync(ViewContextFixture.Create(earlier, "a"), default);
@@ -69,11 +69,11 @@ public sealed class PlayPresentationTests {
         await controller.ChooseCommandAsync(ViewContextFixture.Create(later, "b", 2), default);
         Assert.Equal(3, boundaries);
 
-        // Terminal observations use this same boundary even though no further input is requested.
+        // Explicit observation rendering consumes the saved identity, never a model-time heuristic.
         controller.RenderObservation(ViewContextFixture.Create(
             CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b", 3));
         Assert.Equal(4, boundaries);
-        Assert.Equal(5, layout.Screens.Count);
+        Assert.Equal(4, layout.Screens.Count);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class PlayPresentationTests {
         var controller = new PlayConsole.ConsoleCharacterController(new PlayPresentation(layout), ConsoleMetaCommands.HumanDefault, input, output) {
             StartupText = "startup-help"
         };
-        int BoundaryCount() => output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1;
+        int BoundaryCount() => output.ToString().Split("LLM 上下文开始").Length - 1;
         CycleWorld first = SurvivalContext(15, 1);
         CycleWorld sameContextLaterTime = SurvivalContext(16, 1);
         CycleWorld nextContextSameTime = SurvivalContext(16, 2);
@@ -137,8 +137,9 @@ public sealed class PlayPresentationTests {
         public string Name => id;
         public List<CycleObservation> Screens { get; } = [];
         public List<CycleObservation> Help { get; } = [];
-        public List<CharacterInteractionState?> InteractionStates { get; } = [];
-        public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) { Screens.Add(observation); InteractionStates.Add(interactionState); return Id; }
+        public List<CycleViewSnapshot> Snapshots { get; } = [];
+        public string RenderFull(CycleViewSnapshot snapshot) { Screens.Add(snapshot.Observation); Snapshots.Add(snapshot); return Id; }
+        public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) { Screens.Add(observation); return Id; }
         public string RenderActionHelp(CycleObservation observation) { Help.Add(observation); return Id; }
     }
 }

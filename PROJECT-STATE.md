@@ -26,11 +26,11 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：持久 Context 已接通合法操作、待交付经历、终局，以及原始 submission/拒绝和最近 3 次操作窗口；[生命周期](tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs)、[拒绝](tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)与[拒绝冷开/预算](tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)承载领域合同。下一步完成分片 3：完整 Opening/Items 的共用渲染、纯上下文输出、Console 带外块与开始/结束标记、提交后诊断 sink，移除剩余 Fact 直出；随后独立试玩并逐项验收完整方案。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，完整目标尚未验收。
+**当前焦点**：[角色上下文 Model](docs/design/character-context-model.md)已完成领域持久化、原始操作/拒绝窗口、共用完整/增量渲染及提交后诊断，证据见[验收记录](docs/experiments/character-context-model-acceptance.md)。角色信息真相为冻结 Opening＋保留的有序 Items，Console 游标仅优化绘制；纯输出独立于终端实录。后续在扩展历史保留窗口或接入 LLM 时，分别裁决容量与同刻 1024 转换护栏、工具协议与外部调用恢复，不以呈现重构宣称这些已完成。
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 
-生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀；[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs) 当前仍使用彩色回合分隔线。`--play` 仅支持 full，已移除逐世界事实直出；两种模式输入时读取已保存观察，历史由 Opening 经历渲染，Closed 后不输出结算。生存瞬时输出仍经 Fact 事件出口，完整 Items 消费与上下文标记尚待分片 3，当前屏幕不等于完整 Model。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标应扩充观察投影，不在布局复制预测。二期双角色胜负、对话/赠与及 LLM 尚未启动；移动不可取消、干木燃料用途依体验重开。
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测。二期双角色胜负、对话/赠与及 LLM 尚未启动；移动不可取消、干木燃料用途依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 

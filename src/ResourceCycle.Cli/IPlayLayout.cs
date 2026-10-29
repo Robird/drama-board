@@ -5,7 +5,7 @@ internal interface IPlayLayout {
     string Id { get; }
     string Name { get; }
     string Render(CycleObservation observation, CharacterInteractionState? interactionState = null);
-    string RenderFull(CycleViewSnapshot snapshot) => Render(snapshot.Observation, snapshot.InteractionState);
+    string RenderFull(CycleViewSnapshot snapshot);
     string RenderUpdate(CycleViewUpdate update) => update.FullTail
         ? CycleUpdateRenderer.RenderEvents(update) + RenderFull(update.Snapshot)
         : CycleUpdateRenderer.Render(update);
@@ -16,5 +16,6 @@ internal sealed class ClassicPlayLayout : IPlayLayout {
     public string Id => "classic";
     public string Name => "完整分栏";
     public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) => PlayView.Render(observation, interactionState);
+    public string RenderFull(CycleViewSnapshot snapshot) => PlayView.Render(snapshot);
     public string RenderActionHelp(CycleObservation observation) => PlayView.RenderCommands(observation);
 }

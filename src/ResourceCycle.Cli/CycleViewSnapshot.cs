@@ -9,16 +9,28 @@ internal sealed class CycleViewSnapshot {
     private readonly Dictionary<CycleStateKey, string> _labels = [];
     public CycleObservation Observation { get; }
     public CharacterInteractionState? InteractionState { get; }
+    public CharacterContext? Context { get; }
+    public CycleBackground Background { get; }
+    public string? DraftHandoff { get; }
+    public bool IncludeHistory { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> Values { get; }
 
-    private CycleViewSnapshot(CycleObservation observation, CharacterInteractionState? interactionState) {
+    private CycleViewSnapshot(CycleObservation observation, CharacterInteractionState? interactionState,
+        CharacterContext? context = null, string? draftHandoff = null, bool includeHistory = true) {
         Observation = observation;
         InteractionState = interactionState;
+        Context = context ?? interactionState?.CurrentContext;
+        Background = Context?.Opening.Background ?? CycleBackground.For(observation);
+        DraftHandoff = context is not null ? draftHandoff : interactionState?.DraftHandoff;
+        IncludeHistory = includeHistory;
         Values = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(_values);
         Project();
     }
 
     public static CycleViewSnapshot Create(CycleObservation observation, CharacterInteractionState? interactionState = null) => new(observation, interactionState);
+
+    public static CycleViewSnapshot CreateRecorded(CycleObservation observation, CharacterContext context,
+        string? draftHandoff, bool includeHistory = true) => new(observation, null, context, draftHandoff, includeHistory);
 
     public string? KnownLabel(CycleStateKey key) => _values.ContainsKey(key) ? Label(key) : null;
 
@@ -149,12 +161,9 @@ internal sealed class CycleViewSnapshot {
             Add("weather", "world", "last-loss", Number(w.LastActualWarmthLoss), "最近实际温暖损失");
             Add("weather", "world", "last-sheltered", CycleVisibleValue.Flag(w.LastWasSheltered), "最近寒风时有庇护");
         }
-        if (InteractionState is { } state) {
-            Add("continuity", actor, "draft", Text(state.DraftHandoff));
-            if (state.CurrentContext is { } context) {
-                Add("continuity", actor, "sequence", CycleVisibleValue.Numeric(context.ContextSequence), "决策回合");
-            }
-            Add("continuity", actor, "pending", Text(state.PendingAdvance?.Command.Kind.ToString()), "已接受行动");
+        if (Context is { } context) {
+            Add("continuity", actor, "draft", Text(DraftHandoff));
+            Add("continuity", actor, "sequence", CycleVisibleValue.Numeric(context.ContextSequence), "决策回合");
         }
     }
 

@@ -1,6 +1,6 @@
 # 设计决策：共享无状态角色控制器与游戏维护的动态上下文
 
-状态：用户已采纳的架构方向；ResourceCycle 已实现角色观察、操作封套和生存模式的决策回合继承，尚未接入 LLM、长期角色记忆或完整局部会话恢复。
+状态：用户已采纳的架构方向；ResourceCycle 已实现共享持久 Context、原始操作封套、按角色隔离的经历交付与共用呈现，尚未接入 LLM、长期角色记忆或完整局部会话恢复。
 
 ## 决策与动机
 
@@ -17,7 +17,7 @@ CharacterController（亦称 Player）负责为指定角色产生决策，**不�
 | 层次 | 内容 | 归属与约束 |
 | --- | --- | --- |
 | 跨决策的角色状态 | 经历、目标、笔记、关系认知、人格设定，以及其他影响后续行为的信息 | 游戏维护，按角色隔离；可采用世界发布根下独立的子对象图。控制器不能把唯一副本藏在实例字段或服务端聊天会话中。具体 schema 尚未设计。 |
-| 本次决策的局部会话 | 当前工具调用历史、临时工作上下文、尚未提交的行动选择 | 归本次调用所有，不泄漏到下一个角色或下一次决策。需要中途恢复时，再把必要会话状态显式保存；不要求一开始就细粒度持久化。 |
+| 本次决策的局部会话 | 当前工具交互、临时推理与尚未提交的行动选择 | 已提交的原始输入、可见结果与经历保存在角色 Context；尚未提交的输入及模型私有推理归本次调用，不泄漏到其他角色。保存 Context 不等于保存完整端点协议会话。 |
 | 可共享的运行设施 | API 客户端、模型配置、连接池等 | 可以由控制器实例共享，但不得夹带隐式角色聊天历史。配置应作为明确输入或依赖；控制器替换不应带走角色唯一的记忆。 |
 
 这里的“无状态”指不私藏跨决策的角色语义状态，不禁止局部变量、客户端资源、测试计数器或显式会话对象。对人类控制器，这是软件状态归属约定，不声称能清除操作者本人的记忆。
@@ -54,11 +54,11 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 ## 当前实现与后续范围
 
-- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`。上下文包含角色观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
-- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出和回合分隔所用的上次画面标识，不保存角色的跨决策语义记忆。每次调用读取该角色保存的材料并等待非空行动提交；冒号元命令在 Console 本地处理，游戏解析/合法性拒绝由共享应用层提交。
+- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`。上下文包含已保存 Context、角色最新观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
+- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出以及按角色/上下文隔离的临时消费游标，不保存角色的跨决策语义记忆。每次调用读取该角色保存的材料并等待非空行动提交；冒号元命令在 Console 本地处理，游戏解析/合法性拒绝由共享应用层提交。
 - [Human Console 边界](console-command-boundary.md)已将纯行动解析、共享游戏文档和 Console 管理能力分开。`ConsoleMetaCommands.HumanDefault` / `None` 在会话构造时同时控制元命令解析和提示；退出只由 Console 所有者处理。未来 LLM 通过同一原始行动 submission 入口提交，不复用 Console 输入循环；禁用元命令并不等于实现 LLM 适配。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。成功操作沿用现有服务轮转；纯拒绝保持原服务机会，只递增请求版本，不确认通知或身体警告。
-- Business 根下的 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 保存当前 Context、草稿、待推进关联与待交付经历；`DecisionContextOpened` 通过现有请求仲裁冻结 Opening，再交付控制器。合法零耗时操作追加持久 Item，放行后的经历进入下一 Opening；旧 Continuity 已替换。原始输入与纯拒绝同样持久化，纯拒绝只保留最近 3 次本角色本轮操作的窗口；完整 Console 消费继续按[重构方案](character-context-model.md)实施。宿主操作记录不等于完整模型会话；LLM、长期笔记和旧经历召回尚未接入。
+- Business 根下的 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 保存当前 Context、草稿、待推进关联与待交付经历；`DecisionContextOpened` 通过现有请求仲裁冻结 Opening，再交付控制器。合法零耗时操作追加持久 Item，放行后的经历进入下一 Opening；旧 Continuity 已替换。原始输入与纯拒绝同样持久化，纯拒绝只保留最近 3 次本角色本轮操作的窗口；[CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 从 Opening 与保留 Items 生成完整角色材料，Console 增量仅追加新条目；最新状态预览是独立只读入口，旧滚动文字不参与后续 Context 构造。宿主操作记录不等于完整模型会话；LLM、长期笔记和旧经历召回尚未接入。
 
 后续实现可用以下行为验收本决策：A/B 角色交替使用同一控制器不串记忆；替换控制器实例后显式角色记忆仍可用；文本与工具都不泄漏未授权信息；中断后的 pending E 恢复不再次调用控制器。更换 LLM 后得到完全相同的行动不属于验收要求。
 

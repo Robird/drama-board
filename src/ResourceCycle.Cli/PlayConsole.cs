@@ -5,7 +5,9 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>One asynchronous owner drives the Kernel; input and rendering never mutate the world.</summary>
 internal static class PlayConsole {
-    public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken, bool survival = false) {
+    public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken, bool survival = false,
+        Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null) {
+        TextWriter output = outputWriter ?? Console.Out;
         bool restoring = store is not null && Directory.Exists(store);
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
             ? CycleDurableHistory.Open(store) : CreateStore(store, survival);
@@ -26,7 +28,8 @@ internal static class PlayConsole {
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
         var presentation = PlayPresentation.ForMode(survival);
-        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, writeTurnBoundary: WriteTurnBoundary,
+        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, inputReader: inputReader, outputWriter: output,
+            writeBoundary: outputWriter is null ? WriteBoundary : null,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
         string title = survival ? "山林求生" : "多人采集";
@@ -34,8 +37,8 @@ internal static class PlayConsole {
             ? $"{title} · 本次仅在内存中运行；退出后不保留进度。"
             : $"{title} · 存档：{store} · 每次成功转换自动保存。" +
                 (restoring ? survival
-                    ? "之前的控制台对话未重放；已保存的行动结果、交接文字与草稿已恢复。"
-                    : "之前的控制台对话未重放；已提交的游戏状态已恢复。" : "")) + "\n" + (survival
+                    ? "将从保存的角色上下文重绘；已保存的行动结果、交接文字与草稿已恢复。"
+                    : "将从保存的角色上下文重绘；已提交的游戏状态已恢复。" : "")) + "\n" + (survival
             ? "眼前事实与旧观察分开显示；等待输入期间世界暂停。"
             : "共用控制台轮流扮演角色；画面只显示当前角色的技能、活动细节和背包。等待输入期间世界暂停。");
         if (operations.DiscardedTailBytes > 0) {
@@ -63,11 +66,12 @@ internal static class PlayConsole {
                 if (status != StepStatus.Committed) {
                     throw new InvalidOperationException($"采集世界未能产生下一步行动：{status}。");
                 }
+                CycleContextDiagnostics.Publish(kernel.LastCompletion!, diagnosticSink);
                 CompleteOperations(operations, kernel.LastCompletion!);
-                controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival);
+                controller.RenderCommitted(kernel.World);
             }
         } catch (PlayEndedException) {
-            Console.WriteLine(store is null ? $"已退出。内存中的{(survival ? "生存" : "采集")}进度未保存。" :
+            controller.HostReply(store is null ? $"已退出。内存中的{(survival ? "生存" : "采集")}进度未保存。" :
                 $"已退出。已完成的行动均已保存，可使用同一 {(survival ? "--survival" : "--play")} --store 路径继续。");
             return 0;
         }
@@ -98,15 +102,15 @@ internal static class PlayConsole {
 
     internal sealed class PlayEndedException : Exception { }
 
-    private static void WriteTurnBoundary() {
+    private static void WriteBoundary(string text) {
         if (Console.IsOutputRedirected) {
-            Console.WriteLine(PlayPresentationSession.TurnBoundary);
+            Console.WriteLine(text);
             return;
         }
         ConsoleColor previous = Console.ForegroundColor;
         try {
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine(PlayPresentationSession.TurnBoundary);
+            Console.WriteLine(text);
         } finally {
             Console.ForegroundColor = previous;
         }
@@ -114,60 +118,38 @@ internal static class PlayConsole {
 
     // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
     internal sealed class ConsoleCharacterController(PlayPresentation presentation, ConsoleMetaCommands metaCommands, TextReader? inputReader = null,
-        TextWriter? outputWriter = null, Action? writeTurnBoundary = null, CycleOperationJournal? operations = null,
+        TextWriter? outputWriter = null, Action<string>? writeBoundary = null, CycleOperationJournal? operations = null,
         Func<string>? worldVersion = null) : ICycleCharacterController {
         private readonly TextReader _input = inputReader ?? Console.In;
         private readonly TextWriter _output = outputWriter ?? Console.Out;
         private readonly CycleOperationJournal _operations = operations ?? CycleOperationJournal.CreateInMemory();
         private readonly string _batchId = Guid.NewGuid().ToString("N");
-        private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, writeTurnBoundary);
+        private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, writeBoundary);
         internal string? StartupText { get => _session.StartupText; set => _session.StartupText = value; }
         internal bool TerminalDelivered => _session.TerminalDelivered;
         internal CycleViewSnapshot? Baseline => _session.Baseline;
 
-        internal void RenderObservation(CycleDecisionContext context) {
-            _session.ShowFull(context.Observation, interactionState: context.InteractionState);
-        }
+        internal void RenderObservation(CycleDecisionContext context) => _session.ShowFull(context.InteractionState);
 
-        internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
-            // A rejection is an actor-visible committed answer in either Console mode.
-            foreach (CycleFact fact in completion.Event.Facts.Where(fact => fact.OperationDisposition == CycleOperationDisposition.Rejected)) {
-                _session.Reply(CycleOperationResults.Describe(fact));
+        internal void HostReply(string text) => _session.Reply(text);
+
+        internal void RenderCommitted(CycleWorld world) {
+            // Delivery reads committed per-character material only. World facts and diagnostics are not UI inputs.
+            foreach (CharacterInteractionState state in world.Business.InteractionStates.Values) {
+                _session.Commit(state);
             }
-            if (completion.Event.Facts.All(fact => fact.OperationDisposition == CycleOperationDisposition.Rejected)) { return; }
-            // Basic multiplayer remains full-only: each controller entry reads its saved visible state.
-            // Do not print another actor's acceptance or world settlement into the previous actor's screen.
-            if (!survival) { return; }
-            if (completion.Event.Facts.All(fact => fact.Kind == CycleEventKind.DecisionContextOpened)) { return; }
-            string actorId = world.Characters[0].Id;
-            CharacterInteractionState state = world.Business.InteractionStates[actorId];
-            // Closed contexts retain their last delivered observation. Settlement belongs to the next opening.
-            if (state.CurrentContext is null || state.CurrentContext.Status == CharacterContextStatus.Closed) { return; }
-            var batch = completion.Event.Facts.SelectMany((fact, factOrdinal) => fact.ObservedEvents
-                .Where(item => item.ObserverId == actorId).Select(item => (Event: item,
-                    Source: new CycleObservedEventSource(completion.Cursor.Version.LineageId,
-                        completion.Cursor.Version.TransitionCount, factOrdinal, item.EventOrdinal,
-                        fact.OperationRecordId, fact.ToolCallId)))).ToArray();
-            foreach (CycleFact fact in completion.Event.Facts.Where(fact => fact.ActorId == actorId &&
-                fact.OperationRecordId is not null && fact.OperationDisposition != CycleOperationDisposition.Rejected &&
-                !fact.ObservedEvents.Any(item => item.ObserverId == actorId))) {
-                _session.Reply(CycleOperationResults.Describe(fact));
-            }
-            CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
-            _session.Commit(context.Observation,
-                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray(), context.InteractionState);
         }
 
         public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             CycleObservation observation = context.Observation;
-            _session.EnterInput(observation, context.InteractionState);
+            _session.EnterInput(context.InteractionState);
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
                 _output.Write(_session.Prompt(observation));
                 _output.Flush();
                 string? input = await _input.ReadLineAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (input is null) { throw new PlayEndedException(); }
+                if (input is null) { _session.CloseSession(); throw new PlayEndedException(); }
                 if (string.IsNullOrWhiteSpace(input)) { continue; }
                 string toolName = input.TrimStart().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
                 CycleOperationReceipt receipt = _operations.Receive(_batchId, "call_" + Guid.NewGuid().ToString("N"),
@@ -176,8 +158,8 @@ internal static class PlayConsole {
                     _operations.Complete(receipt.OperationRecordId, status, result, worldVersion?.Invoke());
                     _session.Reply(result);
                 }
-                void Resynchronize(string? prefix = null) => _session.ShowFull(observation,
-                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix, context.InteractionState);
+                void Resynchronize(string? prefix = null) => _session.ShowCurrent(context.InteractionState,
+                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix);
                 void RejectSyntax() => Reply("无法识别命令。" + metaCommands.RejectionHint +
                     "时间未推进；未确认消息。", CycleOperationStatus.Rejected);
                 if (input.TrimStart().StartsWith(':')) {
@@ -185,7 +167,7 @@ internal static class PlayConsole {
                     if (parsed is null) { RejectSyntax(); continue; }
                     switch (parsed.Kind) {
                         case ConsoleMetaCommandKind.Exit:
-                            Reply("退出当前控制台。");
+                            Reply("Console 会话关闭；退出当前控制台，角色上下文保持已提交状态。");
                             throw new PlayEndedException();
                         case ConsoleMetaCommandKind.Look:
                             Resynchronize();
@@ -199,7 +181,7 @@ internal static class PlayConsole {
                                 Reply($"未知布局：{parsed.Argument}。\n{metaCommands.DescribeLayouts(presentation)}", CycleOperationStatus.Rejected);
                             } else if (parsed.Once) {
                                 Reply($"临时查看布局：{selected.Id}（{selected.Name}）；当前布局仍为 {presentation.Current.Id}。\n" +
-                                    selected.RenderFull(CycleViewSnapshot.Create(observation, context.InteractionState)));
+                                    CharacterContextRenderer.RenderLatestState(context.InteractionState, selected));
                             } else {
                                 presentation.TrySelect(parsed.Argument);
                                 Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");
@@ -218,12 +200,8 @@ internal static class PlayConsole {
                     }
                     continue;
                 }
-                // This read-only preview does not accept or reject the submission. The domain records
-                // the exact input and independently commits its disposition before result delivery.
-                if (CycleCommandParser.Parse(input) is { } preview && context.Warning(preview) is { } warning) {
-                    _output.WriteLine($"风险提示（不禁止）：{warning}");
-                }
-                _session.BeginAdvancing();
+                // No uncommitted preview is appended to the character transcript. The domain
+                // commits the operation result or release before saved Model delivery occurs.
                 return new CycleControllerOperation(receipt.ToolCallId, input, receipt.OperationRecordId);
             }
         }

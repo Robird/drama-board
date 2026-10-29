@@ -2,13 +2,15 @@
 
 > 2026-10-28，切片 A 的设计与实现合同。功能约束以[阶段目标的三个已确认规则](incremental-ui-milestone.md#已确认的三个规则)为准。实现位于 ResourceCycle 应用层与 CLI，保持 Kernel 的发布模型和 CharacterController 的操作接口；验证证据见[切片 A 验收](../experiments/incremental-ui-slice-a-acceptance.md)。
 
-## 实现接点
+> 当前关系：本文保留切片 A 的原始设计与当时实施边界，不把下文的 Fact 直出、模拟中追加、清屏/回合分隔、`:look` 重建基线或提交来源地址当作现行 Console 合同。后续[角色上下文方案](character-context-model.md)已将 Opening + 当前保留 Items 作为唯一呈现材料；[CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 提供完整纯输出及同源增量，最新状态预览不推进消费游标。Closed 后结算进入下一 Opening；Console 带外与上下文起止标记见[布局合同](console-layouts.md)。切片 A 的事件顺序、实际效果、状态键与尾部最新值规则继续沿用，最近 n 回合窗口仍未实施。
+
+## 当前实现接点
 
 - [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) 保存状态键、有限值类型、事件和效果；数值以 `Units / Scale` 精确记录。`CycleFact.ObservedEvents` 随 E 保存；后续[角色上下文重构](character-context-model.md)已扩展所有受控角色的材料及同根 InteractionChanges，当前 Fact Schema / GameRevision 为 9，不兼容旧开发存档。下文保留切片 A 的原始实施边界。
 - [CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs) 在最终业务事实形成后，按明确的事实种类组装期间变化与直接效果；[校验器](../../src/ResourceCycle/CycleObservedEventValidation.cs) 核对归属、顺序、可见性及业务端点。恢复应用已记录材料，不重新规划效果。
 - [CycleOperationResults](../../src/ResourceCycle/CycleOperationResults.cs) 为正常提交及冷开补录提供同一语义答复。没有变化的成功操作仍有答复，不伪造经历事件。
-- [CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs)、[CycleViewUpdate](../../src/ResourceCycle.Cli/CycleViewUpdate.cs) 是 CLI 内部的非持久呈现模型；提交来源身份在宿主补齐。尚未据此创建通用游戏库或跨回合历史集合。
-- [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 串行拥有输出与基线；[IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 提供全量与更新入口，并保留观察渲染入口供详情与既有布局使用。下文接口草图表达职责，具体签名以源码为准。
+- [CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs)、[CycleViewUpdate](../../src/ResourceCycle.Cli/CycleViewUpdate.cs) 是 CLI 内部的非持久呈现模型，由已提交 Context Item 和相邻保存观察生成；来源提交身份只属于独立诊断。尚未创建通用游戏库或最近 n 回合历史窗口。
+- [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 串行拥有输出与临时消费游标；[IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 提供全量与更新入口，最新状态预览与完整 Context 渲染分开。下文接口草图表达职责，具体签名以源码为准。
 
 ## 1. 本片交付与边界
 

@@ -5,13 +5,19 @@ using DramaBoard.ResourceCycle;
 /// <summary>Both layouts render the recorded opening and its experiences, never a second accumulated summary.</summary>
 internal static class ContextHistoryPlayView {
     public static string RenderHistory(CycleObservation observation, CharacterInteractionState? interactionState = null) {
-        if (interactionState?.CurrentContext is not { } context) { return ""; }
+        return RenderHistory(observation, interactionState?.CurrentContext);
+    }
+
+    public static string RenderHistory(CycleObservation observation, CharacterContext? context) {
+        if (context is null) { return ""; }
         var text = new StringBuilder();
         CharacterContextOpening opening = context.Opening;
         string resultLabel = context.Status == CharacterContextStatus.Terminal ? "终局结果" : "上次推进的结果";
         text.AppendLine($"## 决策回合 {context.ContextSequence} · {resultLabel}");
         if (opening.PreviousAdvance is { } advance) {
             text.AppendLine($"历史区间：{Time(advance.AcceptedAt)} → {Time(opening.DeliveredAt)}；行动：`{CycleViewSnapshot.CommandSyntax(advance.Command)}`（{advance.Description}）。");
+            text.AppendLine("上回合提交内容（原始输入，仅为记录）：");
+            Quote(text, advance.RawInput);
             if (advance.OriginPlaceName is { } origin) { text.AppendLine($"出发位置：{origin}。"); }
             text.AppendLine(opening.ActivityState switch {
                 CycleOutcomeActivityState.Ongoing => "**本段推进已返回，原活动仍在进行**；继续不会新建活动或重置期限。",
@@ -50,15 +56,18 @@ internal static class ContextHistoryPlayView {
     }
 
     public static string RenderCurrent(CycleObservation observation, CharacterInteractionState? interactionState = null) {
-        if (interactionState is null || !observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) { return ""; }
+        return RenderCurrent(observation, interactionState?.CurrentContext, interactionState?.DraftHandoff);
+    }
+
+    public static string RenderCurrent(CycleObservation observation, CharacterContext? context, string? draftHandoff) {
+        if (context is null || context.Status == CharacterContextStatus.Terminal ||
+            observation.Outcome != CycleExpeditionOutcome.Exploring ||
+            !observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) { return ""; }
         var text = new StringBuilder();
         text.AppendLine("## 本轮交接");
-        if (interactionState.PendingAdvance is { } pending) {
-            text.AppendLine($"已接受的行动：`{CycleViewSnapshot.CommandSyntax(pending.Command)}`（{pending.Description}）；正在推进，结果将在下次决策时交付。");
-        }
         text.AppendLine();
         text.AppendLine("本轮交接草稿（下一次放行模拟时发送，旧交接不会自动续传）：");
-        Quote(text, interactionState.DraftHandoff ?? "（空）");
+        Quote(text, draftHandoff ?? "（空）");
         text.AppendLine();
         return text.ToString();
     }
@@ -84,9 +93,7 @@ internal static class ContextHistoryPlayView {
     }
 
     private static void Quote(StringBuilder text, string value) {
-        foreach (string line in value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n')) {
-            text.AppendLine("> " + line);
-        }
+        text.AppendLine("> " + CharacterContextRenderer.DataLiteral(value));
     }
     private static string Time(ModelTime time) => CycleUpdateRenderer.Format(CycleVisibleValue.Numeric(time.Ticks, "ticks"));
 }

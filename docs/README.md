@@ -20,7 +20,7 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
-The [Character context Model refactoring design](design/character-context-model.md) proposes persisted per-character decision materials shared by Human Console and future LLM controllers, separating world facts, perception, context lifecycle and diagnostic output. It is not implemented; it carries forward the [context visibility feedback workset](worksets/controller-context-visibility.md) and provides the foundation for incremental UI slice B.
+The [Character context Model](design/character-context-model.md) persists per-character Opening and ordered Items, separating world facts, perception, context lifecycle and diagnostic output. Human Console and pure rendering now consume the same retained materials; see [implementation and playtest acceptance](experiments/character-context-model-acceptance.md). The original [context visibility feedback workset](archive/legacy/controller-context-visibility.md) is archived. LLM adapters and the longer retention window of incremental UI slice B remain deferred.
 
 The [Human Console command boundary](design/console-command-boundary.md) separates game-action parsing and reusable game documents from human-only meta commands and Console prompts. A single immutable `HumanDefault` / `None` directory controls both prompts and dispatch at session construction. This does not implement an LLM adapter.
 

@@ -8,18 +8,22 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
     public string Id => "decision";
     public string Name => "决策布局";
 
-    public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) {
-        if (!observation.IsExpedition) { return PlayView.Render(observation, interactionState); }
+    public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) =>
+        RenderFull(CycleViewSnapshot.Create(observation, interactionState));
+
+    public string RenderFull(CycleViewSnapshot snapshot) {
+        CycleObservation observation = snapshot.Observation;
+        if (!observation.IsExpedition) { return PlayView.Render(snapshot); }
         bool ended = observation.Outcome != CycleExpeditionOutcome.Exploring;
         var text = new StringBuilder();
-        text.AppendLine($"# 山林求生 · {observation.Actor.Name}（{observation.Actor.Id}） · {Time(observation.Time)}");
+        text.AppendLine($"# {snapshot.Background.Title} · {observation.Actor.Name}（{observation.Actor.Id}） · {Time(observation.Time)}");
         text.AppendLine();
-        text.Append(PlayView.RenderKnowledge(observation));
+        text.Append(PlayView.RenderKnowledge(observation, snapshot.Background));
         if (ended) {
-            RenderEnding(text, observation, interactionState);
+            RenderEnding(text, snapshot);
             return text.ToString();
         }
-        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
+        if (snapshot.IncludeHistory) { text.Append(ContextHistoryPlayView.RenderHistory(observation, snapshot.Context)); }
         text.AppendLine("## 历史通知与最近天气");
         RenderEvents(text, observation, ended: false);
         text.AppendLine();
@@ -49,7 +53,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine($"采药等级 {observation.Actor.SkillLevel}（基础速度的 {100m + 25m * observation.Actor.SkillLevel:0}%）。");
         text.AppendLine();
         RenderSupplies(text, observation, ended: false);
-        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         RenderResources(text, observation);
         text.AppendLine("## 眼前的行动");
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认消息与历史警告，保留活动及原定期限");
@@ -158,11 +162,12 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine();
     }
 
-    private static void RenderEnding(StringBuilder text, CycleObservation observation, CharacterInteractionState? interactionState) {
+    private static void RenderEnding(StringBuilder text, CycleViewSnapshot snapshot) {
+        CycleObservation observation = snapshot.Observation;
         text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**旅程结束。只是这一次未能走出山林。**");
         text.AppendLine(observation.EndingReason);
         text.AppendLine("以下为结束时的冻结记录；世界不再推进。未完成的活动不会继续结算。");
-        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
+        if (snapshot.IncludeHistory) { text.Append(ContextHistoryPlayView.RenderHistory(observation, snapshot.Context)); }
         text.AppendLine("## 结束前的历史通知与最近天气");
         RenderEvents(text, observation, ended: true);
         text.AppendLine();
@@ -174,7 +179,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         }
         RenderActivity(text, observation, ended: true);
         text.AppendLine();
-        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         text.AppendLine();
         RenderSupplies(text, observation, ended: true);
         text.AppendLine();

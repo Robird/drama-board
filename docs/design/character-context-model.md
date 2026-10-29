@@ -1,6 +1,6 @@
 # 角色上下文 Model 与信息交付重构
 
-状态：2026-10-29 实施中；持久 Context 与原始操作/拒绝入口已接通，完整 Console Model 消费仍待呈现分片。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文保留完整交付合同，不以局部接线代替最终验收。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)。
+状态：2026-10-29 已实施，合同与证据见[验收记录](../experiments/character-context-model-acceptance.md)。Human Console 与纯输出已共用持久 Context；未来 LLM 适配器仍未实施。设计调查基线为 `0912377`；本文承接已归档的[问题工作单](../archive/legacy/controller-context-visibility.md)。
 
 ## 1. 目标与明确不做的事
 
@@ -22,7 +22,7 @@
 | [CycleFact](../../src/ResourceCycle/CycleFact.cs) / [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
 | [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/成功 Items；拒绝不保存重复观察，CycleDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 直接消费逐次提交并在旧画面输出；管理与游戏材料混合 | 改为消费已提交 Context 的新材料；世界提交不再直接冒充对角色的交付 |
+| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 从已提交 Context 消费新材料，管理反馈位于带外块；世界事实只进入可选诊断 sink | 完整与增量经同一渲染器，消费游标不成为角色知识权威 |
 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
 
 `CycleNotice` 的待确认通知和 `CycleVisit` 的历史观察仍有独立玩法含义，不因新增 Context 删除。Context 是它们在一次决策中的材料记录，不反向承担警告确认、世界库存或地点记忆的权威。
@@ -197,7 +197,11 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 因此普通终端两个标记之间不承诺每个字节都是模型输入；诊断 LLM 可见范围应使用纯输出。新上下文开始/结束标记带角色及 ContextSequence。正常放行输出结束标记后不再刷结算增量；新上下文开始时输出首次交付材料。`use` 等即时反馈不再显示误导性的“正在处理结算”阶段切换。
 
+纯输出入口为 `CharacterContextRenderer.RenderFull`，成对标记包围指定 Context 的材料快照，即使它仍是 Open 也不改变其领域状态。正常 Console 则在已提交关闭时显示结束标记；切回仍 Open 的角色仅以带外说明恢复显示其保存材料，不伪造关闭/新开。完整呈现包含 Opening 和保留 Items；仅渲染 `LatestObservation` 是当前状态预览，不能替代整轮上下文。
+
 `:look`、layout 切换/once、mode 切换不新增 Item、不改变回合；它们只读已提交 Model 中最近的可见观察，不重新从 live world 偷补未记录信息。管理回执与预览包在带外块中，未来 LLM 不调用这些 Console 能力。重绘当前状态与重放本轮完整 Context 是两个明确的内部渲染操作，不强迫每次 look 重放整个交互列表。
+
+管理预览不推进 Item 消费游标或改写增量基线；正常输出成功并 Flush 后才推进消费位置，写出失败仍可从 Model 重放。行动风险也来自保存的观察/目录，不在输入时另调运行时预测向正文注入未记录的反馈。
 
 纯上下文预览与未来 LLM 后续输入使用清理后的 Model；Human 终端已经打印的旧失败无需擦除，滚动文本仍不是当前 Model 的逐字副本。消费端不得把曾见过的失败永久缓存并重新混入后续输入。移除早期条目会改变后续请求的共同前缀，可能降低缓存复用；先采用已选定的保留语义，接入 LLM 后再测量，不在本片增加批量压缩策略，也不声称恢复完整端点消息历史。
 
@@ -213,7 +217,9 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 证据集中在 [CharacterContextLifecycleTests](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 的合法路径、角色隔离、仅快照更新及错误端点拒绝，以及 [CharacterContextPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 的真实 S 冷开和瞬时/放行/开轮/终局 E-only 恢复。恢复比较独立 E/S 图的语义前缀并安装记录对象，不重跑观察、背景、感知或编号分配；直接业务端点检查也不重新预测风险菜单。共享材料冷开和全部角色事件的基础证据仍分别见 [VisibleMaterialPersistenceTests](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[AllActorObservedEventTests](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs)。
 
-分片 2B 已接入原始 submission、共享 parser、持久拒绝/窗口及日志状态配对；拒绝只改变自身交互材料和请求版本。证据见 [拒绝与保留窗口](../../tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)、[S/E-only 拒绝恢复与同刻预算](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)及[宿主结果修复](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)。恢复安装已记录条目及窗口，不重做合法性判断；纯语法解析仅检查成功事实与保存输入的一致性。Console 过渡适配已读取保存观察与 Opening 经历、停止向 Closed 输出结算、删除普通采集逐事实直出；瞬时增量仍经 Fact 事件出口，完整 Items 重放、纯输出、带外块、明确开始/结束与诊断 sink 继续由分片 3 完成，不能将当前 Console 屏幕视为完整 Model。
+原始 submission、共享 parser、持久拒绝/窗口及日志状态配对已经接通；拒绝只改变自身交互材料和请求版本。证据见 [拒绝与保留窗口](../../tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)、[S/E-only 拒绝恢复与同刻预算](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)及[宿主结果修复](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)。恢复安装已记录条目及窗口，不重做合法性判断；纯语法解析仅检查成功事实与保存输入的一致性。
+
+呈现统一由 [CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 消费 Opening/Items，Console 不再从 Fact 直出角色信息；[呈现会话](../../src/ResourceCycle.Cli/PlayPresentationSession.cs)只维护输出游标和带外管理。[诊断 sink](../../src/ResourceCycle.Cli/CycleContextDiagnostics.cs)在提交后提供强类型世界材料与经历关联。下表保留实施边界，最终源码、测试和独立试玩证据统一见[验收记录](../experiments/character-context-model-acceptance.md)。终端滚动历史不等于当前完整 Model。
 
 | 分片 | 交付与范围 | 验收门槛 |
 | --- | --- | --- |
@@ -239,7 +245,7 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 - 已提交但尚未写出、写出后进程退出、pending E 恢复均能从保存的语义材料重新显示；不承诺恢复模型私有推理或外部调用恰好一次。
 - 测试语义归属、顺序、效果、恢复和隔离，不锁死整屏快照、章节位置或缩进；真实试玩保留原始输出和纯上下文材料。
 
-实施后更新[信息继承](decision-context-handoff.md)、[控制器方向](stateless-character-controller.md)、[Console 边界](console-command-boundary.md)、[布局](console-layouts.md)与[增量阶段目标](incremental-ui-milestone.md)的现行合同，归档问题工作单。设计阶段仅添加导航和明确的未来关系，不提前把旧实现描述改写成已完成。
+现行合同同步于[信息继承](decision-context-handoff.md)、[控制器方向](stateless-character-controller.md)、[Console 边界](console-command-boundary.md)、[布局](console-layouts.md)与[增量阶段目标](incremental-ui-milestone.md)；问题工作单已归档。旧验收记录保留其历史范围，不作为新实现的运行证据。
 
 ## 11. 本轮设计审查收敛
 

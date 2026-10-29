@@ -61,8 +61,8 @@ internal sealed class ConsoleMetaCommands {
         if (definition is null) { return ""; }
         return $"当前输出模式：{presentation.Mode.ToString().ToLowerInvariant()}。\n" +
             string.Join("\n", presentation.SupportedModes.Select(mode => $"- `{definition.Syntax} {mode.Key}`：" +
-                (mode.Value == PlayOutputMode.Full ? "每次提交显示事件、效果与完整当前状态。" : "每次提交显示事件、效果与受影响的当前状态。"))) +
-            "\n切换不推进时间，不确认消息；立即全量重同步。";
+                (mode.Value == PlayOutputMode.Full ? "新条目提交后重绘本轮完整角色上下文。" : "新条目提交后追加操作反馈、事件、效果与受影响的状态。"))) +
+            "\n切换不推进时间，不确认消息；立即查看已保存的最新状态。";
     }
 
     private static string Describe(Definition definition, PlayPresentation presentation) {
