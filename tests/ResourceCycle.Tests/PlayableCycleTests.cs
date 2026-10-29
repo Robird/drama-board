@@ -14,7 +14,7 @@ public sealed class PlayableCycleTests {
         var source = Commands(CycleCommand.Gather("sunflower", count));
         var initial = Solo();
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(count, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(count, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));
@@ -29,7 +29,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(6);
         var source = Commands(CycleCommand.GatherAll("sunflower"));
         var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, regenerationTicks: CycleTime.Hour / 4), Moon(start)])), characterController: source);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.True(kernel.World.GetCharacter("a").Activity!.SelectedAll);
         Assert.Equal(3, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
@@ -44,18 +44,18 @@ public sealed class PlayableCycleTests {
         var source = Commands(CycleCommand.Gather("sunflower", 2), CycleCommand.Gather("sunflower", 2), CycleCommand.Continue());
         var metrics = new CycleMetrics();
         var kernel = CycleEngine.CreateKernel(Memory(initial), metrics: metrics, characterController: source);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         CycleActivity activity = kernel.World.GetCharacter("a").Activity!;
         CyclePrediction prediction = ActivityPrediction(kernel.World, "a");
         long before = Recalculations(metrics, "actor:a:activity");
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         var notice = Assert.Single(kernel.World.GetCharacter("a").Notices);
         Assert.Equal(CycleNoticeKind.CollectorJoined, notice.Kind);
         Assert.Equal("b", notice.ActorId);
         Assert.Same(activity, kernel.World.GetCharacter("a").Activity);
         Assert.Same(prediction, ActivityPrediction(kernel.World, "a"));
         Assert.NotNull(CycleActions.Check(kernel.World, "a", CycleCommand.Wait(1)));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Empty(kernel.World.GetCharacter("a").Notices);
         Assert.Same(activity, kernel.World.GetCharacter("a").Activity);
         Assert.Same(prediction, ActivityPrediction(kernel.World, "a"));
@@ -103,7 +103,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(6);
         var source = Commands(CycleCommand.Gather("sunflower", 2), CycleCommand.Continue());
         var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1, regenerationTicks: 90 * 60_000), Moon(start)])), characterController: source);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, w => w.GetCharacter("a").Notices.Count > 0);
         var actor = kernel.World.GetCharacter("a");
         Assert.Equal(Hour(7), kernel.World.Time);
@@ -111,7 +111,7 @@ public sealed class PlayableCycleTests {
         Assert.Equal(Hour(8), actor.Activity.Due);
         Assert.Equal(Hour(7), actor.Activity.StartedAt);
         Assert.Equal(CycleNoticeKind.ResourceDepleted, Assert.Single(actor.Notices).Kind);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(2, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));
         Assert.Equal(2, source.Calls);
@@ -125,7 +125,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(6);
         var world = Solo(start, [Sun(start, stock: initiallyFull ? 5 : 3), Moon(start)]);
         var kernel = CycleEngine.CreateKernel(Memory(world), characterController: Commands(CycleCommand.Gather("sunflower")));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(initiallyFull ? Hour(7) : Hour(6), kernel.World.GetResource("sunflower").ActiveSince);
         Assert.Equal(initiallyFull ? Hour(10) : Hour(9), Assert.Single(kernel.World.Forecasts.Predictions, p => p.OwnerId == "resource:sunflower:regen").Due);
@@ -135,15 +135,15 @@ public sealed class PlayableCycleTests {
     public async Task Round_robin_assignments_are_followed_by_asynchronous_wait_completions() {
         var source = new StubCharacterController((_, id) => CycleCommand.Wait(id == "a" ? 6 : id == "b" ? 1 : 3));
         var kernel = CycleEngine.CreateKernel(Memory(CycleWorld.CreatePlayable()), characterController: source);
-        await Step(kernel);
-        await Step(kernel);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
+        await StepWorldEvent(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(new[] { "a", "b", "c" }, source.Requests.Select(r => r.Actor));
         await Until(kernel, w => w.GetCharacter("b").Activity is null);
         Assert.Equal(Hour(17), kernel.World.Time);
         Assert.NotNull(kernel.World.GetCharacter("a").Activity);
         Assert.NotNull(kernel.World.GetCharacter("c").Activity);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal("b", source.Requests.Last().Actor);
     }
 
@@ -172,9 +172,11 @@ public sealed class PlayableCycleTests {
         Assert.NotNull(CycleActions.Check(initial, "unknown", CycleCommand.Wait(1)));
         Assert.NotEmpty(CycleDiagnostics.Render(initial));
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
+        await Step(kernel);
+        before = kernel.World.DescribeState();
         await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(96)).AsTask());
         Assert.Equal(before, history.State.DescribeState());
-        Assert.Empty(history.CompletedEvents);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
     }
 
@@ -184,7 +186,7 @@ public sealed class PlayableCycleTests {
     [InlineData(2, 40)]
     public async Task Skill_formula_uses_exact_safe_integer_duration(int skill, int minutes) {
         var kernel = CycleEngine.CreateKernel(Memory(Solo(skill: skill)), characterController: Commands(CycleCommand.Gather("sunflower")));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(minutes * 60_000L, kernel.World.GetCharacter("a").Activity!.DurationTicks);
         Assert.Equal(Minute(960 + minutes), kernel.World.GetCharacter("a").Activity!.Due);
     }
@@ -195,18 +197,21 @@ public sealed class PlayableCycleTests {
         var history = Memory(initial);
         var source = new GatedCharacterController();
         var kernel = CycleEngine.CreateKernel(history, characterController: source);
+        await Step(kernel);
+        CycleWorld opened = kernel.World;
+        KernelCursor openedCursor = kernel.Cursor;
         using var cancellation = new CancellationTokenSource();
         Task<StepStatus> operation = kernel.StepAsync(Hour(96), cancellation.Token).AsTask();
         await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(operation.IsCompleted);
-        Assert.Same(initial, kernel.World);
-        Assert.Equal(InitialCursor(initial), kernel.Cursor);
-        Assert.Empty(history.CompletedEvents);
+        Assert.Same(opened, kernel.World);
+        Assert.Equal(openedCursor, kernel.Cursor);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
-        Assert.Same(initial, kernel.World);
-        Assert.Empty(history.CompletedEvents);
+        Assert.Same(opened, kernel.World);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
     }
 
@@ -221,8 +226,8 @@ public sealed class PlayableCycleTests {
         var incremental = CycleEngine.CreateKernel(ih, PredictionMode.Incremental, im, Driver());
         var full = CycleEngine.CreateKernel(fh, PredictionMode.Full, fm, Driver());
         for (int i = 0; i < 100; i++) {
-            await Step(incremental);
-            await Step(full);
+            await StepWorldEvent(incremental);
+            await StepWorldEvent(full);
             Assert.Equal(full.World.DescribeState(), incremental.World.DescribeState());
             Assert.Equal(full.Cursor, incremental.Cursor);
             Assert.Equal(Describe(full.LastCompletion!.Event), Describe(incremental.LastCompletion!.Event));
@@ -242,11 +247,11 @@ public sealed class PlayableCycleTests {
         using var directory = new TemporaryStore();
         using (CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) { }
         for (int i = 0; i < 50; i++) {
-            await Step(baseline);
+            await StepWorldEvent(baseline);
             using var history = CycleDurableHistory.Open(directory.StorePath);
             AssertPredictions(history.State);
             var resumed = CycleEngine.CreateKernel(history, characterController: resumedSource);
-            await Step(resumed);
+            await StepWorldEvent(resumed);
             Assert.Equal(baseline.World.DescribeState(), resumed.World.DescribeState());
             Assert.Equal(baseline.Cursor, resumed.Cursor);
             Assert.Equal(Describe(baseline.LastCompletion!.Event), Describe(resumed.LastCompletion!.Event));
@@ -262,7 +267,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(15);
         var history = Memory(Solo(start, [Sun(start, harvestTicks: 3 * CycleTime.Hour), Moon(start)]));
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Gather("sunflower")));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(Hour(18), kernel.World.Time);
         Assert.Equal(new[] { CycleEventKind.ResourceRegenerated, CycleEventKind.LightChanged, CycleEventKind.GatherYielded },
@@ -277,7 +282,7 @@ public sealed class PlayableCycleTests {
         var start = Hour(6);
         var source = Commands(CycleCommand.Gather("sunflower", 5), CycleCommand.Continue());
         var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, stock: 1), Moon(start)])), characterController: source);
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(5, kernel.World.GetCharacter("a").Activity!.TargetCount);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(Hour(8), kernel.World.Time);

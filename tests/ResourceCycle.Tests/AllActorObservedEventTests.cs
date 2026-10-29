@@ -162,7 +162,7 @@ public sealed class AllActorObservedEventTests {
         Assert.DoesNotContain(fact.ObservedEvents.SelectMany(entry => entry.Effects), effect => effect.Key.Category == "body");
     }
     private static async Task<CycleFact> Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        await StepWorldEvent(kernel);
         return Assert.Single(kernel.LastCompletion!.Event.Facts);
     }
 }

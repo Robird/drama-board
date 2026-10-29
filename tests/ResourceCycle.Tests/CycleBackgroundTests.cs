@@ -4,7 +4,7 @@ public sealed class CycleBackgroundTests {
     [Fact]
     public void Survival_background_includes_goal_and_visible_rules_without_revealing_distant_resources() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
-        CycleObservation observation = CycleDecisionContext.Create(world, "a").Observation;
+        CycleObservation observation = CycleDecisionContext.Observe(world, "a");
 
         CycleBackground background = CycleBackground.For(observation);
 
@@ -21,7 +21,7 @@ public sealed class CycleBackgroundTests {
     public void Background_without_survival_omits_need_and_weather_rules(bool expedition) {
         CycleWorld world = expedition ? CycleGameFactory.CreateSurvival(enableNeeds: false).World
             : CycleGameFactory.CreatePlayable().World;
-        CycleObservation observation = CycleDecisionContext.Create(world, "a").Observation;
+        CycleObservation observation = CycleDecisionContext.Observe(world, "a");
 
         CycleBackground background = CycleBackground.For(observation);
 

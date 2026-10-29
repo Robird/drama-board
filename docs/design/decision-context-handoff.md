@@ -1,6 +1,6 @@
 # 决策回合的信息继承：设计与重构方案
 
-状态：2026-10-28 已实施：生存模式使用显式决策回合、固定行动结果与交接草稿；所有 Console 操作保存稳定身份。GameRevision 5，不兼容旧开发存档。初稿经[三路设计审查](../research/decision-context-handoff-review.md)收敛，实施阶段另经流程与操作恢复的独立源码审查；工程验证、实际试玩及边界见[实施验收](../experiments/decision-context-handoff-acceptance.md)。LLM 接入、端点 ID 映射与完整工具会话恢复仍未实施。
+状态：保留 2026-10-28 信息继承切片的设计与验收依据（当时 GameRevision 5）。2026-10-29 起，原固定 Continuity/Incoming 已由[角色上下文 Model](character-context-model.md)的同根交互状态和经历材料替换；本文旧模型形状、源码名称及施工步骤不再表示当前 API。放行结束旧回合、handoff 一次性交付与原 ToolCallId 配对仍沿用。原切片的[设计审查](../research/decision-context-handoff-review.md)和[实施验收](../experiments/decision-context-handoff-acceptance.md)保留历史证据；LLM、端点 ID 映射及完整工具会话恢复仍未实施。
 
 后续方向：[增量 UI 目标](incremental-ui-milestone.md)的切片 A 已扩展回合内事件/效果呈现；包含零耗时事件的有界最近历史仍待 B 实施。本文件保留本切片已落地的有限继承范围，新目标不改变放行后结束旧控制会话的流程。
 
@@ -283,11 +283,11 @@ A/B 是同一最小可运行领域切片的施工拆分，不能发布只有数�
 
 | 职责 | 实现 |
 | --- | --- |
-| 角色连续性与固定值模型 | [CycleDecisionContinuity](../../src/ResourceCycle/CycleDecisionContinuity.cs)，仅包含本次 Pending 或固定 Incoming、草稿及身份；不持有世界或整份事实。 |
-| 规划与封存 | [CycleContinuityRules](../../src/ResourceCycle/CycleContinuityRules.cs)；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 在 RequestDecision 分支提交 ContextOpened，再服务控制器。 |
+| 角色连续性与固定值模型（原切片） | 原 `CycleDecisionContinuity` 仅包含本次 Pending 或固定 Incoming、草稿及身份；现由 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 替换。 |
+| 规划与封存（原切片） | 原 `CycleContinuityRules` 已由 [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs) 替换；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 仍在 RequestDecision 分支先提交 ContextOpened，再服务控制器。 |
 | 来源身份与事实校验 | [CycleActions](../../src/ResourceCycle/CycleActions.cs)、[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)，元数据事实与跨图字段比较独立于呈现。 |
 | 宿主记录与修复 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs)；[ReadCommittedOperations](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 从已完成 S 覆盖的 E 中查询缺结果记录，不把 pending 当已完成。允许从非零模拟版本的快照建新仓库，只扫描本仓库已有历史。 |
-| 展示与清屏 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs)，终局用单独标题，历史物品名称在当前物品耗尽后仍可用。 |
+| 展示（现行接线） | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs)；历史改读冻结 Opening 和经历，完整呈现边界仍按新方案实施。 |
 
 本片保留完整 Doc UI 追加输出；没有增量渲染、`:end` 或动作后收尾阶段。试玩只证明 Console 流程、可理解性与持久恢复，不证明真实 LLM 决策效果、端点映射或 prompt-cache 命中。
 

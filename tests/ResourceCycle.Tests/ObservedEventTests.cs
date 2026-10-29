@@ -146,8 +146,11 @@ public sealed class ObservedEventTests {
         using var store = new TemporaryStore();
         CycleWorld initial = World(Needs(water: 90), items: new() { ["item.water"] = 1 });
         var planned = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Use("item.water")));
+        Assert.Equal(StepStatus.Committed, await planned.StepAsync(Hour(240)));
+        CycleWorld opened = planned.World;
+        KernelCursor openedCursor = planned.Cursor;
         CycleFact expected = await Advance(planned);
-        using (var history = CycleDurableHistory.Create(store.StorePath, initial, InitialCursor(initial))) {
+        using (var history = CycleDurableHistory.Create(store.StorePath, opened, openedCursor)) {
             history.CommitEvent(planned.LastCompletion!.Event);
         }
         using (var reopened = CycleDurableHistory.Open(store.StorePath)) {
@@ -220,9 +223,9 @@ public sealed class ObservedEventTests {
         CycleObservedEffect consumed = Effect(action, "continuity", "a", "draft");
         Assert.Equal(written.After, consumed.Before);
         Assert.Equal(CycleVisibleValue.KnownAbsent, consumed.After);
-        CycleDecisionContinuity continuity = kernel.World.GetCharacter("a").Continuity!;
+        CharacterInteractionState continuity = kernel.World.Business.InteractionStates["a"];
         Assert.Null(continuity.DraftHandoff);
-        Assert.Equal(handoff, continuity.Pending!.Handoff);
+        Assert.Equal(handoff, continuity.PendingAdvance!.Handoff);
         Assert.Equal(initial.Time, kernel.World.Time);
     }
 
@@ -238,7 +241,10 @@ public sealed class ObservedEventTests {
     public async Task Fold_rejects_corrupt_observed_material_before_publishing(string corruption) {
         CycleWorld initial = World(Needs(water: 90), items: new() { ["item.water"] = 1 });
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Use("item.water")));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        initial = kernel.World;
         CycleFact valid = await Advance(kernel);
+        CycleEngine.Fold(initial, kernel.LastCompletion!.Event.TargetInstant, valid); // Validate the uncorrupted fixture first.
         CycleObservedEvent original = Assert.Single(valid.ObservedEvents);
         CycleObservedEffect water = Effect(original, "body", "a", "water");
         var effects = original.Effects.ToList();
@@ -269,7 +275,10 @@ public sealed class ObservedEventTests {
     public async Task Fold_rejects_invented_intermediate_gain_even_when_effect_chain_reaches_the_correct_endpoint() {
         CycleWorld initial = World(Needs(water: 90), items: new() { ["item.water"] = 1 });
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Use("item.water")));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        initial = kernel.World;
         CycleFact valid = await Advance(kernel);
+        CycleEngine.Fold(initial, kernel.LastCompletion!.Event.TargetInstant, valid); // Validate the uncorrupted fixture first.
         CycleObservedEvent original = Assert.Single(valid.ObservedEvents);
         CycleObservedEffect inventory = Effect(original, "inventory", "item.water", "count");
         CycleVisibleValue invented = CycleVisibleValue.Numeric(2, "份");
@@ -286,7 +295,10 @@ public sealed class ObservedEventTests {
     public async Task Fold_rejects_event_parameters_that_disagree_with_recorded_supply() {
         CycleWorld initial = World(Needs(water: 90), items: new() { ["item.water"] = 1 });
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Use("item.water")));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        initial = kernel.World;
         CycleFact valid = await Advance(kernel);
+        CycleEngine.Fold(initial, kernel.LastCompletion!.Event.TargetInstant, valid); // Validate the uncorrupted fixture first.
         CycleObservedEvent original = Assert.Single(valid.ObservedEvents);
         CycleObservedEvent[] corruptions = [
             new(0, original.ObserverId, original.Kind, original.From, original.At, "item.food", original.SubjectName, original.Detail, original.Effects),
@@ -383,11 +395,11 @@ public sealed class ObservedEventTests {
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
             [new("a", place, time, initial.World.Resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == place))], environment: environment);
         var actor = new CycleCharacter("a", "Observed event fixture", backpack: new ItemInventory(items), activity: activity,
-            nextActivityId: activity is null ? 1 : 2, survival: needs, continuity: new(1));
+            nextActivityId: activity is null ? 1 : 2, survival: needs);
         return CycleEngine.Rebuild(initial.World.Business.Replace(time, changedCharacters: [actor], expedition: expedition), time);
     }
     private static async Task<CycleFact> Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        await StepWorldEvent(kernel);
         kernel.World.Validate();
         return Assert.Single(kernel.LastCompletion!.Event.Facts);
     }

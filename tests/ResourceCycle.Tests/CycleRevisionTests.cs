@@ -20,7 +20,7 @@ public sealed class CycleRevisionTests {
         WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), CycleGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(7, CycleGameRevision.Current);
+        Assert.Equal(8, CycleGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));
@@ -314,6 +314,8 @@ public sealed class CycleRevisionTests {
                         new(new("activity", actor.Id, "target"), CycleVisibleValue.Numeric(1, "份"), CycleVisibleValue.KnownAbsent)
                     ])
             ]);
+        fact = fact.WithInteractions([new(actor.Id, undeliveredExperiences: fact.ObservedEvents.Select((entry, index) =>
+            new CharacterExperience(index + 1, entry)), nextExperienceSequence: fact.ObservedEvents.Count + 1)]);
         return new(new CandidateKey("fixture-recorded-yield"), new(Hour(7), 0), [fact]);
     }
 
@@ -371,23 +373,30 @@ public sealed class CycleRevisionTests {
                 Assert.Equal(oldActor.Id, fact.ActorId);
                 Assert.NotSame(oldActor, Assert.Single(fact.ChangedCharacters));
                 Assert.Equal(oldItem, Assert.Single(Assert.Single(fact.ChangedCharacters).Backpack.Items).Key);
+                CycleObservedEvent MapEvent(CycleObservedEvent entry) => new(entry.EventOrdinal,
+                    entry.ObserverId == oldActor.Id ? newActor.Id : entry.ObserverId, entry.Kind, entry.From, entry.At,
+                    entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects.Select(effect => {
+                        string objectId = effect.Key.ObjectId == oldActor.Id ? newActor.Id
+                            : effect.Key.ObjectId == oldItem ? newItem : effect.Key.ObjectId;
+                        // Translate frozen endpoints with the representation's grant; no planner or perception reruns.
+                        bool inventory = effect.Key.Category == "inventory" && effect.Key.ObjectId == oldItem;
+                        CycleVisibleValue prior = inventory ? CycleVisibleValue.Numeric(effect.Before.Units + grant, effect.Before.Unit!, effect.Before.Scale) : effect.Before;
+                        CycleVisibleValue next = inventory ? CycleVisibleValue.Numeric(effect.After.Units + grant, effect.After.Unit!, effect.After.Scale) : effect.After;
+                        return new CycleObservedEffect(new(effect.Key.Category, objectId, effect.Key.Field), prior, next);
+                    }));
                 return new CycleFact(fact.Kind, fact.At, newActor.Id, fact.ResourceId, fact.Light,
                     fact.ChangedResources.Select(resource => MapResource(resource, after.GameRevision)), fact.Script,
                     fact.ChangedCharacters.Select(actor => MapCharacter(actor, after.GameRevision, grant)),
                     fact.LastServedActorId is null ? null : newActor.Id, fact.Result,
                     gatherStopReason: fact.GatherStopReason,
-                    observedEvents: fact.ObservedEvents.Select(entry => new CycleObservedEvent(entry.EventOrdinal,
-                        entry.ObserverId == oldActor.Id ? newActor.Id : entry.ObserverId, entry.Kind, entry.From, entry.At,
-                        entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects.Select(effect => {
-                            string objectId = effect.Key.ObjectId == oldActor.Id ? newActor.Id
-                                : effect.Key.ObjectId == oldItem ? newItem : effect.Key.ObjectId;
-                            // Translate the already-recorded endpoints along with the representation's grant;
-                            // neither the migrated State nor E replans or executes the gathering operation.
-                            bool inventory = effect.Key.Category == "inventory" && effect.Key.ObjectId == oldItem;
-                            CycleVisibleValue prior = inventory ? CycleVisibleValue.Numeric(effect.Before.Units + grant, effect.Before.Unit!, effect.Before.Scale) : effect.Before;
-                            CycleVisibleValue next = inventory ? CycleVisibleValue.Numeric(effect.After.Units + grant, effect.After.Unit!, effect.After.Scale) : effect.After;
-                            return new CycleObservedEffect(new(effect.Key.Category, objectId, effect.Key.Field), prior, next);
-                        }))));
+                    observedEvents: fact.ObservedEvents.Select(MapEvent),
+                    interactionChanges: fact.InteractionChanges.Select(state => {
+                        Assert.Null(state.CurrentContext);
+                        Assert.Null(state.PendingAdvance);
+                        return new CharacterInteractionState(newActor.Id, undeliveredExperiences: state.UndeliveredExperiences
+                            .Select(experience => new CharacterExperience(experience.ExperienceSequence, MapEvent(experience.Event))),
+                            nextExperienceSequence: state.NextExperienceSequence);
+                    }));
             });
             return new(new(pending.Occurrence.CauseKey, pending.Occurrence.TargetInstant, facts), after.GameRevision);
         }

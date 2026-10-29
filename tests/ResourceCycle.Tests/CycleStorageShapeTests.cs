@@ -19,7 +19,10 @@ public sealed class CycleStorageShapeTests {
         CycleWorld initial = CycleWorld.CreatePlayable();
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: new WaitingCharacterController());
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
-        using (var history = CycleDurableHistory.Create(store.Path, initial, InitialCursor(initial))) {
+        initial = kernel.World;
+        KernelCursor openedCursor = kernel.Cursor;
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(96)));
+        using (var history = CycleDurableHistory.Create(store.Path, initial, openedCursor)) {
             history.CommitEvent(kernel.LastCompletion!.Event);
             if (completeState) { history.CommitState(kernel.World, kernel.Cursor); }
         }
@@ -51,6 +54,8 @@ public sealed class CycleStorageShapeTests {
         Assert.Contains(typeof(CycleCharacter), stateTypes);
         Assert.Contains(typeof(CycleFact), eventTypes);
         Assert.Contains(typeof(CycleCharacter), eventTypes);
+        Assert.Contains(typeof(CharacterContext), stateTypes);
+        Assert.Contains(typeof(CharacterContext), eventTypes);
         var catalog = new DefinitionCatalog();
         CycleDurableModels.Register(catalog);
         Assert.Contains(typeof(CycleBusinessState), catalog.Types);
@@ -117,7 +122,9 @@ public sealed class CycleStorageShapeTests {
             if (!seen.Add(item)) { continue; }
             yield return item;
             if (item is string) { continue; }
-            if (item is IEnumerable sequence) {
+            if (item is IDictionary dictionary) {
+                foreach (object? value in dictionary.Values) { if (value is not null) { pending.Push(value); } }
+            } else if (item is IEnumerable sequence) {
                 foreach (object? value in sequence) {
                     if (value is not null) { pending.Push(value); }
                 }

@@ -5,7 +5,7 @@ namespace DramaBoard.ResourceCycle;
 
 /// <summary>Application-specific explanatory material, assembled after every business enrichment.</summary>
 internal static class CycleObservedEvents {
-    internal static CycleFact Attach(CycleWorld world, CycleFact fact) {
+    internal static CycleFact Attach(CycleWorld world, CycleFact fact, string? draftAfter = null) {
         if (fact.Kind == CycleEventKind.DecisionContextOpened) { return fact; }
         var events = new List<CycleObservedEvent>();
         GraphSpatialState? afterSpatial = world.Expedition?.Spatial;
@@ -66,8 +66,9 @@ internal static class CycleObservedEvents {
                 subjectId = nextLocation is AtPlaceLocation atPlace ? atPlace.PlaceId.Value : null;
                 subjectName = subjectId is null ? null : CycleExpeditionMap.GetPlace(subjectId).Name;
             }
-            if (own) {
-                Add(direct, new("continuity", before.Id, "draft"), Text(before.Continuity?.DraftHandoff), Text(after.Continuity?.DraftHandoff));
+            if (own && fact.OperationRecordId is not null) {
+                Add(direct, new("continuity", before.Id, "draft"), Text(world.Business.InteractionStates[before.Id].DraftHandoff),
+                    Text(draftAfter));
             }
             if (fact.Kind == CycleEventKind.WeatherResolved) {
                 detail = fact.Environment!.LastCold ? fact.Environment.LastSheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";

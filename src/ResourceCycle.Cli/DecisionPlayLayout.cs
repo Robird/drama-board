@@ -8,18 +8,18 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
     public string Id => "decision";
     public string Name => "决策布局";
 
-    public string Render(CycleObservation observation, CycleDecisionContinuity? continuity = null) {
-        if (!observation.IsExpedition) { return PlayView.Render(observation, continuity); }
+    public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) {
+        if (!observation.IsExpedition) { return PlayView.Render(observation, interactionState); }
         bool ended = observation.Outcome != CycleExpeditionOutcome.Exploring;
         var text = new StringBuilder();
         text.AppendLine($"# 山林求生 · {observation.Actor.Name}（{observation.Actor.Id}） · {Time(observation.Time)}");
         text.AppendLine();
         text.Append(PlayView.RenderKnowledge(observation));
         if (ended) {
-            RenderEnding(text, observation, continuity);
+            RenderEnding(text, observation, interactionState);
             return text.ToString();
         }
-        text.Append(ContinuityPlayView.RenderHistory(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
         text.AppendLine("## 历史通知与最近天气");
         RenderEvents(text, observation, ended: false);
         text.AppendLine();
@@ -49,7 +49,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine($"采药等级 {observation.Actor.SkillLevel}（基础速度的 {100m + 25m * observation.Actor.SkillLevel:0}%）。");
         text.AppendLine();
         RenderSupplies(text, observation, ended: false);
-        text.Append(ContinuityPlayView.RenderCurrent(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
         RenderResources(text, observation);
         text.AppendLine("## 眼前的行动");
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认消息与历史警告，保留活动及原定期限");
@@ -61,7 +61,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
                 $"背包 {observation.Actor.Backpack.Count(supply.Command.ItemId!)} 份；{CycleSurvivalRules.UseDescription(supply.Command.ItemId!)!}");
         }
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
-            text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");
+            text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");
         }
         text.AppendLine("各行动旁显示当前可执行性与已知风险；未来随机天气无法预知，没有提示不等于安全。");
         if (observation.Passages.Count > 0) {
@@ -158,11 +158,11 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine();
     }
 
-    private static void RenderEnding(StringBuilder text, CycleObservation observation, CycleDecisionContinuity? continuity) {
+    private static void RenderEnding(StringBuilder text, CycleObservation observation, CharacterInteractionState? interactionState) {
         text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**旅程结束。只是这一次未能走出山林。**");
         text.AppendLine(observation.EndingReason);
         text.AppendLine("以下为结束时的冻结记录；世界不再推进。未完成的活动不会继续结算。");
-        text.Append(ContinuityPlayView.RenderHistory(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
         text.AppendLine("## 结束前的历史通知与最近天气");
         RenderEvents(text, observation, ended: true);
         text.AppendLine();
@@ -174,7 +174,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         }
         RenderActivity(text, observation, ended: true);
         text.AppendLine();
-        text.Append(ContinuityPlayView.RenderCurrent(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
         text.AppendLine();
         RenderSupplies(text, observation, ended: true);
         text.AppendLine();

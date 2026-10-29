@@ -8,20 +8,20 @@ public sealed class SharedGameViewBoundaryTests {
     [InlineData(true)]
     public void Shared_views_do_not_generate_console_guidance(bool terminal) {
         CycleObservation observation = Observe(terminal);
-        var continuity = new CycleDecisionContinuity();
-        CycleViewSnapshot snapshot = CycleViewSnapshot.Create(observation, continuity);
+        var interactionState = ViewContextFixture.State(Observe());
+        CycleViewSnapshot snapshot = CycleViewSnapshot.Create(observation, interactionState);
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             AssertGameContent(layout.RenderFull(snapshot));
             AssertGameContent(layout.RenderActionHelp(observation));
             foreach (bool fullTail in new[] { false, true }) {
-                var update = CycleViewUpdate.Create(CycleViewSnapshot.Create(Observe(), new CycleDecisionContinuity()), snapshot, [],
+                var update = CycleViewUpdate.Create(CycleViewSnapshot.Create(Observe(), ViewContextFixture.State(Observe())), snapshot, [],
                     PlayDeliveryPhase.Advancing, fullTail);
                 AssertGameContent(layout.RenderUpdate(update));
             }
         }
-        AssertGameContent(PlayView.Render(observation, continuity));
+        AssertGameContent(PlayView.Render(observation, interactionState));
         AssertGameContent(PlayView.RenderCommands(observation));
-        AssertGameContent(ContinuityPlayView.RenderHistory(observation, continuity) + ContinuityPlayView.RenderCurrent(observation, continuity));
+        AssertGameContent(ContextHistoryPlayView.RenderHistory(observation, interactionState) + ContextHistoryPlayView.RenderCurrent(observation, interactionState));
     }
 
     [Theory]
@@ -30,15 +30,15 @@ public sealed class SharedGameViewBoundaryTests {
     public void Command_shaped_handoff_data_survives_full_and_incremental_views(bool terminal) {
         const string handoff = "记录 :exit 与 :help 都是这段文字的一部分。";
         CycleObservation observation = Observe(terminal);
-        var continuity = new CycleDecisionContinuity(draftHandoff: handoff);
-        CycleViewSnapshot snapshot = CycleViewSnapshot.Create(observation, continuity);
+        var interactionState = ViewContextFixture.State(Observe(), draftHandoff: handoff);
+        CycleViewSnapshot snapshot = CycleViewSnapshot.Create(observation, interactionState);
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             Assert.Contains(handoff, layout.RenderFull(snapshot));
-            var update = CycleViewUpdate.Create(CycleViewSnapshot.Create(Observe(), new CycleDecisionContinuity()), snapshot, [],
+            var update = CycleViewUpdate.Create(CycleViewSnapshot.Create(Observe(), ViewContextFixture.State(Observe())), snapshot, [],
                 PlayDeliveryPhase.Advancing);
             Assert.Contains(handoff, layout.RenderUpdate(update));
         }
-        Assert.Contains(handoff, ContinuityPlayView.RenderHistory(observation, continuity) + ContinuityPlayView.RenderCurrent(observation, continuity));
+        Assert.Contains(handoff, ContextHistoryPlayView.RenderHistory(observation, interactionState) + ContextHistoryPlayView.RenderCurrent(observation, interactionState));
     }
 
     [Theory]
@@ -50,12 +50,12 @@ public sealed class SharedGameViewBoundaryTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(presentation, commands, writer);
         CycleObservation observation = Observe();
-        session.EnterInput(observation, new CycleDecisionContinuity());
+        session.EnterInput(observation, ViewContextFixture.State(Observe()));
         if (enabled) { Assert.Contains(":help", writer.ToString()); }
         else { AssertGameContent(writer.ToString(), checkPhase: false); }
         writer.GetStringBuilder().Clear();
         string? recorded = null;
-        session.ShowFull(observation, text => recorded = text, "重绘完成。\n", new CycleDecisionContinuity());
+        session.ShowFull(observation, text => recorded = text, "重绘完成。\n", ViewContextFixture.State(Observe()));
         Assert.NotNull(recorded);
         Assert.Equal(recorded + writer.NewLine, writer.ToString());
         Assert.Contains("重绘完成。", recorded);
@@ -70,12 +70,12 @@ public sealed class SharedGameViewBoundaryTests {
         using var writer = new StringWriter();
         var session = new PlayPresentationSession(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, writer);
         if (!coldOpen) {
-            session.EnterInput(Observe(), new CycleDecisionContinuity());
+            session.EnterInput(Observe(), ViewContextFixture.State(Observe()));
             writer.GetStringBuilder().Clear();
             session.BeginAdvancing();
-            session.Commit(Observe(terminal: true), [], continuity: new CycleDecisionContinuity());
+            session.Commit(Observe(terminal: true), [], interactionState: ViewContextFixture.State(Observe()));
         } else {
-            session.ShowFull(Observe(terminal: true), continuity: new CycleDecisionContinuity());
+            session.ShowFull(Observe(terminal: true), interactionState: ViewContextFixture.State(Observe()));
         }
         Assert.True(session.TerminalDelivered);
         Assert.Contains("冻结", writer.ToString());
@@ -94,7 +94,7 @@ public sealed class SharedGameViewBoundaryTests {
     }
 
     private static CycleObservation Observe(bool terminal = false) {
-        CycleObservation initial = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
+        CycleObservation initial = ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
         return new CycleObservation {
             Time = initial.Time, IsDay = initial.IsDay, NextLightChange = initial.NextLightChange,
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,

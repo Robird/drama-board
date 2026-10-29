@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
@@ -55,7 +56,7 @@ public sealed partial class CycleScript : IDurableObject {
 }
 
 /// <summary>Persistent world truth; caches and member lists are rebuilt after loading.</summary>
-[DurableType("DramaBoard.ResourceCycle.BusinessState", 3)]
+[DurableType("DramaBoard.ResourceCycle.BusinessState", 4)]
 public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     [DurableField(2)] private CycleLight _light;
@@ -64,6 +65,8 @@ public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(5)] private List<CycleCharacter> _characters;
     [DurableField(6)] private string? _lastServedActorId;
     [DurableField(7)] private CycleExpedition? _expedition;
+    [DurableField(8)] private Dictionary<string, CharacterInteractionState> _interactionStates;
+    public IReadOnlyDictionary<string, CharacterInteractionState> InteractionStates => new ReadOnlyDictionary<string, CharacterInteractionState>(_interactionStates);
     public ModelTime Time => _time;
     public CycleLight Light => _light;
     public CycleScript Script => _script;
@@ -73,18 +76,24 @@ public sealed partial class CycleBusinessState : IDurableObject {
     public CycleExpedition? Expedition => _expedition;
     public CycleBusinessState(ModelTime time, CycleLight light, IEnumerable<CycleResource> resources,
         CycleScript script, IEnumerable<CycleCharacter>? characters = null, string? lastServedActorId = null,
-        CycleExpedition? expedition = null) {
+        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionStates = null) {
         _time = time; _light = light; _resources = [.. resources]; _script = script;
         _characters = characters?.ToList() ?? []; _lastServedActorId = lastServedActorId;
         _expedition = expedition;
+        CharacterInteractionState[] states = (interactionStates ?? _characters.Select(c => new CharacterInteractionState(c.Id))).ToArray();
+        if (states.Select(state => state.ActorId).Distinct(StringComparer.Ordinal).Count() != states.Length) {
+            throw new InvalidOperationException("Interaction states must have unique actor identities.");
+        }
+        _interactionStates = states.ToDictionary(state => state.ActorId, StringComparer.Ordinal);
     }
     public CycleResource GetResource(string id) => _resources.Single(p => p.Id == id);
     public CycleCharacter GetCharacter(string id) => _characters.Single(c => c.Id == id);
     public CycleBusinessState Replace(ModelTime time, CycleLight? light = null, IEnumerable<CycleResource>? changedResources = null,
         CycleScript? script = null, IEnumerable<CycleCharacter>? changedCharacters = null, string? lastServedActorId = null,
-        CycleExpedition? expedition = null) {
+        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionChanges = null) {
         return new(time, light ?? Light, ReplaceChildren(_resources, changedResources, r => r.Id), script ?? Script,
-            ReplaceChildren(_characters, changedCharacters, c => c.Id), lastServedActorId ?? LastServedActorId, expedition ?? Expedition);
+            ReplaceChildren(_characters, changedCharacters, c => c.Id), lastServedActorId ?? LastServedActorId, expedition ?? Expedition,
+            ReplaceChildren(_interactionStates.Values.ToArray(), interactionChanges, state => state.ActorId));
     }
     private static IEnumerable<T> ReplaceChildren<T>(IReadOnlyList<T> previous, IEnumerable<T>? changes, Func<T, string> id) {
         if (changes is null) { return previous; }
@@ -101,6 +110,11 @@ public sealed partial class CycleBusinessState : IDurableObject {
             (LastServedActorId is not null && !_characters.Any(c => c.Id == LastServedActorId))) {
             throw new InvalidOperationException("Invalid world clock, identities or service cursor.");
         }
+        if (_interactionStates.Count != _characters.Count || _characters.Any(c => !_interactionStates.ContainsKey(c.Id)) ||
+            _interactionStates.Any(pair => pair.Key != pair.Value.ActorId)) {
+            throw new InvalidOperationException("Interaction states must belong one-to-one to the world's characters.");
+        }
+        foreach (CharacterInteractionState state in _interactionStates.Values) { state.Validate(state.ActorId, Time); }
         foreach (CycleResource resource in _resources) { resource.Validate(Time, Light.IsDay); }
         foreach (CycleCharacter actor in _characters) {
             actor.Validate(Time);

@@ -17,10 +17,10 @@ public sealed class SurvivalTests {
         CycleCharacter actor = world.GetCharacter("a");
         string before = world.DescribeState();
         long decision = actor.DecisionGeneration;
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleObservation observation = CycleDecisionContext.Observe(world, "a");
         for (int check = 0; check < 2; check++) {
             Assert.NotNull(CycleActions.Check(world, "a", CycleCommand.Use(itemId)));
-            Assert.NotNull(context.Check(CycleCommand.Use(itemId)));
+            Assert.NotNull(observation.CheckDisplayed(CycleCommand.Use(itemId)));
         }
         Assert.Equal(before, world.DescribeState());
         Assert.Equal(Hour(8), world.Time);
@@ -46,7 +46,7 @@ public sealed class SurvivalTests {
         Assert.Equal(2, initial.GetCharacter("a").Backpack.Count(itemId));
         Assert.Equal(Hour(8), kernel.World.Time);
         Assert.Equal(1, source.Calls);
-        Assert.Single(history.CompletedEvents);
+        Assert.Single(history.CompletedEvents.SelectMany(e => e.Facts), fact => fact.Kind == CycleEventKind.ItemUsed);
         Assert.NotNull(CycleActions.Check(kernel.World, "a", CycleCommand.Use(itemId)));
     }
 
@@ -246,7 +246,8 @@ public sealed class SurvivalTests {
                 Assert.True(step < 5);
                 saved = history.State.DescribeState();
                 savedCursor = history.Cursor;
-                try { await Advance(interrupted); }
+                // Capture the State immediately before each real occurrence, including the separate opening.
+                try { Assert.Equal(StepStatus.Committed, await interrupted.StepAsync(Hour(240))); }
                 catch (InvalidOperationException error) when (error.InnerException is InjectedCrash) { break; }
             }
             Assert.True(interrupted.IsFaulted);
@@ -356,7 +357,7 @@ public sealed class SurvivalTests {
     }
 
     private static async Task Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        await StepWorldEvent(kernel);
         kernel.World.Validate();
         CycleWorld rebuilt = CycleEngine.Rebuild(kernel.World.Business, kernel.World.Time);
         Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());

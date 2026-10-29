@@ -26,7 +26,7 @@
 
 此行为用于试玩时检查单次观察是否足以决策，不等同于 LLM 上下文隔离：终端自身的回滚历史不作跨平台保证，未来 LLM 收到哪些历史消息仍由上下文构造决定。
 
-两种布局通过 [ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) 展示[决策回合的信息继承](decision-context-handoff.md)：当前观察、固定的上次行动结果、主观交接文字与本轮草稿分别呈现。本轮补给不改写历史身体值，旧交接不会自动续传；`handoff <文字>` 覆盖草稿，`handoff --clear` 清空。
+两种布局通过 [ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs) 展示[持久上下文](character-context-model.md)中 Opening 的上次放行信息与同源经历：当前观察、历史过程、主观交接文字与本轮草稿分别呈现。本轮补给不改写历史效果，旧交接不会自动续传；`handoff <文字>` 覆盖草稿，`handoff --clear` 清空。完整 Items 重放与纯角色上下文输出仍待该重构的呈现分片。
 
 [操作 ID 合同](decision-context-handoff.md#44-操作-id结果配对与-completion-边界)由 Console 与 [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) 落实：非空提交在解析前隐式生成 ToolCallId 并登记，查询/拒绝/元命令也保存同 ID 结果。`--store` 使用存档下的 `operations.jsonl`；没有存档时仅保留在内存。空行和 EOF 不产生操作记录，布局偏好仍仅在当前进程中生效。
 
@@ -46,7 +46,7 @@
 - 背景区展示一般规则和已知常识，再展示曾到访地点。地点记忆是经历形成的知识，但不是永远有效的事实：保留观察时间，明确旧库存可能已经改变，不暗示当前远处状态。规则只取本场景已有信息，不能泄露未探索的地点或资源。
 - 历史区展示固定 Incoming、上回合主观交接、历史通知/未确认警告和最近一次实际天气。后三者可能早于上一回合，因此不统称为“上一回合事件”，也不伪装成尚未实施的完整历史窗口。本轮交接草稿和已接受、正在推进的行动放在当前区；下一天气窗口、当前暴露和趋势也属于当前区。
 - `classic` 保留 [PlayView](../../src/ResourceCycle.Cli/PlayView.cs) 的表格与完整分栏；`decision` 使用 [DecisionPlayLayout](../../src/ResourceCycle.Cli/DecisionPlayLayout.cs) 的简洁状态与行动分组。背包、资源和活动先呈现当前状态，行动集中在尾部；为保持操作局域性，行动旁仍可重复必要的数量、耗时、使用效果、受阻原因和风险，相同通路风险按组显示。不会为了分类而把所有行动解释都搬到顶部。
-- [ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) 分别渲染历史继承与本轮交接，天气同样分开渲染历史效果与当前窗口；只做渲染函数拆分，不增加领域状态、存档字段或通用章节框架。
+- [ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs) 分别渲染已保存历史与本轮交接，天气同样分开渲染历史效果与当前窗口；领域材料由 Context 提供，布局不累计另一份摘要。
 - 此顺序适用于新回合全量、重绘、单次预览及 full 模式中的完整正文。增量输出仍按“事件 → 从属效果 → 受影响状态最新值”追加，不重复背景规则。终局保留历史与冻结状态，省略行动引导和未来风险预测。delta 输入提示只保留角色标记；只有实际进入控制器才显示可输入，推进中显示的动作条件不等于已接受输入。
 - 帮助提供行动语法与条件，完整观察提供当前可见知识、历史材料与状态；它们均不等于全量世界或完整事件日志。当前事实、历史记录和未来条件估计必须可区分。
 - 校验和风险采用游戏产生的 `Commands`，不在布局中复制业务规则。终局明确冻结，不提供新行动或未来风险预测。

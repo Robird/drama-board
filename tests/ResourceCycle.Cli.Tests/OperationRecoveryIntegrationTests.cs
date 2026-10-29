@@ -16,7 +16,7 @@ public sealed class OperationRecoveryIntegrationTests {
             var initial = CycleGameFactory.CreateSurvival();
             CycleCharacter actor = initial.World.GetCharacter("a");
             var replacement = new CycleCharacter(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
-                survival: CycleSurvival.Create(initial.World.Time, water: 90), continuity: actor.Continuity);
+                survival: CycleSurvival.Create(initial.World.Time, water: 90));
             CycleWorld world = CycleEngine.Rebuild(initial.World.Business.Replace(initial.World.Time,
                 changedCharacters: [replacement]), initial.World.Time);
             CycleOperationReceipt receipt;
@@ -26,9 +26,12 @@ public sealed class OperationRecoveryIntegrationTests {
             var memory = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(world, initial.Cursor);
             var kernel = CycleEngine.CreateKernel(memory, characterController: new SupplyController(receipt));
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+            CycleWorld openedWorld = kernel.World;
+            KernelCursor openedCursor = kernel.Cursor;
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
             string normalResult = CycleOperationResults.Describe(kernel.LastCompletion!.Event.Facts.Single());
             Assert.Contains("+10", normalResult);
-            using (var history = CycleDurableHistory.Create(store, world, initial.Cursor)) {
+            using (var history = CycleDurableHistory.Create(store, openedWorld, openedCursor)) {
                 history.CommitEvent(kernel.LastCompletion.Event);
                 history.CommitState(kernel.World, kernel.Cursor);
             }
@@ -44,7 +47,7 @@ public sealed class OperationRecoveryIntegrationTests {
             Assert.False(result.ExactResult);
             Assert.Equal(100 * CycleSurvival.Scale, reopened.State.GetCharacter("a").Survival!.WaterUnits);
             Assert.Equal(0, reopened.State.GetCharacter("a").Backpack.Count("item.water"));
-            Assert.Equal(1, reopened.Cursor.Version.TransitionCount);
+            Assert.Equal(2, reopened.Cursor.Version.TransitionCount);
         } finally {
             Directory.Delete(directory, recursive: true);
         }
@@ -69,7 +72,10 @@ public sealed class OperationRecoveryIntegrationTests {
             var memory = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
             var planned = CycleEngine.CreateKernel(memory, characterController: controller);
             Assert.Equal(StepStatus.Committed, await planned.StepAsync(new ModelTime(long.MaxValue)));
-            using (var history = CycleDurableHistory.Create(store, initial.World, initial.Cursor)) {
+            CycleWorld openedWorld = planned.World;
+            KernelCursor openedCursor = planned.Cursor;
+            Assert.Equal(StepStatus.Committed, await planned.StepAsync(new ModelTime(long.MaxValue)));
+            using (var history = CycleDurableHistory.Create(store, openedWorld, openedCursor)) {
                 history.CommitEvent(planned.LastCompletion!.Event);
                 if (completeState) { history.CommitState(planned.World, planned.Cursor); }
             }
@@ -84,16 +90,16 @@ public sealed class OperationRecoveryIntegrationTests {
                 Assert.Equal(CycleOperationStatus.Succeeded, result.Status);
                 Assert.Equal(receipt.ToolCallId, result.ToolCallId);
                 Assert.False(result.ExactResult);
-                Assert.Equal("1:1", result.WorldVersion);
+                Assert.Equal("1:2", result.WorldVersion);
                 Assert.Equal(CycleOperationStatus.Interrupted,
                     journal.Entries.Single(entry => entry.Received.OperationRecordId == "lost-query").Completed!.Status);
-                Assert.Equal(1, kernel.Cursor.Version.TransitionCount);
-                Assert.Equal(receipt.ToolCallId, kernel.World.Characters[0].Continuity!.Pending!.Action.ToolCallId);
+                Assert.Equal(2, kernel.Cursor.Version.TransitionCount);
+                Assert.Equal(receipt.ToolCallId, kernel.World.Business.InteractionStates["a"].PendingAdvance!.ToolCallId);
                 Assert.Empty(journal.PendingOperationRecordIds);
             }
             using var final = CycleDurableHistory.Open(store);
             Assert.Null(final.PendingEvent);
-            Assert.Equal(1, final.Cursor.Version.TransitionCount);
+            Assert.Equal(2, final.Cursor.Version.TransitionCount);
             Assert.Equal(1, controller.Calls);
         } finally {
             Directory.Delete(directory, recursive: true);

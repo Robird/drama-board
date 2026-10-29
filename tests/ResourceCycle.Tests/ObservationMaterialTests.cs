@@ -11,39 +11,44 @@ namespace DramaBoard.ResourceCycle.Tests;
 
 public sealed class ObservationMaterialTests {
     [Fact]
-    public void Scenario_capability_does_not_accept_handoff_without_required_interaction_state() {
+    public void Scenario_has_an_unstarted_interaction_slot_and_advertises_handoff_before_first_delivery() {
         CycleWorld initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false).World;
         var actor = new CycleCharacter("a", "阿青");
         CycleWorld world = CycleEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [actor]), initial.Time);
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleObservation observation = CycleDecisionContext.Observe(world, "a");
 
         Assert.True(CycleActions.SupportsHandoff(world));
-        Assert.NotNull(context.Check(CycleCommand.Handoff("记录")));
-        Assert.NotNull(Assert.Single(context.Observation.Commands,
+        Assert.Null(world.Business.InteractionStates["a"].CurrentContext);
+        Assert.Throws<InvalidOperationException>(() => CycleDecisionContext.Create(world, "a"));
+        Assert.Null(CycleActions.Check(world, "a", CycleCommand.Handoff("记录")));
+        Assert.Null(Assert.Single(observation.Commands,
             entry => entry.Command.Kind == CycleCommandKind.Handoff).Rejection);
     }
 
     [Fact]
-    public void Visible_material_has_no_continuity_world_or_executable_queries_in_its_object_graph() {
-        CycleWorld world = CycleGameFactory.CreateSurvival().World;
+    public async Task Visible_material_has_no_context_world_or_executable_queries_in_its_object_graph() {
+        CycleWorld initial = CycleGameFactory.CreateSurvival().World;
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands());
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        CycleWorld world = kernel.World;
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
-        Assert.Same(world.GetCharacter("a").Continuity, context.Continuity);
+        Assert.Same(world.Business.InteractionStates["a"].CurrentContext, context.Context);
         Assert.Equal(Serialize(context.Observation), Serialize(CycleDecisionContext.Observe(world, "a")));
         AssertPureVisibleGraph(context.Observation, new(ReferenceEqualityComparer.Instance));
     }
 
     [Fact]
-    public void Gathering_history_does_not_enable_handoff_or_disclose_other_actors_private_material() {
-        var a = new CycleCharacter("a", "Alice", continuity: new(draftHandoff: "A的计划"));
-        var b = new CycleCharacter("b", "Bob", backpack: new ItemInventory(new Dictionary<string, int> { ["private.gem"] = 7 }),
-            continuity: new(draftHandoff: "B的计划"));
-        CycleWorld world = CycleWorld.CreatePlayable(Hour(8), [a, b]);
+    public async Task Gathering_context_does_not_enable_handoff_or_disclose_other_actors_private_material() {
+        var a = new CycleCharacter("a", "Alice");
+        var b = new CycleCharacter("b", "Bob", backpack: new ItemInventory(new Dictionary<string, int> { ["private.gem"] = 7 }));
+        CycleWorld initial = CycleWorld.CreatePlayable(Hour(8), [a, b]);
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands());
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        CycleWorld world = kernel.World;
         CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
         string visible = Serialize(context.Observation);
-        Assert.DoesNotContain("A的计划", visible, StringComparison.Ordinal);
-        Assert.DoesNotContain("B的计划", visible, StringComparison.Ordinal);
         Assert.DoesNotContain("private.gem", visible, StringComparison.Ordinal);
-        Assert.Equal("A的计划", context.Continuity!.DraftHandoff);
+        Assert.Equal(CharacterContextStatus.Open, context.Context!.Status);
         Assert.DoesNotContain(context.Observation.Commands, entry => entry.Command.Kind == CycleCommandKind.Handoff);
         Assert.False(CycleActions.SupportsHandoff(world));
         Assert.NotNull(context.Check(CycleCommand.Handoff("disabled")));
@@ -56,7 +61,7 @@ public sealed class ObservationMaterialTests {
         CycleObservation before = CycleDecisionContext.Observe(world, "a");
         string frozen = Serialize(before);
         var kernel = CycleEngine.CreateKernel(Memory(world), characterController: Commands(CycleCommand.Use("item.water")));
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        await StepWorldEvent(kernel);
         CycleObservation after = CycleDecisionContext.Observe(kernel.World, "a");
         Assert.Equal(frozen, Serialize(before));
         Assert.Equal(1, before.Actor.Backpack.Count("item.water"));
@@ -73,7 +78,7 @@ public sealed class ObservationMaterialTests {
     private static void AssertPureVisibleGraph(object? value, HashSet<object> seen) {
         if (value is null || value is string) { return; }
         Assert.False(value is Delegate or CycleWorld or CycleBusinessState or CycleCharacter or
-            CycleDecisionContext or CycleDecisionContinuity or CycleExpedition or GraphSpatialState,
+            CycleDecisionContext or CharacterInteractionState or CharacterContext or CycleExpedition or GraphSpatialState,
             $"Unexpected object reachable from visible material: {value.GetType().Name}");
         Type type = value.GetType();
         if (type.IsPrimitive || type.IsEnum || value is decimal || !seen.Add(value)) { return; }

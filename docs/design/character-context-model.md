@@ -1,6 +1,6 @@
 # 角色上下文 Model 与信息交付重构
 
-状态：2026-10-29 实施中；共享可见材料已具备持久化与冷开证据，感知事件覆盖全部受控角色；持久 Context 根及其交付尚未实施。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文细化为待实施合同，经模型化简、发布恢复和信息可见性三路只读审查修订，类型名称均为建议名。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)，不把未来能力写成现有 API。
+状态：2026-10-29 实施中；分片 2A 的持久 Context、合法路径与 S/E 恢复已有工程及试玩证据；原始输入/持久拒绝和完整 Console 消费仍待后续分片。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文保留完整交付合同，不以局部接线代替最终验收。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)。
 
 ## 1. 目标与明确不做的事
 
@@ -18,9 +18,9 @@
 
 | 当前入口 | 事实 | 重构方向 |
 | --- | --- | --- |
-| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CycleDecisionContinuity](../../src/ResourceCycle/CycleDecisionContinuity.cs) | S 中有固定 Incoming、DraftHandoff、Pending，没有 Context Item 列表 | 用 Business 根下按角色归属的交互状态替换 Continuity；不再并列维护另一套完整连续性模型 |
+| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) | 物理角色与交互状态已分开；Business.InteractionStates 保存 Opening、Items 和待交付经历 | 验证全部合法路径，再接持久拒绝；旧 Continuity 不再作为第二套权威 |
 | [CycleFact](../../src/ResourceCycle/CycleFact.cs) / [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
-| [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料已可持久化；旧历史和校验暂由 CycleDecisionContext 相邻持有 | 纳入 Opening/Items，避免 Context → Observation → Context 引用环 |
+| [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/Items；CycleDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 直接消费逐次提交并在旧画面输出；管理与游戏材料混合 | 改为消费已提交 Context 的新材料；世界提交不再直接冒充对角色的交付 |
 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
@@ -106,6 +106,7 @@ Opening 包含：角色身份与回合号、游戏内背景/目标与规则材�
 - Item 身份为 Context 身份 + 单调分配的 ItemSequence；顺序是纳入该上下文的顺序。删除条目后允许序号有空洞，不重编号、不用当前数组下标或 Count 分配身份。
 - 角色操作另有回合内 OperationSequence；每次已提交的成功或拒绝操作递增一次，交互记录保存该值。它与包含自然感知的 ItemSequence 分开，也不是 ToolCallId。放行操作的序号保存在 PendingAdvance 中，不必为计数向旧 Context 追加接受反馈。
 - 经历使用角色局部递增 ExperienceSequence，在规划时分配并随 E 记录；不新增 Kernel 全局 ID 服务。分支若以后支持，需要把谱系纳入外部身份，不在本片预建分支协议。
+- 世界 E 中的 EventOrdinal 可包含其他接收者的事件位置；进入 CharacterExperience 时改为本接收者在该事实内的局部顺序，避免通过序号间隙透露其他角色事件。ExperienceSequence 才是经历的持久身份，诊断仍从世界 E 建立来源关联。
 - 发生时间/区间保留于经历；首次纳入上下文由其所在 Opening 或 Item 明确。历史重显沿用经历身份，不能重新编号或伪称首次发生。
 - 开发者来源 `(LineageId, TransitionCount, FactOrdinal, EventOrdinal)` 可在提交后与角色经历 ID 建立诊断关联；它不是角色排序、持久化追加或恢复所必需的输入。隐藏事件关联不暴露给角色。
 
@@ -208,9 +209,11 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 按可独立检查的边界实施，避免先造新模型却长期维持两个连续性权威。
 
-共享观察与背景已经具备 DurableGraph 声明，具体集合在构造/init 时复制且公开只读；真实磁盘连续 State、历史冷开与命令查询的证据见 [VisibleMaterialPersistenceTests](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)。同一份观察 DTO 将直接进入 Context，不另建持久副本。普通采集和无生存需求角色的自身/公开事件已接入 E，隔离与效果端点证据见 [AllActorObservedEventTests](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs)；无角色的批处理仍无角色事件。GameRevision 7 拒绝旧事件语义，Fact 字段形状仍为 Schema 7。
+共享观察与背景直接进入持久 Context，具体集合在构造/init 时复制且公开只读，不另建持久 DTO。Business.InteractionStates 与 Fact.InteractionChanges 已替换 Character.Continuity；合法操作、首次开轮、关闭后待交付、下一 Opening 和终局通过同一 E/S 边界发布。GameRevision 8；Business Schema 4、Character Schema 5、Fact Schema 8，不兼容旧开发存档。
 
-下一步继续分片 2A：接入同根 InteractionStates 与 InteractionChanges，替换旧 Continuity 并落实生命周期和恢复。世界效果→感知→交互的规划顺序随该接线落地，Fold/Complete 只安装记录值。其他角色采集导致的本人通知、库存及公开活动变化即使没有事件文案，也必须通过观察比较追加 Item；当前事件测试不能代替这条 Context 验收。
+证据集中在 [CharacterContextLifecycleTests](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 的合法路径、角色隔离、仅快照更新及错误端点拒绝，以及 [CharacterContextPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 的真实 S 冷开和瞬时/放行/开轮/终局 E-only 恢复。恢复比较独立 E/S 图的语义前缀并安装记录对象，不重跑观察、背景、感知或编号分配；直接业务端点检查也不重新预测风险菜单。共享材料冷开和全部角色事件的基础证据仍分别见 [VisibleMaterialPersistenceTests](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[AllActorObservedEventTests](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs)。
+
+下一步是分片 2B：控制器目前仍只返回合法 CycleControllerOperation，Item 中的输入暂由已接受命令规范化生成；原始 submission、共享 parser、持久拒绝/窗口、日志成功或拒绝状态及仲裁尚未接通。Console 过渡适配已读取保存观察与 Opening 经历、停止向 Closed 输出结算、删除普通采集逐事实直出；瞬时增量仍经 Fact 事件出口，完整 Items 重放、纯输出、带外块、明确开始/结束与诊断 sink 继续由分片 3 完成，不能将当前 Console 屏幕视为完整 Model。
 
 | 分片 | 交付与范围 | 验收门槛 |
 | --- | --- | --- |

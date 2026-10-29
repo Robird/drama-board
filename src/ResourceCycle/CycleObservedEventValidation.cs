@@ -159,7 +159,8 @@ internal static class CycleObservedEventValidation {
         if (own) {
             foreach (string item in actor.Backpack.Items.Keys.Concat(next.Backpack.Items.Keys).Distinct(StringComparer.Ordinal)) { yield return new("inventory", item, "count"); }
             foreach (string field in new[] { "kind", "due", "completed", "target" }) { yield return new("activity", actor.Id, field); }
-            yield return new("continuity", actor.Id, "draft");
+            // Draft consumption belongs to a captured character operation, not terminal lifecycle cleanup.
+            if (fact.OperationRecordId is not null) { yield return new("continuity", actor.Id, "draft"); }
             if (before.Expedition is not null) {
                 yield return new("location", actor.Id, "place");
                 yield return new("location", actor.Id, "arrival");
@@ -200,7 +201,7 @@ internal static class CycleObservedEventValidation {
             ("activity", "completed") => activity?.Kind != CycleActivityKind.Gather ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Numeric(activity.CompletedCount, "份"),
             ("activity", "target") => activity?.Kind != CycleActivityKind.Gather ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Numeric(activity.TargetCount, "份"),
             ("notice", "count") => CycleVisibleValue.Numeric(actor.Notices.Count, "条"),
-            ("continuity", "draft") => Text(actor.Continuity?.DraftHandoff),
+            ("continuity", "draft") => Text(state.InteractionStates[observer].DraftHandoff),
             ("world", "light") => CycleVisibleValue.Flag(state.Light.IsDay),
             ("world", "outcome") => CycleVisibleValue.Literal(state.Expedition!.Outcome.ToString()),
             ("location", "place") => location is AtPlaceLocation at ? Text(at.PlaceId.Value) : CycleVisibleValue.KnownAbsent,

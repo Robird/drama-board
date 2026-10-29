@@ -58,7 +58,7 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 - [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出和回合分隔所用的上次画面标识，不保存角色的跨决策语义记忆。每次调用渲染该角色界面并等待合法输入。
 - [Human Console 边界](console-command-boundary.md)已将纯行动解析、共享游戏文档和 Console 管理能力分开。`ConsoleMetaCommands.HumanDefault` / `None` 在会话构造时同时控制元命令解析和提示；退出只由 Console 所有者处理。未来 LLM 使用结构化行动或纯行动解析器，不复用 Console 输入循环；禁用元命令并不等于实现 LLM 适配。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。共享控制器沿用现有服务轮转，不修改抢资源仲裁。
-- 角色的 `CycleDecisionContinuity` 保存固定的 Incoming、本轮 DraftHandoff 和尚未交付的 Pending；`DecisionContextOpened` 通过现有请求仲裁封存结果，再交付控制器。宿主操作记录保留身份与结果，不恢复完整对话。尚无 LLM 接入、长期笔记或角色经历召回；归档 Player 实现不因本决策自动恢复使用。
+- Business 根下的 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 保存当前 Context、草稿、待推进关联与待交付经历；`DecisionContextOpened` 通过现有请求仲裁冻结 Opening，再交付控制器。合法零耗时操作追加持久 Item，放行后的经历进入下一 Opening；旧 Continuity 已替换。原始输入/持久拒绝和完整 Console 消费继续按[重构方案](character-context-model.md)实施。宿主操作记录不等于完整模型会话；LLM、长期笔记和旧经历召回尚未接入。
 
 后续实现可用以下行为验收本决策：A/B 角色交替使用同一控制器不串记忆；替换控制器实例后显式角色记忆仍可用；文本与工具都不泄漏未授权信息；中断后的 pending E 恢复不再次调用控制器。更换 LLM 后得到完全相同的行动不属于验收要求。
 

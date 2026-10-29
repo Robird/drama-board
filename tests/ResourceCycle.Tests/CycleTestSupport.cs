@@ -30,6 +30,14 @@ internal static class CycleTestSupport {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
         AssertPredictions(kernel.World);
     }
+    // Physics-focused tests may pass the separately committed opening, but no world event.
+    public static async Task StepWorldEvent(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
+        do {
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+            if (kernel.World.Expedition is null) { AssertPredictions(kernel.World); }
+            else { Assert.Equal(CycleEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString()); }
+        } while (kernel.LastCompletion!.Event.Facts.All(fact => fact.Kind == CycleEventKind.DecisionContextOpened));
+    }
     public static async Task Until(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel, Func<CycleWorld, bool> stop) {
         for (int i = 0; i < 300; i++) {
             if (stop(kernel.World)) { return; }
@@ -39,6 +47,26 @@ internal static class CycleTestSupport {
     }
     public static string Describe(OccurrenceEvent<CycleFact> occurrence) =>
         $"{occurrence.CauseKey}|{occurrence.TargetInstant}|{string.Join("\n", occurrence.Facts.Select(fact => fact.ToString()))}";
+    // Test-only semantic fingerprint. It follows public material rather than renderer bytes or
+    // production equality, and handles the conditional Number accessor without evaluating it.
+    public static string MaterialSnapshot(object? value) => System.Text.Json.JsonSerializer.Serialize(Material(value));
+    private static object? Material(object? value) {
+        if (value is null) { return null; }
+        Type type = value.GetType();
+        if (type.IsPrimitive || type.IsEnum || value is string or decimal) { return value; }
+        if (value is CycleVisibleValue visible) {
+            return new { visible.Kind, visible.Units, visible.Scale, visible.Unit, visible.Text, visible.Boolean };
+        }
+        if (value is System.Collections.IDictionary dictionary) {
+            return dictionary.Keys.Cast<object>().OrderBy(key => key.ToString(), StringComparer.Ordinal)
+                .ToDictionary(key => key.ToString()!, key => Material(dictionary[key]), StringComparer.Ordinal);
+        }
+        if (value is System.Collections.IEnumerable entries) { return entries.Cast<object?>().Select(Material).ToArray(); }
+        return type.GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+            .Where(property => property.CanRead && property.GetIndexParameters().Length == 0)
+            .OrderBy(property => property.Name, StringComparer.Ordinal)
+            .ToDictionary(property => property.Name, property => Material(property.GetValue(value)), StringComparer.Ordinal);
+    }
     public static long Recalculations(CycleMetrics metrics, string owner) =>
         metrics.RecalculationsByOwner.TryGetValue(owner, out long count) ? count : 0;
 

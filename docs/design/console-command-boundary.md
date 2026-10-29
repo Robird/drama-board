@@ -14,7 +14,7 @@
 | [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) / [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) | 分别解析游戏行动与冒号元命令；混合 `PlayInput` 已删除。目录同时控制元命令提示与解析。 |
 | [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) | 唯一元命令执行入口；`:exit` 配对日志结果后抛出 Console 专用异常，外层 Console 运行循环捕获并返回。没有调用 `Environment.Exit`。EOF 也结束 Console。 |
 | [PlayPresentation](../../src/ResourceCycle.Cli/PlayPresentation.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | 前者保存布局/模式偏好及实际选项，后者组合 Console 提示、阶段和输入标记并管理交付基线。 |
-| [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) | 只生成游戏观察、更新及行动帮助，不生成元命令或宿主交互阶段指引。 |
+| [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs) | 只生成游戏观察、已记录经历及行动帮助，不生成元命令或宿主交互阶段指引。 |
 
 独立 LLM 控制器通过现有结构化接口接入时，不会自动获得 `:exit`。将模型文本直接接入 `HumanDefault` Console 输入流则会拥有整套 Console 能力。此边界避免共享解析器和视图夹带管理能力，不建设同进程恶意代码隔离。
 

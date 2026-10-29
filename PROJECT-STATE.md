@@ -26,11 +26,11 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：用户已认可世界事实、角色感知与持久决策材料分层，Human/LLM 共用 Model；共享观察与背景已具备 DurableGraph 字段及磁盘冷开证据，普通采集/无生存需求角色也记录同源感知事件；完整 Context 仍未接入业务根。下一步继续分片 2A：接入同一 Business 根的 InteractionStates 与事实 InteractionChanges，替换旧 Continuity，完成合法操作、待交付经历、终局及 S/E 恢复；其他角色引起的公开状态更新即使无事件文案也必须形成快照条目。再推进 2B 的原始输入/拒绝窗口，以及 Console 的 Model 消费与带外边界。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，不再并行维护设计待办。
+**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：同根 InteractionStates / InteractionChanges 已替换旧 Continuity，合法操作、待交付经历、终局与 S/E 恢复已接通；证据见 [Context 生命周期](tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs)及[真实冷开](tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs)。下一步推进 2B：原始 submission 与共享 parser、持久拒绝及最近 3 次操作窗口、日志状态配对、拒绝不轮转/不确认警告和同刻 1024 护栏；当前控制器仍只返回合法命令，Item 输入只是规范命令文本。然后完成分片 3 的完整 Model 消费、纯输出、带外块/开始结束与诊断 sink，并独立试玩。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，不再并行维护待办；完整目标尚未验收。
 
-[增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)已落地，工程及独立试玩证据见[验收](docs/experiments/incremental-ui-slice-a-acceptance.md)。事件与实际效果随 E 保存，正常/恢复答复同源；生存 Console 提交后统一呈现事件、缩进效果与去重当前值，支持 `:mode full|delta`，默认 delta。后续按[阶段目标](docs/design/incremental-ui-milestone.md)设计 B：复用同一事件材料，裁决跨回合历史窗口与容量、首次获知语义、持久来源绑定及裁剪；n 尚未定，倾向按决策回合分组。A 尚未在角色 S 中保留历史窗口，冷开全量而不重放旧屏幕。保持新回合自足，不重开动作后收尾或 `:end`；B 完成后复验历史与 Incoming 的重复程度，LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
+[增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 
-生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once` 临时预览且不改偏好/基线，元命令仅接受冒号前缀；[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs) 按角色/ContextSequence 首次及新回合输出彩色分隔线、成功写出后更新基线，重定向保留全文及纯文本分隔线。`--play` 明确仅支持 full；领域 E 已按角色记录感知事件，Console 尚未改为持久 Context 消费。两种布局按背景知识、上次推进及历史、当前状态、当前行动组织全量正文，元命令提示由 Console 前置；排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标提示应扩充观察投影，不在布局复制预测。二期双角色胜负、零时间对话/赠与轮转及 LLM 接入尚未启动；移动不可取消、干木燃料用途仍依体验重开。
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀；[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs) 当前仍使用彩色回合分隔线。`--play` 仅支持 full，已移除逐世界事实直出；两种模式输入时读取已保存观察，历史由 Opening 经历渲染，Closed 后不输出结算。生存瞬时输出仍经 Fact 事件出口，完整 Items 消费与上下文标记尚待分片 3，当前屏幕不等于完整 Model。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标应扩充观察投影，不在布局复制预测。二期双角色胜负、对话/赠与及 LLM 尚未启动；移动不可取消、干木燃料用途依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -38,11 +38,11 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md)；现有采集场景使用同一 Human Console 轮流控制多个角色。加入/耗尽感知扩展了原先“仅完成/打断才唤醒”的边界：Player 获得交互机会不必取消角色活动。空间移动已由生存一期重开；事件窗口随当前增量 UI 目标研究，AgentCore 子状态发布仍延期。
 
-**控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策角色记忆；游戏按角色维护显式状态，pending E 不重做决定。`ChooseCommandAsync` 接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 并返回 `CycleControllerOperation`；`CycleDecisionContinuity` 保存 Incoming、DraftHandoff 与 Pending。[Human Console 边界](docs/design/console-command-boundary.md)已分离纯行动解析与共享游戏文档，同一 `ConsoleMetaCommands.HumanDefault` / `None` 目录在会话构造时控制提示和执行，禁用后退出仅被拒绝且仍能提交行动；证据见[验收](docs/experiments/console-command-boundary-acceptance.md)。LLM、目录热切换与完整工具会话恢复尚未施工，不阻碍增量 B。
+**控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策语义记忆；Business 根的 [CharacterInteractionState](src/ResourceCycle/CharacterContext.cs) 保存 Context、DraftHandoff、PendingAdvance 与待交付经历。`ChooseCommandAsync` 暂接收 [CycleDecisionContext](src/ResourceCycle/CycleObservation.cs) 并返回合法 `CycleControllerOperation`，pending E 不重做决定。[Human Console 边界](docs/design/console-command-boundary.md) 的 `HumanDefault` / `None` 目录同时控制元命令提示和执行；原始输入入口的迁移由 2B 接续。LLM、目录热切换和完整工具会话恢复未施工。
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，合法动作 E/S 保存来源。`operations.jsonl` 与 E/S 各自提交，冷开只补结果、不重做动作；未来 LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 7（Fact Schema 7，感知事件覆盖全部受控角色），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；事件持久替代、多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 8（Business Schema 4、Character 5、Fact 8；持久交互状态与物理角色分离），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

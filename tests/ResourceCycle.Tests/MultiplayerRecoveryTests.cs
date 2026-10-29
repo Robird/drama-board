@@ -101,6 +101,10 @@ public sealed class MultiplayerRecoveryTests {
             // b has just finished. Persist its next wait, so the next request is a's depletion response.
             while (preparation.World.GetCharacter("b").Activity is null) { await Step(preparation); }
             Assert.Single(preparation.World.GetCharacter("a").Notices);
+            if (preparation.World.Business.InteractionStates["a"].CurrentContext?.Status != CharacterContextStatus.Open) {
+                await Step(preparation);
+                Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(preparation.LastCompletion!.Event.Facts).Kind);
+            }
             savedState = preparation.World.DescribeState();
             savedCursor = preparation.Cursor;
             var source = new GatedContinueCharacterController();

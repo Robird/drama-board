@@ -90,19 +90,11 @@ public sealed class PlayViewTests {
         Assert.Same(viewer.Activity, world.GetCharacter("a").Activity);
     }
 
-    [Fact]
-    public void Public_changes_include_light_but_not_actor_results() {
-        CycleFact privateFact = new(CycleEventKind.GatherYielded, Hour(17), actorId: "b", result: "secret inventory");
-        Assert.Null(PlayView.RenderPublicChange(privateFact));
-        CycleFact sunset = new(CycleEventKind.LightChanged, Hour(18), light: new(false, Hour(30)));
-        Assert.Equal("\n世界变化 · 第 0 天 18:00：天黑了；月光草满足再生光照条件，太阳花暂停再生。", PlayView.RenderPublicChange(sunset));
-    }
-
     private static string Render(CycleWorld world, string actorId) {
-        CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
-        return PlayView.Render(context.Observation, context.Continuity);
+        CycleDecisionContext context = ViewContextFixture.Create(world, actorId);
+        return PlayView.Render(context.Observation, context.InteractionState);
     }
-    private static string RenderCommands(CycleWorld world, string actorId) => PlayView.RenderCommands(CycleDecisionContext.Create(world, actorId).Observation);
+    private static string RenderCommands(CycleWorld world, string actorId) => PlayView.RenderCommands(ViewContextFixture.Create(world, actorId).Observation);
 
     private static CycleWorld World(params CycleCharacter[] actors) => CycleGameFactory.CreatePlayable(Hour(16), actors).World;
     private static CycleActivity Gather(int hours, int target = 3) =>

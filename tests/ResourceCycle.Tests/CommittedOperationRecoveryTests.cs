@@ -10,7 +10,7 @@ public sealed class CommittedOperationRecoveryTests {
         using var store = new TemporaryStore();
         var initial = CycleGameFactory.CreatePlayable(characters: [new("a", "Alice")]);
         var planned = CycleEngine.CreateKernel(Memory(initial.World), characterController: new FixedController());
-        await Step(planned);
+        await StepWorldEvent(planned);
         using var history = CycleDurableHistory.Create(store.StorePath, planned.World, planned.Cursor);
         Assert.Empty(history.ReadCommittedOperations(["record-1"]));
         Assert.Equal(planned.Cursor, history.Cursor);
@@ -23,7 +23,10 @@ public sealed class CommittedOperationRecoveryTests {
         var controller = new FixedController();
         var planned = CycleEngine.CreateKernel(Memory(initial.World), characterController: controller);
         await Step(planned);
-        using (var history = CycleDurableHistory.Create(store.StorePath, initial.World, InitialCursor(initial.World))) {
+        CycleWorld opened = planned.World;
+        var openedCursor = planned.Cursor;
+        await Step(planned);
+        using (var history = CycleDurableHistory.Create(store.StorePath, opened, openedCursor)) {
             history.CommitEvent(planned.LastCompletion!.Event);
         }
         using (var reopened = CycleDurableHistory.Open(store.StorePath)) {
@@ -33,7 +36,7 @@ public sealed class CommittedOperationRecoveryTests {
             CycleCommittedOperation receipt = Assert.Single(reopened.ReadCommittedOperations(["record-1", "unexecuted"]));
             Assert.Equal("provider-call-id", receipt.ToolCallId);
             Assert.Equal("a", receipt.ActorId);
-            Assert.Equal(1, receipt.TransitionCount);
+            Assert.Equal(2, receipt.TransitionCount);
             Assert.Equal(planned.LastCompletion!.Event.CauseKey.ToString(), receipt.DomainEvent);
             Assert.Equal(CycleOperationResults.Describe(planned.LastCompletion.Event.Facts[0]), receipt.Result);
             Assert.False(recovering.RecoverPending());
@@ -50,7 +53,7 @@ public sealed class CommittedOperationRecoveryTests {
         var controller = new FixedController();
         using (var history = CycleDurableHistory.Create(store.StorePath, initial.World, initial.Cursor)) {
             var kernel = CycleEngine.CreateKernel(history, characterController: controller);
-            while (controller.Calls < 40) { await Step(kernel); }
+            while (controller.Calls < 40) { await StepWorldEvent(kernel); }
         }
         using var reopened = CycleDurableHistory.Open(store.StorePath);
         var cursor = reopened.Cursor;
@@ -58,7 +61,7 @@ public sealed class CommittedOperationRecoveryTests {
         var receipts = reopened.ReadCommittedOperations(["record-1", "record-40", "never-received"]);
         Assert.Equal(2, receipts.Count);
         Assert.All(receipts, receipt => Assert.Equal("provider-call-id", receipt.ToolCallId));
-        Assert.Equal(1, receipts.Single(receipt => receipt.OperationRecordId == "record-1").TransitionCount);
+        Assert.Equal(2, receipts.Single(receipt => receipt.OperationRecordId == "record-1").TransitionCount);
         Assert.Equal(cursor.Version.TransitionCount,
             receipts.Single(receipt => receipt.OperationRecordId == "record-40").TransitionCount);
         Assert.Equal(cursor, reopened.Cursor);

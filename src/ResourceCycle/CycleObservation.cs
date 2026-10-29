@@ -10,12 +10,12 @@ public sealed class CycleDecisionContext {
     private readonly Func<CycleCommand?, string?> _check;
     private readonly Func<CycleCommand, string?> _warning;
     public CycleObservation Observation { get; }
-    /// <summary>Transitional decision history, separate from the pure observation being prepared for persistence.</summary>
-    public CycleDecisionContinuity? Continuity { get; }
-    private CycleDecisionContext(CycleObservation observation, CycleDecisionContinuity? continuity,
+    public CharacterInteractionState InteractionState { get; }
+    public CharacterContext Context => InteractionState.CurrentContext!;
+    private CycleDecisionContext(CycleObservation observation, CharacterInteractionState interactionState,
         Func<CycleCommand?, string?> check, Func<CycleCommand, string?> warning) {
         Observation = observation;
-        Continuity = continuity;
+        InteractionState = interactionState;
         _check = check;
         _warning = warning;
     }
@@ -24,15 +24,29 @@ public sealed class CycleDecisionContext {
     public string? Warning(CycleCommand command) => _warning(command);
 
     public static CycleDecisionContext Create(CycleWorld world, string actorId) {
-        var projection = Project(world, actorId);
-        return new(projection.Observation, world.GetCharacter(actorId).Continuity, projection.Check, projection.Warning);
+        ArgumentNullException.ThrowIfNull(world);
+        CharacterInteractionState state = world.Business.InteractionStates[actorId];
+        CharacterContext context = state.CurrentContext ?? throw new InvalidOperationException("The character has no committed context.");
+        CycleObservation observation = context.LatestObservation;
+        string? Check(CycleCommand? command) {
+            if (command?.Kind == CycleCommandKind.Gather && !observation.Resources.Any(resource => resource.Id == command.ResourceId)) {
+                return "当前不可见或不可用的资源点。";
+            }
+            if (command?.Kind == CycleCommandKind.Go && !observation.Passages.Any(passage => passage.Id == command.PassageId)) {
+                return "当前不可见或不可用的通路。";
+            }
+            return CycleActions.Check(world, actorId, command);
+        }
+        return new(observation, state, Check,
+            command => Check(command) is null ? CycleSurvivalRules.ActionWarning(world, actorId, command) : null);
     }
 
     /// <summary>Builds the same visible snapshot without retaining decision history or query delegates.</summary>
     public static CycleObservation Observe(CycleWorld world, string actorId) => Project(world, actorId).Observation;
+    internal static CycleObservation ObserveOpening(CycleWorld world, string actorId, long contextSequence) => Project(world, actorId, contextSequence).Observation;
 
     private static (CycleObservation Observation, Func<CycleCommand?, string?> Check, Func<CycleCommand, string?> Warning)
-        Project(CycleWorld world, string actorId) {
+        Project(CycleWorld world, string actorId, long? contextSequence = null) {
         ArgumentNullException.ThrowIfNull(world);
         CycleCharacter actor = world.GetCharacter(actorId);
         CycleExpedition? expedition = world.Expedition;
@@ -48,7 +62,7 @@ public sealed class CycleDecisionContext {
             if (command?.Kind == CycleCommandKind.Go && !passages.Any(passage => passage.Id == command.PassageId)) {
                 return "当前不可见或不可用的通路。";
             }
-            return CycleActions.Check(world, actorId, command);
+            return CycleActions.Check(world, actorId, command, contextSequence);
         }
         string? Warning(CycleCommand command) => Check(command) is null
             ? CycleSurvivalRules.ActionWarning(world, actorId, command) : null;

@@ -11,10 +11,12 @@ public sealed class GatheringBoundaryTests {
         var command = CycleCommand.Gather("sunflower");
         Assert.NotNull(CycleActions.Check(initial, "a", command));
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
+        await Step(kernel); // Commit the initial Context before testing command rejection.
+        CycleWorld opened = kernel.World;
         await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(96)).AsTask());
-        Assert.Empty(history.CompletedEvents);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
-        Assert.Same(initial, history.State);
+        Assert.Same(opened, history.State);
     }
     [Fact]
     public async Task Valid_large_duration_does_not_overflow_intermediate_percentage_multiplication() {
@@ -22,7 +24,7 @@ public sealed class GatheringBoundaryTests {
         long duration = long.MaxValue / 2;
         var kernel = CycleEngine.CreateKernel(Memory(Solo(start, [Sun(start, harvestTicks: duration), Moon(start)])),
             characterController: Commands(CycleCommand.Gather("sunflower")));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(duration, kernel.World.GetCharacter("a").Activity!.DurationTicks);
         Assert.Equal(new ModelTime(start.Ticks + duration), kernel.World.GetCharacter("a").Activity!.Due);
     }
@@ -33,7 +35,7 @@ public sealed class GatheringBoundaryTests {
         var actor = new CycleCharacter("a", "Alice", backpack: new(new Dictionary<string, int> { ["item.sunflower"] = int.MaxValue - 1 }));
         var initial = CycleWorld.CreatePlayable(start, [actor]);
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Gather("sunflower", 2)));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, w => w.GetCharacter("a").Activity is null);
         Assert.Equal(initial.GetResource("sunflower").Stock - 1, kernel.World.GetResource("sunflower").Stock);
         Assert.Equal(int.MaxValue, kernel.World.GetCharacter("a").Backpack.Count("item.sunflower"));
@@ -65,7 +67,7 @@ public sealed class GatheringBoundaryTests {
         CycleNotice notice = new(CycleNoticeKind.ResourceDepleted, "sunflower", null, "environment:1", start, "previous depletion");
         var initial = CycleWorld.CreatePlayable(start, [new("a", "Alice", notices: [notice])]);
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Wait(1)));
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         Assert.Empty(kernel.World.GetCharacter("a").Notices);
         Assert.NotNull(kernel.World.GetCharacter("a").Activity);
         Assert.DoesNotContain(kernel.World.Forecasts.Predictions, p => p.OwnerId == "actor:a:attention");

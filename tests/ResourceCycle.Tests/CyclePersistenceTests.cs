@@ -177,7 +177,10 @@ public sealed class CyclePersistenceTests {
         CycleWorld initial = CycleWorld.CreatePlayable();
         var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: new WaitingCharacterController());
         Assert.Equal(StepStatus.Committed, await baseline.StepAsync(Hour(48)));
-        using (var history = CycleDurableHistory.Create(directory.Path, initial, InitialCursor(initial))) {
+        initial = baseline.World;
+        KernelCursor openedCursor = baseline.Cursor;
+        Assert.Equal(StepStatus.Committed, await baseline.StepAsync(Hour(48)));
+        using (var history = CycleDurableHistory.Create(directory.Path, initial, openedCursor)) {
             history.CommitEvent(baseline.LastCompletion!.Event);
         }
 

@@ -13,19 +13,19 @@
 | 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；采集场景同一 Console 服务三个角色，探索场景服务一个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | 概念预留；当前可玩实例未接入。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
-| 观察（Observation） | 提供给某个控制器、围绕当前角色组织的信息；不等同于完整世界对象。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 是无 Continuity/委托、可持久化的纯可见材料；CycleDecisionContext 另持命令校验与过渡历史。Console 布局显式接收观察和历史，不接收校验委托。 |
-| 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择并冻结可持久化材料，供布局使用；尚待纳入 Opening。 |
+| 观察（Observation） | 某个角色当时可知的完整状态快照；不等同于完整世界对象，也不包含上下文历史。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；CycleDecisionContext 读取已保存最新观察，另持权威命令校验。 |
+| 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择并冻结材料，随 Opening 持久化。Console 完整 Model 消费仍在后续分片。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
 | Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | [ConsoleMetaCommands](../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) 的 `HumanDefault` / `None` 同时控制提示与解析，`ConsoleCharacterController` 执行；纯行动由 [CycleCommandParser](../src/ResourceCycle.Cli/CycleCommandParser.cs) 解析。见[边界合同](design/console-command-boundary.md)。 |
 | 增量观察（Incremental observation） | 在同一阅读上下文内，按序追加事件及其效果，尾部统一汇总受影响状态的最新值并明确失效信息；布局或上下文变化时可全量重同步。不是游戏状态的增量持久化。 | 生存模式默认 delta；[CycleViewSnapshot](../src/ResourceCycle.Cli/CycleViewSnapshot.cs) / [CycleViewUpdate](../src/ResourceCycle.Cli/CycleViewUpdate.cs) 与 [PlayPresentationSession](../src/ResourceCycle.Cli/PlayPresentationSession.cs)，见[切片 A 合同](design/incremental-ui-slice-a.md)。 |
-| 可见事件与效果（Observed event / effect） | 给角色的有序过程材料；效果保存有语义身份的前后值，解释结算但不再次执行结算。当前值、历史效果和观察范围变化分别表达。 | [CycleObservedEvent / CycleObservedEffect](../src/ResourceCycle/CycleObservedEvent.cs) 随事实 E 保存；Incoming 仍是有限行动摘要，最近回合历史窗口待 B 实施。 |
+| 可见事件与效果（Observed event / effect） | 给角色的有序过程材料；效果保存有语义身份的前后值，解释结算但不再次执行结算。当前值、历史效果和观察范围变化分别表达。 | [CycleObservedEvent / CycleObservedEffect](../src/ResourceCycle/CycleObservedEvent.cs) 随事实 E 保存，角色经历复用同一语义；不再独立累计 Incoming 总量。最近 n 回合窗口仍待 B 实施。 |
 | 可见状态键和值（State key / visible value） | 与布局和中文名称无关的状态身份，以及数值、布尔、文字、已知不存在、不可见等有限值；自有物品用尽是 0，不等于离开观察范围。 | `CycleStateKey` / `CycleVisibleValue`，效果与当前观察共用；数值按 `Units / Scale` 表达。 |
 | 呈现交付阶段（Delivery phase） | 宿主是否正在推进或已实际进入控制器输入；不等于命令条件满足，也不是持久领域状态。 | `PlayDeliveryPhase`；只有 `ChooseCommandAsync` 入口切换到可输入，提交成功本身不产生输入机会。 |
-| 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CycleDecisionContinuity.ContextSequence`；`DecisionContextOpened` 封存 Pending 为 Incoming，见[信息继承合同](design/decision-context-handoff.md)。 |
-| 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [重构方案](design/character-context-model.md)中的拟议模型，尚未实现；当前只有有限 Continuity，没有持久 Context Item 列表。 |
-| 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，集合可按明确保留规则移除旧纯拒绝，存活身份不变；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | 拟议模型；不是现有类型，也不以 ToolCallId 充当自然事件身份。 |
-| 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | 拟议角色持久集合；当前 Pending 只有有限推进摘要，E 中的 ObservedEvents 尚未累计为该集合。 |
-| 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `DraftHandoff` 与 Incoming 中的历史文字分开；`handoff` 编辑，下一次放行后传递一次并清空草稿。 |
+| 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CharacterContext.ContextSequence` 与 Open/Closed/Terminal；`DecisionContextOpened` 冻结新的 Opening，终局在终局提交内新建只读上下文。 |
+| 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [CharacterContext](../src/ResourceCycle/CharacterContext.cs) 位于 Business.InteractionStates；合法路径已接入，原始输入/持久拒绝和完整 Console 消费继续按[重构方案](design/character-context-model.md)实施。 |
+| 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝最近 3 次操作的保留规则已定，拒绝入口尚待分片 2B。 |
+| 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | `CharacterInteractionState.UndeliveredExperiences` 保存 `CharacterExperience`；ExperienceSequence 按角色分配，Closed/未开始时累计，新 Opening 消费。 |
+| 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `CharacterInteractionState.DraftHandoff` 与 `Opening.PreviousAdvance.Handoff` 分开；下一次放行记录并清空草稿，不自动续传。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，未来 LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [CycleCommand、CycleActions.Check](../src/ResourceCycle/CycleActions.cs) |
 | 耗时活动（Activity） | 角色已启动、跨模型时间持续的过程；移动与等待/采集互斥。 | 等待/采集由 `CycleActivity` 表示；移动由 Spatial 的 `TraversingLocation` 表示，不复制到另一份 Activity 计时器。 |

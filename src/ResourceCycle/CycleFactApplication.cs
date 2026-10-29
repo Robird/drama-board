@@ -12,6 +12,13 @@ internal static class CycleFactApplication {
             throw new InvalidOperationException("A fact must apply at its recorded time and cannot move time backwards.");
         }
         ValidateFact(business, fact);
+        CycleBusinessState result = ApplyReplacements(business, instant, fact);
+        CycleObservedEventValidation.Validate(business, result, fact);
+        CycleInteractionValidation.Validate(business, result, fact);
+        return result;
+    }
+    // Planning-only candidate: no material validation until the event and interaction replacements exist.
+    internal static CycleBusinessState ApplyReplacements(CycleBusinessState business, LogicalInstant instant, CycleFact fact) {
         CycleExpedition? expedition = business.Expedition;
         if (expedition is not null) {
             GraphSpatialState spatial = expedition.Spatial;
@@ -20,20 +27,22 @@ internal static class CycleFactApplication {
             }
             expedition = expedition.Change(spatial, fact.Visits, fact.Outcome, fact.EndingReason, fact.Environment);
         }
-        CycleBusinessState result = business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
-            fact.ChangedCharacters, fact.LastServedActorId, expedition);
-        CycleObservedEventValidation.Validate(business, result, fact);
-        return result;
+        return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
+            fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges);
     }
     internal static bool SameFoldedBusiness(CycleBusinessState expected, CycleBusinessState actual) =>
         expected.Time == actual.Time && ReferenceEquals(expected.Light, actual.Light) && ReferenceEquals(expected.Script, actual.Script) &&
         expected.LastServedActorId == actual.LastServedActorId && expected.Resources.Count == actual.Resources.Count &&
         expected.Resources.Zip(actual.Resources).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
         expected.Characters.Count == actual.Characters.Count && expected.Characters.Zip(actual.Characters).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
+        expected.InteractionStates.Count == actual.InteractionStates.Count &&
+        expected.InteractionStates.All(pair => actual.InteractionStates.TryGetValue(pair.Key, out var state) && ReferenceEquals(pair.Value, state)) &&
         (expected.Expedition is null ? actual.Expedition is null : actual.Expedition is not null && expected.Expedition.SameState(actual.Expedition));
 
     private static void ValidateFact(CycleBusinessState business, CycleFact fact) {
         if (!Enum.IsDefined(fact.Kind) ||
+            fact.InteractionChanges.Select(state => state.ActorId).Distinct(StringComparer.Ordinal).Count() != fact.InteractionChanges.Count ||
+            fact.InteractionChanges.Any(state => !business.InteractionStates.ContainsKey(state.ActorId)) ||
             fact.ChangedResources.Select(r => r.Id).Distinct(StringComparer.Ordinal).Count() != fact.ChangedResources.Count ||
             fact.ChangedCharacters.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != fact.ChangedCharacters.Count ||
             fact.ChangedResources.Any(r => !business.Resources.Any(old => old.Id == r.Id)) ||
@@ -52,15 +61,6 @@ internal static class CycleFactApplication {
         if ((decision ? fact.LastServedActorId != fact.ActorId : fact.LastServedActorId is not null) ||
             (fact.LastServedActorId is not null && !actorEffect)) {
             throw new InvalidOperationException("Service cursor does not match a recorded decision.");
-        }
-        if (decision && actorEffect && business.GetCharacter(fact.ActorId!).Continuity is { } previousContinuity) {
-            CycleDecisionContinuity nextContinuity = fact.ChangedCharacters.Single(c => c.Id == fact.ActorId).Continuity
-                ?? throw new InvalidOperationException("A controller decision cannot remove continuity.");
-            if (previousContinuity.Pending is not null || nextContinuity.ContextSequence != previousContinuity.ContextSequence ||
-                nextContinuity.Pending is { } pending && (pending.Action.ActorId != fact.ActorId ||
-                    pending.Action.ToolCallId != fact.ToolCallId || pending.Action.OperationRecordId != fact.OperationRecordId || pending.Action.AcceptedAt != fact.At)) {
-                throw new InvalidOperationException("The accepted action must retain its captured controller identity and context.");
-            }
         }
         bool valid = fact.Kind switch {
             CycleEventKind.LightChanged => fact.Light is not null && fact.Script is null && fact.ActorId is null && fact.ResourceId is null &&
@@ -83,31 +83,14 @@ internal static class CycleFactApplication {
         if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened) {
             CycleCharacter before = business.GetCharacter(fact.ActorId!);
             CycleCharacter after = fact.ChangedCharacters[0];
-            if (fact.At != business.Time || !CycleActions.NeedsDecision(business, before.Id) || before.Continuity is null || after.Continuity is null ||
+            if (fact.At != business.Time || !CycleActions.NeedsDecision(business, before.Id) ||
                 before.Id != after.Id || before.Name != after.Name || before.SkillLevel != after.SkillLevel ||
                 before.Backpack.UnitCapacity != after.Backpack.UnitCapacity || !before.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal).SequenceEqual(after.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal)) ||
                 !SameActivity(before.Activity, after.Activity) || !SameSurvival(before.Survival, after.Survival) ||
                 !before.Notices.Select(NoticeFields).SequenceEqual(after.Notices.Select(NoticeFields)) ||
                 before.LastResult != after.LastResult || before.NextActivityId != after.NextActivityId ||
                 after.DecisionGeneration != checked(before.DecisionGeneration + 1) || fact.Visits.Count != 0) {
-                throw new InvalidOperationException("Continuity-only facts cannot alter gameplay state or observations.");
-            }
-            if (fact.Kind == CycleEventKind.HandoffEdited ?
-                after.Continuity.ContextSequence != before.Continuity.ContextSequence ||
-                    !CycleContinuityRules.SameOutcome(after.Continuity.Incoming, before.Continuity.Incoming) || before.Continuity.Pending is not null || after.Continuity.Pending is not null :
-                before.Continuity.Pending is null || after.Continuity.Pending is not null || after.Continuity.Incoming is null ||
-                    after.Continuity.ContextSequence != checked(before.Continuity.ContextSequence + 1) ||
-                    after.Continuity.DraftHandoff != before.Continuity.DraftHandoff) {
-                throw new InvalidOperationException("Invalid continuity transition.");
-            }
-            if (fact.Kind == CycleEventKind.DecisionContextOpened) {
-                CyclePendingAction pending = before.Continuity.Pending!;
-                CycleActionOutcome incoming = after.Continuity.Incoming!;
-                if (!CycleContinuityRules.SamePending(pending, incoming) ||
-                    incoming.DeliveredAt != fact.At || incoming.ActivityState == CycleOutcomeActivityState.Terminal) {
-                    throw new InvalidOperationException("Opening a context must seal the recorded pending action exactly once.");
-                }
-                CycleContinuityRules.ValidateOpenedOutcome(business, before, incoming);
+                throw new InvalidOperationException("Interaction boundary facts cannot alter gameplay state or observations.");
             }
         }
         if (fact.GatherStopReason is not null &&

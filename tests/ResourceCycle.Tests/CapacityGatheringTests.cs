@@ -19,11 +19,14 @@ public sealed class CapacityGatheringTests {
         Assert.Contains("容量", reason);
         Assert.DoesNotContain("该物品", reason);
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
+        await Step(kernel); // Commit the initial Context before testing command rejection.
+        CycleWorld opened = kernel.World;
+        cursor = kernel.Cursor;
         await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(24)).AsTask());
 
-        Assert.Empty(history.CompletedEvents);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
-        Assert.Same(initial, history.State);
+        Assert.Same(opened, history.State);
         Assert.Equal(cursor, history.Cursor);
         Assert.Equal(0, backpack.Count("item.sunflower"));
         Assert.Equal(2, backpack.Count("item.wood"));
@@ -42,7 +45,7 @@ public sealed class CapacityGatheringTests {
         var controller = Commands(CycleCommand.Gather("sunflower", 3));
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
 
-        await Step(kernel);
+        await StepWorldEvent(kernel);
         await Until(kernel, world => world.GetCharacter("a").Activity is null);
 
         CycleCharacter actor = kernel.World.GetCharacter("a");
@@ -82,16 +85,16 @@ public sealed class CapacityGatheringTests {
             var original = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Gather("sunflower", 3)));
             // Commit the command and first yield. The second yield fills the inventory.
             for (int step = 0; step < 2; step++) {
-                await Step(original);
-                await Step(expected);
+                await StepWorldEvent(original);
+                await StepWorldEvent(expected);
             }
             priorState = original.World.DescribeState();
             priorCursor = original.Cursor;
             Assert.Equal(1L, original.World.GetCharacter("a").Backpack.TotalCount);
-            await Step(expected);
+            await StepWorldEvent(expected);
 
             if (completeState) {
-                await Step(original);
+                await StepWorldEvent(original);
                 Assert.Null(history.PendingEvent);
                 Assert.Equal(expected.World.DescribeState(), original.World.DescribeState());
             } else {
@@ -136,8 +139,8 @@ public sealed class CapacityGatheringTests {
             // Capacity stays in the business graph after either recovery path. The existing
             // third cycle fails at its original deadline, with no new input or resource loss.
             var resumed = CycleEngine.CreateKernel(reopened, characterController: new ForbiddenController());
-            await Step(resumed);
-            await Step(expected);
+            await StepWorldEvent(resumed);
+            await StepWorldEvent(expected);
             Assert.Equal(Hour(9), resumed.World.Time);
             Assert.Null(resumed.World.GetCharacter("a").Activity);
             Assert.Equal(2L, resumed.World.GetCharacter("a").Backpack.TotalCount);

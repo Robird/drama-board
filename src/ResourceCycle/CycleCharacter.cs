@@ -75,7 +75,7 @@ public sealed partial class CycleNotice : IDurableObject {
     public override string ToString() => $"{Kind}:{ResourceId}:{ActorId}:{SourceId}:{At.Ticks}:{Count}:{Reason}";
 }
 
-[DurableType("DramaBoard.ResourceCycle.Character", 4)]
+[DurableType("DramaBoard.ResourceCycle.Character", 5)]
 public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(1)] private string _id;
     [DurableField(2)] private string _name;
@@ -87,7 +87,6 @@ public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(8)] private string? _lastResult;
     [DurableField(9)] private long _nextActivityId;
     [DurableField(10)] private CycleSurvival? _survival;
-    [DurableField(11)] private CycleDecisionContinuity? _continuity;
     public string Id => _id;
     public string Name => _name;
     public int SkillLevel => _skillLevel;
@@ -98,25 +97,23 @@ public sealed partial class CycleCharacter : IDurableObject {
     public string? LastResult => _lastResult;
     public long NextActivityId => _nextActivityId;
     public CycleSurvival? Survival => _survival;
-    public CycleDecisionContinuity? Continuity => _continuity;
     public bool NeedsDecision => Activity is null || _notices.Count > 0;
     public CycleCharacter(string id, string name, int skillLevel = 0, ItemInventory? backpack = null,
         CycleActivity? activity = null, IEnumerable<CycleNotice>? notices = null, long decisionGeneration = 0,
-        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null, CycleDecisionContinuity? continuity = null) {
+        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null) {
         _id = id; _name = name; _skillLevel = skillLevel; _backpack = backpack ?? new(); _activity = activity;
         _notices = notices?.ToList() ?? []; _decisionGeneration = decisionGeneration; _lastResult = lastResult; _nextActivityId = nextActivityId;
         _survival = survival;
-        _continuity = continuity;
     }
     internal CycleCharacter Change(CycleActivity? activity, ItemInventory? backpack = null,
         IEnumerable<CycleNotice>? notices = null, string? result = null, long? nextActivityId = null, CycleSurvival? survival = null) =>
         new(Id, Name, SkillLevel, backpack ?? Backpack, activity, notices ?? _notices,
-            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival, Continuity);
+            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival);
     internal CycleCharacter WithSurvival(CycleSurvival survival) => new(Id, Name, SkillLevel, Backpack, Activity,
-        Notices, DecisionGeneration, LastResult, NextActivityId, survival, Continuity);
-    internal CycleCharacter WithContinuity(CycleDecisionContinuity continuity, bool advanceGeneration = false) =>
-        new(Id, Name, SkillLevel, Backpack, Activity, Notices, advanceGeneration ? checked(DecisionGeneration + 1) : DecisionGeneration,
-            LastResult, NextActivityId, Survival, continuity);
+        Notices, DecisionGeneration, LastResult, NextActivityId, survival);
+    internal CycleCharacter AdvanceDecisionGeneration() =>
+        new(Id, Name, SkillLevel, Backpack, Activity, Notices, checked(DecisionGeneration + 1),
+            LastResult, NextActivityId, Survival);
     internal CycleCharacter Notify(CycleNotice notice) {
         CycleNotice? previous = _notices.SingleOrDefault(n => n.AggregationKey == notice.AggregationKey);
         if (previous?.SourceId == notice.SourceId) { return this; }
@@ -136,9 +133,8 @@ public sealed partial class CycleCharacter : IDurableObject {
         Backpack.Validate();
         Activity?.Validate(time);
         Survival?.Validate();
-        Continuity?.Validate(Id, time);
         if (Survival?.BaselineAt > time) { throw new InvalidOperationException("Survival anchor cannot be in the future."); }
     }
     public override string ToString() => $"{Id}:{Name}:{SkillLevel};backpack={Backpack};activity={Activity};decision={DecisionGeneration};next={NextActivityId};notices=[{string.Join(';', _notices)}];result={LastResult}" +
-        (Survival is null ? "" : $";survival={Survival}") + (Continuity is null ? "" : $";continuity={Continuity}");
+        (Survival is null ? "" : $";survival={Survival}");
 }

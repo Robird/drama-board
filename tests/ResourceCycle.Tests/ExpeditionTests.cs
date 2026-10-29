@@ -13,21 +13,21 @@ public sealed class ExpeditionTests {
     [Fact]
     public void Initial_observation_and_command_checks_do_not_disclose_remote_resources_or_exits() {
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
-        CycleDecisionContext context = CycleDecisionContext.Create(initial.World, "a");
+        CycleObservation observation = CycleDecisionContext.Observe(initial.World, "a");
         string before = initial.World.DescribeState();
-        Assert.Empty(context.Observation.Resources);
-        string serialized = JsonSerializer.Serialize(context.Observation,
+        Assert.Empty(observation.Resources);
+        string serialized = JsonSerializer.Serialize(observation,
             new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         foreach (CycleResource remote in initial.World.Resources) {
             Assert.DoesNotContain(remote.Id, serialized, StringComparison.Ordinal);
-            Assert.Equal(context.Check(CycleCommand.Gather("does-not-exist")), context.Check(CycleCommand.Gather(remote.Id)));
+            Assert.Equal(CycleActions.Check(initial.World, "a", CycleCommand.Gather("does-not-exist")), CycleActions.Check(initial.World, "a", CycleCommand.Gather(remote.Id)));
             Assert.Equal(CycleActions.Check(initial.World, "a", CycleCommand.Gather("does-not-exist")),
                 CycleActions.Check(initial.World, "a", CycleCommand.Gather(remote.Id)));
         }
         Assert.DoesNotContain("山脚公路", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("巡山信号站", serialized, StringComparison.Ordinal);
-        Assert.NotNull(context.Check(CycleCommand.Go(Passage("ravine", "road"))));
-        Assert.Null(context.Check(CycleCommand.Go(Passage("camp", "stream"))));
+        Assert.NotNull(CycleActions.Check(initial.World, "a", CycleCommand.Go(Passage("ravine", "road"))));
+        Assert.Null(CycleActions.Check(initial.World, "a", CycleCommand.Go(Passage("camp", "stream"))));
         Assert.Equal(before, initial.World.DescribeState());
     }
 
@@ -37,7 +37,7 @@ public sealed class ExpeditionTests {
         var source = Commands(CycleCommand.Go(Passage("camp", "stream")));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: source);
-        await Advance(kernel);
+        await StepWorldEvent(kernel);
         Assert.Equal(Hour(10), kernel.World.Time);
         TraversingLocation travelling = Assert.IsType<TraversingLocation>(Location(kernel.World));
         Assert.Equal(Hour(11), travelling.ArrivalDue);
@@ -56,10 +56,10 @@ public sealed class ExpeditionTests {
         Assert.Equal(1, source.Calls);
         Assert.Equal(2, kernel.World.Expedition!.Visits.Count);
         Assert.Same(kernel.World.Expedition.Spatial, kernel.World.Spatial!.Business);
-        CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
-        Assert.Contains(context.Observation.Resources, resource => resource.Id == "berries");
-        Assert.DoesNotContain(context.Observation.Resources, resource => resource.Id == "wood");
-        Assert.Null(context.Check(CycleCommand.Gather("berries")));
+        CycleObservation observation = CycleDecisionContext.Observe(kernel.World, "a");
+        Assert.Contains(observation.Resources, resource => resource.Id == "berries");
+        Assert.DoesNotContain(observation.Resources, resource => resource.Id == "wood");
+        Assert.Null(CycleActions.Check(kernel.World, "a", CycleCommand.Gather("berries")));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class ExpeditionTests {
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var source = Commands(CycleCommand.Go(Passage("camp", "stream")), CycleCommand.Wait(1));
         var kernel = CycleEngine.CreateKernel(history, characterController: source);
-        await Advance(kernel);
+        await StepWorldEvent(kernel);
         await AdvanceUntil(kernel, world => CycleActions.CurrentPlace(world, "a") == "stream");
         Assert.Equal(Hour(18), kernel.World.Time);
         Assert.False(kernel.World.Light.IsDay);
@@ -125,7 +125,7 @@ public sealed class ExpeditionTests {
         string snapshot = remembered.ToString();
         await AdvanceUntil(kernel, world => CycleActions.CurrentPlace(world, "a") == "cabin");
         Assert.Equal(snapshot, Assert.Single(kernel.World.Expedition!.Visits, visit => visit.PlaceId == "stream").ToString());
-        CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
+        CycleObservation observation = CycleDecisionContext.Observe(kernel.World, "a");
         Assert.DoesNotContain(observation.Resources, resource => resource.Id == "berries");
         Assert.Contains(observation.Resources, resource => resource.Id == "wood");
         Assert.True(remembered.At < kernel.World.Time);
@@ -144,10 +144,10 @@ public sealed class ExpeditionTests {
         KernelCursor savedCursor;
         var baseline = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: Commands(CycleCommand.Go(Passage("camp", "ridge"))));
-        await Advance(baseline);
+        await StepWorldEvent(baseline);
         using (var history = CycleDurableHistory.Create(store.StorePath, initial.World, initial.Cursor)) {
             var kernel = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Go(Passage("camp", "ridge"))));
-            await Advance(kernel);
+            await StepWorldEvent(kernel);
             expectedLocation = Assert.IsType<TraversingLocation>(Location(kernel.World));
             savedCursor = kernel.Cursor;
         }

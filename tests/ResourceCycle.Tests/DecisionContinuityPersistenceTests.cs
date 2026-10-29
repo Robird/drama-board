@@ -16,22 +16,22 @@ public sealed class DecisionContinuityPersistenceTests {
             var source = Commands(CycleCommand.Handoff("回来喝水"), CycleCommand.Wait(1),
                 CycleCommand.Use("item.water"), CycleCommand.Handoff("下一步检查路径"));
             var kernel = CycleEngine.CreateKernel(history, characterController: source);
-            for (int count = 0; kernel.World.GetCharacter("a").Continuity!.Incoming is null; count++) {
+            for (int count = 0; kernel.World.Business.InteractionStates["a"].CurrentContext?.Opening.PreviousAdvance is null; count++) {
                 Assert.True(count < 20);
                 Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
             }
-            CycleActionOutcome incoming = kernel.World.GetCharacter("a").Continuity!.Incoming!;
-            incomingSnapshot = incoming.ToString();
-            Assert.Equal("call_fixture_2", incoming.Action.ToolCallId);
-            Assert.Equal("fixture/2", incoming.Action.OperationRecordId);
-            Assert.Equal("回来喝水", incoming.Handoff);
-            Assert.Equal(2, kernel.World.GetCharacter("a").Continuity!.ContextSequence);
+            CharacterContextOpening incoming = kernel.World.Business.InteractionStates["a"].CurrentContext!.Opening;
+            incomingSnapshot = MaterialSnapshot(incoming);
+            Assert.Equal("call_fixture_2", incoming.PreviousAdvance!.ToolCallId);
+            Assert.Equal("fixture/2", incoming.PreviousAdvance!.OperationRecordId);
+            Assert.Equal("回来喝水", incoming.PreviousAdvance!.Handoff);
+            Assert.Equal(2, kernel.World.Business.InteractionStates["a"].CurrentContext!.ContextSequence);
             Assert.Equal(2, source.Calls);
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
-            Assert.Same(incoming, kernel.World.GetCharacter("a").Continuity!.Incoming);
+            Assert.Same(incoming, kernel.World.Business.InteractionStates["a"].CurrentContext!.Opening);
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
-            Assert.Same(incoming, kernel.World.GetCharacter("a").Continuity!.Incoming);
-            Assert.Equal("下一步检查路径", kernel.World.GetCharacter("a").Continuity!.DraftHandoff);
+            Assert.Same(incoming, kernel.World.Business.InteractionStates["a"].CurrentContext!.Opening);
+            Assert.Equal("下一步检查路径", kernel.World.Business.InteractionStates["a"].DraftHandoff);
             Assert.Equal(4, source.Calls);
             Assert.Equal(0, kernel.World.GetCharacter("a").Backpack.Count("item.water"));
             saved = kernel.World.DescribeState();
@@ -42,18 +42,18 @@ public sealed class DecisionContinuityPersistenceTests {
         Assert.Null(reopened.PendingEvent);
         Assert.Equal(saved, reopened.State.DescribeState());
         Assert.Equal(cursor, reopened.Cursor);
-        CycleDecisionContinuity continuity = reopened.State.GetCharacter("a").Continuity!;
-        Assert.Equal(2, continuity.ContextSequence);
-        Assert.Null(continuity.Pending);
-        Assert.Equal(incomingSnapshot, continuity.Incoming!.ToString());
+        CharacterInteractionState continuity = reopened.State.Business.InteractionStates["a"];
+        Assert.Equal(2, continuity.CurrentContext!.ContextSequence);
+        Assert.Null(continuity.PendingAdvance);
+        Assert.Equal(incomingSnapshot, MaterialSnapshot(continuity.CurrentContext!.Opening));
         Assert.Equal("下一步检查路径", continuity.DraftHandoff);
         var resumed = CycleEngine.CreateKernel(reopened, characterController: Commands(CycleCommand.Handoff(null)));
         Assert.False(resumed.RecoverPending());
         Assert.Equal(StepStatus.Committed, await resumed.StepAsync(Hour(240)));
         Assert.Equal(CycleEventKind.HandoffEdited, Assert.Single(resumed.LastCompletion!.Event.Facts).Kind);
-        Assert.Equal(2, resumed.World.GetCharacter("a").Continuity!.ContextSequence);
-        Assert.Equal(incomingSnapshot, resumed.World.GetCharacter("a").Continuity!.Incoming!.ToString());
-        Assert.Null(resumed.World.GetCharacter("a").Continuity!.DraftHandoff);
+        Assert.Equal(2, resumed.World.Business.InteractionStates["a"].CurrentContext!.ContextSequence);
+        Assert.Equal(incomingSnapshot, MaterialSnapshot(resumed.World.Business.InteractionStates["a"].CurrentContext!.Opening));
+        Assert.Null(resumed.World.Business.InteractionStates["a"].DraftHandoff);
     }
 
     [Theory]
@@ -68,7 +68,8 @@ public sealed class DecisionContinuityPersistenceTests {
         for (int count = 0; ; count++) {
             Assert.True(count < 100, "The requested continuity boundary was not reached.");
             Assert.Equal(StepStatus.Committed, await expected.StepAsync(Hour(240)));
-            if (Assert.Single(expected.LastCompletion!.Event.Facts).Kind == boundary) { break; }
+            if (Assert.Single(expected.LastCompletion!.Event.Facts).Kind == boundary &&
+                (boundary != CycleEventKind.DecisionContextOpened || expected.World.Business.InteractionStates["a"].CurrentContext!.Opening.PreviousAdvance is not null)) { break; }
         }
 
         string before;
@@ -90,7 +91,7 @@ public sealed class DecisionContinuityPersistenceTests {
         using (var reopened = CycleDurableHistory.Open(store.StorePath)) {
             Assert.Equal(before, reopened.State.DescribeState());
             Assert.Equal(cursor, reopened.Cursor);
-            long previousContextSequence = reopened.State.GetCharacter("a").Continuity!.ContextSequence;
+            long previousContextSequence = reopened.State.Business.InteractionStates["a"].CurrentContext?.ContextSequence ?? 0;
             CycleFact fact = Assert.Single(reopened.PendingEvent!.Facts);
             if (boundary is CycleEventKind.HandoffEdited or CycleEventKind.WaitStarted) {
                 int ordinal = boundary == CycleEventKind.HandoffEdited ? 1 : 2;
@@ -104,34 +105,35 @@ public sealed class DecisionContinuityPersistenceTests {
             Assert.True(recovered.RecoverPending());
             Assert.Null(reopened.PendingEvent);
             Assert.Equal(expected.World.DescribeState(), recovered.World.DescribeState());
+            Assert.Equal(MaterialSnapshot(expected.World.Business.InteractionStates), MaterialSnapshot(recovered.World.Business.InteractionStates));
             Assert.Equal(expected.Cursor, recovered.Cursor);
             Assert.Equal(Describe(expected.LastCompletion!.Event), Describe(recovered.LastCompletion!.Event));
-            CycleDecisionContinuity continuity = recovered.World.GetCharacter("a").Continuity!;
+            CharacterInteractionState continuity = recovered.World.Business.InteractionStates["a"];
             switch (boundary) {
                 case CycleEventKind.HandoffEdited:
-                    Assert.Equal(1, continuity.ContextSequence);
+                    Assert.Equal(1, continuity.CurrentContext!.ContextSequence);
                     Assert.Equal("观察等待后的身体变化", continuity.DraftHandoff);
-                    Assert.Null(continuity.Pending);
+                    Assert.Null(continuity.PendingAdvance);
                     break;
                 case CycleEventKind.WaitStarted:
-                    Assert.Equal(1, continuity.ContextSequence);
+                    Assert.Equal(1, continuity.CurrentContext!.ContextSequence);
                     Assert.Null(continuity.DraftHandoff);
-                    Assert.Equal("endpoint.original/2", continuity.Pending!.Action.ToolCallId);
-                    Assert.Equal("batch-1/operation-2", continuity.Pending.Action.OperationRecordId);
-                    Assert.Equal("观察等待后的身体变化", continuity.Pending.Handoff);
+                    Assert.Equal("endpoint.original/2", continuity.PendingAdvance!.ToolCallId);
+                    Assert.Equal("batch-1/operation-2", continuity.PendingAdvance.OperationRecordId);
+                    Assert.Equal("观察等待后的身体变化", continuity.PendingAdvance.Handoff);
                     break;
                 case CycleEventKind.DecisionContextOpened:
-                    Assert.Equal(2, continuity.ContextSequence);
-                    Assert.Null(continuity.Pending);
-                    Assert.Equal("endpoint.original/2", continuity.Incoming!.Action.ToolCallId);
-                    Assert.Equal("batch-1/operation-2", continuity.Incoming.Action.OperationRecordId);
-                    Assert.Equal("观察等待后的身体变化", continuity.Incoming.Handoff);
+                    Assert.Equal(2, continuity.CurrentContext!.ContextSequence);
+                    Assert.Null(continuity.PendingAdvance);
+                    Assert.Equal("endpoint.original/2", continuity.CurrentContext!.Opening.PreviousAdvance!.ToolCallId);
+                    Assert.Equal("batch-1/operation-2", continuity.CurrentContext!.Opening.PreviousAdvance!.OperationRecordId);
+                    Assert.Equal("观察等待后的身体变化", continuity.CurrentContext!.Opening.PreviousAdvance!.Handoff);
                     break;
                 case CycleEventKind.SurvivalFailed:
-                    Assert.Null(continuity.Pending);
-                    Assert.NotNull(continuity.Incoming);
-                    Assert.True(continuity.Incoming.Summary.Reasons.HasFlag(CycleWakeReason.Terminal));
-                    Assert.Equal(previousContextSequence, continuity.ContextSequence);
+                    Assert.Null(continuity.PendingAdvance);
+                    Assert.Equal(CharacterContextStatus.Terminal, continuity.CurrentContext!.Status);
+                    Assert.Contains(continuity.CurrentContext.Opening.Experiences, e => e.Event.Kind == CycleObservedEventKind.SurvivalFailed);
+                    Assert.Equal(previousContextSequence + 1, continuity.CurrentContext.ContextSequence);
                     Assert.Equal(CycleExpeditionOutcome.Dead, recovered.World.Expedition!.Outcome);
                     Assert.Equal(StepStatus.Exhausted, await recovered.StepAsync(Hour(240)));
                     break;
@@ -170,12 +172,15 @@ public sealed class DecisionContinuityPersistenceTests {
     private sealed class InjectedCrash : IOException { }
     private sealed class StopAfterEvent(IOccurrenceHistory<CycleWorld, CycleFact> inner, CycleEventKind stopAt)
         : IOccurrenceHistory<CycleWorld, CycleFact> {
+        private int _openings;
         public CycleWorld State => inner.State;
         public KernelCursor Cursor => inner.Cursor;
         public OccurrenceEvent<CycleFact>? PendingEvent => inner.PendingEvent;
         public void CommitEvent(OccurrenceEvent<CycleFact> occurrence) {
             inner.CommitEvent(occurrence);
-            if (occurrence.Facts.Any(fact => fact.Kind == stopAt)) { throw new InjectedCrash(); }
+            if (occurrence.Facts.Any(fact => fact.Kind == CycleEventKind.DecisionContextOpened)) { _openings++; }
+            if (occurrence.Facts.Any(fact => fact.Kind == stopAt) &&
+                (stopAt != CycleEventKind.DecisionContextOpened || _openings > 1)) { throw new InjectedCrash(); }
         }
         public void CommitState(CycleWorld state, KernelCursor cursor) => inner.CommitState(state, cursor);
     }

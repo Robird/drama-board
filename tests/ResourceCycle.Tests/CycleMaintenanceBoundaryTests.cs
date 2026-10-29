@@ -18,6 +18,8 @@ public sealed class CycleMaintenanceBoundaryTests {
             new(CycleEventKind.LightChanged, business.Time, light: business.Light, changedResources: [original],
                 observedEvents: [LightChange(business.Time, false, true)])
         ];
+        facts[0] = facts[0].WithInteractions([new("a", undeliveredExperiences: [new(1, facts[0].ObservedEvents[0])], nextExperienceSequence: 2)]);
+        facts[1] = facts[1].WithInteractions([new("a", undeliveredExperiences: [new(1, facts[0].ObservedEvents[0]), new(2, facts[1].ObservedEvents[0])], nextExperienceSequence: 3)]);
         var instant = new LogicalInstant(business.Time, 0);
         CycleWorld folded = facts.Aggregate(before, (world, fact) => CycleEngine.Fold(world, instant, fact));
         var metrics = new CycleMetrics();
@@ -42,12 +44,20 @@ public sealed class CycleMaintenanceBoundaryTests {
         CycleBusinessState before = Business(actor);
         CycleForecasts previous = CyclePredictionMaintenance.Rebuild(before);
         CyclePrediction activityPrediction = Assert.Single(previous.Predictions, p => p.OwnerId == "actor:a:activity");
+        CycleObservation observation = CycleDecisionContext.Observe(new(before, previous), "a");
+        var opening = new CharacterContextOpening(CycleBackground.For(observation), observation, null, before.Time,
+            CycleOutcomeActivityState.Ongoing);
+        before = before.Replace(before.Time, interactionChanges: [new("a", new(1, CharacterContextStatus.Open, opening))]);
         var replacement = actor.Change(activity, notices: []);
         var fact = new CycleFact(CycleEventKind.AttentionAcknowledged, Hour(6), "a",
             changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1",
             observedEvents: [new(0, "a", CycleObservedEventKind.AttentionAcknowledged, Hour(6), Hour(6),
                 effects: [new(new("notice", "a", "count"), CycleVisibleValue.Numeric(1, "条"), CycleVisibleValue.Numeric(0, "条"))])]);
 
+        var pending = new PendingAdvance("a", 1, 1, CycleCommand.Continue(), "call_fixture_1", "fixture/1", Hour(6),
+            "确认提醒并继续原定活动", activityId: activity.Id);
+        fact = fact.WithInteractions([new("a", new(1, CharacterContextStatus.Closed, opening, lastOperationSequence: 1), pending,
+            [new(1, fact.ObservedEvents[0])], nextExperienceSequence: 2)]);
         CycleBusinessState after = CycleFactApplication.Apply(before, new(Hour(6), 0), fact);
         var dirty = new HashSet<string>(StringComparer.Ordinal);
         var metrics = new CycleMetrics();

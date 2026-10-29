@@ -74,8 +74,8 @@ public sealed class SurvivalForecastTests {
         string before = world.DescribeState();
         string forecasts = world.Forecasts.ToString();
         for (int repeat = 0; repeat < 3; repeat++) {
-            CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
-            Assert.Null(context.Check(CycleCommand.Wait(6)));
+            CycleObservation observation = CycleDecisionContext.Observe(world, "a");
+            Assert.Null(observation.CheckDisplayed(CycleCommand.Wait(6)));
             Assert.Equal(Minute(1395), CycleSurvivalRules.Observe(world, "a")!.FatalAt);
             string warning = CycleSurvivalRules.ActionWarning(world, "a", CycleCommand.Wait(6))!;
             Assert.Contains("不计随机寒风", warning);

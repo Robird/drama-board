@@ -6,29 +6,15 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class IncrementalProjectionTests {
     [Fact]
-    public void Removed_incoming_keeps_history_labels_and_full_semantic_removals_without_fake_current_body_absence() {
-        var endpoint = new CycleContinuitySnapshot(60 * CycleSurvival.Scale, 50 * CycleSurvival.Scale, 40 * CycleSurvival.Scale,
-            placeId: "camp", placeName: "营地");
-        var action = new CycleAcceptedAction("a", 1, "call", "record", CycleAcceptedActionKind.Wait, new(0), hours: 1, activityId: 1);
-        var pending = new CyclePendingAction(action, endpoint);
-        var incoming = new CycleActionOutcome(pending, new(0), endpoint, CycleOutcomeActivityState.Completed);
-        var previous = CycleViewSnapshot.Create(Observation(), new(2, incoming));
-        var current = CycleViewSnapshot.Create(Observation(), new(2, pending: pending));
-        var update = CycleViewUpdate.Create(previous, current, [], PlayDeliveryPhase.Advancing);
-        var key = new CycleStateKey("incoming-before", "a", "food");
-
-        Assert.Equal(CycleVisibleValue.KnownAbsent, update.CurrentValues[key]);
-        Assert.Equal(previous.Label(key), update.Label(key));
-        Assert.Contains("上次行动前", update.Label(key));
-        Assert.All(previous.Values.Keys.Where(k => k.Category.StartsWith("incoming", StringComparison.Ordinal) &&
-            previous.Resolve(k).Kind != CycleVisibleValueKind.KnownAbsent),
-            removed => Assert.Equal(CycleVisibleValue.KnownAbsent, update.CurrentValues[removed]));
-        string rendered = CycleUpdateRenderer.Render(update);
-        Assert.Contains("上次推进摘要", rendered);
-        Assert.Contains("本次行动结果待交付", rendered);
-        Assert.DoesNotContain("- 食物：无", rendered);
-        Assert.DoesNotContain("- 温暖：无", rendered);
-        Assert.DoesNotContain("accepted：", rendered);
+    public void Context_history_is_not_flattened_into_current_state_changes() {
+        var observation = Observation();
+        var state = ViewContextFixture.State(observation);
+        var before = CycleViewSnapshot.Create(observation, state);
+        var after = CycleViewSnapshot.Create(observation, new CharacterInteractionState("a", state.CurrentContext, draftHandoff: "记下此处"));
+        var update = CycleViewUpdate.Create(before, after, [], PlayDeliveryPhase.ControllerInput);
+        Assert.Equal("记下此处", update.CurrentValues[new("continuity", "a", "draft")].Text);
+        Assert.DoesNotContain(update.CurrentValues.Keys, key => key.Category.StartsWith("incoming", StringComparison.Ordinal));
+        Assert.DoesNotContain("食物：无", CycleUpdateRenderer.Render(update));
     }
 
     [Fact]
@@ -118,7 +104,7 @@ public sealed class IncrementalProjectionTests {
 
     [Fact]
     public void Projection_and_events_do_not_include_another_actors_private_values() {
-        var observation = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
+        var observation = ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
         var snapshot = CycleViewSnapshot.Create(observation);
         var foreign = new CycleObservedEvent(0, "secret", CycleObservedEventKind.ItemUsed, observation.Time, observation.Time,
             effects: [new(new("body", "secret", "water"), CycleVisibleValue.Numeric(0), CycleVisibleValue.Numeric(80))]);

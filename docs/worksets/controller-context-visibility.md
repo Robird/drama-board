@@ -26,11 +26,11 @@
 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) `RunAsync` | `StartupText` 将存档、恢复说明与迷途背景拼成同一字符串 | 目前无法直接按角色/宿主内容划界；需要拆分语义来源，不能只整体搬到标记外 |
 | [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) `ShowFull / Write` | 先写回合分隔，再写 StartupText、ConsoleHint、layout 和阶段提示；没有结束标记 | 管理提示与角色正文共同落入两条边界之间 |
 | 同文件 `BeginAdvancing / Commit / EnterInput` | 所有合法返回领域操作都会先进入 Advancing，包含 `use`；ContextSequence 未变时提交输出仍接在原画面上，下一次输入才按身份重画 | “正在结算”不等于旧决策上下文已经结束；仅靠阶段或模型时间判断会误分零耗时操作 |
-| [CycleContinuityRules](../../src/ResourceCycle/CycleContinuityRules.cs) `Enrich / OpenContext` | 合法 go/wait/gather，以及确认后恢复模拟的 continue，记录 Pending；下次可决策时才增加 ContextSequence 并封存 Incoming | 旧回合结束和新回合开始是两个时点；不能等编号改变才结束旧显示范围 |
+| 基线 `0912377` 的 `CycleContinuityRules.Enrich / OpenContext`（已替换） | 合法 go/wait/gather，以及确认后恢复模拟的 continue，记录 Pending；下次可决策时才增加 ContextSequence 并封存 Incoming | 旧回合结束和新回合开始是两个时点；不能等编号改变才结束旧显示范围 |
 | `PlayConsole.RenderCommitted` | 生存模式从已提交事实提取匹配 ObserverId 的事件，并构造该角色观察；忽略纯 DecisionContextOpened；当前选用 `world.Characters[0]` | 已有单角色投影，不能笼统称为全世界日志；也不能直接当成未来多角色分发机制 |
 | [CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs) / [验证](../../src/ResourceCycle/CycleObservedEventValidation.cs) | 记录身体过程、自身效果及有限公开/同地资源事件，带 ObserverId；[CycleViewUpdate](../../src/ResourceCycle.Cli/CycleViewUpdate.cs) 再过滤观察者 | 可复用结构化材料，但当前规则只服务既有玩法，不是任意游戏可见性的完成证明 |
 | [CycleObservation](../../src/ResourceCycle/CycleObservation.cs) `Create` | 按角色筛选当前地点资源/通路、同地其他角色、个人历史观察等 | 全量与增量应沿用同一观察权威；布局不能直接从全世界补齐隐藏原因 |
-| [ContinuityPlayView](../../src/ResourceCycle.Cli/ContinuityPlayView.cs) | 从冻结 Incoming 展示行动、区间净变化、唤醒原因、过程计数与 handoff | 已有自足、可恢复的跨回合摘要，但不是完整事件序列 |
+| 基线 `0912377` 的 `ContinuityPlayView`（已替换） | 从冻结 Incoming 展示行动、区间净变化、唤醒原因、过程计数与 handoff | 当时已有自足、可恢复的跨回合摘要，但不是完整事件序列 |
 | `RenderCommitted` 非 survival 分支 | `--play` 仍直接输出操作结果及 `RenderPublicChange`，没有多角色增量分发 | 多角色 Console 验收需单独核对，不能用生存单角色结论替代 |
 
 用户实录中的 `use item.water` 留在同一决策回合，但也显示 Advancing → ControllerInput；`go trail-1` 的开始、身体消耗、抵达、警告则在旧画面之后陆续输出，最后才出现下一回合分隔线。这与[已有继承合同](../design/decision-context-handoff.md)的“放行后结束旧控制会话”在呈现上不一致，不要求重新设计三阶段领域流程来修补。

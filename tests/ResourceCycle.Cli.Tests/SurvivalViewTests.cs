@@ -9,8 +9,8 @@ public sealed class SurvivalViewTests {
     [Fact]
     public void Initial_view_describes_visible_trails_without_revealing_destinations_or_remote_resources() {
         CycleWorld world = CycleGameFactory.CreateSurvival(enableNeeds: false).World;
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
-        string text = PlayView.Render(context.Observation, context.Continuity);
+        CycleDecisionContext context = ViewContextFixture.Create(world, "a");
+        string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.Contains("# 山林求生", text);
         Assert.Contains("迷途营地", text);
         Assert.Contains("go trail-1", text);
@@ -36,11 +36,11 @@ public sealed class SurvivalViewTests {
         await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "stream");
         CycleDecisionContext atStream = CycleDecisionContext.Create(kernel.World, "a");
         Assert.Contains(atStream.Observation.Resources, resource => resource.Id == "berries");
-        Assert.Contains("gather berries 1", PlayView.Render(atStream.Observation, atStream.Continuity));
+        Assert.Contains("gather berries 1", PlayView.Render(atStream.Observation, atStream.InteractionState));
         await Step(kernel); // leave stream
         await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "camp");
         CycleDecisionContext atCamp = CycleDecisionContext.Create(kernel.World, "a");
-        string text = PlayView.Render(atCamp.Observation, atCamp.Continuity);
+        string text = PlayView.Render(atCamp.Observation, atCamp.InteractionState);
         Assert.Contains("## 曾到访地点", text);
         Assert.Contains("历史观察", text);
         Assert.Contains("溪流湾（第", text);
@@ -72,7 +72,7 @@ public sealed class SurvivalViewTests {
             characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-3"), CycleCommand.Go("trail-4")));
         await Until(kernel, world => world.Expedition!.Outcome == CycleExpeditionOutcome.Escaped);
         CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
-        string text = PlayView.Render(context.Observation, context.Continuity);
+        string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.Contains("山脚公路", text);
         Assert.Contains("## 结局", text);
         Assert.Contains("获救", text);
@@ -99,7 +99,8 @@ public sealed class SurvivalViewTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(96 * CycleTime.Hour)));
     private static async Task Until(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel, Func<CycleWorld, bool> predicate) {
         for (int i = 0; i < 80; i++) {
-            if (predicate(kernel.World)) { return; }
+            if (predicate(kernel.World) && kernel.World.Business.InteractionStates["a"].CurrentContext is {
+                Status: CharacterContextStatus.Open or CharacterContextStatus.Terminal }) { return; }
             await Step(kernel);
         }
         Assert.Fail("Expected location or ending was not reached.");

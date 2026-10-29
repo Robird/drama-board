@@ -37,7 +37,7 @@ public sealed class MultiplayerEdgeTests {
                     // Every step is a real cold-open; no session-local service cursor or candidate cache survives.
                     using var history = CycleDurableHistory.Open(directory.StorePath);
                     var kernel = CycleEngine.CreateKernel(history, characterController: source);
-                    await Step(kernel);
+                    await StepWorldEvent(kernel);
                     final = kernel.World;
                     if (final.GetCharacter("a").Activity is null && final.GetCharacter("b").Activity is null) { break; }
                 }
@@ -73,10 +73,10 @@ public sealed class MultiplayerEdgeTests {
         using (var history = CycleDurableHistory.Create(directory.StorePath, initial, InitialCursor(initial))) {
             var kernel = CycleEngine.CreateKernel(history,
                 characterController: Commands(CycleCommand.Cancel(), CycleCommand.Gather("sunflower")));
-            await Step(kernel);
+            await StepWorldEvent(kernel);
             Assert.Null(kernel.World.GetCharacter("a").Activity);
             Assert.DoesNotContain(kernel.World.Forecasts.Predictions, p => p.OwnerId == stale.OwnerId);
-            await Step(kernel);
+            await StepWorldEvent(kernel);
             CycleActivity restarted = kernel.World.GetCharacter("a").Activity!;
             Assert.NotEqual(oldActivity.Id, restarted.Id);
             Assert.Equal(oldActivity.Due, restarted.Due);
@@ -89,12 +89,12 @@ public sealed class MultiplayerEdgeTests {
 
         using var reopened = CycleDurableHistory.Open(directory.StorePath);
         var resumed = CycleEngine.CreateKernel(reopened, characterController: Commands(CycleCommand.Wait(24)));
-        await Step(resumed);
+        await StepWorldEvent(resumed);
         Assert.Equal(Hour(17), resumed.World.Time);
         Assert.Equal(1, resumed.World.GetCharacter("a").Backpack.Count("item.sunflower"));
         Assert.Equal(1, resumed.World.GetResource("sunflower").Stock);
         Assert.Null(resumed.World.GetCharacter("a").Activity);
-        await Step(resumed);
+        await StepWorldEvent(resumed);
         Assert.Equal(StepStatus.BoundaryReached, await resumed.StepAsync(Minute(17 * 60 + 30)));
         Assert.Equal(1, resumed.World.GetCharacter("a").Backpack.Count("item.sunflower"));
     }

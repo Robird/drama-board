@@ -16,7 +16,7 @@ public sealed class PlayControllerOperationTests {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
 
-        CycleControllerOperation operation = await controller.ChooseCommandAsync(CycleDecisionContext.Create(world, "a"), default);
+        CycleControllerOperation operation = await controller.ChooseCommandAsync(ViewContextFixture.Create(world, "a"), default);
 
         Assert.Equal(CycleCommand.Handoff("观察保暖"), operation.Command);
         Assert.Equal(5, journal.Entries.Count);
@@ -51,7 +51,7 @@ public sealed class PlayControllerOperationTests {
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
 
         await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => controller.ChooseCommandAsync(
-            CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), default).AsTask());
+            ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), default).AsTask());
 
         Assert.Equal(count, journal.Entries.Count);
         Assert.All(journal.Entries, entry => {
@@ -70,10 +70,13 @@ public sealed class PlayControllerOperationTests {
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
 
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+        CycleWorld openedWorld = kernel.World;
+        KernelCursor openedCursor = kernel.Cursor;
         await Assert.ThrowsAsync<IOException>(() => kernel.StepAsync(new ModelTime(20 * CycleTime.Hour)).AsTask());
 
-        Assert.Same(initial.World, history.State);
-        Assert.Equal(initial.Cursor, history.Cursor);
+        Assert.Same(openedWorld, history.State);
+        Assert.Equal(openedCursor, history.Cursor);
         Assert.Null(history.PendingEvent);
         Assert.True(journal.IsFaulted);
     }
@@ -100,7 +103,7 @@ public sealed class PlayControllerOperationTests {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
 
-        CycleControllerOperation action = await controller.ChooseCommandAsync(CycleDecisionContext.Create(world, "a"), default);
+        CycleControllerOperation action = await controller.ChooseCommandAsync(ViewContextFixture.Create(world, "a"), default);
 
         Assert.Equal(CycleCommand.Handoff(":exit"), action.Command);
         Assert.Equal(disabled.Length + 1, journal.Entries.Count);
@@ -131,10 +134,13 @@ public sealed class PlayControllerOperationTests {
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
 
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+        CycleWorld openedWorld = kernel.World;
+        KernelCursor openedCursor = kernel.Cursor;
         await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => kernel.StepAsync(new ModelTime(long.MaxValue)).AsTask());
 
-        Assert.Same(initial.World, history.State);
-        Assert.Equal(initial.Cursor, history.Cursor);
+        Assert.Same(openedWorld, history.State);
+        Assert.Equal(openedCursor, history.Cursor);
         Assert.Null(history.PendingEvent);
         Assert.Equal(9, journal.Entries.Count);
         Assert.All(journal.Entries, entry => Assert.Equal(entry.Received.ToolCallId, entry.Completed!.ToolCallId));
@@ -150,7 +156,7 @@ public sealed class PlayControllerOperationTests {
             ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => controller.ChooseCommandAsync(
-            CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), cancellation.Token).AsTask());
+            ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), cancellation.Token).AsTask());
 
         Assert.Empty(journal.Entries);
     }
@@ -168,9 +174,9 @@ public sealed class PlayControllerOperationTests {
         });
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
             ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
-        CycleObservation observation = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
+        CycleObservation observation = ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a").Observation;
 
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), default);
 
         string response = journal.Entries[0].Completed!.Result;
         Assert.Contains(":help", response);
@@ -198,7 +204,7 @@ public sealed class PlayControllerOperationTests {
             Assert.Same(baseline, controller!.Baseline);
         });
         controller = new(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
-        var context = CycleDecisionContext.Create(CycleGameFactory.CreateSurvival().World, "a");
+        var context = ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a");
 
         var action = await controller.ChooseCommandAsync(context, default);
 
@@ -206,7 +212,7 @@ public sealed class PlayControllerOperationTests {
         var preview = journal.Entries[0];
         Assert.Equal(CycleOperationStatus.Succeeded, preview.Completed!.Status);
         Assert.Equal(preview.Received.ToolCallId, preview.Completed.ToolCallId);
-        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation, context.Continuity)), preview.Completed.Result);
+        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation, context.InteractionState)), preview.Completed.Result);
         Assert.Contains(preview.Completed.Result, output.ToString());
         Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
         Assert.Equal(1, output.ToString().Split(PlayPresentationSession.TurnBoundary).Length - 1);

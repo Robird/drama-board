@@ -42,7 +42,7 @@ public sealed class VisibleMaterialPersistenceTests {
             backgroundCommit = repository.ReadCurrentCommit(backgroundBranch).Commit.Id;
 
             var kernel = CycleEngine.CreateKernel(Memory(world), characterController: Commands(CycleCommand.Use("item.water")));
-            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+            await StepWorldEvent(kernel);
             after = CycleDecisionContext.Observe(kernel.World, "a");
             Assert.Equal(1, before.Actor.Backpack.Count("item.water"));
             Assert.Equal(0, after.Actor.Backpack.Count("item.water"));
@@ -85,7 +85,7 @@ public sealed class VisibleMaterialPersistenceTests {
         ]).World;
         CycleWorld survival = CycleGameFactory.CreateSurvival().World;
         var moving = CycleEngine.CreateKernel(Memory(survival), characterController: Commands(CycleCommand.Go("trail-1")));
-        Assert.Equal(StepStatus.Committed, await moving.StepAsync(Hour(240)));
+        await StepWorldEvent(moving);
         CycleObservation[] snapshots = [CycleDecisionContext.Observe(gathering, "a"),
             CycleDecisionContext.Observe(survival, "a"), CycleDecisionContext.Observe(moving.World, "a")];
         Assert.True(Assert.Single(snapshots[0].OtherCharacters).Waiting);
@@ -180,8 +180,7 @@ public sealed class VisibleMaterialPersistenceTests {
             notices: [new(CycleNoticeKind.ResourceDepleted, "berries", null, "fixture/depletion", Minute(920), "此前已耗尽")],
             lastResult: "已观察溪流", nextActivityId: 2,
             survival: new(Minute(930), CycleSurvival.Scale * 49 / 2, CycleSurvival.Scale * 181 / 4,
-                CycleSurvival.Scale * 481 / 8, warnedMask: 1, pendingMask: 1, pendingSince: Minute(920)),
-            continuity: initial.GetCharacter("a").Continuity);
+                CycleSurvival.Scale * 481 / 8, warnedMask: 1, pendingMask: 1, pendingSince: Minute(920)));
         var spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, [new(new("a"), new("stream"))]);
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial, [
             new("a", "camp", Hour(14), []),
@@ -233,7 +232,7 @@ public sealed class VisibleMaterialPersistenceTests {
     private static void Visit(object? value, HashSet<object> seen) {
         if (value is null) { return; }
         Assert.False(value is Delegate or CycleWorld or CycleBusinessState or CycleCharacter or CycleDecisionContext or
-            CycleDecisionContinuity or CycleExpedition or GraphSpatialState, $"Forbidden visible reference: {value.GetType().Name}");
+            CharacterInteractionState or CharacterContext or CycleExpedition or GraphSpatialState, $"Forbidden visible reference: {value.GetType().Name}");
         Assert.NotEqual("secret.gem", value as string);
         Type type = value.GetType();
         if (type.IsPrimitive || type.IsEnum || value is string or decimal || !seen.Add(value)) { return; }

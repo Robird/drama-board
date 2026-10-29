@@ -6,23 +6,14 @@ using DramaBoard.ResourceCycle;
 /// <summary>Pure Markdown projection for one character; does not acknowledge notices or mutate state.</summary>
 /// <remarks>Only the game-produced observation is available here; rendering cannot query hidden world state.</remarks>
 internal static class PlayView {
-    /// <summary>Only public world changes belong between actor-specific observations.</summary>
-    public static string? RenderPublicChange(CycleFact fact, bool expedition = false) {
-        if (expedition && fact.Kind == CycleEventKind.WeatherResolved) {
-            return $"\n天气变化 · {FormatTime(fact.At)}：{fact.Result}";
-        }
-        return fact.Kind == CycleEventKind.LightChanged
-            ? expedition ? $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了。" : "天黑了。")}" : $"\n世界变化 · {FormatTime(fact.At)}：{(fact.Light!.IsDay ? "天亮了；太阳花满足再生光照条件，月光草暂停再生。" : "天黑了；月光草满足再生光照条件，太阳花暂停再生。")}" : null;
-    }
-
-    public static string Render(CycleObservation observation, CycleDecisionContinuity? continuity = null) {
+    public static string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) {
         CycleActorObservation character = observation.Actor;
         bool ended = observation.Outcome != CycleExpeditionOutcome.Exploring;
         var text = new StringBuilder();
         text.AppendLine($"# {CycleBackground.For(observation).Title} · {character.Name}（{character.Id}） · {FormatTime(observation.Time)}");
         text.AppendLine();
         text.Append(RenderKnowledge(observation));
-        text.Append(ContinuityPlayView.RenderHistory(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderHistory(observation, interactionState));
         text.AppendLine("## 历史通知");
         foreach (CycleNoticeObservation notice in observation.Notices) {
             text.AppendLine($"- {RenderNotice(notice, ended)}");
@@ -61,7 +52,7 @@ internal static class PlayView {
         } else if (character.Activity is { } active && !ended) {
             text.AppendLine($"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。");
         }
-        text.Append(ContinuityPlayView.RenderCurrent(observation, continuity));
+        text.Append(ContextHistoryPlayView.RenderCurrent(observation, interactionState));
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
         if (ended) {
@@ -202,7 +193,7 @@ internal static class PlayView {
             text.AppendLine("行动风险提示仅计算已知趋势与昼夜变化，未包含未来随机天气；没有提示不代表没有天气风险。");
         }
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
-            text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CycleDecisionContinuity.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
+            text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
         }
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");

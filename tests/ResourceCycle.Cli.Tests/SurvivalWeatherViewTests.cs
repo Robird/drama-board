@@ -11,13 +11,13 @@ public sealed class SurvivalWeatherViewTests {
     [Fact]
     public void Default_game_exposes_weather_opportunity_and_cost_without_random_state_or_future_outcome() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleDecisionContext context = ViewContextFixture.Create(world, "a");
         string before = world.DescribeState();
         CycleWeatherObservation weather = Assert.IsType<CycleWeatherObservation>(context.Observation.Weather);
         Assert.NotNull(weather.NextWindow);
         Assert.Null(weather.LastAt);
         Assert.Null(weather.LastKind);
-        string text = PlayView.Render(context.Observation, context.Continuity);
+        string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.Contains("## 天气与暴露", text);
         Assert.Contains("下次窗口", text);
         Assert.Contains("可能平静，也可能遭遇寒风", text);
@@ -29,11 +29,11 @@ public sealed class SurvivalWeatherViewTests {
         Assert.DoesNotContain("seed", json, StringComparison.OrdinalIgnoreCase);
         // ContextSequence is a visible decision identity; the weather RNG's Sequence remains private.
         Assert.DoesNotContain("\"Sequence\":", json, StringComparison.OrdinalIgnoreCase);
-        string alternate = JsonSerializer.Serialize(CycleDecisionContext.Create(
+        string alternate = JsonSerializer.Serialize(ViewContextFixture.Create(
             CycleGameFactory.CreateSurvival(weatherSeed: 987654321UL).World, "a").Observation);
         Assert.Equal(json, alternate);
         Assert.Equal(before, world.DescribeState());
-        Assert.Null(CycleDecisionContext.Create(CycleGameFactory.CreateSurvival(enableNeeds: false).World, "a").Observation.Weather);
+        Assert.Null(ViewContextFixture.Create(CycleGameFactory.CreateSurvival(enableNeeds: false).World, "a").Observation.Weather);
     }
 
     [Theory]
@@ -57,7 +57,7 @@ public sealed class SurvivalWeatherViewTests {
         var initial = CycleGameFactory.CreateSurvival();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new WaitAndAcknowledge());
-        for (int i = 0; i < 30 && CycleDecisionContext.Create(kernel.World, "a").Observation.Weather!.LastAt is null; i++) {
+        for (int i = 0; i < 30 && (CycleDecisionContext.Observe(kernel.World, "a").Weather!.LastAt is null || kernel.World.Business.InteractionStates["a"].CurrentContext?.Status != CharacterContextStatus.Open); i++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(24 * CycleTime.Hour)));
         }
         CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
@@ -68,11 +68,10 @@ public sealed class SurvivalWeatherViewTests {
         Assert.DoesNotContain("尚无已发生的天气记录", text);
         Assert.Contains(observation.Weather.LastKind == CycleWeatherKind.ColdWind
             ? "当时暴露在外，温暖实际减少" : "没有天气造成的温暖损失", text);
-        CycleFact recorded = Assert.Single(kernel.LastCompletion!.Event.Facts, fact => fact.Kind == CycleEventKind.WeatherResolved);
-        string broadcast = Assert.IsType<string>(PlayView.RenderPublicChange(recorded, expedition: true));
-        Assert.Contains("天气变化", broadcast);
-        Assert.Contains(recorded.Result!, broadcast);
-        Assert.Null(PlayView.RenderPublicChange(recorded));
+        CharacterContext context = CycleDecisionContext.Create(kernel.World, "a").Context;
+        Assert.Contains(context.Opening.Experiences, experience => experience.Event.Kind == CycleObservedEventKind.WeatherResolved);
+        string history = ContextHistoryPlayView.RenderHistory(observation, kernel.World.Business.InteractionStates["a"]);
+        Assert.Contains("天气结算", history);
     }
 
     [Fact]

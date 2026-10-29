@@ -68,21 +68,23 @@ public sealed class WeatherTests {
         var history = Memory(initial);
         string before = initial.DescribeState();
         for (int repeat = 0; repeat < 3; repeat++) {
-            CycleDecisionContext context = CycleDecisionContext.Create(initial, "a");
-            Assert.NotNull(context.Check(CycleCommand.Go("not-visible")));
-            Assert.NotNull(context.Check(CycleCommand.Use("not-owned")));
+            CycleObservation observation = CycleDecisionContext.Observe(initial, "a");
+            Assert.NotNull(CycleActions.Check(initial, "a", CycleCommand.Go("not-visible")));
+            Assert.NotNull(CycleActions.Check(initial, "a", CycleCommand.Use("not-owned")));
             Assert.NotNull(CycleEnvironmentRules.Observe(initial, "a"));
             Assert.Equal(initial.Forecasts.ToString(), CycleEngine.Rebuild(initial.Business, initial.Time).Forecasts.ToString());
-            string projection = JsonSerializer.Serialize(context.Observation);
+            string projection = JsonSerializer.Serialize(observation);
             Assert.DoesNotContain("\"Seed\"", projection, StringComparison.Ordinal);
             Assert.DoesNotContain("\"Sequence\"", projection, StringComparison.Ordinal);
         }
         var rejected = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Go("not-visible")));
+        Assert.Equal(StepStatus.Committed, await rejected.StepAsync(Hour(240)));
+        before = rejected.World.DescribeState();
         await Assert.ThrowsAsync<InvalidOperationException>(() => rejected.StepAsync(Hour(12)).AsTask());
         Assert.Equal(before, history.State.DescribeState());
         Assert.Equal(0, Environment(history.State).Sequence);
         Assert.Equal(Hour(10), Environment(history.State).NextDue);
-        Assert.Empty(history.CompletedEvents);
+        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
         Assert.Null(history.PendingEvent);
         var accepted = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Wait(4)));
         await Advance(accepted);
@@ -308,7 +310,7 @@ public sealed class WeatherTests {
     }
 
     private static async Task Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
-        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
+        await StepWorldEvent(kernel);
         kernel.World.Validate();
         CycleWorld rebuilt = CycleEngine.Rebuild(kernel.World.Business, kernel.World.Time);
         Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());

@@ -9,9 +9,9 @@ public sealed class SurvivalNeedsViewTests {
     [Fact]
     public void Default_survival_shows_current_needs_supplies_and_nonblocking_action_risks() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleDecisionContext context = ViewContextFixture.Create(world, "a");
         string before = world.DescribeState();
-        string text = PlayView.Render(context.Observation, context.Continuity);
+        string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.NotNull(context.Observation.Survival);
         Assert.Contains("## 身体状态", text);
         Assert.Contains("| 食物 |", text);
@@ -43,11 +43,11 @@ public sealed class SurvivalNeedsViewTests {
             characterController: new Commands(CycleCommand.Wait(4), CycleCommand.Go("trail-2"),
                 CycleCommand.Use("item.water"), CycleCommand.Continue()));
         await Until(kernel, world => CycleActions.IsTravelling(world, "a") &&
-            CycleDecisionContext.Create(world, "a").Observation.Survival!.PendingWarnings.Count > 0);
+            CycleDecisionContext.Observe(world, "a").Survival!.PendingWarnings.Count > 0);
         CycleDecisionContext warned = CycleDecisionContext.Create(kernel.World, "a");
         ModelTime warningAt = warned.Observation.Time;
         ModelTime? arrival = warned.Observation.ArrivalDue;
-        string warningView = PlayView.Render(warned.Observation, warned.Continuity);
+        string warningView = PlayView.Render(warned.Observation, warned.InteractionState);
         Assert.Contains("生存警告（历史记录，待确认）", warningView);
         Assert.Contains("use item.water", warningView);
         Assert.DoesNotContain("- `cancel`", warningView);
@@ -61,14 +61,14 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Equal(arrival, replenished.Observation.ArrivalDue);
         Assert.True(replenished.Observation.Survival!.Water > warned.Observation.Survival!.Water);
         Assert.Equal(warned.Observation.Survival.PendingWarnings, replenished.Observation.Survival.PendingWarnings);
-        string after = PlayView.Render(replenished.Observation, replenished.Continuity);
+        string after = PlayView.Render(replenished.Observation, replenished.InteractionState);
         Assert.Contains("即使已经补给也会保留", after);
         Assert.DoesNotContain("上次结果（记录当时状态）", after);
         Assert.NotNull(replenished.Check(CycleCommand.Use("item.water")));
         Assert.Null(replenished.Check(CycleCommand.Continue()));
 
         await Step(kernel); // acknowledgement retains the original arrival deadline
-        CycleObservation continued = CycleDecisionContext.Create(kernel.World, "a").Observation;
+        CycleObservation continued = CycleDecisionContext.Observe(kernel.World, "a");
         Assert.Empty(continued.Survival!.PendingWarnings);
         Assert.Equal(arrival, continued.ArrivalDue);
         Assert.DoesNotContain("生存警告（历史记录，待确认）", PlayView.Render(continued));
@@ -81,7 +81,7 @@ public sealed class SurvivalNeedsViewTests {
             65 * CycleSurvival.Scale, 37 * CycleSurvival.Scale, warmthPerHour: -12));
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2")));
-        await Until(kernel, world => CycleDecisionContext.Create(world, "a").Observation.Survival!.WarmthWarningPending);
+        await Until(kernel, world => CycleDecisionContext.Observe(world, "a").Survival!.WarmthWarningPending);
         CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.ArrivalDue);
         string text = PlayView.Render(observation);
@@ -98,7 +98,7 @@ public sealed class SurvivalNeedsViewTests {
         var initial = PreparedNeeds();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Wait(6)));
-        await Until(kernel, world => CycleDecisionContext.Create(world, "a").Observation.Survival!.PendingWarnings.Count > 0);
+        await Until(kernel, world => CycleDecisionContext.Observe(world, "a").Survival!.PendingWarnings.Count > 0);
         CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.Actor.Activity);
         string text = PlayView.Render(observation);
@@ -202,7 +202,8 @@ public sealed class SurvivalNeedsViewTests {
 
     private static async Task Until(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel, Func<CycleWorld, bool> predicate) {
         for (int i = 0; i < 100; i++) {
-            if (predicate(kernel.World)) { return; }
+            if (predicate(kernel.World) && kernel.World.Business.InteractionStates["a"].CurrentContext is {
+                Status: CharacterContextStatus.Open or CharacterContextStatus.Terminal }) { return; }
             await Step(kernel);
         }
         Assert.Fail("Expected survival boundary was not reached.");

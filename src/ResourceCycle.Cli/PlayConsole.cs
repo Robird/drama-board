@@ -125,22 +125,18 @@ internal static class PlayConsole {
         internal CycleViewSnapshot? Baseline => _session.Baseline;
 
         internal void RenderObservation(CycleDecisionContext context) {
-            _session.ShowFull(context.Observation, continuity: context.Continuity);
+            _session.ShowFull(context.Observation, interactionState: context.InteractionState);
         }
 
         internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
-            if (!survival) {
-                // Transitional full-mode display until Console consumes the actor's persisted Context.
-                // Recorded events and operation audit remain structured; keep raw effect keys out of player text.
-                foreach (CycleFact fact in completion.Event.Facts) {
-                    if (fact.OperationRecordId is not null) { _output.WriteLine(fact.Result); }
-                    if (PlayView.RenderPublicChange(fact, expedition: false) is { } text) { _output.WriteLine(text); }
-                }
-                _output.Flush();
-                return;
-            }
+            // Basic multiplayer remains full-only: each controller entry reads its saved visible state.
+            // Do not print another actor's acceptance or world settlement into the previous actor's screen.
+            if (!survival) { return; }
             if (completion.Event.Facts.All(fact => fact.Kind == CycleEventKind.DecisionContextOpened)) { return; }
             string actorId = world.Characters[0].Id;
+            CharacterInteractionState state = world.Business.InteractionStates[actorId];
+            // Closed contexts retain their last delivered observation. Settlement belongs to the next opening.
+            if (state.CurrentContext is null || state.CurrentContext.Status == CharacterContextStatus.Closed) { return; }
             var batch = completion.Event.Facts.SelectMany((fact, factOrdinal) => fact.ObservedEvents
                 .Where(item => item.ObserverId == actorId).Select(item => (Event: item,
                     Source: new CycleObservedEventSource(completion.Cursor.Version.LineageId,
@@ -152,12 +148,12 @@ internal static class PlayConsole {
             }
             CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
             _session.Commit(context.Observation,
-                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray(), context.Continuity);
+                batch.Select(item => item.Event).ToArray(), batch.Select(item => item.Source).ToArray(), context.InteractionState);
         }
 
         public async ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             CycleObservation observation = context.Observation;
-            _session.EnterInput(observation, context.Continuity);
+            _session.EnterInput(observation, context.InteractionState);
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
                 _output.Write(_session.Prompt(observation));
@@ -168,13 +164,13 @@ internal static class PlayConsole {
                 if (string.IsNullOrWhiteSpace(input)) { continue; }
                 string toolName = input.TrimStart().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
                 CycleOperationReceipt receipt = _operations.Receive(_batchId, "call_" + Guid.NewGuid().ToString("N"),
-                    observation.Actor.Id, context.Continuity?.ContextSequence, toolName, input);
+                    observation.Actor.Id, context.Context.ContextSequence, toolName, input);
                 void Reply(string result, CycleOperationStatus status = CycleOperationStatus.Succeeded) {
                     _operations.Complete(receipt.OperationRecordId, status, result, worldVersion?.Invoke());
                     _session.Reply(result);
                 }
                 void Resynchronize(string? prefix = null) => _session.ShowFull(observation,
-                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix, context.Continuity);
+                    result => _operations.Complete(receipt.OperationRecordId, CycleOperationStatus.Succeeded, result, worldVersion?.Invoke()), prefix, context.InteractionState);
                 void RejectSyntax() => Reply("无法识别命令。" + metaCommands.RejectionHint +
                     "时间未推进；未确认消息。", CycleOperationStatus.Rejected);
                 if (input.TrimStart().StartsWith(':')) {
@@ -196,7 +192,7 @@ internal static class PlayConsole {
                                 Reply($"未知布局：{parsed.Argument}。\n{metaCommands.DescribeLayouts(presentation)}", CycleOperationStatus.Rejected);
                             } else if (parsed.Once) {
                                 Reply($"临时查看布局：{selected.Id}（{selected.Name}）；当前布局仍为 {presentation.Current.Id}。\n" +
-                                    selected.RenderFull(CycleViewSnapshot.Create(observation, context.Continuity)));
+                                    selected.RenderFull(CycleViewSnapshot.Create(observation, context.InteractionState)));
                             } else {
                                 presentation.TrySelect(parsed.Argument);
                                 Resynchronize($"已切换布局：{presentation.Current.Id}（{presentation.Current.Name}）。\n");

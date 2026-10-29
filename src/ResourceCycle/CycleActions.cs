@@ -61,7 +61,8 @@ public static class CycleActions {
         return Math.Max(1, checked((long)((numerator + speed - 1) / speed)));
     }
     /// <summary>Pure query; returns a displayable reason or null for an executable command.</summary>
-    public static string? Check(CycleWorld world, string actorId, CycleCommand? command) {
+    public static string? Check(CycleWorld world, string actorId, CycleCommand? command) => Check(world, actorId, command, null);
+    internal static string? Check(CycleWorld world, string actorId, CycleCommand? command, long? contextSequence) {
         ArgumentNullException.ThrowIfNull(world);
         CycleCharacter? actor = world.Characters.SingleOrDefault(c => c.Id == actorId);
         if (actor is null) { return "当前世界没有这个角色。"; }
@@ -74,15 +75,14 @@ public static class CycleActions {
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
         if (command.Kind != CycleCommandKind.Use && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
-        if (actor.Continuity is { ContextSequence: long.MaxValue } &&
+        if ((contextSequence ?? world.Business.InteractionStates[actorId].CurrentContext?.ContextSequence) == long.MaxValue &&
             (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go ||
                 command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling))) { return "决策回合编号已达到支持上限。"; }
         switch (command.Kind) {
             case CycleCommandKind.Handoff:
                 if (!SupportsHandoff(world)) { return "此场景未启用交接文字。"; }
-                if (actor.Continuity is null) { return "角色交接状态尚未建立。"; }
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "handoff 只接受交接文字。"; }
-                return !CycleDecisionContinuity.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
+                return !CharacterInteractionState.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
             case CycleCommandKind.Continue:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "continue 不接受参数。"; }
                 return actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0

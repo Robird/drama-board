@@ -27,7 +27,7 @@ public sealed class PlayPresentationTests {
         var presentation = new PlayPresentation(first, second);
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
-        CycleDecisionContext context = CycleDecisionContext.Create(world, "a");
+        CycleDecisionContext context = ViewContextFixture.Create(world, "a");
         using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:layout first once\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
         int boundaries = 0;
@@ -42,7 +42,7 @@ public sealed class PlayPresentationTests {
         Assert.Single(second.Help);
         Assert.All(first.Screens.Concat(second.Screens).Concat(second.Help),
             observation => Assert.Same(context.Observation, observation));
-        Assert.All(first.Continuities.Concat(second.Continuities), continuity => Assert.Same(context.Continuity, continuity));
+        Assert.All(first.InteractionStates.Concat(second.InteractionStates), interactionState => Assert.Same(context.InteractionState, interactionState));
         Assert.Equal(before, world.DescribeState());
         Assert.Equal(1, boundaries);
     }
@@ -59,19 +59,19 @@ public sealed class PlayPresentationTests {
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output,
             () => boundaries++);
 
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(earlier, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(earlier, "a"), default);
         Assert.Equal(1, boundaries);
 
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(earlier, "b"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(earlier, "b"), default);
         Assert.Equal(2, boundaries);
 
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(later, "b"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(later, "b", 2), default);
         Assert.Equal(3, boundaries);
 
         // Terminal observations use this same boundary even though no further input is requested.
-        controller.RenderObservation(CycleDecisionContext.Create(
-            CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b"));
+        controller.RenderObservation(ViewContextFixture.Create(
+            CycleGameFactory.CreatePlayable(new ModelTime(18 * CycleTime.Hour)).World, "b", 3));
         Assert.Equal(4, boundaries);
         Assert.Equal(5, layout.Screens.Count);
     }
@@ -89,15 +89,15 @@ public sealed class PlayPresentationTests {
         CycleWorld sameContextLaterTime = SurvivalContext(16, 1);
         CycleWorld nextContextSameTime = SurvivalContext(16, 2);
 
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(first, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(first, "a"), default);
         Assert.Equal(1, BoundaryCount());
         Assert.Contains("startup-help", output.ToString());
         Assert.Null(controller.StartupText);
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(sameContextLaterTime, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(sameContextLaterTime, "a"), default);
         Assert.Equal(1, BoundaryCount());
-        await controller.ChooseCommandAsync(CycleDecisionContext.Create(nextContextSameTime, "a"), default);
+        await controller.ChooseCommandAsync(ViewContextFixture.Create(nextContextSameTime, "a"), default);
         Assert.Equal(2, BoundaryCount());
-        controller.RenderObservation(CycleDecisionContext.Create(nextContextSameTime, "a"));
+        controller.RenderObservation(ViewContextFixture.Create(nextContextSameTime, "a"));
         Assert.Equal(2, BoundaryCount());
         Assert.Contains("startup-help", output.ToString()); // Earlier output remains in the transcript.
         Assert.DoesNotContain("\u001b", output.ToString(), StringComparison.Ordinal);
@@ -105,10 +105,8 @@ public sealed class PlayPresentationTests {
 
     private static CycleWorld SurvivalContext(int hour, long sequence) {
         CycleWorld world = CycleGameFactory.CreateSurvival(new ModelTime(hour * CycleTime.Hour)).World;
-        CycleCharacter actor = world.GetCharacter("a");
-        var replacement = new CycleCharacter(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
-            survival: actor.Survival, continuity: new CycleDecisionContinuity(sequence));
-        return CycleEngine.Rebuild(world.Business.Replace(world.Time, changedCharacters: [replacement]), world.Time);
+        var state = ViewContextFixture.State(CycleDecisionContext.Observe(world, "a"), sequence);
+        return CycleEngine.Rebuild(world.Business.Replace(world.Time, interactionChanges: [state]), world.Time);
     }
 
     [Fact]
@@ -120,8 +118,8 @@ public sealed class PlayPresentationTests {
         using var input = new StringReader(":layout second\nwait 1\n:look\nwait 1\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output);
-        CycleDecisionContext a = CycleDecisionContext.Create(world, "a");
-        CycleDecisionContext b = CycleDecisionContext.Create(world, "b");
+        CycleDecisionContext a = ViewContextFixture.Create(world, "a");
+        CycleDecisionContext b = ViewContextFixture.Create(world, "b");
 
         Assert.Equal(CycleCommand.Wait(1), (await controller.ChooseCommandAsync(a, default)).Command);
         Assert.Equal(CycleCommand.Wait(1), (await controller.ChooseCommandAsync(b, default)).Command);
@@ -139,8 +137,8 @@ public sealed class PlayPresentationTests {
         public string Name => id;
         public List<CycleObservation> Screens { get; } = [];
         public List<CycleObservation> Help { get; } = [];
-        public List<CycleDecisionContinuity?> Continuities { get; } = [];
-        public string Render(CycleObservation observation, CycleDecisionContinuity? continuity = null) { Screens.Add(observation); Continuities.Add(continuity); return Id; }
+        public List<CharacterInteractionState?> InteractionStates { get; } = [];
+        public string Render(CycleObservation observation, CharacterInteractionState? interactionState = null) { Screens.Add(observation); InteractionStates.Add(interactionState); return Id; }
         public string RenderActionHelp(CycleObservation observation) { Help.Add(observation); return Id; }
     }
 }

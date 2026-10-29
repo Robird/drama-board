@@ -8,17 +8,17 @@ internal sealed class CycleViewSnapshot {
     private readonly Dictionary<CycleStateKey, CycleVisibleValue> _values = [];
     private readonly Dictionary<CycleStateKey, string> _labels = [];
     public CycleObservation Observation { get; }
-    public CycleDecisionContinuity? Continuity { get; }
+    public CharacterInteractionState? InteractionState { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> Values { get; }
 
-    private CycleViewSnapshot(CycleObservation observation, CycleDecisionContinuity? continuity) {
+    private CycleViewSnapshot(CycleObservation observation, CharacterInteractionState? interactionState) {
         Observation = observation;
-        Continuity = continuity;
+        InteractionState = interactionState;
         Values = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(_values);
         Project();
     }
 
-    public static CycleViewSnapshot Create(CycleObservation observation, CycleDecisionContinuity? continuity = null) => new(observation, continuity);
+    public static CycleViewSnapshot Create(CycleObservation observation, CharacterInteractionState? interactionState = null) => new(observation, interactionState);
 
     public string? KnownLabel(CycleStateKey key) => _values.ContainsKey(key) ? Label(key) : null;
 
@@ -149,53 +149,12 @@ internal sealed class CycleViewSnapshot {
             Add("weather", "world", "last-loss", Number(w.LastActualWarmthLoss), "最近实际温暖损失");
             Add("weather", "world", "last-sheltered", CycleVisibleValue.Flag(w.LastWasSheltered), "最近寒风时有庇护");
         }
-        if (Continuity is { } continuity) {
-            Add("continuity", actor, "draft", Text(continuity.DraftHandoff));
-            Add("continuity", actor, "sequence", CycleVisibleValue.Numeric(continuity.ContextSequence), "决策回合");
-            Add("continuity", actor, "pending", Text(continuity.Pending?.Action.Kind.ToString()), "已接受行动");
-            if (continuity.Incoming is { } incoming) {
-                Add("incoming", actor, "kind", Text(incoming.Action.Kind.ToString()), "上次行动");
-                Add("incoming", actor, "accepted", At(incoming.Action.AcceptedAt), "上次行动接受时间");
-                Add("incoming", actor, "delivered", At(incoming.DeliveredAt), "上次行动结果时间");
-                Add("incoming", actor, "state", Text(incoming.ActivityState.ToString()), "上次行动状态");
-                Add("incoming", actor, "handoff", Text(incoming.Handoff), "上回合留言");
-                Add("incoming", actor, "gathered", CycleVisibleValue.Numeric(incoming.Summary.GatheredCount, "份"), "上次采集所得");
-                Add("incoming", actor, "reasons", Text(incoming.Summary.Reasons.ToString()), "唤醒原因");
-                Add("incoming", actor, "gather-item", Text(incoming.Summary.GatherItemId), "上次采集产物");
-                Add("incoming", actor, "stop-reason", Text(incoming.Summary.GatherStopReason?.ToString()), "上次采集停止原因");
-                Add("incoming", actor, "calm-count", CycleVisibleValue.Numeric(incoming.Summary.CalmWeatherCount, "次"), "上次行动期间平静天气");
-                Add("incoming", actor, "cold-count", CycleVisibleValue.Numeric(incoming.Summary.ColdWeatherCount, "次"), "上次行动期间寒风");
-                Add("incoming", actor, "cold-loss", CycleVisibleValue.Numeric(incoming.Summary.WeatherWarmthLossUnits, "点", CycleSurvival.Scale), "上次行动寒风总损失");
-                Add("incoming", actor, "light-count", CycleVisibleValue.Numeric(incoming.Summary.LightChangeCount, "次"), "上次行动昼夜切换");
-                Add("incoming", actor, "warning-mask", CycleVisibleValue.Numeric(incoming.Summary.WarningMask), "上次行动警告类别");
-                Add("incoming", actor, "saturated", CycleVisibleValue.Flag(incoming.Summary.IsSaturated), "上次行动计数已达上限");
-                Add("incoming", actor, "hours", CycleVisibleValue.Numeric(incoming.Action.Hours, "小时"), "上次等待时长");
-                Add("incoming", actor, "resource", Text(incoming.Action.ResourceId), "上次采集资源");
-                Add("incoming", actor, "target", CycleVisibleValue.Numeric(incoming.Action.TargetCount, "份"), "上次采集目标");
-                Add("incoming", actor, "selected-all", CycleVisibleValue.Flag(incoming.Action.SelectedAll), "上次固定 all 目标");
-                Add("incoming", actor, "passage", Text(incoming.Action.PassageId), "上次行经通路");
-                ProjectEndpoint("incoming-before", "上次行动前", incoming.Before);
-                ProjectEndpoint("incoming-after", "上次行动后", incoming.After);
+        if (InteractionState is { } state) {
+            Add("continuity", actor, "draft", Text(state.DraftHandoff));
+            if (state.CurrentContext is { } context) {
+                Add("continuity", actor, "sequence", CycleVisibleValue.Numeric(context.ContextSequence), "决策回合");
             }
-        }
-    }
-
-    private void ProjectEndpoint(string category, string label, CycleContinuitySnapshot endpoint) {
-        string actor = Observation.Actor.Id;
-        foreach (var (field, units) in new[] { ("food", endpoint.FoodUnits), ("water", endpoint.WaterUnits), ("warmth", endpoint.WarmthUnits) }) {
-            Add(category, actor, field, units is { } value ? CycleVisibleValue.Numeric(value, "点", CycleSurvival.Scale) : CycleVisibleValue.KnownAbsent, label + FieldLabel(field));
-        }
-        Add(category, actor, "place", Text(endpoint.PlaceId), label + "位置标识");
-        Add(category, actor, "place-name", Text(endpoint.PlaceName), label + "位置");
-        Add(category, actor, "passage", Text(endpoint.PassageId), label + "行经通路");
-        Add(category, actor, "target-place", Text(endpoint.KnownTargetPlaceId), label + "已知目的地标识");
-        Add(category, actor, "target-name", Text(endpoint.KnownTargetPlaceName), label + "已知目的地");
-        Add(category, actor, "activity-id", endpoint.ActivityId is { } id ? CycleVisibleValue.Numeric(id) : CycleVisibleValue.KnownAbsent, label + "活动编号");
-        Add(category, actor, "completed", CycleVisibleValue.Numeric(endpoint.CompletedCount, "份"), label + "采集进度");
-        Add(category, actor, "target", CycleVisibleValue.Numeric(endpoint.TargetCount, "份"), label + "采集目标");
-        Add(category, actor, "due", At(endpoint.ActivityDue), label + "活动期限");
-        foreach (var item in endpoint.Backpack) {
-            Add(category + "-inventory", item.Key, "count", CycleVisibleValue.Numeric(item.Value, "份"), label + ContinuityPlayView.ItemName(Observation, item.Key) + "库存");
+            Add("continuity", actor, "pending", Text(state.PendingAdvance?.Command.Kind.ToString()), "已接受行动");
         }
     }
 
