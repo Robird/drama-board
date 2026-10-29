@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
     <DurableGraphSourceRoot Condition="'$(DurableGraphSourceRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../durable-graph'))</DurableGraphSourceRoot>
+    <CompletionSourceRoot Condition="'$(CompletionSourceRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../atelia-completion'))</CompletionSourceRoot>
     <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)artifacts/nuget-packages</RestorePackagesPath>
     <TargetFramework>net10.0</TargetFramework>

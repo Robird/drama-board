@@ -19,6 +19,12 @@ $signalStore = Join-Path $outputRoot 'signal-store'
 $failureStore = Join-Path $outputRoot 'failure-store'
 
 function Run-Cli([string]$Name, [string[]]$Arguments, [string]$InputText = '', [int]$ExpectedExit = 0) {
+    # Capture the latest saved observation, not the frozen Opening plus later Context Items.
+    # A terminal game ignores this trailing read-only preview. Meta/EOF fingerprint probes verify its purity.
+    if ($Arguments -contains '--play' -or $Arguments -contains '--survival') {
+        $InputText = $InputText.Replace(":exit`n", ":look`n:exit`n")
+        if (-not $InputText.EndsWith(":exit`n", [StringComparison]::Ordinal)) { $InputText += ":look`n" }
+    }
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $start.ArgumentList.Add($cliPath)
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
@@ -54,20 +60,49 @@ function Store-Fingerprint([string]$Path) {
     }) -join "`n")
 }
 
+
+# Only new receipts from this probe may satisfy rejection checks; old Context feedback is not evidence.
+function Operation-LineCount([string]$Path) {
+    return @(Get-Content -LiteralPath (Join-Path $Path 'operations.jsonl')).Count
+}
+function Assert-RejectedOperations([string]$Path, [int]$AfterLine, [int]$ExpectedCount) {
+    $receipts = @{}
+    $results = @{}
+    foreach ($line in (Get-Content -LiteralPath (Join-Path $Path 'operations.jsonl') | Select-Object -Skip $AfterLine)) {
+        $record = ($line | ConvertFrom-Json).Payload | ConvertFrom-Json
+        if ($null -ne $record.Received -and -not $record.Received.ToolName.StartsWith(':', [StringComparison]::Ordinal)) {
+            $receipts[$record.Received.OperationRecordId] = $record.Received
+        }
+        if ($null -ne $record.Completed) { $results[$record.OperationRecordId] = $record.Completed }
+    }
+    if ($receipts.Count -ne $ExpectedCount) { throw "Expected $ExpectedCount new game submissions, found $($receipts.Count)." }
+    foreach ($id in $receipts.Keys) {
+        $result = $results[$id]
+        if ($null -eq $result -or $result.Status -ne 1 -or $result.ToolCallId -ne $receipts[$id].ToolCallId -or
+            [string]::IsNullOrWhiteSpace($result.WorldVersion) -or [string]::IsNullOrWhiteSpace($result.DomainEvent)) {
+            throw 'A probe did not produce a paired, committed game rejection.'
+        }
+        $result
+    }
+}
+
 function Last-Frame([string]$OutputText) {
     $text = $OutputText.Replace("`r`n", "`n")
     $index = $text.LastIndexOf('# 山林求生', [StringComparison]::Ordinal)
     if ($index -lt 0) { throw 'No survival observation in CLI output.' }
-    return ($text.Substring($index) -split '(?m)^a> ', 2)[0].Trim()
+    return ($text.Substring($index) -split '(?m)^(?:\[Console 输入\] a> |┄┄ Console 带外信息结束|━━━━━━━━|### 本轮操作)', 2)[0].Trim()
 }
 
 function Assert-Legal([string]$OutputText) {
-    if ($OutputText -match '无法行动|无法识别命令') { throw 'The supposedly legal route included a rejected command.' }
+    # Reopening replays retained old rejections before the first prompt; they are not new failures.
+    $firstPrompt = $OutputText.IndexOf('[Console 输入]', [StringComparison]::Ordinal)
+    $newInteraction = if ($firstPrompt -ge 0) { $OutputText.Substring($firstPrompt) } else { '' }
+    if ($newInteraction -match '### 本轮操作 [0-9]+（未执行）') { throw 'The supposedly legal route included a rejected command.' }
 }
 
 function Assert-Ending([string]$Frame, [string]$Place) {
     if (-not $Frame.Contains($Place) -or $Frame -notmatch '获救。' -or
-        $Frame -notmatch '冻结记录' -or $Frame -match 'go trail-|下次天气窗口') {
+        $Frame -notmatch '冻结记录' -or $Frame -match '(?m)^## (眼前的行动|可用命令)|下次天气窗口') {
         throw "Expected the completed rescue ending at $Place."
     }
 }
@@ -86,6 +121,7 @@ function Assert-WarningInTransit([string]$Frame) {
     }
 }
 
+# The first entry commits its Opening; read-only byte comparisons start at that established boundary.
 $initial = Run-Cli 'create' @('--survival', '--store', $roadStore) ":exit`n"
 $initialFrame = Last-Frame $initial
 if ($initialFrame -notmatch '迷途营地' -or $initialFrame -notmatch 'go trail-1' -or $initialFrame -notmatch 'go trail-2') {
@@ -99,9 +135,15 @@ if ($initialFrame -notmatch '下次天气窗口：第 0 天 17:00' -or
     throw 'Initial weather observation omitted the known risk window or exposed a future result/internal random state.'
 }
 $before = Store-Fingerprint $roadStore
-$invalid = Run-Cli 'readonly-invalid-eof' @('--survival', '--store', $roadStore) ":layout`n:layout classic`n:layout decision`n:layout missing`n:layout decision extra`n:details`n:look`n:help`ngather berries 0`nwait 0`ncontinue`ncancel`nuse item.food`nuse nonexistent`nunknown`n:look`n"
-if ($before -ne (Store-Fingerprint $roadStore) -or $initialFrame -ne (Last-Frame $invalid)) {
-    throw 'Read-only/invalid commands or EOF changed the initial saved boundary.'
+$readonly = Run-Cli 'readonly-eof' @('--survival', '--store', $roadStore) ":layout`n:layout classic`n:layout decision`n:layout missing`n:layout decision extra`n:look`n:help`n"
+if ($before -ne (Store-Fingerprint $roadStore) -or $initialFrame -ne (Last-Frame $readonly)) {
+    throw 'Pure meta/EOF changed the initial saved boundary.'
+}
+$operationsBefore = Operation-LineCount $roadStore
+$invalid = Run-Cli 'invalid-eof' @('--survival', '--store', $roadStore) "gather berries 0`nwait 0`ncontinue`ncancel`nuse item.food`nuse nonexistent`nunknown`n:look`n"
+Assert-RejectedOperations $roadStore $operationsBefore 7 | Out-Null
+if ($before -eq (Store-Fingerprint $roadStore) -or $initialFrame -ne (Last-Frame $invalid)) {
+    throw 'Game rejections must be persisted without changing the initial visible game state.'
 }
 if ($invalid -match '山脚公路|巡山信号站|野浆果|干木|ridge-herbs') {
     throw 'Invalid target probing disclosed hidden world content.'
@@ -114,19 +156,20 @@ foreach ($probe in @(
 )) {
     $rejections = @()
     foreach ($kind in @('Existing', 'Missing')) {
+        $operationsBefore = Operation-LineCount $roadStore
         $outputText = Run-Cli ("probe-" + $probe.Name + '-' + $kind.ToLowerInvariant()) @('--survival', '--store', $roadStore) ($probe[$kind] + "`n:exit`n")
-        $matches = [regex]::Matches($outputText.Replace("`r`n", "`n"), '(?m)^a> (无法行动：[^\n]+)$')
-        if ($matches.Count -ne 1 -or -not $matches[0].Groups[1].Value.Contains($probe.Reason)) {
+        $results = @(Assert-RejectedOperations $roadStore $operationsBefore 1)
+        if ($results[0].Result -ne $probe.Reason -or $initialFrame -ne (Last-Frame $outputText)) {
             throw "The $($probe.Name) $kind probe did not yield exactly one scoped rejection."
         }
-        $rejections += $matches[0].Groups[1].Value
+        $rejections += $results[0].Result
         if ($outputText -match '山脚公路|巡山信号站|野浆果|干木|ridge-herbs') {
             throw 'A target probe disclosed hidden world content.'
         }
     }
     if ($rejections[0] -ne $rejections[1]) { throw "Existing hidden and missing $($probe.Name) targets produced different rejection text." }
 }
-if ($before -ne (Store-Fingerprint $roadStore)) { throw 'Target probes changed the saved boundary.' }
+if ($before -eq (Store-Fingerprint $roadStore)) { throw 'Target probe rejections were not persisted.' }
 
 # At 16:00 arrival coincides with the food warning. Acknowledge, gather and eat,
 # then collect water. Food is absent initially, so this route exercises real supply acquisition.
@@ -156,8 +199,10 @@ if ((Vital $warningFrame '温暖') -ne 65 -or
     throw 'The first recorded cold wind did not apply its actual ten-point loss to the exposed traveller.'
 }
 $before = Store-Fingerprint $roadStore
-$warningReopen = Run-Cli 'moving-warning-readonly-invalid' @('--survival', '--store', $roadStore) ":layout classic`n:layout decision`n:details`n:help`nwait 1`ncancel`ngather berries 1`nuse nonexistent`n:look`n"
-if ($warningFrame -ne (Last-Frame $warningReopen) -or $before -ne (Store-Fingerprint $roadStore)) {
+$operationsBefore = Operation-LineCount $roadStore
+$warningReopen = Run-Cli 'moving-warning-readonly-invalid' @('--survival', '--store', $roadStore) ":layout classic`n:layout decision`n:look`n:help`nwait 1`ncancel`ngather berries 1`nuse nonexistent`n:look`n"
+Assert-RejectedOperations $roadStore $operationsBefore 4 | Out-Null
+if ($warningFrame -ne (Last-Frame $warningReopen) -or $before -eq (Store-Fingerprint $roadStore)) {
     throw 'Read-only/rejected commands consumed a pending survival warning or changed its in-flight movement.'
 }
 $supplied = Run-Cli 'moving-warning-drink-save' @('--survival', '--store', $roadStore) "use item.water`n:exit`n"
@@ -179,8 +224,8 @@ $ravine = Run-Cli 'ravine-save' @('--survival', '--store', $roadStore) "continue
 Assert-Legal $ravine
 $ravineFrame = Last-Frame $ravine
 if ($ravineFrame -notmatch '狭谷旧桥' -or $ravineFrame -notmatch '第 0 天 18:45' -or
-    $ravineFrame -match '待确认的历史警告' -or $ravineFrame -notmatch '曾到访（历史）' -or
-    $ravineFrame -notmatch '远处余量可能已变' -or $ravineFrame -notmatch '溪流湾（第 0 天') {
+    $ravineFrame -match '待确认的历史警告' -or $ravineFrame -notmatch '曾到访地点（历史观察）' -or
+    $ravineFrame -notmatch '远处余量可能已改变' -or $ravineFrame -notmatch '溪流湾（第 0 天') {
     throw 'Departure did not distinguish dated remembered resources from current observation.'
 }
 if ($ravineFrame -notmatch '当前位置没有可采资源' -or
@@ -211,7 +256,7 @@ Assert-Ending $roadFrame '山脚公路'
 if ($roadFrame -ne (Last-Frame $roadContinuous)) { throw 'Cold-resumed and continuous low-route endings differ.' }
 $before = Store-Fingerprint $roadStore
 $roadReopen = Run-Cli 'road-ending-reopen' @('--survival', '--store', $roadStore) "wait 24`ngo trail-4`n"
-if ($roadFrame -ne (Last-Frame $roadReopen) -or $before -ne (Store-Fingerprint $roadStore) -or $roadReopen -match '(?m)^a> ') {
+if ($roadFrame -ne (Last-Frame $roadReopen) -or $before -ne (Store-Fingerprint $roadStore) -or $roadReopen -match '(?m)^\[Console 输入\] a> ') {
     throw 'A completed ending accepted input, advanced time, or changed after cold open.'
 }
 
@@ -265,7 +310,7 @@ $failureContinuous = Run-Cli 'no-supply-continuous-ending' @('--survival') "wait
 Assert-Legal $failure
 Assert-Legal $failureContinuous
 $failureFrame = Last-Frame $failure
-if ($failureFrame -notmatch '冻结记录' -or $failureFrame -notmatch '脱水耗尽' -or $failureFrame -match '获救|go trail-|下次天气窗口' -or
+if ($failureFrame -notmatch '冻结记录' -or $failureFrame -notmatch '脱水耗尽' -or $failureFrame -match '获救|(?m)^## (眼前的行动|可用命令)|下次天气窗口' -or
     (Vital $failureFrame '饮水') -ne 0 -or $failureFrame -notmatch '第 0 天 20:37:30.000' -or
     $failureFrame -ne (Last-Frame $failureContinuous)) {
     throw 'Ignoring supply/warnings did not yield the same explained fatal boundary after cold continuation.'
@@ -273,7 +318,7 @@ if ($failureFrame -notmatch '冻结记录' -or $failureFrame -notmatch '脱水�
 $before = Store-Fingerprint $failureStore
 $failureReopen = Run-Cli 'failure-ending-reopen' @('--survival', '--store', $failureStore) "use item.water`ncontinue`n"
 if ($failureFrame -ne (Last-Frame $failureReopen) -or $before -ne (Store-Fingerprint $failureStore) -or
-    $failureReopen -match '(?m)^a> ') { throw 'A fatal ending accepted input, revived, or advanced after cold open.' }
+    $failureReopen -match '(?m)^\[Console 输入\] a> ') { throw 'A fatal ending accepted input, revived, or advanced after cold open.' }
 
 $before = Store-Fingerprint $roadStore
 $null = Run-Cli 'wrong-play-mode' @('--play', '--store', $roadStore) '' 1
@@ -286,7 +331,8 @@ $null = Run-Cli 'invalid-survival-options' @('--survival', '--steps', '1') '' 1
 [IO.File]::WriteAllText((Join-Path $outputRoot 'failure-ending.md'), $failureFrame)
 @{
     scope = 'A+B+C: spatial exploration, survival needs and weather engineering smoke; not independent playtest acceptance'
-    readOnlyInvalidEofAndWrongModePreserveStoreBytes = $true
+    pureMetaEofAndWrongModePreserveStoreBytes = $true
+    invalidActionsPersistRejectionsWithoutChangingVisibleState = $true
     layoutSwitchingAndMetaQueriesPreserveStoreBytes = $true
     hiddenAndNonexistentTargetsHaveSameRejection = $true
     localGatheringAndDatedRemoteMemoryVerified = $true

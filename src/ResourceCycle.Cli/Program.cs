@@ -20,6 +20,15 @@ try {
               --store PATH          创建或恢复单根存档；省略则仅内存运行
               --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
               --survival            单角色山林探索；可配合 --store 续玩，不接受批处理选项
+              --llm                 用 LLM 控制 --survival；默认 Codex Responses / gpt-6.1-sol
+              --model ID            模型 ID；自定义目录默认沿用所选连接的模型
+              --auth-file PATH      内置 Codex 连接的认证文件；默认使用 Codex 的标准路径
+              --catalog PATH        Completion V3 连接目录；必须配合 --connection ID 精确选择
+              --connection ID       自定义目录中的连接 ID，不使用回退连接
+              --max-calls N         本次宿主运行最多模型调用次数（默认 128）
+              --max-failures N      连续完整响应协议错误上限（默认 3）
+              --max-context-chars N 完整 Context 的 UTF-16 长度上限（默认 200000）
+              --llm-log PATH        本次独立 JSONL 证据文件；默认在存档或 artifacts 下新建
               --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
               --steps N             本次最多推进 N 次转换（默认 10000）
               --full-recompute      每次重算全部预测者，用于对照
@@ -42,6 +51,7 @@ try {
     Console.CancelKeyPress += cancelHandler;
     try {
         if (options.Play || options.Survival) {
+            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token); }
             return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival);
         }
         using CycleDurableHistory? durable = options.Store is { } store
@@ -113,13 +123,16 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival) {
+    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null) {
     public static Options Parse(string[] args) {
         string? store = null;
         string? snapshot = null;
         long hour = 88;
         int steps = 10_000;
         bool full = false, trace = false, help = false, play = false, survival = false;
+        bool llm = false;
+        string? model = null, authFile = null, catalog = null, connection = null, llmLog = null;
+        int maxCalls = 128, maxFailures = 3, maxContextCharacters = 200_000;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int index = 0; index < args.Length; index++) {
             string option = args[index];
@@ -144,14 +157,34 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--help": help = true; break;
                 case "--play": play = true; break;
                 case "--survival": survival = true; break;
+                case "--llm": llm = true; break;
+                case "--model": model = Value(); break;
+                case "--auth-file": authFile = Path.GetFullPath(Value()); break;
+                case "--catalog": catalog = Path.GetFullPath(Value()); break;
+                case "--connection": connection = Value(); break;
+                case "--llm-log": llmLog = Path.GetFullPath(Value()); break;
+                case "--max-calls": maxCalls = Positive(Value(), option); break;
+                case "--max-failures": maxFailures = Positive(Value(), option); break;
+                case "--max-context-chars": maxContextCharacters = Positive(Value(), option); break;
                 default: throw new ArgumentException($"未知参数：{option}；使用 --help 查看用法。");
             }
         }
         if (!help && play && survival) { throw new ArgumentException("--play 与 --survival 不能同时使用。"); }
+        if (!help && llm && !survival) { throw new ArgumentException("--llm 必须配合 --survival。"); }
+        if (!help && !llm && seen.Any(option => option is "--model" or "--auth-file" or "--catalog" or "--connection" or
+            "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log")) {
+            throw new ArgumentException("模型配置和预算参数必须配合 --llm。");
+        }
+        if (!help && ((catalog is null) != (connection is null))) { throw new ArgumentException("--catalog 与 --connection 必须一起指定。"); }
+        if (!help && catalog is not null && authFile is not null) { throw new ArgumentException("--auth-file 仅用于内置 Codex 连接；目录连接使用 Completion 的认证配置。"); }
         if (!help && (play || survival) && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
             throw new ArgumentException("--play / --survival 仅能配合 --store；批处理参数不适用于交互游戏。");
         }
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
-        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival);
+        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival,
+            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog) : null);
     }
+    private static int Positive(string text, string option) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0
+            ? value : throw new ArgumentException($"{option} 必须为正整数。");
 }

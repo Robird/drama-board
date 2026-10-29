@@ -1,6 +1,6 @@
 # 生存逃离 Demo 里程碑
 
-状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订，实施尚未启动；下一片为 §3.2 的 2A。
+状态：一期已完成并通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)，一期组合合同见[实施方案](../implementation/survival-demo-plan.md)。二期目标于 2026-10-29 按当前 Context 与 Completion 能力修订；2A 已接入并完成真实模型通关与恢复验收（见[证据](../experiments/survival-llm-acceptance.md)），下一片为 §3.3 的 2B。
 
 ## 1. 目标与设计空间
 
@@ -94,9 +94,9 @@
 
 最终体验仍是同一世界中两个独立角色，一个由人类控制，另一个由 LLM CharacterController 控制，通过交流、补给与行动安排合作逃离。分三片推进，先验证模型能使用现有游戏，再扩展双角色生存与协作；不把模型接通视为整个二期完成。
 
-### 3.1 复用基础与实际缺口
+### 3.1 复用基础与调查时的缺口
 
-2026-10-29 调查基线：DramaBoard `036f6ef`、相邻 atelia-completion `b91e0aa`。这些是设计依据，不要求后续固定版本；开工时核对最新源码。
+2026-10-29 调查基线：DramaBoard `036f6ef`、相邻 atelia-completion `b91e0aa`。这些是调查时的设计依据，不要求后续固定版本；以下缺口不是完成状态表，当前 2A 实现见[实施说明](../implementation/survival-llm-controller.md)。每片开工仍核对最新源码。
 
 - [角色 Context](character-context-model.md) 已保存冻结 Opening、保留 Items、原始操作与结果、交接文字和待交付经历；复用现有按角色感知、共享 parser、校验和 E/S 恢复，不重造历史摘要或第二份角色知识权威。
 - [控制器接口](../../src/ResourceCycle/CycleActions.cs) 每次返回一个 `CycleControllerOperation`，游戏随后解析、校验并提交。一次方法调用不是一个完整决策回合；即时操作和拒绝之后可以继续服务同一 Context。
@@ -107,6 +107,8 @@
 ### 3.2 2A：单角色 LLM 接线
 
 **目标：** 让真实模型通过现有单角色生存场景完成连续决策，独立验证调用、配置和恢复边界。
+
+当前已由 ResourceCycle.Completion 与 CLI `--survival --llm` 实现；两次真实模型自主获救及自动化边界见[2A 验收](../experiments/survival-llm-acceptance.md)。下文继续保留合同与验收要求，不表示整期完成。
 
 首版采用**游戏管理上下文的独立决策调用**：每次 `ChooseCommandAsync` 将当前持久 Context 的完整保留材料映射为新的 Completion 输入，不依赖控制器私藏历史，不续接上一请求的原生 assistant/tool 消息。历史操作反馈作为 Context 材料交付，不伪装成端点协议的 tool-result。同一决策回合仍可有多次调用；它不是“每调用一次就推进游戏时间”。
 
@@ -156,7 +158,9 @@
 
 需要恢复的角色语义与已提交操作继续单根发布；模型原始输出审计和宿主运行日志不自动成为游戏状态。没有旧开发存档兼容负担，变化依实际 Schema 与 GameRevision 处理。实现完成后更新 PROJECT-STATE 与验收记录，后续内容不得隐含扩展为新的 Goal。
 
-## 4. 下一轮二期 Goal 的建议表述
+## 4. 二期 Goal 的启动范围记录
+
+以下表述已用于启动二期迭代，目标继续覆盖 2A–2C；当前从 2B 接续，不重复启动已完成的 2A。
 
 > 以 `docs/design/survival-demo-milestone.md` §3 为依据，带领 subagents 从 2A 单角色 LLM 接线开始，逐片设计、实施、验证和试玩，再完成 2B 双角色生存与 2C 交流协作。复用当前持久 Context 和相邻 atelia-completion；每片先核对源码，自主调整局部设计，按需提交并维护项目状态。只有三片完成标准均有证据才结束二期，不把 mock、模型接通或独立通关当作协作完成。若真实端点、凭据或 Human 试玩条件缺失，明确报告未满足的验收条件，不虚构实测。
 

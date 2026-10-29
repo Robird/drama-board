@@ -1,0 +1,80 @@
+[host] {"Kind":"host","Payload":{"State":"ready","RecoveredPending":false,"Store":"E:\\repos\\Atelia-org\\drama-board\\artifacts\\llm-phase2a\\live-game","Version":"WorldVersion { LineageId = 1, TransitionCount = 0 }","Budget":{"MaxCalls":1,"MaxFailures":3,"MaxContextCharacters":200000}}}
+LLM 旁观模式；证据：E:\repos\Atelia-org\drama-board\artifacts\llm-phase2a\live-first.jsonl。Ctrl+C 暂停；重开时重新指定 --llm 和连接配置。
+[binding] {"Kind":"binding","Payload":{"ConnectionId":"drama-codex","ModelId":"gpt-6.1-sol"}}
+[committed] {"Kind":"committed","Payload":{"At":54000000,"Kind":"DecisionContextOpened","ActorId":"a","ToolCallId":null,"OperationRecordId":null,"Disposition":null,"Result":null,"Version":"WorldVersion { LineageId = 1, TransitionCount = 1 }"}}
+[model-input]
+你在一个持续运行的生存游戏中控制当前角色。当前观察及保留经历是你的全部游戏信息；不要假定未提供的地图或资源。每次调用都是新的独立决策，请根据提供的完整角色上下文行动。调用一次 act 工具，command 为界面列出的一个游戏行动字符串。即时行动或拒绝之后仍可继续决策；耗时行动会放行世界。自由文本不会成为游戏对白、事实或持久记忆。使用 handoff 保存希望下一次决策继续记得的简短计划；需要补给时可使用即时 use 行动。不要调用 Console 元命令。
+━━━━━━━━━━━━━━━━━━━━ LLM 上下文开始 · "a" · 1 ━━━━━━━━━━━━━━━━━━━━
+# 山林求生 · 阿青（a） · 第 0 天 15:00
+
+你在山林中迷途。观察路标、探索通路，寻找人类社会。
+
+## 规则与已知常识
+行动命令与标识区分大小写，需提供完整命令和标识。
+采集按每份周期结算，不预留库存；all 固定为接受时的库存，不随再生增加。库存耗尽会提醒，结算时无货则结束，不会自动等待再生。
+通路描述是眼前线索，不保证目的地或安全；移动途中不能取消。查看、补给与确认消息不重置活动或行程期限。
+余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则本局失败。
+补给不耗时，不确认历史警告；continue 确认并保留原期限，接受新的耗时行动也会确认已展示的警告。
+温暖无法靠物品补充；庇护内或白天野外可回暖，夜间野外继续降温。
+天气窗口每 2 小时出现一次；结果可能平静，也可能遭遇寒风。
+寒风使暴露者的温暖最多减少 10 点；处于庇护内则免受这次损失。移动途中视为暴露。
+
+## 决策回合 1 · 上次推进的结果
+这是首次决策，尚无上次推进的结果。
+
+## 历史通知与最近天气
+- 尚无已发生的天气记录。
+
+## 当前状态与环境
+白天 · 下次天黑 第 0 天 18:00。
+**迷途营地**：醒来时篝火已熄。溪水声从下坡传来，另一条窄径通向高处。
+
+**暴露在野外（无庇护）**
+- 温暖 60/100（范围 0–100）；+6/小时；速率构成："白天野外回暖" +6/小时；预计降至警戒线 25：第 0 天 22:25；预计耗尽至 0：第 1 天 00:30。
+- 食物 30/100（范围 0–100）；-5/小时；速率构成："基础代谢" -5/小时；预计降至警戒线 25：第 0 天 16:00；预计耗尽至 0：第 0 天 21:00。
+- 饮水 45/100（范围 0–100）；-8/小时；速率构成："基础代谢" -8/小时；预计降至警戒线 25：第 0 天 17:30；预计耗尽至 0：第 0 天 20:37:30.000。
+预测条件：不补给、保持当前庇护状态，计入已知昼夜变化；未计随机寒风，也不预知抵达后的环境。各项独立推算，不代表能存活至所有预测时刻。
+- 下次天气窗口：第 0 天 17:00；结果未知。
+当前空闲，可选择下方行动。
+采药等级 0（基础速度的 100%）。
+
+## 当前背包
+共 1 件。
+- 饮水 `item.water` ×1
+
+## 本轮交接
+
+本轮交接草稿（下一次放行模拟时发送，旧交接不会自动续传）：
+> "（空）"
+
+## 当前资源
+当前没有可见的可采资源。
+
+## 眼前的行动
+- `continue`：确认消息与历史警告，保留活动及原定期限；受阻：当前没有需要确认的活动感知或身体警告。
+- `use item.water`：背包 1 份；消耗 1 份饮水，水分 +45（最高 100）；不耗时；可执行。
+`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 2000 个 Unicode 字符，不耗时、不确认警告。
+各行动旁显示当前可执行性；改变属性预测条件的行动另有提示。
+
+### 去哪里
+- `go trail-1`：沿溪水声下坡；耗时 60 分钟；目的地未探索，线索不保证安全；可执行。
+- `go trail-2`：沿窄径攀上风口；耗时 120 分钟；目的地未探索，线索不保证安全；可执行。
+移动途中不能取消；食物和饮水可在请求输入时补充。
+当前位置没有可采资源。
+
+- `wait 1`：在原地停留 1 小时；完成或危险警告时请求输入；可执行。
+等待可选 1–24 整数小时；当前条件：
+- cancel · 条件：当前没有可取消的活动。
+- wait 1–24、handoff · 条件：条件满足
+
+━━━━━━━━━━━━━━━━━━━━ LLM 上下文结束 · "a" · 1 ━━━━━━━━━━━━━━━━━━━━
+
+[model-output]
+调用 1：Completed；待游戏校验，尚未提交
+工具："act"；ID："call_b85c0090d037482ebfe62c896890e234"；参数："{\u0022command\u0022:\u0022go trail-1\u0022}"
+[committed] {"Kind":"committed","Payload":{"At":54000000,"Kind":"MoveStarted","ActorId":"a","ToolCallId":"call_b85c0090d037482ebfe62c896890e234","OperationRecordId":"816765cfe1a7491a94ea32dbd5b5e9fd","Disposition":"Succeeded","Result":"\u5F00\u59CB\u79FB\u52A8\u3002\r\n  location/place\uFF1Acamp \u2192 \u65E0\r\n  location/arrival\uFF1A\u65E0 \u2192 57600000 ticks","Version":"WorldVersion { LineageId = 1, TransitionCount = 2 }"}}
+[committed] {"Kind":"committed","Payload":{"At":57600000,"Kind":"MoveArrived","ActorId":"a","ToolCallId":null,"OperationRecordId":null,"Disposition":null,"Result":null,"Version":"WorldVersion { LineageId = 1, TransitionCount = 3 }"}}
+[committed] {"Kind":"committed","Payload":{"At":57600000,"Kind":"SurvivalWarning","ActorId":"a","ToolCallId":null,"OperationRecordId":null,"Disposition":null,"Result":null,"Version":"WorldVersion { LineageId = 1, TransitionCount = 4 }"}}
+[committed] {"Kind":"committed","Payload":{"At":57600000,"Kind":"DecisionContextOpened","ActorId":"a","ToolCallId":null,"OperationRecordId":null,"Disposition":null,"Result":null,"Version":"WorldVersion { LineageId = 1, TransitionCount = 5 }"}}
+[host-stop] {"Kind":"host-stop","Payload":{"Reason":"call-budget-exhausted","CallsMade":1,"Saved":true}}
+LLM 已暂停，未代选行动。已提交状态保持；续局需重新指定连接与预算。

@@ -16,6 +16,12 @@ if ((Test-Path -LiteralPath $storePath) -or (Test-Path -LiteralPath $batchPath))
 }
 
 function Run-Cli([string]$Name, [string[]]$Arguments, [string]$InputText = '', [int]$ExpectedExit = 0) {
+    # Capture the latest saved observation, not the frozen Opening plus later Context Items.
+    # A terminal game ignores this trailing read-only preview. Meta/EOF fingerprint probes verify its purity.
+    if ($Arguments -contains '--play' -or $Arguments -contains '--survival') {
+        $InputText = $InputText.Replace(":exit`n", ":look`n:exit`n")
+        if (-not $InputText.EndsWith(":exit`n", [StringComparison]::Ordinal)) { $InputText += ":look`n" }
+    }
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $start.ArgumentList.Add($cliPath)
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
@@ -50,17 +56,54 @@ function Store-Fingerprint([string]$Path) {
     }) -join "`n")
 }
 
+
+# Only new receipts from this probe may satisfy rejection checks; old Context feedback is not evidence.
+function Operation-LineCount([string]$Path) {
+    return @(Get-Content -LiteralPath (Join-Path $Path 'operations.jsonl')).Count
+}
+function Assert-RejectedOperations([string]$Path, [int]$AfterLine, [int]$ExpectedCount) {
+    $receipts = @{}
+    $results = @{}
+    foreach ($line in (Get-Content -LiteralPath (Join-Path $Path 'operations.jsonl') | Select-Object -Skip $AfterLine)) {
+        $record = ($line | ConvertFrom-Json).Payload | ConvertFrom-Json
+        if ($null -ne $record.Received -and -not $record.Received.ToolName.StartsWith(':', [StringComparison]::Ordinal)) {
+            $receipts[$record.Received.OperationRecordId] = $record.Received
+        }
+        if ($null -ne $record.Completed) { $results[$record.OperationRecordId] = $record.Completed }
+    }
+    if ($receipts.Count -ne $ExpectedCount) { throw "Expected $ExpectedCount new game submissions, found $($receipts.Count)." }
+    foreach ($id in $receipts.Keys) {
+        $result = $results[$id]
+        if ($null -eq $result -or $result.Status -ne 1 -or $result.ToolCallId -ne $receipts[$id].ToolCallId -or
+            [string]::IsNullOrWhiteSpace($result.WorldVersion) -or [string]::IsNullOrWhiteSpace($result.DomainEvent)) {
+            throw 'A probe did not produce a paired, committed game rejection.'
+        }
+        $result
+    }
+}
+
+function New-Interaction([string]$OutputText) {
+    $firstPrompt = $OutputText.IndexOf('[Console 输入]', [StringComparison]::Ordinal)
+    return $(if ($firstPrompt -ge 0) { $OutputText.Substring($firstPrompt) } else { '' })
+}
+
 function Last-Frame([string]$OutputText) {
     $text = $OutputText.Replace("`r`n", "`n")
     $index = $text.LastIndexOf('# 林间苗圃', [StringComparison]::Ordinal)
     if ($index -lt 0) { throw 'No player observation in CLI output.' }
-    return ($text.Substring($index) -split '(?m)^[abc]> ', 2)[0].Trim()
+    return ($text.Substring($index) -split '(?m)^(?:\[Console 输入\] [abc]> |┄┄ Console 带外信息结束|━━━━━━━━|### 本轮操作)', 2)[0].Trim()
 }
 
-$null = Run-Cli 'create' @('--play', '--store', $storePath) ":exit`n"
+# The first entry commits its Opening; read-only byte comparisons start at that established boundary.
+$created = Run-Cli 'create' @('--play', '--store', $storePath) ":exit`n"
+$initialFrame = Last-Frame $created
 $before = Store-Fingerprint $storePath
-$null = Run-Cli 'readonly-invalid' @('--play', '--store', $storePath) ":look`n:help`ngather sunflower`ngather sunflower 0`ngather sunflower -1`ngather sunflower 2147483648`nwait 0`nwait 25`ncontinue`ncancel`nunknown`n:exit`n"
-if ($before -ne (Store-Fingerprint $storePath)) { throw 'Read-only/invalid commands changed store bytes.' }
+$readonly = Run-Cli 'readonly-eof' @('--play', '--store', $storePath) ":look`n:help`n"
+if ($before -ne (Store-Fingerprint $storePath) -or $initialFrame -ne (Last-Frame $readonly)) { throw 'Pure meta/EOF changed the committed game boundary.' }
+$operationsBefore = Operation-LineCount $storePath
+$invalid = Run-Cli 'invalid' @('--play', '--store', $storePath) "gather sunflower`ngather sunflower 0`ngather sunflower -1`ngather sunflower 2147483648`nwait 0`nwait 25`ncontinue`ncancel`nunknown`n:exit`n"
+Assert-RejectedOperations $storePath $operationsBefore 9 | Out-Null
+if ($before -eq (Store-Fingerprint $storePath) -or $initialFrame -ne (Last-Frame $invalid)) { throw 'Rejections must be persisted without changing the latest visible game state.' }
 
 # A and B compete for the same three units; C waits. A acknowledges B's joining.
 # B completes at 16:48 and 17:36, A at 17:00. Depletion wakes B then A at 17:36.
@@ -75,8 +118,10 @@ if ($pendingFrame -notmatch '（b） · 第 0 天 17:36' -or $pendingFrame -notm
 
 # Observing, rejected busy actions, and EOF must leave the pending notice and both activities intact.
 $before = Store-Fingerprint $storePath
+$operationsBefore = Operation-LineCount $storePath
 $pendingReopen = Run-Cli 'pending-readonly-invalid-eof' @('--play', '--store', $storePath) ":help`ngather moongrass 1`nwait 1`n:look`n"
-if ($pendingFrame -ne (Last-Frame $pendingReopen) -or $before -ne (Store-Fingerprint $storePath)) {
+Assert-RejectedOperations $storePath $operationsBefore 2 | Out-Null
+if ($pendingFrame -ne (Last-Frame $pendingReopen) -or $before -eq (Store-Fingerprint $storePath)) {
     throw 'Observing or rejecting a command consumed the pending notice or changed stored activity.'
 }
 
@@ -90,7 +135,7 @@ if ($frame -ne (Last-Frame $continuous)) { throw 'Continuous and cold-resumed pl
 if ($frame -notmatch '（c） · 第 1 天 04:00' -or $resumed -notmatch '第 0 天 18:00' -or $resumed -notmatch '第 0 天 18:24') {
     throw 'Finite competing batches did not end at their hand-calculated completion boundaries.'
 }
-if ($resumed -match '无法行动|无法识别命令' -or $continuous -match '无法行动|无法识别命令') {
+if ((New-Interaction $resumed) -match '### 本轮操作 [0-9]+（未执行）' -or (New-Interaction $continuous) -match '### 本轮操作 [0-9]+（未执行）') {
     throw 'The supposedly legal competition script contained a rejected action.'
 }
 
@@ -106,7 +151,7 @@ $cancelled = Run-Cli 'cancel-and-switch' @('--play') ($competitionPrefix + "canc
 $cancelFrame = Last-Frame $cancelled
 if ($cancelFrame -notmatch '（b） · 第 0 天 18:24' -or
     $cancelFrame -notmatch '太阳花（`item.sunflower`）×2' -or $cancelFrame -notmatch '月光草（`item.moongrass`）×1' -or
-    $cancelled -match '无法行动|无法识别命令') {
+    (New-Interaction $cancelled) -match '### 本轮操作 [0-9]+（未执行）') {
     throw 'Cancel/switch lost earned items, retained a cancelled cycle, or failed to switch resources.'
 }
 
@@ -117,7 +162,7 @@ $nightResumed = Run-Cli 'night-resumed' @('--play', '--store', $nightStore) "wai
 $nightContinuous = Run-Cli 'night-continuous' @('--play') "wait 14`nwait 14`nwait 14`n:exit`n"
 if ((Last-Frame $nightResumed) -ne (Last-Frame $nightContinuous) -or
     (Last-Frame $nightResumed) -notmatch '（a） · 第 1 天 06:00' -or
-    $nightResumed -notmatch '天黑了' -or $nightResumed -notmatch '天亮了') {
+    $nightResumed -notmatch '白天：是 → 否' -or $nightResumed -notmatch '白天：否 → 是') {
     throw 'Cross-night cold-open trajectory or same-time wake order differs.'
 }
 
@@ -139,7 +184,8 @@ $null = Run-Cli 'invalid-play-options' @('--play', '--steps', '1') '' 1
 [IO.File]::WriteAllText((Join-Path $outputRoot 'final-observation.md'), $frame)
 @{
     continuousAndResumedObservationEqual = $true
-    readOnlyInvalidEofAndModeErrorsPreserveStoreBytes = $true
+    pureMetaEofAndModeErrorsPreserveStoreBytes = $true
+    invalidActionsPersistRejectionsWithoutChangingVisibleState = $true
     joiningAndDepletionWakeBusyActors = $true
     finiteCompetitionAndCancelSwitchVerified = $true
     crossNightColdOpenEqual = $true

@@ -30,6 +30,12 @@ jobs:
           repository: Atelia-org/durable-graph
           ref: master
           path: durable-graph
+      - name: Check out current Completion source
+        uses: actions/checkout@v4
+        with:
+          repository: Atelia-org/atelia-completion
+          ref: main
+          path: atelia-completion
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: drama-board/global.json

@@ -6,7 +6,7 @@ Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred d
 
 ## Build and test
 
-Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` source checkouts. Use the single solution entry point:
+Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` / `atelia-completion` source checkouts. Use the single solution entry point:
 
 ```powershell
 dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
@@ -68,7 +68,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 Explore a small mountain map and find either exit. Use `go <trail-id>` from the displayed local choices, `gather <resource-id> <count|all>`, `wait <hours>`, `:look`, `:help`, and `:exit`. Locations and resource memories become known through visits; old observations are labelled with their time. Travel takes model time and cannot yet be cancelled midway. Completed changes save automatically when a store is supplied; use the same command to resume. A completed ending does not advance further.
 
-Survival defaults to the decision layout, grouping supplies, routes and resources with their relevant actions and risks, with warmth/exposure visible at the input prompt. Use `:layout` to list layouts, `:layout classic` for the original full view, or `:layout decision` to switch back immediately. `:details` shows the full observation without changing your layout; `:help`, `:look` and `:exit` are also available. Meta commands require the colon prefix; game actions such as `go`, `use` and `continue` do not. Layout selection lasts for this Console session, including across characters in `--play`; it does not advance time or alter game state. See [Console layouts](docs/design/console-layouts.md).
+Survival defaults to the decision layout, grouping supplies, routes and resources with their relevant actions and risks, with warmth/exposure visible at the input prompt. Use `:layout` to list layouts, `:layout classic` for the original full view, or `:layout decision` to switch back immediately. `:look` redraws the latest observation without changing your layout; `:help` and `:exit` are also available. Meta commands require the colon prefix; game actions such as `go`, `use` and `continue` do not. Layout selection lasts for this Console session, including across characters in `--play`; it does not advance time or alter game state. See [Console layouts](docs/design/console-layouts.md).
 
 Food and water decline with model time; exposure cools you at night, while shelter restores warmth. Use `use item.food` or `use item.water` to consume one supply without advancing time. A low-body warning pauses the world even during travel: replenish if possible, then `continue` to acknowledge it without restarting the original journey or activity. At a location, `cancel` can end gathering or waiting. Any need reaching zero ends the journey; reaching a safe exit first wins. Wood currently has no fuel use.
 
@@ -78,7 +78,18 @@ Survival decisions now use explicit context identities. A timed action ends the 
 
 Every nonempty Console submission receives an implicit ToolCallId. With `--store`, `operations.jsonl` retains received operations and paired results, including queries and rejected commands. These host records do not advance game E/S; recovery uses committed game facts to repair missing results without repeating actions. Full LLM conversations and endpoint ID mapping are outside this slice.
 
-Two independent Console playtesters reached different exits with different supply strategies; natural hypothermia and deliberate dehydration failures were also recorded. These were agent playtests, not external human user research. The classic full view remains verbose, wood has no fuel use, and travel cannot be cancelled. GameRevision is 5; older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. See [survival acceptance](docs/experiments/survival-demo-acceptance.md) for the earlier milestone's tests, transcripts and limits. Phase two's LLM companion, dialogue and gifts have not started.
+Two independent Console playtesters reached different exits with different supply strategies; natural hypothermia and deliberate dehydration failures were also recorded. These were agent playtests, not external human user research. The classic full view remains verbose, wood has no fuel use, and travel cannot be cancelled. The current revision is recorded in [PROJECT-STATE](PROJECT-STATE.md); older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. See [survival acceptance](docs/experiments/survival-demo-acceptance.md) for the earlier milestone's tests, transcripts and limits. Phase two proceeds through single-character LLM control, then two-character survival and cooperation; see [the milestone](docs/design/survival-demo-milestone.md).
+
+## Let a model play survival
+
+```powershell
+dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
+  --model gpt-6.1-sol --store artifacts/my-llm-game --max-calls 128
+```
+
+This uses Completion's Codex Responses client and standard Codex auth-file discovery; `--auth-file PATH` selects an explicit file. The same command resumes the store. Each model call receives the character's full retained Context and submits one `act` tool call; the game validates and commits it. Spectator output separates generated operations from committed results, and each host run saves a separate JSONL audit. Credentials never enter the game graph or audit.
+
+Call limits, cancellation and failed responses stop without choosing a substitute action. Custom V3 connection catalogs require both `--catalog PATH` and `--connection ID`. See [configuration and recovery](docs/implementation/survival-llm-controller.md) and [two real model journeys](docs/experiments/survival-llm-acceptance.md). This is phase 2A: a single model-controlled character. Mixed Human/LLM survival, dialogue and gifts remain in phases 2B/2C.
 
 ## Small world scenario
 

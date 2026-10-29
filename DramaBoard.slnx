@@ -5,6 +5,7 @@
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
     <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
+    <Project Path="src/ResourceCycle.Completion/ResourceCycle.Completion.csproj" />
     <Project Path="src/Spatial/Spatial.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -13,9 +14,13 @@
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj" />
+    <Project Path="tests/ResourceCycle.Completion.Tests/ResourceCycle.Completion.Tests.csproj" />
     <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
   <Project Path="../atelia-storage/src/Binary/Binary.csproj" />
+  <Project Path="../atelia-completion/src/Completion/Completion.csproj" />
+  <Project Path="../atelia-completion/src/Completion.Abstractions/Completion.Abstractions.csproj" />
+  <Project Path="../atelia-completion/src/Diagnostics/Diagnostics.csproj" />
   <Project Path="../atelia-storage/src/Data/Data.csproj" />
   <Project Path="../atelia-storage/src/FrameStore/FrameStore.csproj" />
   <Project Path="../atelia-storage/src/HeadStore/HeadStore.csproj" />
