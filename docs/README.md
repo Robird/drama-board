@@ -20,6 +20,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+The [Character context Model refactoring design](design/character-context-model.md) proposes persisted per-character decision materials shared by Human Console and future LLM controllers, separating world facts, perception, context lifecycle and diagnostic output. It is not implemented; it carries forward the [context visibility feedback workset](worksets/controller-context-visibility.md) and provides the foundation for incremental UI slice B.
+
 The [Human Console command boundary](design/console-command-boundary.md) separates game-action parsing and reusable game documents from human-only meta commands and Console prompts. A single immutable `HumanDefault` / `None` directory controls both prompts and dispatch at session construction. This does not implement an LLM adapter.
 
 The [Incremental UI milestone](design/incremental-ui-milestone.md) records the confirmed rules: preserve event/effect sequences, summarize each affected current value once, report actual effects, and reuse the events in recent history. [Slice A](design/incremental-ui-slice-a.md) implements recorded effect materials, output after commit, semantic state selection, and full/delta session modes for survival; see [acceptance evidence](experiments/incremental-ui-slice-a-acceptance.md). Next is slice B design: the retained history window, capacity, first-observed semantics and durable source identity binding. Multiplayer remains explicitly full-only.

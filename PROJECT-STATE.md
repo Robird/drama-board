@@ -26,7 +26,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)已落地，工程及独立试玩证据见[验收](docs/experiments/incremental-ui-slice-a-acceptance.md)。事件与实际效果随 E 保存，正常/恢复答复同源；生存 Console 提交后统一呈现事件、缩进效果与去重当前值，支持 `:mode full|delta`，默认 delta。下一步按[阶段目标](docs/design/incremental-ui-milestone.md)设计 B：复用同一事件材料，裁决跨回合历史窗口与容量、首次获知语义、持久来源绑定及裁剪；n 尚未定，倾向按决策回合分组。A 尚未在角色 S 中保留历史窗口，冷开全量而不重放旧屏幕。保持新回合自足，不重开动作后收尾或 `:end`；B 完成后复验历史与 Incoming 的重复程度，LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
+**当前焦点**：[角色上下文 Model 重构方案](docs/design/character-context-model.md)：用户已认可世界事实、角色感知与持久决策材料分层，Human/LLM 共用 Model；方案经三路审查收敛，并按用户裁决补入纯拒绝短期保留规则，尚未实施。按同一 Business 根内的角色交互子图、共享观察、待交付经历和 Console 带外边界分片施工；下一步先拆共享观察材料，再完成持久 Context/恢复闭环及 Console 接线，验证角色隔离和每轮自足。原[反馈工作单](docs/worksets/controller-context-visibility.md)保留问题来源，不再并行维护设计待办。
+
+[增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)已落地，工程及独立试玩证据见[验收](docs/experiments/incremental-ui-slice-a-acceptance.md)。事件与实际效果随 E 保存，正常/恢复答复同源；生存 Console 提交后统一呈现事件、缩进效果与去重当前值，支持 `:mode full|delta`，默认 delta。后续按[阶段目标](docs/design/incremental-ui-milestone.md)设计 B：复用同一事件材料，裁决跨回合历史窗口与容量、首次获知语义、持久来源绑定及裁剪；n 尚未定，倾向按决策回合分组。A 尚未在角色 S 中保留历史窗口，冷开全量而不重放旧屏幕。保持新回合自足，不重开动作后收尾或 `:end`；B 完成后复验历史与 Incoming 的重复程度，LLM 接入时再比较决策质量与上下文成本，完整工具会话恢复和全轨迹日志仍延期。
 
 生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once` 临时预览且不改偏好/基线，元命令仅接受冒号前缀；[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs) 按角色/ContextSequence 首次及新回合输出彩色分隔线、成功写出后更新基线，重定向保留全文及纯文本分隔线。`--play` 明确仅支持 full，未扩展多角色事件分发。两种布局按背景知识、上次推进及历史、当前状态、当前行动组织全量正文，元命令提示由 Console 前置；排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标提示应扩充观察投影，不在布局复制预测。二期双角色胜负、零时间对话/赠与轮转及 LLM 接入尚未启动；移动不可取消、干木燃料用途仍依体验重开。
 

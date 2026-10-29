@@ -21,6 +21,9 @@
 | 可见状态键和值（State key / visible value） | 与布局和中文名称无关的状态身份，以及数值、布尔、文字、已知不存在、不可见等有限值；自有物品用尽是 0，不等于离开观察范围。 | `CycleStateKey` / `CycleVisibleValue`，效果与当前观察共用；数值按 `Units / Scale` 表达。 |
 | 呈现交付阶段（Delivery phase） | 宿主是否正在推进或已实际进入控制器输入；不等于命令条件满足，也不是持久领域状态。 | `PlayDeliveryPhase`；只有 `ChooseCommandAsync` 入口切换到可输入，提交成功本身不产生输入机会。 |
 | 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CycleDecisionContinuity.ContextSequence`；`DecisionContextOpened` 封存 Pending 为 Incoming，见[信息继承合同](design/decision-context-handoff.md)。 |
+| 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [重构方案](design/character-context-model.md)中的拟议模型，尚未实现；当前只有有限 Continuity，没有持久 Context Item 列表。 |
+| 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，集合可按明确保留规则移除旧纯拒绝，存活身份不变；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | 拟议模型；不是现有类型，也不以 ToolCallId 充当自然事件身份。 |
+| 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | 拟议角色持久集合；当前 Pending 只有有限推进摘要，E 中的 ObservedEvents 尚未累计为该集合。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `DraftHandoff` 与 Incoming 中的历史文字分开；`handoff` 编辑，下一次放行后传递一次并清空草稿。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，未来 LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [CycleCommand、CycleActions.Check](../src/ResourceCycle/CycleActions.cs) |
