@@ -59,7 +59,8 @@ internal static class CycleObservationEquality {
         a.FoodRate.SameAs(b.FoodRate) && a.WaterRate.SameAs(b.WaterRate) && a.WarmthRate.SameAs(b.WarmthRate) &&
         a.Minimum == b.Minimum && a.Maximum == b.Maximum &&
         a.Sheltered == b.Sheltered && SameList(a.PendingWarnings, b.PendingWarnings, (x, y) => x == y) &&
-        a.FatalAt == b.FatalAt && a.WarmthWarningPending == b.WarmthWarningPending &&
+        a.FoodForecast == b.FoodForecast && a.WaterForecast == b.WaterForecast && a.WarmthForecast == b.WarmthForecast &&
+        a.WarningThreshold == b.WarningThreshold && a.WarmthWarningPending == b.WarmthWarningPending &&
         a.PendingWarningMask == b.PendingWarningMask;
 
     internal static bool SameList<T>(IReadOnlyList<T> a, IReadOnlyList<T> b, Func<T, T, bool> same) {

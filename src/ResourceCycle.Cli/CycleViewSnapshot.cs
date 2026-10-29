@@ -41,6 +41,7 @@ internal sealed class CycleViewSnapshot {
         if (_values.TryGetValue(key, out var value)) { return value; }
         return key.Category switch {
             "inventory" when key.Field == "count" => CycleVisibleValue.Numeric(Observation.Actor.Backpack.Count(key.ObjectId), "份"),
+            "command" when key.Field == "warning" && _values.ContainsKey(new("command", key.ObjectId, "rejection")) => CycleVisibleValue.KnownAbsent,
             "resource" or "passage" or "other" or "command" => CycleVisibleValue.Unobserved,
             _ => CycleVisibleValue.KnownAbsent
         };
@@ -85,7 +86,7 @@ internal sealed class CycleViewSnapshot {
             Add("inventory", item.Key, "count", CycleVisibleValue.Numeric(item.Value, "份"), $"{o.ItemNames.GetValueOrDefault(item.Key, item.Key)}库存");
         }
         if (o.Survival is { } s) {
-            foreach (var attribute in CycleAttributeView.FromSurvival(s)) {
+            foreach (var attribute in CycleAttributeView.FromSurvival(s, o.Outcome == CycleExpeditionOutcome.Exploring)) {
                 _rateExplanations.Add(new("body", actor, attribute.Field + "-rate"), attribute);
             }
             Add("body", actor, "food", Number(s.Food));
@@ -98,7 +99,6 @@ internal sealed class CycleViewSnapshot {
             Add("body", actor, "warning-food", CycleVisibleValue.Flag((s.PendingWarningMask & 1) != 0));
             Add("body", actor, "warning-water", CycleVisibleValue.Flag((s.PendingWarningMask & 2) != 0));
             Add("body", actor, "warning-warmth", CycleVisibleValue.Flag((s.PendingWarningMask & 4) != 0));
-            Add("body", actor, "fatal-at", At(s.FatalAt));
             Add("body", actor, "warnings", s.PendingWarnings.Count == 0 ? CycleVisibleValue.KnownAbsent : Text(string.Join("；", s.PendingWarnings)), "待确认历史警告");
         }
         var activity = o.Actor.Activity;
@@ -141,7 +141,9 @@ internal sealed class CycleViewSnapshot {
         foreach (var c in o.Commands) {
             string id = CommandId(c.Command);
             Add("command", id, "rejection", Text(c.Rejection), CommandSyntax(c.Command) + "条件");
-            Add("command", id, "warning", Text(c.Warning), CommandSyntax(c.Command) + "风险");
+            if (c.Warning is not null) {
+                Add("command", id, "warning", Text(c.Warning), CommandSyntax(c.Command) + "额外提示");
+            }
         }
         foreach (var other in o.OtherCharacters) {
             Add("other", other.Id, "name", Text(other.Name));
@@ -183,9 +185,9 @@ internal sealed class CycleViewSnapshot {
     private static string FieldLabel(string field) => field switch {
         "food" => "食物", "water" => "饮水", "warmth" => "温暖", "food-rate" => "食物变化速率", "water-rate" => "饮水变化速率", "warmth-rate" => "温暖变化速率",
         "sheltered" => "有庇护", "warning-food" => "食物历史警告待确认", "warning-water" => "饮水历史警告待确认", "warning-warmth" => "温暖历史警告待确认",
-        "fatal-at" => "预计最早耗尽", "kind" => "活动", "due" => "活动期限", "completed" => "已采集", "target" => "采集目标", "resource" => "采集资源",
+        "kind" => "活动", "due" => "活动期限", "completed" => "已采集", "target" => "采集目标", "resource" => "采集资源",
         "started" => "当前周期开始", "selected-all" => "固定 all 目标", "draft" => "下回合留言草稿", "time" => "时间", "light" => "白天", "next-light" => "下次昼夜切换",
-        "outcome" => "旅程状态", "ending" => "结局原因", "place" => "位置标识", "arrival" => "预计抵达", "count" => "待确认通知", "stock" => "余量", "warning" => "风险", "rejection" => "条件",
+        "outcome" => "旅程状态", "ending" => "结局原因", "place" => "位置标识", "arrival" => "预计抵达", "count" => "待确认通知", "stock" => "余量", "warning" => "额外提示", "rejection" => "条件",
         "description" => "线索", "destination" => "已知目的地", "duration" => "耗时", _ => field
     };
     private static string NoticeFieldLabel(string field) => field switch {

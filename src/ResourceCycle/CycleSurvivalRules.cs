@@ -4,9 +4,9 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-/// <summary>Current needs and earliest depletion including known day/night changes, assuming current shelter,
-/// no supplies, and no random weather. A null FatalAt means no depletion within representable time.</summary>
-[DurableType("DramaBoard.ResourceCycle.SurvivalObservation", 2)]
+/// <summary>Frozen current needs and independent attribute forecasts: unchanged shelter, no supplies,
+/// known day/night changes, and no random weather. Other attributes do not truncate an estimate.</summary>
+[DurableType("DramaBoard.ResourceCycle.SurvivalObservation", 3)]
 public sealed partial record CycleSurvivalObservation(
     [field: DurableField(1)] decimal Food,
     [field: DurableField(2)] decimal Water,
@@ -16,19 +16,41 @@ public sealed partial record CycleSurvivalObservation(
     [field: DurableField(6)] RateBreakdown WarmthRate,
     [field: DurableField(7)] bool Sheltered,
     IReadOnlyList<string> PendingWarnings,
-    [field: DurableField(9)] ModelTime? FatalAt,
+    [field: DurableField(14)] CycleAttributeForecast FoodForecast,
+    [field: DurableField(15)] CycleAttributeForecast WaterForecast,
+    [field: DurableField(16)] CycleAttributeForecast WarmthForecast,
     [field: DurableField(10)] bool WarmthWarningPending = false,
     [field: DurableField(11)] int PendingWarningMask = 0,
     [field: DurableField(12)] decimal Minimum = CycleSurvival.MinimumValue,
-    [field: DurableField(13)] decimal Maximum = CycleSurvival.MaximumValue) : IDurableObject {
+    [field: DurableField(13)] decimal Maximum = CycleSurvival.MaximumValue,
+    [field: DurableField(17)] decimal WarningThreshold = (decimal)CycleSurvival.WarningUnits / CycleSurvival.Scale) : IDurableObject {
     public int FoodPerHour => FoodRate.Total;
     public int WaterPerHour => WaterRate.Total;
     public int WarmthPerHour => WarmthRate.Total;
-    public void Validate() {
+    public ModelTime? FatalAt => new[] { FoodForecast.DepletionAt, WaterForecast.DepletionAt, WarmthForecast.DepletionAt }
+        .Where(time => time is not null).Min();
+    public void Validate(ModelTime? observedAt = null) {
         RateBreakdown.ValidateSources(FoodRate, WaterRate, WarmthRate);
-        if (Minimum >= Maximum || Food < Minimum || Food > Maximum || Water < Minimum || Water > Maximum ||
+        ArgumentNullException.ThrowIfNull(FoodForecast);
+        ArgumentNullException.ThrowIfNull(WaterForecast);
+        ArgumentNullException.ThrowIfNull(WarmthForecast);
+        FoodForecast.Validate(observedAt);
+        WaterForecast.Validate(observedAt);
+        WarmthForecast.Validate(observedAt);
+        if (observedAt is { } at) {
+            ValidateCurrentThresholds(Food, FoodForecast, at);
+            ValidateCurrentThresholds(Water, WaterForecast, at);
+            ValidateCurrentThresholds(Warmth, WarmthForecast, at);
+        }
+        if (Minimum >= Maximum || WarningThreshold <= Minimum || WarningThreshold >= Maximum || Food < Minimum || Food > Maximum || Water < Minimum || Water > Maximum ||
             Warmth < Minimum || Warmth > Maximum) {
             throw new InvalidOperationException("Invalid observed attribute range or value.");
+        }
+    }
+    private void ValidateCurrentThresholds(decimal value, CycleAttributeForecast forecast, ModelTime at) {
+        if ((value <= WarningThreshold ? forecast.WarningAt != at : forecast.WarningAt is { } warning && warning <= at) ||
+            (value <= Minimum ? forecast.DepletionAt != at : forecast.DepletionAt is { } depletion && depletion <= at)) {
+            throw new InvalidOperationException("A forecast must distinguish an already reached threshold from a future crossing.");
         }
     }
     [DurableField(8)] private List<string> _pendingWarnings = new(PendingWarnings);
@@ -53,71 +75,56 @@ public static class CycleSurvivalRules {
         bool sheltered = IsSheltered(world.Expedition?.Spatial, actorId);
         return new((decimal)body.FoodUnits / CycleSurvival.Scale, (decimal)body.WaterUnits / CycleSurvival.Scale,
             (decimal)body.WarmthUnits / CycleSurvival.Scale, body.FoodRate, body.WaterRate, body.WarmthRate,
-            sheltered, warnings.AsReadOnly(), Forecast(body, world.Time, new(long.MaxValue), sheltered).FatalAt, (body.PendingMask & 4) != 0, body.PendingMask,
-            CycleSurvival.MinimumValue, CycleSurvival.MaximumValue);
+            sheltered, warnings.AsReadOnly(),
+            ForecastConstant(body.FoodUnits, body.FoodPerHour, world.Time),
+            ForecastConstant(body.WaterUnits, body.WaterPerHour, world.Time),
+            ForecastWarmth(body.WarmthUnits, world.Time, sheltered),
+            (body.PendingMask & 4) != 0, body.PendingMask, CycleSurvival.MinimumValue, CycleSurvival.MaximumValue);
     }
 
-    /// <summary>Known deterministic risk over a proposed activity, including scheduled day/night boundaries.</summary>
+    /// <summary>Only a visible action's change to the shared forecast assumptions; never a duplicate body forecast.</summary>
     /// <remarks>Call only after CycleActions.Check accepts the command; this is not an identity discovery query.</remarks>
     public static string? ActionWarning(CycleWorld world, string actorId, CycleCommand command) {
         CycleSurvival? anchor = world.GetCharacter(actorId).Survival;
-        if (anchor is null) { return null; }
-        long duration;
-        switch (command.Kind) {
-            case CycleCommandKind.Wait: duration = command.Hours * CycleTime.Hour; break;
-            case CycleCommandKind.Go:
-                string? place = CycleActions.CurrentPlace(world, actorId);
-                if (place is null) { return null; }
-                duration = CycleExpeditionMap.GetPassages(place).Single(p => p.Id == command.PassageId).DurationTicks;
-                break;
-            case CycleCommandKind.Gather:
-                CycleResource resource = world.GetResource(command.ResourceId!);
-                long count = command.All ? resource.Stock : command.Count;
-                duration = (long)Int128.Min(long.MaxValue - world.Time.Ticks,
-                    (Int128)CycleActions.HarvestDuration(resource, world.GetCharacter(actorId)) * count);
-                break;
-            default: return null;
+        if (anchor is null || command.Kind != CycleCommandKind.Go || !IsSheltered(world.Expedition?.Spatial, actorId)) {
+            return null;
         }
-        ModelTime end = new(checked(world.Time.Ticks + duration));
-        bool sheltered = command.Kind != CycleCommandKind.Go && IsSheltered(world.Expedition?.Spatial, actorId);
-        CycleEnvironment? weather = world.Expedition?.Environment;
-        string weatherRisk = weather?.NextDue is { } weatherAt && weatherAt <= end
-            ? sheltered ? $" 期间有天气窗口（下一次 {weatherAt}）；留在庇护中可免除寒风损失。"
-                : $" 期间有天气窗口（下一次 {weatherAt}）；每次可能额外损失 {CycleEnvironmentRules.ExposureLoss} 点温暖。"
-            : "";
-        string basis = weather is null ? "按已知昼夜与当前补给" : "不计随机寒风，按已知昼夜与当前补给";
-        var forecast = Forecast(anchor, world.Time, end, sheltered);
-        string response = command.Kind == CycleCommandKind.Go
-            ? "警告时可补充食物/饮水，但不能中止本段移动；补给不恢复温暖。"
-            : "警告时可补充食物/饮水或取消活动；温暖需靠庇护或白天恢复。";
-        if (forecast.FatalAt is { } fatal) {
-            return $"危险：{basis}，身体将在 {fatal} 耗尽。{response}{weatherRisk}";
+        string? place = CycleActions.CurrentPlace(world, actorId);
+        if (place is null) { return null; }
+        CyclePassageDefinition passage = CycleExpeditionMap.GetPassages(place).Single(p => p.Id == command.PassageId);
+        ModelTime end = new(checked(world.Time.Ticks + passage.DurationTicks));
+        CycleSurvival body = anchor.Project(world.Time);
+        CycleAttributeForecast exposed = ForecastWarmth(body.WarmthUnits, world.Time, sheltered: false);
+        string result = "途中失去庇护，温暖按昼夜野外速率变化；本段移动不能取消。";
+        if (world.Expedition?.Environment is not null) { result += " 寒风可造成额外温暖损失。"; }
+        if (exposed.WarningAt is { } warning && warning <= end) {
+            result += body.WarmthUnits <= CycleSurvival.WarningUnits ? " 温暖已处于警戒区。" : $" 温暖预计降至 {CycleSurvival.WarningUnits / CycleSurvival.Scale}：{warning}。";
         }
-        return forecast.WarningAt is { } at ? $"注意：{basis}，预计 {at} 触发身体警告。{response}{weatherRisk}"
-            : weatherRisk.Length > 0 ? weatherRisk.TrimStart() : null;
+        if (exposed.DepletionAt is { } depletion && depletion <= end) { result += $" 温暖预计耗尽至 0：{depletion}。"; }
+        return result;
     }
 
-    /// <summary>Read-only estimate assuming unchanged shelter, no supplies, and no random weather.</summary>
-    private static (ModelTime? FatalAt, ModelTime? WarningAt) Forecast(CycleSurvival body, ModelTime start, ModelTime end, bool sheltered) {
+    internal static CycleAttributeForecast ForecastConstant(long value, int rate, ModelTime at) =>
+        new(Due(value, rate, CycleSurvival.WarningUnits, at), Due(value, rate, 0, at));
+
+    /// <summary>Independent warmth estimate, unaffected by food or water depletion and warning acknowledgement.</summary>
+    internal static CycleAttributeForecast ForecastWarmth(long value, ModelTime start, bool sheltered) {
+        if (sheltered) { return ForecastConstant(value, WarmthRate(true, CycleTime.IsDay(start)).Total, start); }
         ModelTime cursor = start;
         ModelTime? firstWarning = null;
-        // Shelter needs one segment. Outdoors, at most a residual night, a day, and a full night:
-        // even maximum warmth (100) cannot survive the full 12-hour night at -12 per hour.
+        // At most a residual night, a day, and a full night. Maximum warmth cannot survive
+        // a full exposed night. Clip calendar arithmetic before converting back to ModelTime.
         for (int segment = 0; segment < 3; segment++) {
-            body = body.WithRates(cursor, body.FoodRate, body.WaterRate, WarmthRate(sheltered, CycleTime.IsDay(cursor)));
-            ModelTime next = end;
-            if (!sheltered) {
-                // Ask the same calendar using a day-relative instant, then clip before converting back to long.
-                long phase = cursor.Ticks % CycleTime.Day;
-                Int128 nextLight = (Int128)(cursor.Ticks - phase) + CycleTime.NextLightChange(new(phase)).Ticks;
-                next = new((long)Int128.Min(end.Ticks, nextLight));
+            int rate = WarmthRate(false, CycleTime.IsDay(cursor)).Total;
+            long phase = cursor.Ticks % CycleTime.Day;
+            Int128 nextLight = (Int128)(cursor.Ticks - phase) + CycleTime.NextLightChange(new(phase)).Ticks;
+            ModelTime next = new((long)Int128.Min(long.MaxValue, nextLight));
+            if (firstWarning is null && Due(value, rate, CycleSurvival.WarningUnits, cursor) is { } warning && warning <= next) {
+                firstWarning = warning;
             }
-            if (firstWarning is null && NextThreshold(body, cursor) is { Fatal: false } warning && warning.Due <= next) {
-                firstWarning = warning.Due;
-            }
-            if (FatalTime(body, cursor) is { } fatal && fatal <= next) { return (fatal, firstWarning); }
-            if (next == end) { return (null, firstWarning); }
-            body = body.Project(next);
+            if (Due(value, rate, 0, cursor) is { } depletion && depletion <= next) { return new(firstWarning, depletion); }
+            if (next.Ticks == long.MaxValue) { return new(firstWarning, null); }
+            value = (long)Int128.Clamp((Int128)value + (Int128)rate * (next.Ticks - cursor.Ticks), 0, CycleSurvival.MaximumUnits);
             cursor = next;
         }
         throw new InvalidOperationException("The survival forecast must exhaust warmth within a full exposed night.");
@@ -191,9 +198,6 @@ public static class CycleSurvivalRules {
     private static RateBreakdown ShelteredWarmth { get; } = new([new("shelter-recovery", "庇护内回暖", 12)]);
     private static RateBreakdown DayWarmth { get; } = new([new("day-outdoors", "白天野外回暖", 6)]);
     private static RateBreakdown NightWarmth { get; } = new([new("night-outdoors", "夜间野外散热", -12)]);
-    private static ModelTime? FatalTime(CycleSurvival body, ModelTime at) => new[] {
-        Due(body.FoodUnits, body.FoodPerHour, 0, at), Due(body.WaterUnits, body.WaterPerHour, 0, at), Due(body.WarmthUnits, body.WarmthPerHour, 0, at)
-    }.Where(due => due is not null).Min();
     private static ModelTime? Due(long value, int rate, long target, ModelTime at) {
         if (value <= target) { return at; }
         if (rate >= 0) { return null; }

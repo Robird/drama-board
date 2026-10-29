@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：继续通过 HumanConsole 试玩打磨共享角色材料，稳定后进入 LlmCharacterController 设计。[属性速率解释](docs/design/attribute-rate-explanations.md)已通过[工程与独立试玩验收](docs/experiments/attribute-rate-explanations-acceptance.md)：实际贡献与派生总值贯穿物理锚点、冻结观察、Context 交付和两种布局；同总值换原因可见，限幅提示按属性更新。现有玩法数值不变；按来源分组是同材料的投影，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
+**当前焦点**：继续通过 HumanConsole 试玩打磨共享角色材料，稳定后进入 LlmCharacterController 设计。[属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局：当前值、实际速率来源、警戒／耗尽时刻集中在属性附近，行动仅补充离开庇护等条件变化；见[最新验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)。现有玩法数值不变；Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
 [角色上下文 Model](docs/design/character-context-model.md)已通过[验收](docs/experiments/character-context-model-acceptance.md)。角色信息真相为冻结 Opening＋保留的有序 Items，Console 游标仅优化绘制；纯输出独立于终端实录。后续在扩展历史保留窗口或接入 LLM 时，分别裁决容量与同刻 1024 转换护栏、工具协议与外部调用恢复，不以呈现重构宣称这些已完成。
 
@@ -44,7 +44,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；未来 LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 10（Business Schema 4、Character 5、Fact 9、PendingAdvance 2；Survival / SurvivalObservation 2 保存速率贡献），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受修订 11（Business Schema 4、Character 5、Fact 9、PendingAdvance 2；Survival 2 保存速率贡献，SurvivalObservation 3／AttributeForecast 1 保存逐属性预测），旧开发存档不兼容；跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、ResourceCycle 库/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

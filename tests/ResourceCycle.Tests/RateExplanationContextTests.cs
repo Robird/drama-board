@@ -112,6 +112,53 @@ public sealed class RateExplanationContextTests {
         CharacterContextLifecycleTests.AssertFrozenVisibleGraph(body);
     }
 
+    [Theory]
+    [InlineData("past")]
+    [InlineData("order")]
+    [InlineData("current-value")]
+    public void Cold_open_rejects_malformed_historical_forecasts_even_when_latest_material_is_valid(string corruption) {
+        CycleWorld opened = OpenWorld();
+        CycleAttributeForecast historical = Context(opened).Opening.Observation.Survival!.FoodForecast;
+        CycleWorld world = CycleEngine.Fold(opened, new(opened.Time, 0),
+            ChangeRate(opened, new([new("fixture.updated", "新来源", 6)])));
+        CycleAttributeForecast latest = Context(world).LatestObservation.Survival!.FoodForecast;
+        Assert.NotSame(historical, latest);
+        latest.Validate(world.Time);
+        var root = new CycleDurableRoot(world.Business, InitialCursor(world));
+        var invalidWarning = corruption switch {
+            "past" => Hour(7),
+            "order" => Hour(15),
+            "current-value" => world.Time,
+            _ => throw new ArgumentOutOfRangeException(nameof(corruption))
+        };
+        typeof(CycleAttributeForecast).GetField("<WarningAt>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(historical, invalidWarning);
+        using var store = new TemporaryStore();
+        var models = new StateModelRegistry();
+        CycleDurableModels.Register(models);
+        using (var repository = Repository.CreateNew(store.StorePath, models)) {
+            repository.CreateRootBranchFromState("malformed-forecast", root);
+        }
+        Assert.Throws<InvalidOperationException>(() => CycleDurableHistory.Open(store.StorePath));
+    }
+
+    [Fact]
+    public void Observation_equality_includes_each_forecast_even_when_values_rates_and_earliest_depletion_are_equal() {
+        CycleObservation before = Context(OpenWorld()).Opening.Observation;
+        CycleSurvivalObservation body = before.Survival!;
+        CycleSurvivalObservation[] alternatives = [
+            body with { FoodForecast = body.FoodForecast with { WarningAt = Hour(10) } },
+            body with { WaterForecast = body.WaterForecast with { WarningAt = Hour(11) } },
+            body with { WarmthForecast = body.WarmthForecast with { WarningAt = Hour(23) } },
+            body with { WarmthForecast = body.WarmthForecast with { DepletionAt = Hour(25) } },
+            body with { WarningThreshold = 24 }
+        ];
+        foreach (CycleSurvivalObservation alternative in alternatives) {
+            Assert.Equal(body.FatalAt, alternative.FatalAt);
+            Assert.False(CycleObservationEquality.Same(before, CopyObservation(before, alternative)));
+        }
+    }
+
     private static CycleWorld OpenWorld(RateBreakdown? warmth = null) {
         CycleWorld world = CycleGameFactory.CreateSurvival(Hour(8), enableWeather: false).World;
         if (warmth is not null) {

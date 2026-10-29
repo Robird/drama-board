@@ -38,12 +38,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             foreach (var attribute in CycleAttributeView.FromSurvival(survival).OrderBy(attribute => attribute.Field != "warmth")) {
                 text.AppendLine($"- {attribute.Label} {attribute.Description}。");
             }
-            text.AppendLine(survival.FatalAt is { } fatal
-                ? $"- 不补给且保持当前庇护状态，预计最早耗尽：{Time(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - observation.Time.Ticks))} 分钟）。"
-                : "- 不补给且保持当前庇护状态，可表示的时间内没有预计耗尽时刻。");
-            text.AppendLine("  估计计入昼夜，不预知抵达后的环境。" + (survival.Sheltered
-                ? "留在庇护内免受寒风损失；离开后需重新评估。"
-                : observation.Weather is not null ? "未计随机寒风，危险可能提前。" : ""));
+            text.AppendLine(CycleAttributeView.ForecastAssumptions);
         }
         PlayView.RenderWarmthAdvice(text, observation);
         if (observation.Weather is { } weather) {
@@ -69,7 +64,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
             text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");
         }
-        text.AppendLine("各行动旁显示当前可执行性与已知风险；未来随机天气无法预知，没有提示不等于安全。");
+        text.AppendLine("各行动旁显示当前可执行性；改变属性预测条件的行动另有提示。");
         if (observation.Passages.Count > 0) {
             text.AppendLine();
             text.AppendLine("### 去哪里");
@@ -80,7 +75,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
                         (passage.KnownDestinationName is { } known ? $"曾到访目的地：{known}" : "目的地未探索，线索不保证安全"), includeWarning: false);
                 }
                 if (group.Key is { } warning) {
-                    text.AppendLine($"  {string.Join(" / ", group.Select(passage => passage.Id))} 风险提示（不禁止）：{warning}");
+                    text.AppendLine($"  {string.Join(" / ", group.Select(passage => passage.Id))} 行动提示（不禁止）：{warning}");
                 }
             }
             text.AppendLine("移动途中不能取消；食物和饮水可在请求输入时补充。");
@@ -99,7 +94,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         if (observation.ArrivalDue is null) {
             text.AppendLine();
             AppendCommand(text, observation, "wait 1", CycleCommand.Wait(1), "在原地停留 1 小时；完成或危险警告时请求输入");
-            text.AppendLine("等待可选 1–24 整数小时；各时长当前条件与风险：");
+            text.AppendLine("等待可选 1–24 整数小时；当前条件：");
         }
         text.Append(CycleUpdateRenderer.RenderCommandStates(CycleViewSnapshot.Create(observation).Values
             .Where(pair => pair.Key.Category == "command" &&
@@ -178,7 +173,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             ? $"仍在途中，原计划 {Time(arrival)} 抵达，行程未完成。" : $"位置：{observation.PlaceName}。{observation.PlaceDescription}"));
         if (observation.Survival is { } survival) {
             text.AppendLine($"{Exposure(survival)}；以下为结束时冻结的余量与速率解释，不再继续变化。");
-            foreach (var attribute in CycleAttributeView.FromSurvival(survival)) {
+            foreach (var attribute in CycleAttributeView.FromSurvival(survival, forecastEnabled: false)) {
                 text.AppendLine($"- {attribute.Label} {attribute.Description}。");
             }
         }
@@ -199,7 +194,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         bool includeWarning = true) {
         string? reason = observation.CheckDisplayed(command);
         text.AppendLine($"- `{syntax}`：{description.TrimEnd('。', '；')}；{(reason is null ? "可执行。" : $"受阻：{reason}")}");
-        if (includeWarning && observation.WarningDisplayed(command) is { } warning) { text.AppendLine($"  风险提示（不禁止）：{warning}"); }
+        if (includeWarning && observation.WarningDisplayed(command) is { } warning) { text.AppendLine($"  行动提示（不禁止）：{warning}"); }
     }
 
     private static string Exposure(CycleSurvivalObservation survival) => survival.Sheltered ? "有庇护" : "暴露在野外（无庇护）";

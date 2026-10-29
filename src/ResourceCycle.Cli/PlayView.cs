@@ -40,7 +40,7 @@ internal static class PlayView {
         text.AppendLine(ended ? $"结束时为{(observation.IsDay ? "白天" : "夜晚")}。" :
             $"{(observation.IsDay ? "白天" : "夜晚")}；下次{(observation.IsDay ? "天黑" : "天亮")}：{FormatTime(observation.NextLightChange)}。");
         text.AppendLine();
-        if (observation.Survival is { } survival) { RenderSurvival(text, observation.Time, survival, ended, observation.Weather is not null); }
+        if (observation.Survival is { } survival) { RenderSurvival(text, survival, ended); }
         if (!ended) { RenderWarmthAdvice(text, observation); }
         if (!ended && observation.Weather is { } weather) { RenderCurrentWeather(text, weather); }
         if (observation.IsExpedition) {
@@ -193,9 +193,7 @@ internal static class PlayView {
         text.AppendLine("## 可用命令");
         text.AppendLine();
         text.AppendLine("行动命令与标识区分大小写，需提供完整命令和标识。");
-        if (observation.Weather is not null) {
-            text.AppendLine("行动风险提示仅计算已知趋势与昼夜变化，未包含未来随机天气；没有提示不代表没有天气风险。");
-        }
+        if (observation.Survival is not null) { text.AppendLine("属性预测见身体状态；改变预测条件的行动另有提示。"); }
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
             text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
         }
@@ -235,7 +233,7 @@ internal static class PlayView {
         }
         foreach (var group in allowed.Select(hour => (Hour: hour, Warning: observation.WarningDisplayed(CycleCommand.Wait(hour))))
             .Where(entry => entry.Warning is not null).GroupBy(entry => entry.Warning)) {
-            text.AppendLine($"  - 小时数 {string.Join(", ", group.Select(entry => entry.Hour))} 风险提示（不禁止）：{group.Key}");
+            text.AppendLine($"  - 小时数 {string.Join(", ", group.Select(entry => entry.Hour))} 行动提示（不禁止）：{group.Key}");
         }
         return text.ToString();
     }
@@ -245,38 +243,35 @@ internal static class PlayView {
         description = description.TrimEnd().TrimEnd('。', '；');
         text.AppendLine($"- `{syntax}`：{description}；{(reason is null ? "可执行。" : $"受阻：{reason}")}");
         if (observation.WarningDisplayed(command) is { } warning) {
-            text.AppendLine($"  - 风险提示（不禁止）：{warning}");
+            text.AppendLine($"  - 行动提示（不禁止）：{warning}");
         }
     }
 
-    private static void RenderSurvival(StringBuilder text, ModelTime time, CycleSurvivalObservation survival, bool ended, bool hasWeather) {
+    private static void RenderSurvival(StringBuilder text, CycleSurvivalObservation survival, bool ended) {
         text.AppendLine("## 身体状态");
         if (ended) {
             text.AppendLine(survival.Sheltered ? "结束时处于庇护中。" : "结束时暴露在野外。");
             text.AppendLine();
             text.AppendLine("| 指标 | 结束时余量 | 范围 | 结束时速率（冻结，不再推进） |");
             text.AppendLine("| --- | --- | --- | --- |");
-            RenderAttributeRows(text, survival);
+            RenderAttributeRows(text, survival, forecastEnabled: false);
             text.AppendLine();
             return;
         }
         text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
-        text.AppendLine("致命时刻估计假设保持当前暴露或庇护状态、不补给，计入已知昼夜变化；未包含未来随机天气，也不预知抵达后的环境。");
-        if (hasWeather) { text.AppendLine("寒风可能让危险比估计更早发生。"); }
+        text.AppendLine(CycleAttributeView.ForecastAssumptions);
         text.AppendLine();
-        text.AppendLine("| 指标 | 当前余量 | 范围 | 当前趋势（点 / 小时）与构成 |");
-        text.AppendLine("| --- | --- | --- | --- |");
+        text.AppendLine("| 指标 | 当前余量 | 范围 | 当前趋势（点 / 小时）与构成 | 阈值与耗尽预测 |");
+        text.AppendLine("| --- | --- | --- | --- | --- |");
         RenderAttributeRows(text, survival);
-        text.AppendLine(survival.FatalAt is { } fatal
-            ? $"- 在上述条件下，预计最早致命时刻：{FormatTime(fatal)}（约剩 {Minutes(Math.Max(0, fatal.Ticks - time.Ticks))} 分钟）。暴露或庇护状态改变后需重新评估。"
-            : "- 在上述条件下，可表示的时间内没有预计致命时刻；暴露或庇护状态改变后需重新评估。");
         text.AppendLine();
     }
 
-    private static void RenderAttributeRows(StringBuilder text, CycleSurvivalObservation survival) {
-        foreach (var attribute in CycleAttributeView.FromSurvival(survival)) {
+    private static void RenderAttributeRows(StringBuilder text, CycleSurvivalObservation survival, bool forecastEnabled = true) {
+        foreach (var attribute in CycleAttributeView.FromSurvival(survival, forecastEnabled)) {
             text.AppendLine($"| {attribute.Label} | {Number(attribute.Value)} | {attribute.Range} | {attribute.RateDescription}" +
-                (attribute.Limit.Length == 0 ? "" : $"；{attribute.Limit}") + " |");
+                (attribute.Limit.Length == 0 ? "" : $"；{attribute.Limit}") + " |" +
+                (forecastEnabled ? $" {attribute.ForecastDescription} |" : ""));
         }
     }
 

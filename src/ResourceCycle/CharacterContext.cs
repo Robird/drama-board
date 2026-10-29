@@ -162,7 +162,7 @@ public sealed partial class CharacterContextOpening : IDurableObject {
             DeliveredAt.Ticks < 0 || DeliveredAt > worldTime || Observation.Time != DeliveredAt || !Enum.IsDefined(ActivityState)) {
             throw new InvalidOperationException("Invalid context opening actor, time or activity state.");
         }
-        Observation.Survival?.Validate();
+        Observation.Survival?.Validate(Observation.Time);
         PreviousAdvance?.Validate(actorId, DeliveredAt);
         CharacterExperience.ValidateSequence(Experiences, actorId, DeliveredAt, ref lastExperience);
     }
@@ -257,7 +257,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
             observation.Time.Ticks < 0 || observation.Time > worldTime)) {
             throw new InvalidOperationException("Invalid context item observation actor or time.");
         }
-        Observation?.Survival?.Validate();
+        Observation?.Survival?.Validate(Observation.Time);
         CharacterExperience.ValidateSequence(Experiences, actorId, Observation?.Time ?? worldTime, ref lastExperience);
     }
 }

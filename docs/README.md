@@ -20,6 +20,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+The [Attribute threshold forecast design](design/attribute-threshold-forecasts.md) is implemented: each attribute carries frozen threshold/depletion times, while action hints only describe changed assumptions such as leaving shelter. Both layouts and delta rendering share these materials; see [engineering and four-session playtest acceptance](experiments/attribute-threshold-forecasts-acceptance.md).
+
 The [Attribute rate explanation design](design/attribute-rate-explanations.md) is implemented with evaluated contributions and one derived total, shared by physical rates, frozen character observations and all layouts; see [engineering and independent playtest acceptance](experiments/attribute-rate-explanations-acceptance.md). Attribute-local explanations and source-grouped displays are projections of the same material, without a general Buff lifecycle framework.
 
 The [Character context Model](design/character-context-model.md) persists per-character Opening and ordered Items, separating world facts, perception, context lifecycle and diagnostic output. Human Console and pure rendering now consume the same retained materials; see [implementation and playtest acceptance](experiments/character-context-model-acceptance.md). The original [context visibility feedback workset](archive/legacy/controller-context-visibility.md) is archived. LLM adapters and the longer retention window of incremental UI slice B remain deferred.

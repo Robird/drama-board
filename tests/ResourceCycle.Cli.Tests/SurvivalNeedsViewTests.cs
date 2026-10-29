@@ -7,7 +7,7 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class SurvivalNeedsViewTests {
     [Fact]
-    public void Default_survival_shows_current_needs_supplies_and_nonblocking_action_risks() {
+    public void Default_survival_shows_attribute_forecasts_without_repeating_them_on_actions() {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         CycleDecisionContext context = ViewContextFixture.Create(world, "a");
         string before = world.DescribeState();
@@ -19,16 +19,19 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("| 温暖 |", text);
         Assert.Contains("当前趋势", text);
         Assert.Contains("当前暴露在野外", text);
-        Assert.Contains("预计最早致命时刻", text);
-        Assert.Contains("保持当前暴露或庇护状态、不补给，计入已知昼夜变化", text);
+        Assert.Contains("预计降至警戒线 25", text);
+        Assert.Contains("预计耗尽至 0", text);
+        Assert.Contains("不补给、保持当前庇护状态，计入已知昼夜变化", text);
+        Assert.Contains("各项独立推算，不代表能存活至所有预测时刻", text);
         Assert.Contains("也不预知抵达后的环境", text);
         Assert.DoesNotContain("维持当前趋势", text);
         Assert.DoesNotContain("干木", text);
         Assert.Contains("use item.water", text);
         Assert.Contains(CycleSurvivalRules.UseDescription("item.water")!.TrimEnd('。'), text);
-        Assert.Contains("风险提示（不禁止）", text);
+        Assert.DoesNotContain("风险提示（不禁止）", text);
+        Assert.DoesNotContain("预计最早致命时刻", text);
         Assert.Null(context.Check(CycleCommand.Wait(24)));
-        Assert.NotNull(context.Warning(CycleCommand.Wait(24)));
+        Assert.Null(context.Warning(CycleCommand.Wait(24)));
         Assert.Null(context.Warning(CycleCommand.Go("trail-6")));
         Assert.Null(context.Warning(CycleCommand.Gather("water")));
         Assert.NotNull(context.Check(CycleCommandParser.Parse("use missing")!));

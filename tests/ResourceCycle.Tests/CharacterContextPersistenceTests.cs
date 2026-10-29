@@ -25,6 +25,9 @@ public sealed class CharacterContextPersistenceTests {
             await Advance(interrupted);
             savedOpening = history.State.Business.InteractionStates["a"].CurrentContext!;
             Assert.True(warmth.SameAs(savedOpening.Opening.Observation.Survival!.WarmthRate));
+            Assert.Equal(new CycleAttributeForecast(Hour(9), Hour(14)), savedOpening.Opening.Observation.Survival.FoodForecast);
+            Assert.Equal(new CycleAttributeForecast(new(Hour(8).Ticks + 5 * CycleTime.Hour / 2), new(Hour(8).Ticks + 45 * CycleTime.Hour / 8)),
+                savedOpening.Opening.Observation.Survival.WaterForecast);
             await Assert.ThrowsAsync<InvalidOperationException>(() => Advance(interrupted));
             recorded = Assert.Single(history.PendingEvent!.Facts);
             Assert.True(food.SameAs(Assert.Single(recorded.ChangedCharacters).Survival!.FoodRate));
@@ -46,6 +49,12 @@ public sealed class CharacterContextPersistenceTests {
             Assert.True(food.SameAs(recoveredState.CurrentContext.LatestObservation.Survival!.FoodRate));
             Assert.True(CycleSurvivalRules.WarmthRate(false, true).SameAs(recoveredState.CurrentContext.LatestObservation.Survival.WarmthRate));
             Assert.False(warmth.SameAs(recoveredState.CurrentContext.LatestObservation.Survival.WarmthRate));
+            CycleSurvivalObservation openingBody = recoveredState.CurrentContext.Opening.Observation.Survival!;
+            CycleSurvivalObservation latestBody = recoveredState.CurrentContext.LatestObservation.Survival!;
+            Assert.Equal(savedOpening.Opening.Observation.Survival!.WaterForecast, openingBody.WaterForecast);
+            Assert.NotEqual(openingBody.WaterForecast, latestBody.WaterForecast);
+            Assert.Equal(openingBody.FoodForecast, latestBody.FoodForecast);
+            Assert.Equal(openingBody.WarmthForecast, latestBody.WarmthForecast);
         }
 
         using var final = CycleDurableHistory.Open(store.StorePath);

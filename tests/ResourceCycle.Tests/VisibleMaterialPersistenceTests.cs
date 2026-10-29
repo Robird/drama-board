@@ -94,9 +94,9 @@ public sealed class VisibleMaterialPersistenceTests {
         Assert.Null(snapshots[1].Weather!.LastKind);
         Assert.Null(snapshots[1].Weather!.LastAt);
         Assert.Null(snapshots[1].ArrivalDue);
-        // An idle character can choose risky timed actions; the rich fixture above already has
-        // an ongoing wait and a pending low-value warning, so its legal commands need no risk text.
-        Assert.Contains(snapshots[1].Commands, command => command.Rejection is null && command.Warning is not null);
+        // Ordinary actions reuse the shared attribute forecasts rather than duplicating risk prose.
+        Assert.All(snapshots[1].Commands, command => Assert.Null(command.Warning));
+        Assert.NotNull(snapshots[1].Survival!.FoodForecast.WarningAt);
         Assert.NotNull(snapshots[2].ArrivalDue);
         Assert.Null(snapshots[2].PlaceId);
 
@@ -150,7 +150,7 @@ public sealed class VisibleMaterialPersistenceTests {
         var constructedActor = new CycleActorObservation(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
             actor.Activity, actorNotices, actor.LastResult, actor.NextActivityId);
         var constructedBody = new CycleSurvivalObservation(24.5m, 45.25m, 60.125m, Rate(-5), Rate(-8), Rate(6), false,
-            warnings, Hour(20), true, 4);
+            warnings, new(Hour(10), Hour(20)), new(Hour(11), Hour(21)), new(Hour(12), Hour(22)), true, 4);
 
         resources.Clear(); durations.Clear(); names.Clear(); others.Clear(); notices.Clear(); commands.Clear();
         passages.Clear(); memories.Clear(); rememberedResources.Clear(); actorNotices.Clear(); warnings.Clear();

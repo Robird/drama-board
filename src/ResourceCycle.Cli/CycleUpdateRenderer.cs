@@ -25,8 +25,10 @@ internal static class CycleUpdateRenderer {
         foreach (var group in values.Where(pair => pair.Key.Category == "command")
                 .GroupBy(pair => (pair.Key.Field, pair.Value))) {
                 string commands = string.Join("、", CommandLabels(group.Select(pair => pair.Key)));
-                string field = group.Key.Field == "warning" ? "风险" : "条件";
-                text.AppendLine($"- {commands} · {field}：{Format(group.Key.Value, group.First().Key)}");
+                string field = group.Key.Field == "warning" ? "额外提示" : "条件";
+                string value = group.Key.Field == "warning" && group.Key.Value.Kind is CycleVisibleValueKind.KnownAbsent or CycleVisibleValueKind.Unobserved
+                    ? "原行动提示已不再适用" : Format(group.Key.Value, group.First().Key);
+                text.AppendLine($"- {commands} · {field}：{value}");
         }
         return text.ToString();
     }

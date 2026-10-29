@@ -23,8 +23,8 @@ public sealed class SurvivalWeatherViewTests {
         Assert.Contains("可能平静，也可能遭遇寒风", text);
         Assert.Contains("寒风使暴露者的温暖最多减少", text);
         Assert.Contains("尚无已发生的天气记录", text);
-        Assert.Contains("未包含未来随机天气", text);
-        Assert.Contains("未包含未来随机天气", PlayView.RenderCommands(context.Observation));
+        Assert.Contains("未计随机寒风", text);
+        Assert.Contains("属性预测见身体状态", PlayView.RenderCommands(context.Observation));
         string json = JsonSerializer.Serialize(context.Observation);
         Assert.DoesNotContain("seed", json, StringComparison.OrdinalIgnoreCase);
         // ContextSequence is a visible decision identity; the weather RNG's Sequence remains private.
