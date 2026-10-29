@@ -4,7 +4,7 @@
 
 ## 实施结果
 
-- [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) 只产生领域行动，混合 `PlayInput` 已删除；冒号输入只走 [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs)。
+- [CycleCommandParser](../../src/ResourceCycle/CycleCommandParser.cs) 只产生领域行动，混合 `PlayInput` 已删除；冒号输入只走 [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs)。
 - `HumanDefault` / `None` 是会话构造时显式注入的不可变目录，同一实例控制解析与提示；没有新增 CLI 参数、热切换或 LLM 适配器。
 - [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 仅保留游戏观察、更新及 `RenderActionHelp`。提示符、阶段说明和元命令提示由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 组合；终局不广告后续输入。
 - 布局/模式帮助来自实际注册选项；`--play` 仅列 full。重同步先组合完整答复，再记录日志并写出，保留成功 Flush 后安装基线的合同。

@@ -1,4 +1,5 @@
 using System.Text;
+using DramaBoard.ResourceCycle;
 
 public sealed class OperationJournalTests : IDisposable {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "drama-operation-journal-" + Guid.NewGuid().ToString("N"));
@@ -56,7 +57,7 @@ public sealed class OperationJournalTests : IDisposable {
             journal.Receive("batch", "unpublished-call", "actor", 1, "use", "use item.water", "unpublished");
         }
         using (var reopened = CycleOperationJournal.Open(JournalPath)) {
-            reopened.Reconcile([new("committed", "game-call", "actor", "等待已接受。", "world:2", "event:2")]);
+            reopened.Reconcile([new("committed", "game-call", "actor", "等待已接受。", "world:2", "event:2", CycleOperationDisposition.Succeeded)]);
             var committed = reopened.Entries.Single(e => e.Received.OperationRecordId == "committed").Completed!;
             Assert.Equal(CycleOperationStatus.Succeeded, committed.Status);
             Assert.False(committed.ExactResult);
@@ -77,11 +78,11 @@ public sealed class OperationJournalTests : IDisposable {
     public void DomainIdentityMismatchFailsBeforeAnyRecoveryResultsAreWritten() {
         using var journal = CycleOperationJournal.CreateInMemory();
         journal.Receive("batch", "call", "actor", 1, "wait", "wait 1", "record");
-        Assert.Throws<InvalidDataException>(() => journal.Reconcile([new("record", "wrong-call", "actor", "accepted", "world", "event")]));
+        Assert.Throws<InvalidDataException>(() => journal.Reconcile([new("record", "wrong-call", "actor", "accepted", "world", "event", CycleOperationDisposition.Succeeded)]));
         Assert.Null(Assert.Single(journal.Entries).Completed);
         Assert.Throws<InvalidDataException>(() => journal.Reconcile([
-            new("record", "call", "actor", "accepted", "world", "event"),
-            new("record", "call", "actor", "other", "world", "event")]));
+            new("record", "call", "actor", "accepted", "world", "event", CycleOperationDisposition.Succeeded),
+            new("record", "call", "actor", "other", "world", "event", CycleOperationDisposition.Succeeded)]));
         Assert.Null(Assert.Single(journal.Entries).Completed);
     }
 

@@ -213,12 +213,12 @@ public sealed class SurvivalNeedsViewTests {
         private readonly Queue<CycleCommand> _commands = new(commands);
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
-                _commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision."), Guid.NewGuid().ToString("N")));
+                CycleCommandParser.Format(_commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision.")), Guid.NewGuid().ToString("N")));
     }
 
     private sealed class IgnoreWarnings : ICycleCharacterController {
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
-                context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24), Guid.NewGuid().ToString("N")));
+                CycleCommandParser.Format(context.Check(CycleCommand.Continue()) is null ? CycleCommand.Continue() : CycleCommand.Wait(24)), Guid.NewGuid().ToString("N")));
     }
 }

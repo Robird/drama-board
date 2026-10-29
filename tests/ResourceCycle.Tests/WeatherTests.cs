@@ -77,14 +77,18 @@ public sealed class WeatherTests {
             Assert.DoesNotContain("\"Seed\"", projection, StringComparison.Ordinal);
             Assert.DoesNotContain("\"Sequence\"", projection, StringComparison.Ordinal);
         }
+        Assert.Equal(before, initial.DescribeState());
         var rejected = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Go("not-visible")));
         Assert.Equal(StepStatus.Committed, await rejected.StepAsync(Hour(240)));
-        before = rejected.World.DescribeState();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rejected.StepAsync(Hour(12)).AsTask());
-        Assert.Equal(before, history.State.DescribeState());
+        var opened = rejected.World;
+        Assert.Equal(StepStatus.Committed, await rejected.StepAsync(Hour(12)));
+        Assert.Equal(opened.Time, history.State.Time);
+        Assert.Equal(MaterialSnapshot(opened.Expedition), MaterialSnapshot(history.State.Expedition));
+        Assert.Same(opened.Expedition!.Environment, history.State.Expedition!.Environment);
+        Assert.Same(opened.GetCharacter("a").Survival, history.State.GetCharacter("a").Survival);
         Assert.Equal(0, Environment(history.State).Sequence);
         Assert.Equal(Hour(10), Environment(history.State).NextDue);
-        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
+        Assert.Equal(CycleEventKind.OperationRejected, Assert.Single(history.CompletedEvents[^1].Facts).Kind);
         Assert.Null(history.PendingEvent);
         var accepted = CycleEngine.CreateKernel(history, characterController: Commands(CycleCommand.Wait(4)));
         await Advance(accepted);

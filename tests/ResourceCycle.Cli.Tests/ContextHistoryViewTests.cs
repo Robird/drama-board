@@ -21,7 +21,7 @@ public sealed class ContextHistoryViewTests {
     [Fact]
     public void Both_layouts_render_frozen_action_and_ordered_experiences_with_current_draft() {
         CycleObservation observation = CycleDecisionContext.Observe(CycleGameFactory.CreateSurvival().World, "a");
-        var action = new PendingAdvance("a", 1, 1, CycleCommand.Go("trail-1"), "endpoint-call", "record",
+        var action = new PendingAdvance("a", 1, 1, CycleCommand.Go("trail-1"), "go trail-1", "endpoint-call", "record",
             new ModelTime(14 * CycleTime.Hour), "接受时的旧通路线索", "历史出发点", movementGeneration: 1,
             handoff: "交接：先检查保暖");
         var first = new CharacterExperience(1, new CycleObservedEvent(0, "a", CycleObservedEventKind.WeatherResolved,
@@ -60,7 +60,7 @@ public sealed class ContextHistoryViewTests {
                 new CycleNotice(CycleNoticeKind.ResourceDepleted, "sunflower", "b", "empty", world.Time, "取空")]);
         CycleWorld notified = CycleEngine.Rebuild(world.Business.Replace(world.Time, changedCharacters: [replacement]), world.Time);
         CycleObservation openingObservation = CycleDecisionContext.Observe(notified, "a");
-        var advance = new PendingAdvance("a", 1, 1, CycleCommand.Gather("sunflower"), "call", "record", world.Time,
+        var advance = new PendingAdvance("a", 1, 1, CycleCommand.Gather("sunflower"), "gather sunflower 1", "call", "record", world.Time,
             "gather sunflower 1", activityId: 1);
         var opening = new CharacterContextOpening(CycleBackground.For(openingObservation), openingObservation,
             advance, world.Time, CycleOutcomeActivityState.Ongoing);

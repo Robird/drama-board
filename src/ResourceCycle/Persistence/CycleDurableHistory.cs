@@ -75,10 +75,10 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
                 entry.ValidateStructure();
                 foreach (CycleFact fact in entry.Occurrence.Facts) {
                     if (fact.OperationRecordId is not { } recordId || !remaining.Remove(recordId)) { continue; }
-                    if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId)) {
+                    if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId) || fact.OperationDisposition is null) {
                         throw new InvalidDataException("A recorded operation effect has incomplete provenance.");
                     }
-                    results.Add(new(recordId, fact.ToolCallId, fact.ActorId, CycleOperationResults.Describe(fact),
+                    results.Add(new(recordId, fact.ToolCallId, fact.ActorId, CycleOperationResults.Describe(fact), fact.OperationDisposition.Value,
                         fact.At.Ticks, Cursor.Version.LineageId, transitionCount, entry.Occurrence.CauseKey.ToString()));
                 }
                 transitionCount--;

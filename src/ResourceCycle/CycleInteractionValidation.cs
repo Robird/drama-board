@@ -53,18 +53,22 @@ internal static class CycleInteractionValidation {
                     next.NextItemSequence == checked(oldContext.NextItemSequence + 1), "An open delivery must append exactly one item in the same context.");
                 ValidateRetained(oldContext, next, next.LastOperationSequence, 1);
                 CharacterContextItem item = next.Items[^1];
-                Require(item.ItemSequence == oldContext.NextItemSequence && !item.IsRejected && item.Observation is not null,
-                    "A successful delivery requires the next item identity and its observation.");
+                bool rejected = fact.Kind == CycleEventKind.OperationRejected;
+                Require(item.ItemSequence == oldContext.NextItemSequence && item.IsRejected == rejected &&
+                    (rejected ? item.Observation is null && item.Experiences.Count == 0 : item.Observation is not null),
+                    "A delivery requires its next item identity and the material appropriate to its committed disposition.");
                 if (own) {
                     Require(item.OperationSequence == next.LastOperationSequence && item.ToolCallId == fact.ToolCallId &&
-                        item.OperationRecordId == fact.OperationRecordId && item.Result == CycleOperationResults.Describe(fact),
+                        item.OperationRecordId == fact.OperationRecordId && item.RawInput == fact.RawInput &&
+                        item.Result == CycleOperationResults.Describe(fact),
                         "The operation result must retain the original captured identity and recorded answer.");
+                    if (!rejected) { ValidateInstantCommand(before, after, fact, recorded); }
                 } else {
                     Require(item.OperationSequence is null, "Another actor's or natural event is not this actor's tool result.");
                     Require(events.Length > 0 || !CycleObservationEquality.Same(oldContext.LatestObservation, item.Observation!),
                         "A perception item must contain an event or a changed observation.");
                 }
-                ValidateObservation(after, actorId, item.Observation!);
+                if (!rejected) { ValidateObservation(after, actorId, item.Observation!); }
                 ValidateDelivery([], item.Experiences, prior.NextExperienceSequence, events);
             } else {
                 Require(SameContext(prior.CurrentContext, recorded.CurrentContext), "Closed and unstarted contexts cannot receive items.");
@@ -105,6 +109,7 @@ internal static class CycleInteractionValidation {
         SpatialEntity? entity = after.Expedition?.Spatial.Entities.Single(e => e.Id.Value == prior.ActorId);
         Require(kindMatches && pending.ActorId == fact.ActorId && pending.SourceContextSequence == prior.CurrentContext!.ContextSequence &&
             pending.ToolCallId == fact.ToolCallId && pending.OperationRecordId == fact.OperationRecordId && pending.AcceptedAt == fact.At &&
+            pending.RawInput == fact.RawInput && CycleCommandParser.Parse(pending.RawInput) == pending.Command &&
             pending.OperationSequence == next.CurrentContext!.LastOperationSequence && pending.Handoff == prior.DraftHandoff &&
             pending.OriginPlaceName == prior.CurrentContext.LatestObservation.PlaceName &&
             pending.ActivityId == after.GetCharacter(prior.ActorId).Activity?.Id &&
@@ -130,6 +135,23 @@ internal static class CycleInteractionValidation {
         }
         Require(pending.Description == CycleInteractionRules.DescribeAdvance(pending.Command, prior.CurrentContext!.LatestObservation,
             entity?.Location is TraversingLocation), "The action description must retain only acceptance-time visible knowledge.");
+    }
+
+    private static void ValidateInstantCommand(CycleBusinessState before, CycleBusinessState after, CycleFact fact,
+        CharacterInteractionState interaction) {
+        CycleCommand command = CycleCommandParser.Parse(fact.RawInput!)
+            ?? throw new InvalidOperationException("A successful operation must retain parseable raw input.");
+        if (fact.Kind == CycleEventKind.HandoffEdited) {
+            Require(interaction.DraftHandoff == command.HandoffText,
+                "The draft must contain the handoff accepted from the recorded raw input.");
+        } else if (fact.Kind == CycleEventKind.ItemUsed) {
+            CycleCharacter prior = before.GetCharacter(fact.ActorId!), next = after.GetCharacter(fact.ActorId!);
+            Require(command.ItemId is not null && prior.Backpack.Count(command.ItemId) > 0 &&
+                next.Backpack.Count(command.ItemId) == prior.Backpack.Count(command.ItemId) - 1 &&
+                fact.ObservedEvents.Any(entry => entry.ObserverId == fact.ActorId &&
+                    entry.Kind == CycleObservedEventKind.ItemUsed && entry.SubjectId == command.ItemId),
+                "The used inventory item must match the recorded raw input.");
+        }
     }
 
     private static void ValidateRetained(CharacterContext before, CharacterContext after, long operationSequence, int appendCount) {

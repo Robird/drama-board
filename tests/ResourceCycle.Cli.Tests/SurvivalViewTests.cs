@@ -109,6 +109,6 @@ public sealed class SurvivalViewTests {
         private readonly Queue<CycleCommand> _commands = new(commands);
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new CycleControllerOperation("call_" + Guid.NewGuid().ToString("N"),
-                _commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision."), Guid.NewGuid().ToString("N")));
+                CycleCommandParser.Format(_commands.Count > 0 ? _commands.Dequeue() : throw new InvalidOperationException("Unexpected decision.")), Guid.NewGuid().ToString("N")));
     }
 }

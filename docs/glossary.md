@@ -16,22 +16,23 @@
 | 观察（Observation） | 某个角色当时可知的完整状态快照；不等同于完整世界对象，也不包含上下文历史。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；CycleDecisionContext 读取已保存最新观察，另持权威命令校验。 |
 | 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择并冻结材料，随 Opening 持久化。Console 完整 Model 消费仍在后续分片。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
-| Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | [ConsoleMetaCommands](../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) 的 `HumanDefault` / `None` 同时控制提示与解析，`ConsoleCharacterController` 执行；纯行动由 [CycleCommandParser](../src/ResourceCycle.Cli/CycleCommandParser.cs) 解析。见[边界合同](design/console-command-boundary.md)。 |
+| Console 元命令（Console meta command） | 真人管理 Console 会话的操作，以冒号开头；不属于角色的领域行动。显示在终端上不代表控制器拥有这项能力。 | [ConsoleMetaCommands](../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) 的 `HumanDefault` / `None` 同时控制提示与解析，`ConsoleCharacterController` 执行；纯行动由 [CycleCommandParser](../src/ResourceCycle/CycleCommandParser.cs) 解析。见[边界合同](design/console-command-boundary.md)。 |
 | 增量观察（Incremental observation） | 在同一阅读上下文内，按序追加事件及其效果，尾部统一汇总受影响状态的最新值并明确失效信息；布局或上下文变化时可全量重同步。不是游戏状态的增量持久化。 | 生存模式默认 delta；[CycleViewSnapshot](../src/ResourceCycle.Cli/CycleViewSnapshot.cs) / [CycleViewUpdate](../src/ResourceCycle.Cli/CycleViewUpdate.cs) 与 [PlayPresentationSession](../src/ResourceCycle.Cli/PlayPresentationSession.cs)，见[切片 A 合同](design/incremental-ui-slice-a.md)。 |
 | 可见事件与效果（Observed event / effect） | 给角色的有序过程材料；效果保存有语义身份的前后值，解释结算但不再次执行结算。当前值、历史效果和观察范围变化分别表达。 | [CycleObservedEvent / CycleObservedEffect](../src/ResourceCycle/CycleObservedEvent.cs) 随事实 E 保存，角色经历复用同一语义；不再独立累计 Incoming 总量。最近 n 回合窗口仍待 B 实施。 |
 | 可见状态键和值（State key / visible value） | 与布局和中文名称无关的状态身份，以及数值、布尔、文字、已知不存在、不可见等有限值；自有物品用尽是 0，不等于离开观察范围。 | `CycleStateKey` / `CycleVisibleValue`，效果与当前观察共用；数值按 `Units / Scale` 表达。 |
 | 呈现交付阶段（Delivery phase） | 宿主是否正在推进或已实际进入控制器输入；不等于命令条件满足，也不是持久领域状态。 | `PlayDeliveryPhase`；只有 `ChooseCommandAsync` 入口切换到可输入，提交成功本身不产生输入机会。 |
 | 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CharacterContext.ContextSequence` 与 Open/Closed/Terminal；`DecisionContextOpened` 冻结新的 Opening，终局在终局提交内新建只读上下文。 |
-| 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [CharacterContext](../src/ResourceCycle/CharacterContext.cs) 位于 Business.InteractionStates；合法路径已接入，原始输入/持久拒绝和完整 Console 消费继续按[重构方案](design/character-context-model.md)实施。 |
-| 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝最近 3 次操作的保留规则已定，拒绝入口尚待分片 2B。 |
+| 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [CharacterContext](../src/ResourceCycle/CharacterContext.cs) 位于 Business.InteractionStates；成功及拒绝已接入持久材料；完整 Console 消费继续按[重构方案](design/character-context-model.md)实施。 |
+| 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝没有观察/经历，只保留本角色本轮最近 3 次已提交操作中的拒绝；成功与感知条目不因此删除。 |
 | 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | `CharacterInteractionState.UndeliveredExperiences` 保存 `CharacterExperience`；ExperienceSequence 按角色分配，Closed/未开始时累计，新 Opening 消费。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `CharacterInteractionState.DraftHandoff` 与 `Opening.PreviousAdvance.Handoff` 分开；下一次放行记录并清空草稿，不自动续传。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，未来 LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
+| 原始操作提交（Submission） | 控制器产生的行动文本和已捕获身份；语法或合法性失败也进入同一提交边界。 | `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`；共享 `CycleCommandParser` 产生命令，`OperationRejected` 产生纯拒绝条目；Console 元命令不通过此入口。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [CycleCommand、CycleActions.Check](../src/ResourceCycle/CycleActions.cs) |
 | 耗时活动（Activity） | 角色已启动、跨模型时间持续的过程；移动与等待/采集互斥。 | 等待/采集由 `CycleActivity` 表示；移动由 Spatial 的 `TraversingLocation` 表示，不复制到另一份 Activity 计时器。 |
 | 感知通知（Notice） | 角色收到、等待控制器响应的业务信息，例如他人加入或资源耗尽；不是世界所有事件的副本。 | `CycleNotice`、`CycleCharacter.Notices`；会持久化。 |
 | 决策请求 / 待决策（Decision request） | 当前应给予角色控制器交互机会。可因空闲或有待响应感知产生。 | `NeedsDecision`、`CyclePredictionKind.RequestDecision`；没有独立持久请求对象。 |
-| 唤醒（Wake-up） | 服务决策请求：展示角色观察并等待合法操作。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
+| 唤醒（Wake-up） | 服务决策请求：展示角色材料并等待操作提交；拒绝保持原服务机会。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
 | 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，轮流选择下一个被服务者。保证服务机会，不保证资源公平分配。 | `CycleBusinessState.LastServedActorId`；查询和非法输入不交棒。 |
 
 **“多人”需要说明计数对象。** 当前 ResourceCycle 的采集场景是“单个人类、共用 Console、多个 Character”，生存探索一期则为单角色；不能由三个角色推导出三个独立 Player 实例。未来多个 LLM 控制器与多个角色的绑定关系另行设计。需要精确表达时，用“多角色”或“多控制器”，不单写“多 Player”。

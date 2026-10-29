@@ -53,14 +53,27 @@ internal static class CycleFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool decision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited;
-        if (decision ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId)
-            : fact.ToolCallId is not null || fact.OperationRecordId is not null) {
+        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited;
+        bool rejected = fact.Kind == CycleEventKind.OperationRejected;
+        bool operation = successfulDecision || rejected;
+        if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
+                fact.OperationDisposition != (rejected ? CycleOperationDisposition.Rejected : CycleOperationDisposition.Succeeded)
+            : fact.ToolCallId is not null || fact.OperationRecordId is not null || fact.RawInput is not null || fact.OperationDisposition is not null) {
             throw new InvalidOperationException("Controller facts require captured identities; natural events must not invent controller calls.");
         }
-        if ((decision ? fact.LastServedActorId != fact.ActorId : fact.LastServedActorId is not null) ||
+        if ((successfulDecision ? fact.LastServedActorId != fact.ActorId : fact.LastServedActorId is not null) ||
             (fact.LastServedActorId is not null && !actorEffect)) {
             throw new InvalidOperationException("Service cursor does not match a recorded decision.");
+        }
+        if (successfulDecision && (CycleCommandParser.Parse(fact.RawInput!)?.Kind, fact.Kind) is not (
+            (CycleCommandKind.Wait, CycleEventKind.WaitStarted) or
+            (CycleCommandKind.Gather, CycleEventKind.GatherStarted) or
+            (CycleCommandKind.Cancel, CycleEventKind.ActivityCancelled) or
+            (CycleCommandKind.Continue, CycleEventKind.AttentionAcknowledged) or
+            (CycleCommandKind.Go, CycleEventKind.MoveStarted) or
+            (CycleCommandKind.Use, CycleEventKind.ItemUsed) or
+            (CycleCommandKind.Handoff, CycleEventKind.HandoffEdited))) {
+            throw new InvalidOperationException("The accepted raw input must parse to the recorded operation kind.");
         }
         bool valid = fact.Kind switch {
             CycleEventKind.LightChanged => fact.Light is not null && fact.Script is null && fact.ActorId is null && fact.ResourceId is null &&
@@ -70,7 +83,7 @@ internal static class CycleFactApplication {
             CycleEventKind.GatherYielded => actorEffect && oneResource && fact.Light is null && fact.Script is null,
             CycleEventKind.GatherStarted or CycleEventKind.GatherFinished => actorEffect && fact.ResourceId is not null && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null,
             CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or
-                CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened =>
+                CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
@@ -80,7 +93,7 @@ internal static class CycleFactApplication {
             _ => false
         };
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
-        if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened) {
+        if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
             CycleCharacter before = business.GetCharacter(fact.ActorId!);
             CycleCharacter after = fact.ChangedCharacters[0];
             if (fact.At != business.Time || !CycleActions.NeedsDecision(business, before.Id) ||
@@ -92,6 +105,10 @@ internal static class CycleFactApplication {
                 after.DecisionGeneration != checked(before.DecisionGeneration + 1) || fact.Visits.Count != 0) {
                 throw new InvalidOperationException("Interaction boundary facts cannot alter gameplay state or observations.");
             }
+        }
+        if (rejected && (string.IsNullOrWhiteSpace(fact.Result) || fact.ObservedEvents.Count != 0 ||
+            fact.InteractionChanges.Count != 1 || fact.InteractionChanges[0].ActorId != fact.ActorId)) {
+            throw new InvalidOperationException("A rejection records only its actor's visible refusal, without world events or other actors' deliveries.");
         }
         if (fact.GatherStopReason is not null &&
             (!Enum.IsDefined(fact.GatherStopReason.Value) || fact.Kind is not (CycleEventKind.GatherYielded or CycleEventKind.GatherFinished) ||

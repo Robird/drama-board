@@ -1,6 +1,6 @@
 # 决策回合的信息继承：设计与重构方案
 
-状态：保留 2026-10-28 信息继承切片的设计与验收依据（当时 GameRevision 5）。2026-10-29 起，原固定 Continuity/Incoming 已由[角色上下文 Model](character-context-model.md)的同根交互状态和经历材料替换；本文旧模型形状、源码名称及施工步骤不再表示当前 API。放行结束旧回合、handoff 一次性交付与原 ToolCallId 配对仍沿用。原切片的[设计审查](../research/decision-context-handoff-review.md)和[实施验收](../experiments/decision-context-handoff-acceptance.md)保留历史证据；LLM、端点 ID 映射及完整工具会话恢复仍未实施。
+状态：保留 2026-10-28 信息继承切片的设计与验收依据（当时 GameRevision 5）。2026-10-29 起，原固定 Continuity/Incoming 已由[角色上下文 Model](character-context-model.md)的同根交互状态和经历材料替换；本文旧模型形状、源码名称及施工步骤不再表示当前 API。放行结束旧回合、handoff 一次性交付与原 ToolCallId 配对仍沿用；拒绝操作已改为持久 Context 条目并提交 E/S，本文“不提交拒绝”的旧合同不再适用。原切片的[设计审查](../research/decision-context-handoff-review.md)和[实施验收](../experiments/decision-context-handoff-acceptance.md)保留历史证据；LLM、端点 ID 映射及完整工具会话恢复仍未实施。
 
 后续方向：[增量 UI 目标](incremental-ui-milestone.md)的切片 A 已扩展回合内事件/效果呈现；包含零耗时事件的有界最近历史仍待 B 实施。本文件保留本切片已落地的有限继承范围，新目标不改变放行后结束旧控制会话的流程。
 

@@ -122,14 +122,18 @@ public static class CycleEngine {
                     return new([CycleInteractionRules.OpenContext(world, prediction.TargetId)]);
                 }
                 if (characterController is null) { throw new InvalidOperationException($"A playable world requires an {nameof(ICycleCharacterController)}."); }
-                operation = await characterController.ChooseCommandAsync(CycleDecisionContext.Create(world, prediction.TargetId), cancellationToken).ConfigureAwait(false);
+                CycleDecisionContext decision = CycleDecisionContext.Create(world, prediction.TargetId);
+                operation = await characterController.ChooseCommandAsync(decision, cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (operation is null || string.IsNullOrWhiteSpace(operation.ToolCallId) || string.IsNullOrWhiteSpace(operation.OperationRecordId)) {
-                    throw new InvalidOperationException("A controller operation requires captured tool-call and operation record identities.");
+                if (operation is null || string.IsNullOrWhiteSpace(operation.ToolCallId) || string.IsNullOrWhiteSpace(operation.OperationRecordId) || operation.RawInput is null) {
+                    throw new InvalidOperationException("A controller operation requires captured tool-call and operation record identities and raw input.");
                 }
-                CycleCommand command = operation.Command;
-                string? rejection = CycleActions.Check(world, prediction.TargetId, command);
-                if (rejection is not null) { throw new InvalidOperationException(rejection); }
+                CycleCommand? command = CycleCommandParser.Parse(operation.RawInput);
+                string? rejection = command is null ? "无法识别行动格式，请使用当前列出的行动命令。" : decision.Check(command);
+                if (rejection is not null) {
+                    return new([CycleInteractionRules.Reject(world, prediction.TargetId, operation, rejection)]);
+                }
+                if (command is null) { throw new InvalidOperationException("A successful parse requires an action."); }
                 if (command.Kind == CycleCommandKind.Handoff) {
                     return new([CycleInteractionRules.Enrich(world, CycleInteractionRules.EditHandoff(world, prediction.TargetId).WithOperation(operation), operation)]);
                 }

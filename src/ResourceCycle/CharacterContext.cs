@@ -261,7 +261,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
 }
 
 /// <summary>Original advancing operation plus only information known when accepted; no duplicate outcome totals.</summary>
-[DurableType("DramaBoard.ResourceCycle.PendingAdvance", 1)]
+[DurableType("DramaBoard.ResourceCycle.PendingAdvance", 2)]
 public sealed partial class PendingAdvance : IDurableObject {
     [DurableField(1)] private string _actorId;
     [DurableField(2)] private long _sourceContextSequence;
@@ -275,6 +275,8 @@ public sealed partial class PendingAdvance : IDurableObject {
     [DurableField(10)] private long? _activityId;
     [DurableField(11)] private long? _movementGeneration;
     [DurableField(12)] private string? _handoff;
+    [DurableField(13)] private string _rawInput;
+    public string RawInput => _rawInput;
     public string ActorId => _actorId;
     public long SourceContextSequence => _sourceContextSequence;
     public long OperationSequence => _operationSequence;
@@ -288,13 +290,14 @@ public sealed partial class PendingAdvance : IDurableObject {
     public long? MovementGeneration => _movementGeneration;
     public string? Handoff => _handoff;
 
-    public PendingAdvance(string actorId, long sourceContextSequence, long operationSequence, CycleCommand command,
+    public PendingAdvance(string actorId, long sourceContextSequence, long operationSequence, CycleCommand command, string rawInput,
         string toolCallId, string operationRecordId, ModelTime acceptedAt, string description, string? originPlaceName = null,
         long? activityId = null, long? movementGeneration = null, string? handoff = null) {
         _actorId = actorId;
         _sourceContextSequence = sourceContextSequence;
         _operationSequence = operationSequence;
         _command = command;
+        _rawInput = rawInput;
         _toolCallId = toolCallId;
         _operationRecordId = operationRecordId;
         _acceptedAt = acceptedAt;
@@ -307,7 +310,7 @@ public sealed partial class PendingAdvance : IDurableObject {
 
     internal void Validate(string actorId, ModelTime worldTime) {
         if (ActorId != actorId || string.IsNullOrWhiteSpace(ActorId) || SourceContextSequence <= 0 || OperationSequence <= 0 ||
-            Command is null || Command.Kind is not (CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Continue) ||
+            RawInput is null || Command is null || CycleCommandParser.Parse(RawInput) != Command || Command.Kind is not (CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Continue) ||
             string.IsNullOrWhiteSpace(ToolCallId) || string.IsNullOrWhiteSpace(OperationRecordId) ||
             AcceptedAt.Ticks < 0 || AcceptedAt > worldTime || string.IsNullOrWhiteSpace(Description) ||
             ActivityId <= 0 || MovementGeneration < 0 || (ActivityId is null) == (MovementGeneration is null) ||

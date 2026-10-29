@@ -4,8 +4,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
+[DurableType("DramaBoard.ResourceCycle.OperationDisposition", 1)]
+public enum CycleOperationDisposition { Succeeded, Rejected }
+
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 8)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 9)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -27,6 +30,10 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(18)] private CycleGatherStopReason? _gatherStopReason;
     [DurableField(19)] private List<CycleObservedEvent> _observedEvents;
     [DurableField(20)] private List<CharacterInteractionState> _interactionChanges;
+    [DurableField(21)] private string? _rawInput;
+    [DurableField(22)] private CycleOperationDisposition? _operationDisposition;
+    public string? RawInput => _rawInput;
+    public CycleOperationDisposition? OperationDisposition => _operationDisposition;
     public IReadOnlyList<CharacterInteractionState> InteractionChanges => _interactionChanges.AsReadOnly();
     public IReadOnlyList<CycleObservedEvent> ObservedEvents => _observedEvents.AsReadOnly();
     public CycleEventKind Kind => _kind;
@@ -53,8 +60,9 @@ public sealed partial class CycleFact : IDurableObject {
         IEnumerable<GraphSpatialFact>? spatialFacts = null, IEnumerable<CycleVisit>? visits = null,
         CycleExpeditionOutcome? outcome = null, string? endingReason = null, CycleEnvironment? environment = null,
         string? toolCallId = null, string? operationRecordId = null, CycleGatherStopReason? gatherStopReason = null, IEnumerable<CycleObservedEvent>? observedEvents = null,
-        IEnumerable<CharacterInteractionState>? interactionChanges = null) {
+        IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, CycleOperationDisposition? operationDisposition = null) {
         _interactionChanges = interactionChanges?.ToList() ?? [];
+        _rawInput = rawInput; _operationDisposition = operationDisposition;
         _kind = kind; _at = at; _actorId = actorId; _resourceId = resourceId; _light = light;
         _changedResources = changedResources?.ToList() ?? []; _script = script;
         _changedCharacters = changedCharacters?.ToList() ?? []; _lastServedActorId = lastServedActorId; _result = result;
@@ -63,19 +71,19 @@ public sealed partial class CycleFact : IDurableObject {
         _toolCallId = toolCallId; _operationRecordId = operationRecordId; _gatherStopReason = gatherStopReason; _observedEvents = observedEvents?.ToList() ?? [];
     }
     internal CycleFact WithVisits(IEnumerable<CycleVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition);
     internal CycleFact WithCharacters(IEnumerable<CycleCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges);
-    internal CycleFact WithOperation(CycleControllerOperation operation) => new(Kind, At, ActorId, ResourceId, Light,
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition);
+    internal CycleFact WithOperation(CycleControllerOperation operation, CycleOperationDisposition disposition = CycleOperationDisposition.Succeeded) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment,
-        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges);
+        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition);
     internal CycleFact WithObservedEvents(IEnumerable<CycleObservedEvent> events) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition);
     internal CycleFact WithInteractions(IEnumerable<CharacterInteractionState> changes) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Outcome, EndingReason, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition);
     public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}];outcome={Outcome}:{EndingReason}" +
-        (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason}";
+        (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason};disposition={OperationDisposition}";
 }
 
 /// <summary>Runtime diagnostics, deliberately outside business snapshots.</summary>

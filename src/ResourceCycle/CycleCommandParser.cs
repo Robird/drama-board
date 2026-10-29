@@ -1,8 +1,8 @@
 using System.Globalization;
-using DramaBoard.ResourceCycle;
+namespace DramaBoard.ResourceCycle;
 
 /// <summary>Pure action syntax; world validity remains the domain's responsibility.</summary>
-internal static class CycleCommandParser {
+public static class CycleCommandParser {
     /// <remarks>Case-sensitive, whitespace-separated syntax. Handoff preserves internal whitespace.</remarks>
     public static CycleCommand? Parse(string input) {
         ArgumentNullException.ThrowIfNull(input);
@@ -31,4 +31,15 @@ internal static class CycleCommandParser {
             _ => null,
         };
     }
+    /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
+    public static string Format(CycleCommand command) => command.Kind switch {
+        CycleCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",
+        CycleCommandKind.Gather => $"gather {command.ResourceId} {(command.All ? "all" : command.Count.ToString(CultureInfo.InvariantCulture))}",
+        CycleCommandKind.Go => $"go {command.PassageId}",
+        CycleCommandKind.Use => $"use {command.ItemId}",
+        CycleCommandKind.Handoff => command.HandoffText is null ? "handoff --clear" : $"handoff {command.HandoffText}",
+        CycleCommandKind.Continue => "continue",
+        CycleCommandKind.Cancel => "cancel",
+        _ => throw new InvalidOperationException("Unknown character command.")
+    };
 }

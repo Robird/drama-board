@@ -29,13 +29,13 @@ public sealed partial record CycleCommand(
 }
 
 /// <summary>Captured controller identity; IDs are opaque and must survive execution and recovery unchanged.</summary>
-public sealed record CycleControllerOperation(string ToolCallId, CycleCommand Command, string OperationRecordId);
+public sealed record CycleControllerOperation(string ToolCallId, string RawInput, string OperationRecordId);
 
-/// <summary>Provides commands for the requested character; one instance may serve multiple characters.</summary>
+/// <summary>Captures raw submissions for the requested character; one instance may serve multiple characters.</summary>
 /// <remarks>Cross-decision character memory belongs to explicit game state, not hidden controller history.
 /// Each decision receives a character-scoped observation and a pure legality query.</remarks>
 public interface ICycleCharacterController {
-    /// <summary>Runs one decision interaction without committing world changes; the engine validates the returned intent.</summary>
+    /// <summary>Runs one decision interaction without committing world changes; the engine parses and validates the returned input.</summary>
     ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken);
 }
 

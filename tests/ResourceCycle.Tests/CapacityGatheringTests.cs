@@ -22,12 +22,16 @@ public sealed class CapacityGatheringTests {
         await Step(kernel); // Commit the initial Context before testing command rejection.
         CycleWorld opened = kernel.World;
         cursor = kernel.Cursor;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(24)).AsTask());
+        await Step(kernel);
 
-        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
+        Assert.Equal(CycleEventKind.OperationRejected, Assert.Single(history.CompletedEvents[^1].Facts).Kind);
         Assert.Null(history.PendingEvent);
-        Assert.Same(opened, history.State);
-        Assert.Equal(cursor, history.Cursor);
+        Assert.Equal(opened.Time, history.State.Time);
+        Assert.Same(backpack, history.State.GetCharacter("a").Backpack);
+        Assert.Null(history.State.GetCharacter("a").Activity);
+        Assert.Equal(opened.Resources, history.State.Resources);
+        Assert.Equal(cursor.Version.TransitionCount + 1, history.Cursor.Version.TransitionCount);
+        Assert.Equal(reason, Assert.Single(history.State.Business.InteractionStates["a"].CurrentContext!.Items).Result);
         Assert.Equal(0, backpack.Count("item.sunflower"));
         Assert.Equal(2, backpack.Count("item.wood"));
         Assert.Equal(5, initial.GetResource("sunflower").Stock);

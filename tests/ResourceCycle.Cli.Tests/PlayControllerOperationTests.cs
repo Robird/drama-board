@@ -7,36 +7,91 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class PlayControllerOperationTests {
     [Fact]
-    public async Task Every_submitted_operation_is_recorded_before_dispatch_and_game_result_waits_for_commit() {
+    public async Task Every_submitted_operation_is_recorded_and_game_rejections_are_committed_before_feedback() {
         using var journal = CycleOperationJournal.CreateInMemory();
-        using var input = new StringReader("\n \t\n:help\ninvalid\n:layout unknown\nwait 0\nhandoff 观察保暖\n");
+        using var input = new StringReader("\n \t\n:help\n  invalid  \n:layout unknown\nwait 0\nhandoff 观察保暖\n");
         using var output = new StringWriter();
-        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output,
-            operations: journal, worldVersion: () => "1:0");
-        CycleWorld world = CycleGameFactory.CreateSurvival().World;
-        string before = world.DescribeState();
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            input, output, operations: journal, worldVersion: () => "host-version");
+        var initial = CycleGameFactory.CreateSurvival();
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: controller);
+        for (int i = 0; i < 4; i++) {
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+            if (i > 0) { Assert.Null(journal.Entries[^1].Completed); }
+            PlayConsole.CompleteOperations(journal, kernel.LastCompletion!);
+            int beforeFeedback = output.GetStringBuilder().Length;
+            controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: true);
+            if (i is 1 or 2) {
+                string response = journal.Entries[^1].Completed!.Result;
+                Assert.Equal(1, output.ToString()[beforeFeedback..].Split(response).Length - 1);
+                Assert.Equal(CycleOperationStatus.Rejected, journal.Entries[^1].Completed!.Status);
+            }
+        }
 
-        CycleControllerOperation operation = await controller.ChooseCommandAsync(ViewContextFixture.Create(world, "a"), default);
-
-        Assert.Equal(CycleCommand.Handoff("观察保暖"), operation.Command);
         Assert.Equal(5, journal.Entries.Count);
         Assert.Equal(5, journal.Entries.Select(entry => entry.Received.ToolCallId).Distinct().Count());
         Assert.All(journal.Entries, entry => {
             Assert.Equal("a", entry.Received.ActorId);
             Assert.Equal(1L, entry.Received.ContextSequence);
-            Assert.False(string.IsNullOrWhiteSpace(entry.Received.ToolCallId));
+            Assert.Equal(entry.Received.ToolCallId, entry.Completed!.ToolCallId);
         });
         Assert.Equal(CycleOperationStatus.Succeeded, journal.Entries[0].Completed!.Status);
         Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
-        Assert.All(journal.Entries.Take(4), entry => {
-            Assert.Equal(entry.Received.ToolCallId, entry.Completed!.ToolCallId);
-            Assert.Equal("1:0", entry.Completed.WorldVersion);
-            Assert.Contains(entry.Completed.Result, output.ToString());
-        });
-        Assert.Equal(operation.ToolCallId, journal.Entries[^1].Received.ToolCallId);
-        Assert.Equal(operation.OperationRecordId, journal.Entries[^1].Received.OperationRecordId);
-        Assert.Null(journal.Entries[^1].Completed);
-        Assert.Equal(before, world.DescribeState());
+        Assert.Equal(CycleOperationStatus.Succeeded, journal.Entries[^1].Completed!.Status);
+        Assert.Equal("host-version", journal.Entries[2].Completed!.WorldVersion);
+        var context = kernel.World.Business.InteractionStates["a"].CurrentContext!;
+        Assert.Equal(3, context.Items.Count);
+        Assert.Equal("  invalid  ", context.Items[0].RawInput);
+        Assert.All(context.Items, item => Assert.Equal(journal.Entries.Single(e => e.Received.OperationRecordId == item.OperationRecordId).Received.ToolCallId,
+            item.ToolCallId));
+        Assert.Equal(initial.World.Time, kernel.World.Time);
+        Assert.Equal(initial.World.GetCharacter("a").Survival, kernel.World.GetCharacter("a").Survival);
+    }
+
+    [Theory]
+    [InlineData("invalid")]
+    [InlineData("wait 0")]
+    [InlineData("help")]
+    [InlineData("quit")]
+    [InlineData("  handoff  保留  空格  ")]
+    public async Task Non_meta_input_returns_exact_submission_without_local_rejection(string rawInput) {
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var input = new StringReader(rawInput + "\n:exit\n");
+        using var output = new StringWriter();
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            input, output, operations: journal);
+        CycleControllerOperation operation = await controller.ChooseCommandAsync(
+            ViewContextFixture.Create(CycleGameFactory.CreateSurvival().World, "a"), default);
+        Assert.Equal(rawInput, operation.RawInput);
+        var received = Assert.Single(journal.Entries);
+        Assert.Equal(rawInput, received.Received.RawInput);
+        Assert.Equal(received.Received.ToolCallId, operation.ToolCallId);
+        Assert.Equal(received.Received.OperationRecordId, operation.OperationRecordId);
+        Assert.Null(received.Completed);
+        Assert.DoesNotContain("无法识别命令", output.ToString());
+    }
+
+    [Fact]
+    public async Task Basic_console_delivers_committed_rejection_once_without_rotating_actor() {
+        using var journal = CycleOperationJournal.CreateInMemory();
+        using var input = new StringReader("wait 0\nwait 1\n");
+        using var output = new StringWriter();
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(false), ConsoleMetaCommands.HumanDefault,
+            input, output, operations: journal);
+        var initial = CycleGameFactory.CreatePlayable();
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
+            characterController: controller);
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+        PlayConsole.CompleteOperations(journal, kernel.LastCompletion!);
+        output.GetStringBuilder().Clear();
+        controller.RenderCommitted(kernel.World, kernel.LastCompletion!, survival: false);
+        string rejectedResult = Assert.Single(journal.Entries).Completed!.Result;
+        Assert.Equal(rejectedResult + output.NewLine, output.ToString());
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(long.MaxValue)));
+        Assert.Equal("a", journal.Entries[^1].Received.ActorId);
+        Assert.Equal(1L, journal.Entries[^1].Received.ContextSequence);
     }
 
     [Theory]
@@ -105,7 +160,7 @@ public sealed class PlayControllerOperationTests {
 
         CycleControllerOperation action = await controller.ChooseCommandAsync(ViewContextFixture.Create(world, "a"), default);
 
-        Assert.Equal(CycleCommand.Handoff(":exit"), action.Command);
+        Assert.Equal("handoff :exit", action.RawInput);
         Assert.Equal(disabled.Length + 1, journal.Entries.Count);
         Assert.All(journal.Entries.Take(disabled.Length), entry => {
             Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status);
@@ -208,7 +263,7 @@ public sealed class PlayControllerOperationTests {
 
         var action = await controller.ChooseCommandAsync(context, default);
 
-        Assert.Equal(CycleCommand.Handoff("保持原布局"), action.Command);
+        Assert.Equal("handoff 保持原布局", action.RawInput);
         var preview = journal.Entries[0];
         Assert.Equal(CycleOperationStatus.Succeeded, preview.Completed!.Status);
         Assert.Equal(preview.Received.ToolCallId, preview.Completed.ToolCallId);

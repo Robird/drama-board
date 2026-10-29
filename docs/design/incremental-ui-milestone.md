@@ -3,7 +3,7 @@
 > 2026-10-28。用户已确认“事件 → 缩进效果 → 尾部受影响状态最新值”及下述三个规则。[切片 A](incremental-ui-slice-a.md)已接入生存模式；[验收记录](../experiments/incremental-ui-slice-a-acceptance.md)集中保存工程与试玩证据。跨回合最近事件列表仍属于 B，窗口与容量尚未裁决。
 > Mud 调查基线：DramaBoard `42f1776`、durable-graph-mud `66e12a7`；该次调查只读源码与测试，未运行 Mud。下列当前实现入口已按 A 的代码更新。
 
-实施方向更新（2026-10-29）：按[角色上下文 Model 方案](character-context-model.md)建设共享持久材料、首次交付与 Console 带外边界。合法操作已接入持久 Context，拒绝与完整呈现仍在后续分片。角色经历采用局部身份，不再要求规划时绑定提交游标；先交付上次放行区间，最近 n 回合（含零耗时事件）的完整窗口仍是后续 B 的范围。本页下述“模拟期间 Console 直出”和提交来源绑定建议在这两点上由新方案替代，其余事件/效果语义继续沿用。
+实施方向更新（2026-10-29）：按[角色上下文 Model 方案](character-context-model.md)建设共享持久材料、首次交付与 Console 带外边界。成功与拒绝操作已接入持久 Context，完整呈现仍在后续分片。角色经历采用局部身份，不再要求规划时绑定提交游标；先交付上次放行区间，最近 n 回合（含零耗时事件）的完整窗口仍是后续 B 的范围。本页下述“模拟期间 Console 直出”和提交来源绑定建议在这两点上由新方案替代，其余事件/效果语义继续沿用。
 
 ## 1. 目标与已有边界
 
@@ -16,7 +16,7 @@
 - [CycleObservation](../../src/ResourceCycle/CycleObservation.cs)：角色范围内的观察、当前动作校验和风险，不向布局交付完整世界。
 - [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)：两种可切换布局，共用事件/效果及尾部状态选择；`full` 与 `delta` 是独立的会话偏好。[Human Console 边界](console-command-boundary.md)将元命令及输入提示移到会话，布局只生成游戏内容，不改变 B 的历史窗口合同。
 - [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs)：按角色与 ContextSequence 首次/新回合全量，提交后追加事件与状态；只有真正进入控制器才显示输入机会，写出并 Flush 成功后安装基线。
-- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/ResourceCycle/CycleOperationResults.cs)共用这些材料。GameRevision 8；事件材料覆盖普通采集与无生存需求角色，尚无最近 n 回合事件窗口。
+- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/ResourceCycle/CycleOperationResults.cs)共用这些材料。GameRevision 9；事件材料覆盖普通采集与无生存需求角色，尚无最近 n 回合事件窗口。
 - [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs)：按接收者 Open/Closed 状态追加 Item 或收集待交付经历；新 Opening 冻结上次放行信息、经历与完整观察，替代独立累计 Incoming。Console 已停止向 Closed 上下文输出结算，尚待统一从 Items 绘制、纯上下文重放及明确的开始/结束标记。
 
 增量是呈现能力，不改变游戏时间、活动期限、警告确认或行动合法性。完整与增量模式应产生相同的游戏轨迹。

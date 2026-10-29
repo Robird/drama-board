@@ -28,14 +28,14 @@ public sealed class PlayPresentationTests {
         CycleWorld world = CycleGameFactory.CreateSurvival().World;
         string before = world.DescribeState();
         CycleDecisionContext context = ViewContextFixture.Create(world, "a");
-        using var input = new StringReader("look\nhelp\nquit\n:layout\n:layout second\n:look\n:help\n:layout first once\n:layout missing\n:layout second extra\nwait 1\n");
+        using var input = new StringReader(":layout\n:layout second\n:look\n:help\n:layout first once\n:layout missing\n:layout second extra\nwait 1\n");
         using var output = new StringWriter();
         int boundaries = 0;
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, () => boundaries++);
 
         CycleControllerOperation operation = await controller.ChooseCommandAsync(context, default);
 
-        Assert.Equal(CycleCommand.Wait(1), operation.Command);
+        Assert.Equal("wait 1", operation.RawInput);
         Assert.Same(second, presentation.Current);
         Assert.Equal(2, first.Screens.Count);
         Assert.Equal(2, second.Screens.Count);
@@ -121,8 +121,8 @@ public sealed class PlayPresentationTests {
         CycleDecisionContext a = ViewContextFixture.Create(world, "a");
         CycleDecisionContext b = ViewContextFixture.Create(world, "b");
 
-        Assert.Equal(CycleCommand.Wait(1), (await controller.ChooseCommandAsync(a, default)).Command);
-        Assert.Equal(CycleCommand.Wait(1), (await controller.ChooseCommandAsync(b, default)).Command);
+        Assert.Equal("wait 1", (await controller.ChooseCommandAsync(a, default)).RawInput);
+        Assert.Equal("wait 1", (await controller.ChooseCommandAsync(b, default)).RawInput);
 
         Assert.Same(second, presentation.Current);
         Assert.Single(first.Screens);

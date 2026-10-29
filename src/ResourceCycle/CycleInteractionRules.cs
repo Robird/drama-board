@@ -1,4 +1,3 @@
-using System.Globalization;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
 
@@ -22,11 +21,28 @@ internal static class CycleInteractionRules {
         world.Time, actorId, changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()],
         lastServedActorId: actorId, result: "已更新给下一回合的交接草稿。");
 
+    internal static CycleFact Reject(CycleWorld world, string actorId, CycleControllerOperation operation, string reason) {
+        CharacterInteractionState state = world.Business.InteractionStates[actorId];
+        CharacterContext current = state.CurrentContext is { Status: CharacterContextStatus.Open } open ? open
+            : throw new InvalidOperationException("A rejected operation requires an open context.");
+        long sequence = checked(current.LastOperationSequence + 1);
+        var item = new CharacterContextItem(current.NextItemSequence, sequence, operation.RawInput,
+            operation.ToolCallId, operation.OperationRecordId, reason, isRejected: true);
+        var context = new CharacterContext(current.ContextSequence, CharacterContextStatus.Open, current.Opening,
+            RetainItems(current.Items, sequence).Append(item), checked(current.NextItemSequence + 1), sequence);
+        var fact = new CycleFact(CycleEventKind.OperationRejected, world.Time, actorId,
+            changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()], result: reason);
+        return fact.WithOperation(operation, CycleOperationDisposition.Rejected).WithInteractions([
+            new(actorId, context, state.PendingAdvance, state.UndeliveredExperiences, state.DraftHandoff, state.NextExperienceSequence)]);
+    }
+
     internal static CycleFact Enrich(CycleWorld world, CycleFact fact, CycleControllerOperation? operation = null) {
         CycleWorld candidate = Candidate(world, fact);
-        bool release = operation is not null && ReleasesSimulation(candidate.Business, fact.ActorId!, operation.Command);
-        string? draftAfter = operation is null ? null : operation.Command.Kind == CycleCommandKind.Handoff
-            ? operation.Command.HandoffText : release ? null : world.Business.InteractionStates[fact.ActorId!].DraftHandoff;
+        CycleCommand? command = operation is null ? null : CycleCommandParser.Parse(operation.RawInput)
+            ?? throw new InvalidOperationException("Accepted operations require valid syntax.");
+        bool release = command is not null && ReleasesSimulation(candidate.Business, fact.ActorId!, command);
+        string? draftAfter = command is null ? null : command.Kind == CycleCommandKind.Handoff
+            ? command.HandoffText : release ? null : world.Business.InteractionStates[fact.ActorId!].DraftHandoff;
         fact = CycleObservedEvents.Attach(world, fact, draftAfter);
         var changes = new List<CharacterInteractionState>();
         foreach (CycleCharacter actor in world.Characters) {
@@ -66,7 +82,7 @@ internal static class CycleInteractionRules {
             if (!own && experiences.Length == 0 && CycleObservationEquality.Same(current.LatestObservation, observation)) { continue; }
             long operationSequence = own ? checked(current.LastOperationSequence + 1) : current.LastOperationSequence;
             var item = new CharacterContextItem(current.NextItemSequence, own ? operationSequence : null,
-                own ? CommandText(operation!.Command) : null, own ? operation!.ToolCallId : null,
+                own ? operation!.RawInput : null, own ? operation!.ToolCallId : null,
                 own ? operation!.OperationRecordId : null, own ? CycleOperationResults.Describe(fact) : null,
                 experiences, observation);
             current = new(current.ContextSequence, CharacterContextStatus.Open, current.Opening,
@@ -103,12 +119,13 @@ internal static class CycleInteractionRules {
 
     private static PendingAdvance Advance(CycleWorld before, CycleWorld after, CharacterInteractionState state,
         CycleControllerOperation operation, long operationSequence) {
-        CycleCommand command = operation.Command;
+        CycleCommand command = CycleCommandParser.Parse(operation.RawInput)
+            ?? throw new InvalidOperationException("An advancing operation requires valid syntax.");
         CycleObservation known = state.CurrentContext!.LatestObservation;
         CycleCharacter actor = after.GetCharacter(state.ActorId);
         SpatialEntity? entity = after.Expedition?.Spatial.Entities.Single(e => e.Id.Value == state.ActorId);
         string description = DescribeAdvance(command, known, entity?.Location is TraversingLocation);
-        return new(state.ActorId, state.CurrentContext.ContextSequence, operationSequence, command,
+        return new(state.ActorId, state.CurrentContext.ContextSequence, operationSequence, command, operation.RawInput,
             operation.ToolCallId, operation.OperationRecordId, before.Time, description, known.PlaceName,
             actor.Activity?.Id, entity?.Location is TraversingLocation ? entity.MovementGeneration : null, state.DraftHandoff);
     }
@@ -123,15 +140,4 @@ internal static class CycleInteractionRules {
     internal static CycleObservedEvent LocalEvent(CycleObservedEvent entry, int ordinal) => new(ordinal, entry.ObserverId,
         entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects);
 
-    // Until raw submissions arrive in slice 2B, this is the exact structured intent expressed as a command.
-    internal static string CommandText(CycleCommand command) => command.Kind switch {
-        CycleCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",
-        CycleCommandKind.Gather => $"gather {command.ResourceId} {(command.All ? "all" : command.Count.ToString(CultureInfo.InvariantCulture))}",
-        CycleCommandKind.Go => $"go {command.PassageId}",
-        CycleCommandKind.Use => $"use {command.ItemId}",
-        CycleCommandKind.Handoff => command.HandoffText is null ? "handoff --clear" : $"handoff {command.HandoffText}",
-        CycleCommandKind.Continue => "continue",
-        CycleCommandKind.Cancel => "cancel",
-        _ => throw new InvalidOperationException("Unknown character command.")
-    };
 }

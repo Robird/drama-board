@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DramaBoard.ResourceCycle;
 
 internal enum CycleOperationStatus { Succeeded, Rejected, Interrupted }
 
@@ -15,7 +16,13 @@ internal sealed record CycleOperationEntry(CycleOperationReceipt Received, Cycle
 
 /// <summary>A completed domain E/S boundary, supplied after pending-event recovery. Never an execution request.</summary>
 internal sealed record CycleOperationCommit(string OperationRecordId, string ToolCallId, string ActorId,
-    string Result, string WorldVersion, string DomainEvent);
+    string Result, string WorldVersion, string DomainEvent, CycleOperationDisposition Disposition) {
+    internal static CycleOperationStatus StatusOf(CycleOperationDisposition disposition) => disposition switch {
+        CycleOperationDisposition.Succeeded => CycleOperationStatus.Succeeded,
+        CycleOperationDisposition.Rejected => CycleOperationStatus.Rejected,
+        _ => throw new InvalidDataException("The game history contains an unknown operation disposition."),
+    };
+}
 
 /// <summary>Host-owned receipt/result audit. The game history alone authorizes gameplay recovery.</summary>
 /// <remarks>A durable append is flushed before it becomes visible in memory. An I/O failure retires this
@@ -98,6 +105,7 @@ internal sealed class CycleOperationJournal : IDisposable {
         ArgumentNullException.ThrowIfNull(committedOperations);
         var commits = new Dictionary<string, CycleOperationCommit>(StringComparer.Ordinal);
         foreach (var commit in committedOperations) {
+            _ = CycleOperationCommit.StatusOf(commit.Disposition);
             if (!commits.TryAdd(commit.OperationRecordId, commit) && commits[commit.OperationRecordId] != commit) {
                 throw new InvalidDataException("The game history contains conflicting operation references.");
             }
@@ -108,7 +116,7 @@ internal sealed class CycleOperationJournal : IDisposable {
         }
         foreach (string recordId in PendingOperationRecordIds) {
             if (commits.TryGetValue(recordId, out var commit)) {
-                Complete(recordId, CycleOperationStatus.Succeeded, commit.Result, commit.WorldVersion, commit.DomainEvent, exactResult: false);
+                Complete(recordId, CycleOperationCommit.StatusOf(commit.Disposition), commit.Result, commit.WorldVersion, commit.DomainEvent, exactResult: false);
             } else {
                 Complete(recordId, CycleOperationStatus.Interrupted,
                     "操作结果未保存，且没有已提交的游戏事实；未自动重做。", exactResult: false);

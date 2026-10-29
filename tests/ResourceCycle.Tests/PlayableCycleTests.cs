@@ -157,7 +157,7 @@ public sealed class PlayableCycleTests {
     [InlineData("wait-long")]
     [InlineData("continue")]
     [InlineData("cancel")]
-    public async Task Invalid_actions_and_inspection_do_not_change_world_or_publish(string invalid) {
+    public async Task Invalid_actions_publish_only_rejection_and_inspection_remains_read_only(string invalid) {
         var start = Hour(6);
         var initial = Solo(start, [Sun(start, stock: invalid == "empty" ? 0 : 3, requiredLevel: invalid == "skill" ? 1 : 0), Moon(start)]);
         CycleCommand command = invalid switch {
@@ -171,12 +171,20 @@ public sealed class PlayableCycleTests {
         Assert.NotNull(CycleActions.Check(initial, "a", command));
         Assert.NotNull(CycleActions.Check(initial, "unknown", CycleCommand.Wait(1)));
         Assert.NotEmpty(CycleDiagnostics.Render(initial));
+        Assert.Equal(before, initial.DescribeState());
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
         await Step(kernel);
-        before = kernel.World.DescribeState();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(96)).AsTask());
-        Assert.Equal(before, history.State.DescribeState());
-        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
+        CycleWorld opened = kernel.World;
+        await Step(kernel);
+        Assert.Equal(CycleEventKind.OperationRejected, Assert.Single(history.CompletedEvents[^1].Facts).Kind);
+        Assert.Equal(2, history.CompletedEvents.Count);
+        Assert.Equal(opened.Time, history.State.Time);
+        Assert.Equal(opened.Resources, history.State.Resources);
+        Assert.Same(opened.GetCharacter("a").Backpack, history.State.GetCharacter("a").Backpack);
+        Assert.Null(history.State.GetCharacter("a").Activity);
+        Assert.Equal(opened.GetCharacter("a").DecisionGeneration + 1, history.State.GetCharacter("a").DecisionGeneration);
+        Assert.Null(history.State.Business.LastServedActorId);
+        Assert.True(Assert.Single(history.State.Business.InteractionStates["a"].CurrentContext!.Items).IsRejected);
         Assert.Null(history.PendingEvent);
     }
 

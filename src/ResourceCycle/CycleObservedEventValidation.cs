@@ -6,7 +6,7 @@ namespace DramaBoard.ResourceCycle;
 /// <summary>Checks recorded explanations against authoritative endpoints, without planning or replacing material.</summary>
 internal static class CycleObservedEventValidation {
     internal static void Validate(CycleBusinessState before, CycleBusinessState after, CycleFact fact) {
-        if (fact.Kind == CycleEventKind.DecisionContextOpened) {
+        if (fact.Kind is CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
             if (fact.ObservedEvents.Count != 0) { throw new InvalidOperationException("This boundary has no observed-event stream."); }
             return;
         }

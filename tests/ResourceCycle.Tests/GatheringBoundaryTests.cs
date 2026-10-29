@@ -5,7 +5,7 @@ namespace DramaBoard.ResourceCycle.Tests;
 
 public sealed class GatheringBoundaryTests {
     [Fact]
-    public async Task Already_full_backpack_rejects_start_without_publishing() {
+    public async Task Already_full_backpack_publishes_rejection_without_starting_gather() {
         var initial = CycleWorld.CreatePlayable(characters: [new("a", "Alice", backpack: new(new Dictionary<string, int> { ["item.sunflower"] = int.MaxValue }))]);
         var history = Memory(initial);
         var command = CycleCommand.Gather("sunflower");
@@ -13,10 +13,14 @@ public sealed class GatheringBoundaryTests {
         var kernel = CycleEngine.CreateKernel(history, characterController: Commands(command));
         await Step(kernel); // Commit the initial Context before testing command rejection.
         CycleWorld opened = kernel.World;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(Hour(96)).AsTask());
-        Assert.Equal(CycleEventKind.DecisionContextOpened, Assert.Single(Assert.Single(history.CompletedEvents).Facts).Kind);
+        await Step(kernel);
+        Assert.Equal(CycleEventKind.OperationRejected, Assert.Single(history.CompletedEvents[^1].Facts).Kind);
         Assert.Null(history.PendingEvent);
-        Assert.Same(opened, history.State);
+        Assert.Equal(opened.Time, history.State.Time);
+        Assert.Same(opened.GetCharacter("a").Backpack, history.State.GetCharacter("a").Backpack);
+        Assert.Equal(opened.Resources, history.State.Resources);
+        Assert.Null(history.State.GetCharacter("a").Activity);
+        Assert.Equal(opened.GetCharacter("a").DecisionGeneration + 1, history.State.GetCharacter("a").DecisionGeneration);
     }
     [Fact]
     public async Task Valid_large_duration_does_not_overflow_intermediate_percentage_multiplication() {

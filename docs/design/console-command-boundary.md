@@ -1,6 +1,6 @@
 # Human Console 元命令边界重构
 
-状态：已实施。2026-10-28 在增量 UI 切片 A 基础上分离纯行动解析、共享游戏视图与 Human Console 管理能力；本文类型名对应当前代码。验证范围见[实施验收](../experiments/console-command-boundary-acceptance.md)。
+状态：已实施。2026-10-28 在增量 UI 切片 A 基础上分离纯行动解析、共享游戏视图与 Human Console 管理能力；原切片验证范围见[实施验收](../experiments/console-command-boundary-acceptance.md)。后续[角色上下文重构](character-context-model.md)将行动 parser 移至 ResourceCycle，控制器返回原始 submission；下述原切片范围不限制后续领域改造。
 
 ## 1. 目标与现状
 
@@ -10,15 +10,15 @@
 
 | 现有入口 | 当前职责 |
 | --- | --- |
-| [CycleCommand / ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) | 领域命令没有 Exit、Layout 等；控制器返回带操作身份的结构化行动。 |
-| [CycleCommandParser](../../src/ResourceCycle.Cli/CycleCommandParser.cs) / [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) | 分别解析游戏行动与冒号元命令；混合 `PlayInput` 已删除。目录同时控制元命令提示与解析。 |
+| [CycleCommand / ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) | 领域命令没有 Exit、Layout 等；控制器返回带原始行动文本与操作身份的 submission，由游戏解析、校验并提交成功或拒绝。 |
+| [CycleCommandParser](../../src/ResourceCycle/CycleCommandParser.cs) / [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs) | 前者位于共享应用层，只解析游戏行动；后者解析 Console 冒号元命令，目录同时控制提示与解析。 |
 | [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) | 唯一元命令执行入口；`:exit` 配对日志结果后抛出 Console 专用异常，外层 Console 运行循环捕获并返回。没有调用 `Environment.Exit`。EOF 也结束 Console。 |
 | [PlayPresentation](../../src/ResourceCycle.Cli/PlayPresentation.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | 前者保存布局/模式偏好及实际选项，后者组合 Console 提示、阶段和输入标记并管理交付基线。 |
 | [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、[ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs) | 只生成游戏观察、已记录经历及行动帮助，不生成元命令或宿主交互阶段指引。 |
 
-独立 LLM 控制器通过现有结构化接口接入时，不会自动获得 `:exit`。将模型文本直接接入 `HumanDefault` Console 输入流则会拥有整套 Console 能力。此边界避免共享解析器和视图夹带管理能力，不建设同进程恶意代码隔离。
+独立 LLM 控制器通过原始行动 submission 接口接入时，`:exit` 只会成为游戏语法拒绝，不会退出进程。将模型文本直接接入 `HumanDefault` Console 输入流则会拥有整套 Console 能力。此边界避免共享解析器和视图夹带管理能力，不建设同进程恶意代码隔离。
 
-## 2. 范围和不变量
+## 2. 原切片范围和不变量
 
 - 只调整 ResourceCycle.Cli 的输入、提示与会话组合，以及相关测试和文档；保留两个场景、两种布局和 full/delta 行为。
 - 领域观察、`CycleCommand`、控制器返回封套、E/S、ToolCallId 与恢复语义不变；无需修改 Schema 或 GameRevision。
@@ -33,18 +33,18 @@
 | --- | --- | --- |
 | `CycleCommandParser` | 纯文本行动解析，产出 `CycleCommand` 或语法失败（`null`） | 元命令、退出、日志、世界合法性检查 |
 | `ConsoleMetaCommands` | 有限内建元命令目录、解析，以及同源帮助文字 | 世界规则、持久状态、通用插件加载 |
-| `ConsoleCharacterController` | 接收并登记输入，路由元命令，检查行动，返回已有操作封套 | 把 Console 管理操作提交给领域 |
+| `ConsoleCharacterController` | 接收并登记输入，路由元命令；可查询行动风险，但只返回原始行动 submission，由游戏裁决 | 把 Console 管理操作提交给领域 |
 | `IPlayLayout` 与游戏视图 | 只读地组织观察、事件、效果、行动条件和游戏规则 | 提示真人输入、回合分隔、退出、元命令广告 |
 | `PlayPresentationSession` | 组合 Console 附加文字、提示符、阶段提示、回合分隔与交付基线 | 根据输出位置猜测控制器类型 |
 | `PlayPresentation` | 布局/模式偏好、可选布局和模式数据 | 维护另一份独立的元命令语法与启用开关 |
 
-先保留这些类型在 CLI 程序集内。纯解析、纯呈现与 Console 副作用在代码上分开即可；未来第二个实际消费者出现时，再决定共享代码的程序集位置。
+纯行动解析器位于 ResourceCycle；Console 目录、呈现和宿主副作用仍在 CLI 程序集内。后续按第二个消费者的需要决定是否提取共享呈现程序集。
 
 ### 3.1 解析与输入路由
 
-每次读取沿用现有顺序：取消检查 → 读取 → 再次取消检查 → EOF/空白处理 → 保存 Received 与隐式 ToolCallId → 解析/执行或拒绝 → 配对 Result。保留读取后的取消检查，避免等待期间已取消却继续登记和分派刚读到的命令；这不构成任意时刻取消与日志写入的原子保证。行动合法性仍通过 `context.Check` 和引擎最终校验完成。
+每次读取沿用现有顺序：取消检查 → 读取 → 再次取消检查 → EOF/空白处理 → 保存 Received 与隐式 ToolCallId → 解析/执行或拒绝 → 配对 Result。保留读取后的取消检查，避免等待期间已取消却继续登记和分派刚读到的命令；这不构成任意时刻取消与日志写入的原子保证。行动合法性由引擎使用角色限定的 `context.Check` 判断；Console 的可选风险查询不截获或提交行动结果。
 
-去除前导空白后，以 `:` 开头的输入只交给元命令目录；未知、禁用或参数错误均在 Console 输入循环内拒绝，不回退为游戏行动。其余输入只交给行动解析器。`handoff :exit` 的冒号属于正文，必须保存为交接文字，不能再次分派。
+去除前导空白后，以 `:` 开头的输入只交给元命令目录；未知、禁用或参数错误均在 Console 输入循环内拒绝，不回退为游戏行动。其余输入原样返回共享游戏入口，由行动解析器处理。`handoff :exit` 的冒号属于正文，必须保存为交接文字，不能再次分派。
 
 目录返回有限的 `ConsoleMetaCommand`（命令种类和参数），执行继续使用 Controller 内的明确分派；不为每条命令创建 handler 接口、服务容器或可加载插件。原 `PlayInput` 混合结果已拆除，不保留第二条可绕过目录执行元命令的路径。
 
@@ -88,7 +88,7 @@ Console 根据目录生成启动提示、全量正文前的元命令提示、`:h
 | `:exit` / `:quit` | 先保存配对答复，再结束当前 Console 运行；由外层所有者返回，不在解析器、布局或领域调用进程退出 |
 | EOF / 纯空白 | EOF 结束 Console，纯空白继续读取；二者均不虚构操作 ID |
 
-每条非空提交只生成一次身份，包含查询、拒绝与元命令。合法行动沿既有 E/S 提交路径完成结果；本地元命令由 Controller 完成，不重复完成。重构不能把日志接收移到解析成功之后，也不能新增恢复时重做动作的逻辑。日志写出失败沿用现有失败处理，不在本轮重建日志与 UI 的事务协议。
+每条非空提交只生成一次身份，包含查询、拒绝与元命令。成功及拒绝的行动都沿 E/S 提交路径完成结果；本地元命令由 Controller 完成，不重复完成。重构不能把日志接收移到解析成功之后，也不能新增恢复时重做动作的逻辑。日志写出失败沿用现有失败处理，不在本轮重建日志与 UI 的事务协议。
 
 增量 A 的事件顺序、真实效果、去重当前值、新回合全量和终局一次性交付不变。提取 Console 提示时，不旁路 `PlayPresentationSession` 的 writer/Flush/基线安装顺序；装饰性提示不进入 `CycleViewSnapshot` 或 `CycleViewUpdate` 的游戏语义键。
 
@@ -105,7 +105,7 @@ Console 根据目录生成启动提示、全量正文前的元命令提示、`:h
 
 - 两个解析器职责分明：行动解析器不能产生任何元命令；冒号形式不回退为行动；非法参数、无冒号别名、大小写规则保留。`handoff :exit` 和带冒号的普通正文无副作用。
 - `HumanDefault` 覆盖全部既有元命令及 `:quit` 别名；帮助中每个承诺的名称/模式都能被识别，当前不支持的值不会被列为合法值。
-- `None` 的集成测试覆盖全部内建名称、别名及带合法参数的切换形式，包括 `:layout classic` / `:mode full`（选择与初始偏好不同的值），后跟一个合法行动；确认循环继续、每条拒绝同 ID 配对、布局/模式与基线未因禁用输入改变、最终只返回合法行动。不要以随后的 EOF 退出误判禁用失败。
+- `None` 的集成测试覆盖全部内建名称、别名及带合法参数的切换形式，包括 `:layout classic` / `:mode full`（选择与初始偏好不同的值），后跟一个合法行动；确认循环继续、每条拒绝同 ID 配对、布局/模式与基线未因禁用输入改变、最终返回后续的行动 submission，领域层另行校验。不要以随后的 EOF 退出误判禁用失败。
 - 用无 Console 指令的数据夹具分别渲染 classic/decision、全量/增量、帮助、交接和终局内容，确认没有程序生成的元命令提示；另用带 `:exit` 正文的夹具确认原样呈现而不执行。
 - Console 启用/禁用提示与解析同源；正常模式的帮助仍可发现全部 layout 名称与适用模式。只检验能力与必要语义，不断言章节位置、整屏快照或精确措辞。
 - 覆盖终局提交与冷开终局，确认只输出一次冻结记录且没有可继续交互的元命令提示；保留读取后取消检查的行为覆盖。
@@ -115,6 +115,6 @@ Console 根据目录生成启动提示、全量正文前的元命令提示、`:h
 
 ## 6. 与后续工作的关系
 
-本重构可独立于[增量 UI B](incremental-ui-milestone.md)实施；不修改事件窗口、来源身份或 Incoming 合同。未来 LLM 通过工具参数构造 `CycleCommand`，需要只读查询时复用游戏内容并定义自己的工具入口，不获得 Console 目录。若保留文本行动接口，可复用纯行动解析器；不把禁用元命令的 Console Controller 当作完成 LLM 适配。
+本重构可独立于[增量 UI B](incremental-ui-milestone.md)实施；不修改事件窗口、来源身份或 Incoming 合同。未来 LLM 通过同一原始行动 submission 入口提交，需要只读查询时复用游戏内容并定义自己的工具入口，不获得 Console 目录；不把禁用元命令的 Console Controller 当作完成 LLM 适配。
 
 本轮不要求通用 `IHumanInterface`、`ICommandRegistry`、`IPresentationHost` 或宿主控制命令协议。只有第二种实际交互实现需要共享依赖，或产品提出部分命令开放/中途切换时，才重新评估这些扩展。

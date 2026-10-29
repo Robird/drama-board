@@ -114,7 +114,7 @@ internal static class CycleTestSupport {
         }
     }
     public static CycleControllerOperation Operation(CycleCommand command, int ordinal = 1) =>
-        new($"call_fixture_{ordinal}", command, $"fixture/{ordinal}");
+        new($"call_fixture_{ordinal}", CycleCommandParser.Format(command), $"fixture/{ordinal}");
     public static StubCharacterController Commands(params CycleCommand[] commands) {
         Queue<CycleCommand> remaining = new(commands);
         return new((_, _) => remaining.Count > 0 ? remaining.Dequeue() : throw new InvalidOperationException("Unexpected Player request."));

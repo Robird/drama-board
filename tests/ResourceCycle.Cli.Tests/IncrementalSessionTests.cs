@@ -179,7 +179,7 @@ public sealed class IncrementalSessionTests {
         CycleControllerOperation action = await controller.ChooseCommandAsync(
             ViewContextFixture.Create(CycleGameFactory.CreatePlayable().World, "a"), default);
 
-        Assert.Equal(CycleCommand.Wait(1), action.Command);
+        Assert.Equal("wait 1", action.RawInput);
         Assert.Equal(PlayOutputMode.Full, presentation.Mode);
         Assert.Equal(CycleOperationStatus.Rejected, operations.Entries[1].Completed!.Status);
         Assert.Contains(":mode full", output.ToString());

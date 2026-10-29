@@ -256,7 +256,7 @@ public sealed class CharacterContextLifecycleTests {
 
     private static CycleActivity Waiting(ModelTime at) => new(CycleActivityKind.Wait, 1, at, 2 * CycleTime.Hour, Hour(10));
     private static PendingAdvance CopyAdvance(PendingAdvance source, CycleCommand? command = null, string? description = null) =>
-        new(source.ActorId, source.SourceContextSequence, source.OperationSequence, command ?? source.Command,
+        new(source.ActorId, source.SourceContextSequence, source.OperationSequence, command ?? source.Command, source.RawInput,
             source.ToolCallId, source.OperationRecordId, source.AcceptedAt, description ?? source.Description,
             source.OriginPlaceName, source.ActivityId, source.MovementGeneration, source.Handoff);
 

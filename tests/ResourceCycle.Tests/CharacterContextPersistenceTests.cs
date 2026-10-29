@@ -140,7 +140,7 @@ public sealed class CharacterContextPersistenceTests {
                 _ => CycleCommand.Continue()
             };
             Assert.Null(context.Check(command));
-            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original/{call}", command, $"context/operation-{call}"));
+            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original/{call}", CycleCommandParser.Format(command), $"context/operation-{call}"));
         }
     }
 

@@ -159,7 +159,7 @@ public sealed class DecisionContinuityPersistenceTests {
                 _ => CycleCommand.Continue()
             };
             Assert.Null(context.Check(command));
-            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original/{ordinal}", command,
+            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original/{ordinal}", CycleCommandParser.Format(command),
                 $"batch-1/operation-{ordinal}"));
         }
     }

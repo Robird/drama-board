@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 7)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 8)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
-    SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened
+    SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected
 }
 public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }

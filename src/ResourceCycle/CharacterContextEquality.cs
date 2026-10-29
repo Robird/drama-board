@@ -22,7 +22,7 @@ internal static class CharacterContextEquality {
     internal static bool Same(PendingAdvance? a, PendingAdvance? b) =>
         ReferenceEquals(a, b) || a is not null && b is not null &&
         a.ActorId == b.ActorId && a.SourceContextSequence == b.SourceContextSequence &&
-        a.OperationSequence == b.OperationSequence && a.Command == b.Command &&
+        a.OperationSequence == b.OperationSequence && a.Command == b.Command && a.RawInput == b.RawInput &&
         a.ToolCallId == b.ToolCallId && a.OperationRecordId == b.OperationRecordId && a.AcceptedAt == b.AcceptedAt &&
         a.Description == b.Description && a.OriginPlaceName == b.OriginPlaceName &&
         a.ActivityId == b.ActivityId && a.MovementGeneration == b.MovementGeneration && a.Handoff == b.Handoff;

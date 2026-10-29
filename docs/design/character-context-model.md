@@ -1,6 +1,6 @@
 # 角色上下文 Model 与信息交付重构
 
-状态：2026-10-29 实施中；分片 2A 的持久 Context、合法路径与 S/E 恢复已有工程及试玩证据；原始输入/持久拒绝和完整 Console 消费仍待后续分片。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文保留完整交付合同，不以局部接线代替最终验收。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)。
+状态：2026-10-29 实施中；持久 Context 与原始操作/拒绝入口已接通，完整 Console Model 消费仍待呈现分片。用户已认可“世界事实 → 角色感知 → 持久决策材料 → Human/LLM 控制器”的总体方向；本文保留完整交付合同，不以局部接线代替最终验收。设计调查基线为 `0912377`；施工进度见 §9。本文承接[问题工作单](../worksets/controller-context-visibility.md)。
 
 ## 1. 目标与明确不做的事
 
@@ -18,9 +18,9 @@
 
 | 当前入口 | 事实 | 重构方向 |
 | --- | --- | --- |
-| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) | 物理角色与交互状态已分开；Business.InteractionStates 保存 Opening、Items 和待交付经历 | 验证全部合法路径，再接持久拒绝；旧 Continuity 不再作为第二套权威 |
+| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) | 物理角色与交互状态已分开；Business.InteractionStates 保存 Opening、Items 和待交付经历 | 成功与拒绝共用操作身份及提交边界；旧 Continuity 不再作为第二套权威 |
 | [CycleFact](../../src/ResourceCycle/CycleFact.cs) / [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
-| [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/Items；CycleDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
+| [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/成功 Items；拒绝不保存重复观察，CycleDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
 | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 直接消费逐次提交并在旧画面输出；管理与游戏材料混合 | 改为消费已提交 Context 的新材料；世界提交不再直接冒充对角色的交付 |
 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
@@ -154,15 +154,15 @@ Opening 包含：角色身份与回合号、游戏内背景/目标与规则材�
 
 Human 与未来 LLM 共用纯行动字符串入口，第一版不要求每个行动一个工具。Console 先单独分派冒号元命令；其他非空输入在解析前固定 ToolCallId 和 OperationRecordId，然后由共享入口解析、按角色校验并提交。
 
-现有 `ChooseCommandAsync` 只返回合法 `CycleControllerOperation`，Console 内部吞掉拒绝并继续 ReadLine。为记录拒绝而不引入第二个状态写入器，改为返回带原始输入/身份的 submission；游戏组合层处理解析、校验及成功/拒绝事实，再请求本轮下一次输入。纯行动 parser 从 CLI 移到共享应用入口，ResourceCycle 不反向引用 CLI。拟议类型名不要求保留旧 API。Console 管理命令仍在自己的输入循环中，不返回给游戏。
+`ChooseCommandAsync` 返回 `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`；游戏组合层使用共享 [CycleCommandParser](../../src/ResourceCycle/CycleCommandParser.cs) 解析，经角色可见性限定的校验后提交成功或 `OperationRejected`，再请求本轮下一次输入。Console 管理命令仍在自己的输入循环中，不返回给游戏；其他控制器直接提交 `:exit` 只会得到游戏语法拒绝。成功 Item、拒绝 Item、放行 PendingAdvance 均保留精确原始输入，规范化命令只用于脚本/目录显示，不改写输入。
 
 拒绝使用明确的交互记录事实：模型时间不变，世界业务字段不变，只更新当前角色交互子图并递增 DecisionGeneration，使已消费的 RequestDecision 不重用旧 key；LastServedActorId、活动/期限、通知、身体警告和 ContextSequence 保持。保留 LastServedActorId 使同刻下次仍轮到原角色；合法零耗时操作的既有仲裁规则不顺手修改。
 
-将“携带操作身份”“成功服务轮转”“确认警告”分开判断。目前 FactApplication 将前两者绑定，SurvivalRules 又借 LastServedActorId 判断确认；新增拒绝不能简单加入旧 decision 分支，必须明确禁止成功行动的确认、访问记忆或其他业务 enrichment 给拒绝附加副作用。纯记录可见拒绝不是活动，也不是身体/库存事件。
+将“携带操作身份”“成功服务轮转”“确认警告”分开判断。FactApplication 分别校验操作身份与成功服务游标；拒绝使用独立规划路径，跳过成功行动的身体、访问观察与事件感知 enrichment。SurvivalRules 仍借成功服务游标判断既有确认规则。纯记录可见拒绝不是活动，也不是身体/库存事件。
 
 DecisionGeneration 暂保留现有调度用途；拒绝、开轮等消费 RequestDecision 的记录更新相应候选版本并标 dirty，被动接收感知不自动轮转、确认警告或改身体预测版本。不能以整张 InteractionState 的替换次数代替 DecisionGeneration。涉及唤醒的通知仍按既有玩法规则处理。
 
-所有角色反馈从已提交语义记录得到（零耗时/拒绝在 Context Item，放行的接受结论在推进记录），再完成操作日志 Result 和实际输出；对已关闭旧上下文不交付放行结果。E 必须携带可恢复的成功/拒绝结论和反馈材料，正常完成与 ReadCommittedOperations 使用同一结果投影。当前 `CompleteOperations / Reconcile` 将“有已提交 E”一律视为 Succeeded，实施时必须一起修改，不能把持久化的拒绝补录成成功。
+所有角色反馈从已提交语义记录得到（零耗时/拒绝在 Context Item，放行的接受结论在推进记录），再完成操作日志 Result 和实际输出；对已关闭旧上下文不交付放行结果。E 必须携带可恢复的成功/拒绝结论和反馈材料，正常完成与 ReadCommittedOperations 使用同一结果投影。`CycleFact.OperationDisposition` 和 `CycleCommittedOperation.Disposition` 明确保留成功/拒绝；`CompleteOperations / Reconcile` 使用同一映射，不能把持久化的拒绝补录成成功。
 
 先有游戏 E/S、后有日志/屏幕；日志故障不能回滚已提交游戏或重新执行命令。冷开根据 E 补齐匹配结果，未进入 E 的 Received 标为未完成，不假称已执行。Console 元命令仍使用宿主日志，不往角色图写 Item。恢复生成的文字不冒称上次实际写出的原始字节，语义结果与实际终端投递是两个层次。
 
@@ -182,7 +182,7 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 当前 Context 的纯拒绝采用 §4.4 的最近 3 次角色操作窗口；成功记录、实际经历和待交付集合不因此裁剪。单回合大量成功操作或大量感知仍可能增长，第一版不声称硬内存有界。上线 LLM 长循环或多角色事件广播前，仍需单独裁决其他材料的容量/封存策略；超限不得造成世界提交成功而感知丢失。该限制不阻碍当前有限 Human Demo 验证。
 
-另有必须显式接受的运行限制：当前 `CycleEngine` 使用每模型时刻最多 1024 次转换的 Kernel 护栏，零耗时成功操作原本已消耗预算，持久拒绝现在也消耗。首版保留此护栏；耗尽时停止宿主并明确报告，不能自动推进时间、丢 Item 或静默重置。冷开不会重置持久因果序号，耗尽后也无法继续接收下一条放行命令；因此本片不保证任意长同轮 tool-loop。分片 2 验证临界行为；消除此限制是接入长循环前独立裁决，不能隐含地改 Kernel 时序协议。
+另有必须显式接受的运行限制：当前 `CycleEngine` 使用每模型时刻最多 1024 次转换的 Kernel 护栏，零耗时成功操作原本已消耗预算，持久拒绝现在也消耗。首版保留此护栏；耗尽时停止宿主并明确报告，不能自动推进时间、丢 Item 或静默重置。冷开不会重置持久因果序号，耗尽后也无法继续接收下一条放行命令；因此本片不保证任意长同轮 tool-loop。临界与冷开行为由 [CharacterContextRejectionPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs) 覆盖；消除此限制是接入长循环前独立裁决，不能隐含地改 Kernel 时序协议。
 
 按保留规则移除旧拒绝，不撤销已经完成的转换，也不返还上述预算；上下文长度与调度预算分别处理。
 
@@ -209,11 +209,11 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 按可独立检查的边界实施，避免先造新模型却长期维持两个连续性权威。
 
-共享观察与背景直接进入持久 Context，具体集合在构造/init 时复制且公开只读，不另建持久 DTO。Business.InteractionStates 与 Fact.InteractionChanges 已替换 Character.Continuity；合法操作、首次开轮、关闭后待交付、下一 Opening 和终局通过同一 E/S 边界发布。GameRevision 8；Business Schema 4、Character Schema 5、Fact Schema 8，不兼容旧开发存档。
+共享观察与背景直接进入持久 Context，具体集合在构造/init 时复制且公开只读，不另建持久 DTO。Business.InteractionStates 与 Fact.InteractionChanges 已替换 Character.Continuity；合法操作、首次开轮、关闭后待交付、下一 Opening 和终局通过同一 E/S 边界发布。GameRevision 9；Business Schema 4、Character Schema 5、Fact Schema 9、PendingAdvance Schema 2，不兼容旧开发存档。
 
 证据集中在 [CharacterContextLifecycleTests](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 的合法路径、角色隔离、仅快照更新及错误端点拒绝，以及 [CharacterContextPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 的真实 S 冷开和瞬时/放行/开轮/终局 E-only 恢复。恢复比较独立 E/S 图的语义前缀并安装记录对象，不重跑观察、背景、感知或编号分配；直接业务端点检查也不重新预测风险菜单。共享材料冷开和全部角色事件的基础证据仍分别见 [VisibleMaterialPersistenceTests](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[AllActorObservedEventTests](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs)。
 
-下一步是分片 2B：控制器目前仍只返回合法 CycleControllerOperation，Item 中的输入暂由已接受命令规范化生成；原始 submission、共享 parser、持久拒绝/窗口、日志成功或拒绝状态及仲裁尚未接通。Console 过渡适配已读取保存观察与 Opening 经历、停止向 Closed 输出结算、删除普通采集逐事实直出；瞬时增量仍经 Fact 事件出口，完整 Items 重放、纯输出、带外块、明确开始/结束与诊断 sink 继续由分片 3 完成，不能将当前 Console 屏幕视为完整 Model。
+分片 2B 已接入原始 submission、共享 parser、持久拒绝/窗口及日志状态配对；拒绝只改变自身交互材料和请求版本。证据见 [拒绝与保留窗口](../../tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)、[S/E-only 拒绝恢复与同刻预算](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)及[宿主结果修复](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)。恢复安装已记录条目及窗口，不重做合法性判断；纯语法解析仅检查成功事实与保存输入的一致性。Console 过渡适配已读取保存观察与 Opening 经历、停止向 Closed 输出结算、删除普通采集逐事实直出；瞬时增量仍经 Fact 事件出口，完整 Items 重放、纯输出、带外块、明确开始/结束与诊断 sink 继续由分片 3 完成，不能将当前 Console 屏幕视为完整 Model。
 
 | 分片 | 交付与范围 | 验收门槛 |
 | --- | --- | --- |

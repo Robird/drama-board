@@ -50,11 +50,11 @@ public sealed class CycleMaintenanceBoundaryTests {
         before = before.Replace(before.Time, interactionChanges: [new("a", new(1, CharacterContextStatus.Open, opening))]);
         var replacement = actor.Change(activity, notices: []);
         var fact = new CycleFact(CycleEventKind.AttentionAcknowledged, Hour(6), "a",
-            changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1",
+            changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1", rawInput: "continue", operationDisposition: CycleOperationDisposition.Succeeded,
             observedEvents: [new(0, "a", CycleObservedEventKind.AttentionAcknowledged, Hour(6), Hour(6),
                 effects: [new(new("notice", "a", "count"), CycleVisibleValue.Numeric(1, "条"), CycleVisibleValue.Numeric(0, "条"))])]);
 
-        var pending = new PendingAdvance("a", 1, 1, CycleCommand.Continue(), "call_fixture_1", "fixture/1", Hour(6),
+        var pending = new PendingAdvance("a", 1, 1, CycleCommand.Continue(), "continue", "call_fixture_1", "fixture/1", Hour(6),
             "确认提醒并继续原定活动", activityId: activity.Id);
         fact = fact.WithInteractions([new("a", new(1, CharacterContextStatus.Closed, opening, lastOperationSequence: 1), pending,
             [new(1, fact.ObservedEvents[0])], nextExperienceSequence: 2)]);

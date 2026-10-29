@@ -72,7 +72,7 @@ public sealed class CommittedOperationRecoveryTests {
         public int Calls { get; private set; }
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             Calls++;
-            return ValueTask.FromResult(new CycleControllerOperation("provider-call-id", CycleCommand.Wait(1), $"record-{Calls}"));
+            return ValueTask.FromResult(new CycleControllerOperation("provider-call-id", "wait 1", $"record-{Calls}"));
         }
     }
 }

@@ -47,7 +47,7 @@ internal static class PlayConsole {
         if (durable is not null) {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
-                    commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent)));
+                    commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
         controller.StartupText = startup;
 
@@ -89,7 +89,8 @@ internal static class PlayConsole {
     internal static void CompleteOperations(CycleOperationJournal operations, OccurrenceCompletion<CycleFact> completion) {
         foreach (CycleFact fact in completion.Event.Facts) {
             if (fact.OperationRecordId is not { } recordId) { continue; }
-            operations.Complete(recordId, CycleOperationStatus.Succeeded, CycleOperationResults.Describe(fact),
+            operations.Complete(recordId, CycleOperationCommit.StatusOf(fact.OperationDisposition
+                ?? throw new InvalidOperationException("An operation fact has no committed disposition.")), CycleOperationResults.Describe(fact),
                 $"{completion.Cursor.Version.LineageId}:{completion.Cursor.Version.TransitionCount}",
                 completion.Event.CauseKey.ToString());
         }
@@ -129,6 +130,11 @@ internal static class PlayConsole {
         }
 
         internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
+            // A rejection is an actor-visible committed answer in either Console mode.
+            foreach (CycleFact fact in completion.Event.Facts.Where(fact => fact.OperationDisposition == CycleOperationDisposition.Rejected)) {
+                _session.Reply(CycleOperationResults.Describe(fact));
+            }
+            if (completion.Event.Facts.All(fact => fact.OperationDisposition == CycleOperationDisposition.Rejected)) { return; }
             // Basic multiplayer remains full-only: each controller entry reads its saved visible state.
             // Do not print another actor's acceptance or world settlement into the previous actor's screen.
             if (!survival) { return; }
@@ -143,7 +149,8 @@ internal static class PlayConsole {
                         completion.Cursor.Version.TransitionCount, factOrdinal, item.EventOrdinal,
                         fact.OperationRecordId, fact.ToolCallId)))).ToArray();
             foreach (CycleFact fact in completion.Event.Facts.Where(fact => fact.ActorId == actorId &&
-                fact.OperationRecordId is not null && !fact.ObservedEvents.Any(item => item.ObserverId == actorId))) {
+                fact.OperationRecordId is not null && fact.OperationDisposition != CycleOperationDisposition.Rejected &&
+                !fact.ObservedEvents.Any(item => item.ObserverId == actorId))) {
                 _session.Reply(CycleOperationResults.Describe(fact));
             }
             CycleDecisionContext context = CycleDecisionContext.Create(world, actorId);
@@ -211,18 +218,13 @@ internal static class PlayConsole {
                     }
                     continue;
                 }
-                if (CycleCommandParser.Parse(input) is not { } command) {
-                    RejectSyntax();
-                    continue;
+                // This read-only preview does not accept or reject the submission. The domain records
+                // the exact input and independently commits its disposition before result delivery.
+                if (CycleCommandParser.Parse(input) is { } preview && context.Warning(preview) is { } warning) {
+                    _output.WriteLine($"风险提示（不禁止）：{warning}");
                 }
-                string? reason = context.Check(command);
-                if (reason is not null) {
-                    Reply($"无法行动：{reason} 时间未推进；未确认消息。", CycleOperationStatus.Rejected);
-                    continue;
-                }
-                if (context.Warning(command) is { } warning) { _output.WriteLine($"风险提示（不禁止）：{warning}"); }
                 _session.BeginAdvancing();
-                return new CycleControllerOperation(receipt.ToolCallId, command, receipt.OperationRecordId);
+                return new CycleControllerOperation(receipt.ToolCallId, input, receipt.OperationRecordId);
             }
         }
     }

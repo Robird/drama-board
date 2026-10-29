@@ -125,7 +125,7 @@ public sealed class DecisionContinuityTrajectoryTests {
                 _ => CycleCommand.Continue()
             };
             Assert.Null(context.Check(command));
-            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original:{Calls}", command,
+            return ValueTask.FromResult(new CycleControllerOperation($"endpoint.original:{Calls}", CycleCommandParser.Format(command),
                 $"trajectory/batch/operation/{Calls}"));
         }
     }
