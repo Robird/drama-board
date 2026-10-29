@@ -130,9 +130,10 @@ internal static class PlayConsole {
 
         internal void RenderCommitted(CycleWorld world, OccurrenceCompletion<CycleFact> completion, bool survival) {
             if (!survival) {
-                // Multiplayer experience distribution is deferred; retain its explicit full-mode fallback.
+                // Transitional full-mode display until Console consumes the actor's persisted Context.
+                // Recorded events and operation audit remain structured; keep raw effect keys out of player text.
                 foreach (CycleFact fact in completion.Event.Facts) {
-                    if (fact.OperationRecordId is not null) { _output.WriteLine(CycleOperationResults.Describe(fact)); }
+                    if (fact.OperationRecordId is not null) { _output.WriteLine(fact.Result); }
                     if (PlayView.RenderPublicChange(fact, expedition: false) is { } text) { _output.WriteLine(text); }
                 }
                 _output.Flush();

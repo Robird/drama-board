@@ -1,3 +1,4 @@
+using Atelia.DurableGraph;
 using System.Globalization;
 
 namespace DramaBoard.ResourceCycle;
@@ -5,15 +6,19 @@ namespace DramaBoard.ResourceCycle;
 /// <summary>Shared game background selected only from a character's visible observation.</summary>
 /// <remarks>Contains semantic text, without Console management, layout markup or live world references.
 /// Dynamic rule parameters are copied into the returned material when it is created.</remarks>
-public sealed class CycleBackground {
-    public string Title { get; }
-    public string Introduction { get; }
-    public IReadOnlyList<string> Rules { get; }
+[DurableType("DramaBoard.ResourceCycle.Background", 1)]
+public sealed partial class CycleBackground : IDurableObject {
+    [DurableField(1)] private string _title;
+    public string Title => _title;
+    [DurableField(2)] private string _introduction;
+    public string Introduction => _introduction;
+    [DurableField(3)] private List<string> _rules;
+    public IReadOnlyList<string> Rules => _rules.AsReadOnly();
 
     private CycleBackground(string title, string introduction, IEnumerable<string> rules) {
-        Title = title;
-        Introduction = introduction;
-        Rules = Array.AsReadOnly(rules.ToArray());
+        _title = title;
+        _introduction = introduction;
+        _rules = new(rules);
     }
 
     public static CycleBackground For(CycleObservation observation) {

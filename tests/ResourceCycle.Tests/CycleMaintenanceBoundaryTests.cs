@@ -13,8 +13,10 @@ public sealed class CycleMaintenanceBoundaryTests {
         // The final child references deliberately equal the original references.
         CycleFact[] facts = [
             new(CycleEventKind.LightChanged, business.Time, light: new(false, Hour(18)),
-                changedResources: [original.Change(original.Stock, original.AccumulatedTicks, null)]),
-            new(CycleEventKind.LightChanged, business.Time, light: business.Light, changedResources: [original])
+                changedResources: [original.Change(original.Stock, original.AccumulatedTicks, null)],
+                observedEvents: [LightChange(business.Time, true, false)]),
+            new(CycleEventKind.LightChanged, business.Time, light: business.Light, changedResources: [original],
+                observedEvents: [LightChange(business.Time, false, true)])
         ];
         var instant = new LogicalInstant(business.Time, 0);
         CycleWorld folded = facts.Aggregate(before, (world, fact) => CycleEngine.Fold(world, instant, fact));
@@ -42,7 +44,9 @@ public sealed class CycleMaintenanceBoundaryTests {
         CyclePrediction activityPrediction = Assert.Single(previous.Predictions, p => p.OwnerId == "actor:a:activity");
         var replacement = actor.Change(activity, notices: []);
         var fact = new CycleFact(CycleEventKind.AttentionAcknowledged, Hour(6), "a",
-            changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1");
+            changedCharacters: [replacement], lastServedActorId: "a", toolCallId: "call_fixture_1", operationRecordId: "fixture/1",
+            observedEvents: [new(0, "a", CycleObservedEventKind.AttentionAcknowledged, Hour(6), Hour(6),
+                effects: [new(new("notice", "a", "count"), CycleVisibleValue.Numeric(1, "条"), CycleVisibleValue.Numeric(0, "条"))])]);
 
         CycleBusinessState after = CycleFactApplication.Apply(before, new(Hour(6), 0), fact);
         var dirty = new HashSet<string>(StringComparer.Ordinal);
@@ -94,4 +98,7 @@ public sealed class CycleMaintenanceBoundaryTests {
 
     private static CycleBusinessState Business(CycleCharacter actor) =>
         new(Hour(6), new(true, Hour(18)), [Sun(Hour(6))], new([]), [actor]);
+    private static CycleObservedEvent LightChange(ModelTime at, bool before, bool after) =>
+        new(0, "a", CycleObservedEventKind.LightChanged, at, at,
+            effects: [new(new("world", "world", "light"), CycleVisibleValue.Flag(before), CycleVisibleValue.Flag(after))]);
 }

@@ -4,7 +4,7 @@
 
 ## 实现接点
 
-- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) 保存状态键、有限值类型、事件和效果；数值以 `Units / Scale` 精确记录。`CycleFact.ObservedEvents` 随 E 保存，Fact Schema 为 7，GameRevision 为 6，不兼容旧开发存档。
+- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) 保存状态键、有限值类型、事件和效果；数值以 `Units / Scale` 精确记录。`CycleFact.ObservedEvents` 随 E 保存，Fact Schema 为 7；当前 GameRevision 为 7（角色上下文重构已扩展普通采集与无生存需求角色的事件材料），不兼容旧开发存档。
 - [CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs) 在最终业务事实形成后，按明确的事实种类组装期间变化与直接效果；[校验器](../../src/ResourceCycle/CycleObservedEventValidation.cs) 核对归属、顺序、可见性及业务端点。恢复应用已记录材料，不重新规划效果。
 - [CycleOperationResults](../../src/ResourceCycle/CycleOperationResults.cs) 为正常提交及冷开补录提供同一语义答复。没有变化的成功操作仍有答复，不伪造经历事件。
 - [CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs)、[CycleViewUpdate](../../src/ResourceCycle.Cli/CycleViewUpdate.cs) 是 CLI 内部的非持久呈现模型；提交来源身份在宿主补齐。尚未据此创建通用游戏库或跨回合历史集合。

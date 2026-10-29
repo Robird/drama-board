@@ -20,7 +20,7 @@ public sealed class CycleRevisionTests {
         WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), CycleGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(6, CycleGameRevision.Current);
+        Assert.Equal(7, CycleGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));
@@ -64,6 +64,13 @@ public sealed class CycleRevisionTests {
                 Assert.Equal(pending.Occurrence.TargetInstant, history.PendingEvent.TargetInstant);
                 Assert.Equal(23, Assert.Single(Assert.Single(history.PendingEvent.Facts).ChangedCharacters).Backpack.Count("item.3"));
                 Assert.NotSame(history.State.Characters[0], history.PendingEvent.Facts[0].ChangedCharacters[0]);
+                CycleObservedEvent yielded = Assert.Single(history.PendingEvent.Facts[0].ObservedEvents,
+                    entry => entry.Kind == CycleObservedEventKind.GatherYielded);
+                Assert.Equal("actor.3", yielded.ObserverId);
+                CycleObservedEffect inventory = Assert.Single(yielded.Effects, effect => effect.Key.Category == "inventory");
+                Assert.Equal(new CycleStateKey("inventory", "item.3", "count"), inventory.Key);
+                Assert.Equal(CycleVisibleValue.Numeric(22, "份"), inventory.Before);
+                Assert.Equal(CycleVisibleValue.Numeric(23, "份"), inventory.After);
             }
             if (readyText is null) { readyText = history.State.DescribeState(); }
             else { Assert.Equal(readyText, history.State.DescribeState()); }
@@ -290,7 +297,23 @@ public sealed class CycleRevisionTests {
         CycleCharacter changed = actor.Change(null, actor.Backpack.Add(resource.ItemId), result: "Recorded fixture yield");
         var fact = new CycleFact(CycleEventKind.GatherYielded, Hour(7), actor.Id, resource.Id,
             changedResources: [resource.Change(resource.Stock - 1, resource.AccumulatedTicks, resource.ActiveSince)],
-            changedCharacters: [changed], result: "Recorded fixture yield");
+            changedCharacters: [changed], result: "Recorded fixture yield", gatherStopReason: CycleGatherStopReason.TargetReached,
+            observedEvents: [
+                new(0, actor.Id, CycleObservedEventKind.GatherYielded, Hour(7), Hour(7), resource.Id, resource.Name,
+                    effects: [
+                        new(new("inventory", resource.ItemId, "count"), CycleVisibleValue.Numeric(actor.Backpack.Count(resource.ItemId), "份"),
+                            CycleVisibleValue.Numeric(changed.Backpack.Count(resource.ItemId), "份")),
+                        new(new("resource", resource.Id, "stock"), CycleVisibleValue.Numeric(resource.Stock, "份"), CycleVisibleValue.Numeric(resource.Stock - 1, "份")),
+                        new(new("activity", actor.Id, "completed"), CycleVisibleValue.Numeric(0, "份"), CycleVisibleValue.Numeric(1, "份"))
+                    ]),
+                new(1, actor.Id, CycleObservedEventKind.GatherFinished, Hour(7), Hour(7), resource.Id, resource.Name, CycleGatherStopReason.TargetReached.ToString(),
+                    [
+                        new(new("activity", actor.Id, "kind"), CycleVisibleValue.Literal("Gather"), CycleVisibleValue.KnownAbsent),
+                        new(new("activity", actor.Id, "due"), CycleVisibleValue.Numeric(Hour(7).Ticks, "ticks"), CycleVisibleValue.KnownAbsent),
+                        new(new("activity", actor.Id, "completed"), CycleVisibleValue.Numeric(1, "份"), CycleVisibleValue.KnownAbsent),
+                        new(new("activity", actor.Id, "target"), CycleVisibleValue.Numeric(1, "份"), CycleVisibleValue.KnownAbsent)
+                    ])
+            ]);
         return new(new CandidateKey("fixture-recorded-yield"), new(Hour(7), 0), [fact]);
     }
 
@@ -351,7 +374,20 @@ public sealed class CycleRevisionTests {
                 return new CycleFact(fact.Kind, fact.At, newActor.Id, fact.ResourceId, fact.Light,
                     fact.ChangedResources.Select(resource => MapResource(resource, after.GameRevision)), fact.Script,
                     fact.ChangedCharacters.Select(actor => MapCharacter(actor, after.GameRevision, grant)),
-                    fact.LastServedActorId is null ? null : newActor.Id, fact.Result);
+                    fact.LastServedActorId is null ? null : newActor.Id, fact.Result,
+                    gatherStopReason: fact.GatherStopReason,
+                    observedEvents: fact.ObservedEvents.Select(entry => new CycleObservedEvent(entry.EventOrdinal,
+                        entry.ObserverId == oldActor.Id ? newActor.Id : entry.ObserverId, entry.Kind, entry.From, entry.At,
+                        entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects.Select(effect => {
+                            string objectId = effect.Key.ObjectId == oldActor.Id ? newActor.Id
+                                : effect.Key.ObjectId == oldItem ? newItem : effect.Key.ObjectId;
+                            // Translate the already-recorded endpoints along with the representation's grant;
+                            // neither the migrated State nor E replans or executes the gathering operation.
+                            bool inventory = effect.Key.Category == "inventory" && effect.Key.ObjectId == oldItem;
+                            CycleVisibleValue prior = inventory ? CycleVisibleValue.Numeric(effect.Before.Units + grant, effect.Before.Unit!, effect.Before.Scale) : effect.Before;
+                            CycleVisibleValue next = inventory ? CycleVisibleValue.Numeric(effect.After.Units + grant, effect.After.Unit!, effect.After.Scale) : effect.After;
+                            return new CycleObservedEffect(new(effect.Key.Category, objectId, effect.Key.Field), prior, next);
+                        }))));
             });
             return new(new(pending.Occurrence.CauseKey, pending.Occurrence.TargetInstant, facts), after.GameRevision);
         }

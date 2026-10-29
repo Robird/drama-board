@@ -1,3 +1,4 @@
+using Atelia.DurableGraph;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
 
@@ -5,9 +6,22 @@ namespace DramaBoard.ResourceCycle;
 
 /// <summary>Current needs and earliest depletion including known day/night changes, assuming current shelter,
 /// no supplies, and no random weather. A null FatalAt means no depletion within representable time.</summary>
-public sealed record CycleSurvivalObservation(decimal Food, decimal Water, decimal Warmth,
-    int FoodPerHour, int WaterPerHour, int WarmthPerHour, bool Sheltered,
-    IReadOnlyList<string> PendingWarnings, ModelTime? FatalAt, bool WarmthWarningPending = false, int PendingWarningMask = 0);
+[DurableType("DramaBoard.ResourceCycle.SurvivalObservation", 1)]
+public sealed partial record CycleSurvivalObservation(
+    [field: DurableField(1)] decimal Food,
+    [field: DurableField(2)] decimal Water,
+    [field: DurableField(3)] decimal Warmth,
+    [field: DurableField(4)] int FoodPerHour,
+    [field: DurableField(5)] int WaterPerHour,
+    [field: DurableField(6)] int WarmthPerHour,
+    [field: DurableField(7)] bool Sheltered,
+    IReadOnlyList<string> PendingWarnings,
+    [field: DurableField(9)] ModelTime? FatalAt,
+    [field: DurableField(10)] bool WarmthWarningPending = false,
+    [field: DurableField(11)] int PendingWarningMask = 0) : IDurableObject {
+    [DurableField(8)] private List<string> _pendingWarnings = new(PendingWarnings);
+    public IReadOnlyList<string> PendingWarnings { get => _pendingWarnings.AsReadOnly(); init => _pendingWarnings = new(value); }
+}
 
 /// <summary>Application survival policy. Prediction and projection are pure; planning records concrete replacements.</summary>
 public static class CycleSurvivalRules {

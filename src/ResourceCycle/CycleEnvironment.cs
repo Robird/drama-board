@@ -40,9 +40,18 @@ public sealed partial class CycleEnvironment : IDurableObject {
     public override string ToString() => $"{Seed}:{Sequence}:{NextDue?.Ticks}:{LastAt?.Ticks}:{LastCold}:{LastWarmthLossUnits}:{LastSheltered}";
 }
 
+[DurableType("DramaBoard.ResourceCycle.WeatherKind", 1)]
 public enum CycleWeatherKind { Calm, ColdWind }
-public sealed record CycleWeatherObservation(ModelTime? NextWindow, long IntervalTicks, decimal ExposedWarmthLoss,
-    bool Sheltered, ModelTime? LastAt, CycleWeatherKind? LastKind, decimal LastActualWarmthLoss, bool LastWasSheltered);
+[DurableType("DramaBoard.ResourceCycle.WeatherObservation", 1)]
+public sealed partial record CycleWeatherObservation(
+    [field: DurableField(1)] ModelTime? NextWindow,
+    [field: DurableField(2)] long IntervalTicks,
+    [field: DurableField(3)] decimal ExposedWarmthLoss,
+    [field: DurableField(4)] bool Sheltered,
+    [field: DurableField(5)] ModelTime? LastAt,
+    [field: DurableField(6)] CycleWeatherKind? LastKind,
+    [field: DurableField(7)] decimal LastActualWarmthLoss,
+    [field: DurableField(8)] bool LastWasSheltered) : IDurableObject;
 
 /// <summary>A fixed application weather rule. Only planning samples; recovery applies recorded replacements.</summary>
 public static class CycleEnvironmentRules {

@@ -1,48 +1,7 @@
-using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
-
-/// <summary>Only the requested character's own state. No other character or world graph is reachable.</summary>
-public sealed record CycleActorObservation(string Id, string Name, int SkillLevel, ItemInventory Backpack,
-    CycleActivity? Activity, IReadOnlyList<CycleNotice> Notices, string? LastResult, long NextActivityId);
-public sealed record CycleOtherCharacterObservation(string Id, string Name, string? GatheringResourceId, bool Waiting);
-public sealed record CyclePassageObservation(string Id, string Description, long DurationTicks, string? KnownDestinationName);
-public sealed record CyclePlaceMemory(string Name, ModelTime At, IReadOnlyList<CycleResource> Resources, string? PlaceId = null);
-public sealed record CycleNoticeObservation(CycleNotice Notice, string ResourceName, string ActorLabel,
-    bool? StillGathering, int? CurrentStock, int? Capacity);
-public sealed record CycleCommandCheck(CycleCommand Command, string? Rejection, string? Warning = null);
-
-/// <summary>Pure visible data: current senses, private state and explicit historical observations.</summary>
-/// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
-/// stock, continuity and validation delegates are deliberately absent. This is not a security sandbox
-/// or a durable schema; persistence can freeze these materials without capturing a controller or world.</remarks>
-public sealed class CycleObservation {
-    public required ModelTime Time { get; init; }
-    public required bool IsDay { get; init; }
-    public required ModelTime NextLightChange { get; init; }
-    public required CycleActorObservation Actor { get; init; }
-    public required IReadOnlyList<CycleResource> Resources { get; init; }
-    public required IReadOnlyDictionary<string, long> HarvestDurations { get; init; }
-    public required IReadOnlyDictionary<string, string> ItemNames { get; init; }
-    public required IReadOnlyList<CycleOtherCharacterObservation> OtherCharacters { get; init; }
-    public required IReadOnlyList<CycleNoticeObservation> Notices { get; init; }
-    public required IReadOnlyList<CycleCommandCheck> Commands { get; init; }
-    public bool IsExpedition { get; init; }
-    public string? PlaceId { get; init; }
-    public string? PlaceName { get; init; }
-    public string? PlaceDescription { get; init; }
-    public ModelTime? ArrivalDue { get; init; }
-    public IReadOnlyList<CyclePassageObservation> Passages { get; init; } = [];
-    public IReadOnlyList<CyclePlaceMemory> Memories { get; init; } = [];
-    public CycleExpeditionOutcome Outcome { get; init; } = CycleExpeditionOutcome.Exploring;
-    public string? EndingReason { get; init; }
-    public CycleSurvivalObservation? Survival { get; init; }
-    public CycleWeatherObservation? Weather { get; init; }
-    public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
-    public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;
-}
 
 /// <summary>One frozen decision's observation and scoped, side-effect-free command validation.</summary>
 /// <remarks>The game owns construction and authoritative validation. The controller does not receive

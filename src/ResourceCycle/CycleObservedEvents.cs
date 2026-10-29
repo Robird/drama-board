@@ -6,24 +6,23 @@ namespace DramaBoard.ResourceCycle;
 /// <summary>Application-specific explanatory material, assembled after every business enrichment.</summary>
 internal static class CycleObservedEvents {
     internal static CycleFact Attach(CycleWorld world, CycleFact fact) {
-        if (world.Expedition is null || fact.Kind == CycleEventKind.DecisionContextOpened) { return fact; }
+        if (fact.Kind == CycleEventKind.DecisionContextOpened) { return fact; }
         var events = new List<CycleObservedEvent>();
-        GraphSpatialState afterSpatial = world.Expedition.Spatial;
+        GraphSpatialState? afterSpatial = world.Expedition?.Spatial;
         foreach (GraphSpatialFact movement in fact.SpatialFacts) {
-            afterSpatial = CycleExpeditionMap.Reducer.Apply(afterSpatial, new(fact.At, 0), movement);
+            afterSpatial = CycleExpeditionMap.Reducer.Apply(afterSpatial!, new(fact.At, 0), movement);
         }
-        foreach (CycleCharacter before in world.Characters.Where(c => c.Survival is not null)) {
+        foreach (CycleCharacter before in world.Characters) {
             CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == before.Id) ?? before;
-            CycleSurvival old = before.Survival!.Project(world.Time);
-            CycleSurvival integrated = before.Survival.Project(fact.At);
-            CycleSurvival final = after.Survival!.Project(fact.At);
+            CycleSurvival? integrated = before.Survival?.Project(fact.At);
+            CycleSurvival? final = after.Survival?.Project(fact.At);
             List<CycleObservedEffect> process = [];
-            AddVitals(process, before.Id, old, integrated);
+            if (before.Survival is { } body) { AddVitals(process, before.Id, body.Project(world.Time), integrated!); }
             if (process.Count > 0) { Emit(CycleObservedEventKind.BodyChanged, process, from: world.Time); }
 
             bool own = fact.ActorId == before.Id;
             bool visibleResource = fact.ResourceId is { } resourceId &&
-                CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place;
+                (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
             bool publicEvent = fact.Kind == CycleEventKind.LightChanged || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
             if (!own && !publicEvent) { continue; }
@@ -33,7 +32,7 @@ internal static class CycleObservedEvents {
             string? detail = null;
             CycleObservedEventKind kind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             // Direct physiology is independent of the preceding elapsed-time interval.
-            AddVitals(direct, before.Id, integrated, final);
+            if (integrated is not null && final is not null) { AddVitals(direct, before.Id, integrated, final); }
             if (own) {
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
@@ -42,13 +41,15 @@ internal static class CycleObservedEvents {
                     }
                 }
             }
-            Add(direct, new("body", before.Id, "food-rate"), Number(integrated.FoodPerHour, "点/小时"), Number(final.FoodPerHour, "点/小时"));
-            Add(direct, new("body", before.Id, "water-rate"), Number(integrated.WaterPerHour, "点/小时"), Number(final.WaterPerHour, "点/小时"));
-            Add(direct, new("body", before.Id, "warmth-rate"), Number(integrated.WarmthPerHour, "点/小时"), Number(final.WarmthPerHour, "点/小时"));
-            Add(direct, new("body", before.Id, "sheltered"), CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(world.Expedition.Spatial, before.Id)),
-                CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(afterSpatial, before.Id)));
-            foreach ((int mask, string field) in new[] { (1, "warning-food"), (2, "warning-water"), (4, "warning-warmth") }) {
-                Add(direct, new("body", before.Id, field), CycleVisibleValue.Flag((integrated.PendingMask & mask) != 0), CycleVisibleValue.Flag((final.PendingMask & mask) != 0));
+            if (integrated is not null && final is not null) {
+                Add(direct, new("body", before.Id, "food-rate"), Number(integrated.FoodPerHour, "点/小时"), Number(final.FoodPerHour, "点/小时"));
+                Add(direct, new("body", before.Id, "water-rate"), Number(integrated.WaterPerHour, "点/小时"), Number(final.WaterPerHour, "点/小时"));
+                Add(direct, new("body", before.Id, "warmth-rate"), Number(integrated.WarmthPerHour, "点/小时"), Number(final.WarmthPerHour, "点/小时"));
+                Add(direct, new("body", before.Id, "sheltered"), CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(world.Expedition!.Spatial, before.Id)),
+                    CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(afterSpatial!, before.Id)));
+                foreach ((int mask, string field) in new[] { (1, "warning-food"), (2, "warning-water"), (4, "warning-warmth") }) {
+                    Add(direct, new("body", before.Id, field), CycleVisibleValue.Flag((integrated.PendingMask & mask) != 0), CycleVisibleValue.Flag((final.PendingMask & mask) != 0));
+                }
             }
             Add(direct, new("notice", before.Id, "count"), Number(before.Notices.Count, "条"), Number(after.Notices.Count, "条"));
             if (visibleResource && fact.ChangedResources.SingleOrDefault(r => r.Id == fact.ResourceId) is { } changedResource) {
@@ -58,8 +59,8 @@ internal static class CycleObservedEvents {
                 Add(direct, new("world", "world", "light"), CycleVisibleValue.Flag(world.Light.IsDay), CycleVisibleValue.Flag(fact.Light!.IsDay));
             }
             if (own && fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived) {
-                SpatialLocation priorLocation = world.Expedition.Spatial.Entities.Single(e => e.Id.Value == before.Id).Location;
-                SpatialLocation nextLocation = afterSpatial.Entities.Single(e => e.Id.Value == before.Id).Location;
+                SpatialLocation priorLocation = world.Expedition!.Spatial.Entities.Single(e => e.Id.Value == before.Id).Location;
+                SpatialLocation nextLocation = afterSpatial!.Entities.Single(e => e.Id.Value == before.Id).Location;
                 Add(direct, new("location", before.Id, "place"), PlaceValue(priorLocation), PlaceValue(nextLocation));
                 Add(direct, new("location", before.Id, "arrival"), ArrivalValue(priorLocation), ArrivalValue(nextLocation));
                 subjectId = nextLocation is AtPlaceLocation atPlace ? atPlace.PlaceId.Value : null;
@@ -88,9 +89,9 @@ internal static class CycleObservedEvents {
                     Emit(kind, direct, subjectId, subjectName, detail);
                 }
             }
-            if (fact.Outcome is { } outcome && outcome != world.Expedition.Outcome) {
+            if (world.Expedition is { } expedition && fact.Outcome is { } outcome && outcome != expedition.Outcome) {
                 Emit(CycleObservedEventKind.ExpeditionEnded,
-                    [new(new("world", "world", "outcome"), CycleVisibleValue.Literal(world.Expedition.Outcome.ToString()), CycleVisibleValue.Literal(outcome.ToString()))],
+                    [new(new("world", "world", "outcome"), CycleVisibleValue.Literal(expedition.Outcome.ToString()), CycleVisibleValue.Literal(outcome.ToString()))],
                     detail: fact.EndingReason);
             }
 

@@ -35,7 +35,7 @@ public sealed class CommittedOperationRecoveryTests {
             Assert.Equal("a", receipt.ActorId);
             Assert.Equal(1, receipt.TransitionCount);
             Assert.Equal(planned.LastCompletion!.Event.CauseKey.ToString(), receipt.DomainEvent);
-            Assert.Equal(planned.LastCompletion.Event.Facts[0].Result, receipt.Result);
+            Assert.Equal(CycleOperationResults.Describe(planned.LastCompletion.Event.Facts[0]), receipt.Result);
             Assert.False(recovering.RecoverPending());
         }
         using var completed = CycleDurableHistory.Open(store.StorePath);

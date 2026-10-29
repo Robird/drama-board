@@ -16,7 +16,7 @@
 - [CycleObservation](../../src/ResourceCycle/CycleObservation.cs)：角色范围内的观察、当前动作校验和风险，不向布局交付完整世界。
 - [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)：两种可切换布局，共用事件/效果及尾部状态选择；`full` 与 `delta` 是独立的会话偏好。[Human Console 边界](console-command-boundary.md)将元命令及输入提示移到会话，布局只生成游戏内容，不改变 B 的历史窗口合同。
 - [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs)：按角色与 ContextSequence 首次/新回合全量，提交后追加事件与状态；只有真正进入控制器才显示输入机会，写出并 Flush 成功后安装基线。
-- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/ResourceCycle/CycleOperationResults.cs)共用这些材料。GameRevision 6；尚无角色内的最近 n 回合事件集合。
+- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/ResourceCycle/CycleOperationResults.cs)共用这些材料。GameRevision 7；事件材料已覆盖普通采集与无生存需求角色，尚无角色内的最近 n 回合事件集合。
 - [CycleContinuityRules](../../src/ResourceCycle/CycleContinuityRules.cs)：冻结起止状态、部分实际效果和唤醒原因；这是有界行动摘要，尚不是逐事件经历历史。
 
 增量是呈现能力，不改变游戏时间、活动期限、警告确认或行动合法性。完整与增量模式应产生相同的游戏轨迹。

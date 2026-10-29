@@ -1,12 +1,23 @@
+using Atelia.DurableGraph;
 using DramaBoard.Inventory;
 using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
+[DurableType("DramaBoard.ResourceCycle.CommandKind", 1)]
 public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff }
 
-/// <summary>Runtime intent; only validated concrete effects enter durable facts.</summary>
-public sealed record CycleCommand(CycleCommandKind Kind, int Hours = 0, string? ResourceId = null, int Count = 0, bool All = false, string? PassageId = null, string? ItemId = null, string? HandoffText = null) {
+/// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
+[DurableType("DramaBoard.ResourceCycle.Command", 1)]
+public sealed partial record CycleCommand(
+    [field: DurableField(1)] CycleCommandKind Kind,
+    [field: DurableField(2)] int Hours = 0,
+    [field: DurableField(3)] string? ResourceId = null,
+    [field: DurableField(4)] int Count = 0,
+    [field: DurableField(5)] bool All = false,
+    [field: DurableField(6)] string? PassageId = null,
+    [field: DurableField(7)] string? ItemId = null,
+    [field: DurableField(8)] string? HandoffText = null) : IDurableObject {
     public static CycleCommand Wait(int hours) => new(CycleCommandKind.Wait, Hours: hours);
     public static CycleCommand Gather(string resourceId, int count = 1) => new(CycleCommandKind.Gather, ResourceId: resourceId, Count: count);
     public static CycleCommand GatherAll(string resourceId) => new(CycleCommandKind.Gather, ResourceId: resourceId, All: true);
