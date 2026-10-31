@@ -5,12 +5,12 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.Microtown;
 
-[DurableType("DramaBoard.Microtown.EventKind", 1)]
-public enum TownEventKind { DecisionOpened, Operation, ProductionCompleted, WaitCompleted, Arrived, MarketRefreshed, Failed, Ended, ContactOccurred }
+[DurableType("DramaBoard.Microtown.EventKind", 2)]
+public enum TownEventKind { DecisionOpened, Operation, ProductionCompleted, WaitCompleted, Arrived, MarketRefreshed, Failed, Ended, ContactOccurred, TradeExpired }
 
 /// <summary>Already-decided replacement state plus typed provenance. Recovery applies values, never reruns a command or controller.</summary>
 /// <remarks>The initial in-memory slice uses a whole immutable business replacement. This is not a host-side log or another publication authority.</remarks>
-[DurableType("DramaBoard.Microtown.Fact", 1)]
+[DurableType("DramaBoard.Microtown.Fact", 2)]
 public sealed partial class TownFact : IDurableObject {
     [DurableField(1)] private readonly TownEventKind _kind;
     public TownEventKind Kind => _kind;

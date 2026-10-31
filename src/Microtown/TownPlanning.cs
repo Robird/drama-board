@@ -13,6 +13,7 @@ public static class TownPlanning {
         if (state.Ended || actor.Failed) { return "This resident can no longer act."; }
         if (command.Kind == TownCommandKind.Invalid || !Enum.IsDefined(command.Kind)) { return command.ParseError ?? "Unknown command."; }
         if (command.Quantity <= 0 || command.Quantity > 1000) { return "Quantity must be between 1 and 1000."; }
+        if (TownTradeRules.IsTradeCommand(command)) { return TownTradeRules.Check(state, actorId, command); }
         if (command.Kind is TownCommandKind.Say or TownCommandKind.Give) {
             string? offerError = CheckSocialOffer(state, actorId, command);
             if (offerError is not null) { return offerError; }
@@ -129,6 +130,15 @@ public static class TownPlanning {
             TownCharacter rejected = actor with { OperationSequence = operation, LastOperationReceipt = receipt ?? actor.LastOperationReceipt };
             return new(TownEventKind.Operation, before, Replace(before, rejected, openDecision: actorId), actorId, error, false,
                 goalReceipt: goal?.Receipt, operationReceipt: receipt);
+        }
+        if (TownTradeRules.IsTradeCommand(command)) {
+            var trade = TownTradeRules.Apply(before, actorId, command, operation);
+            TownOperationReceipt? receipt = source is null ? null : new(actorId, source, true, trade.Result, before.Time, actor.DecisionSequence, operation);
+            TownCharacter traded = trade.Characters.Single(current => current.Id == actorId);
+            traded = traded with { OperationSequence = operation, LastOperationReceipt = receipt ?? traded.LastOperationReceipt };
+            TownBusinessState after = before.Change(trade.Characters.Select(current => current.Id == actorId ? traded : current),
+                lastServed: actorId, trades: trade.Trades);
+            return new(TownEventKind.Operation, before, after, actorId, trade.Result, operationReceipt: receipt);
         }
         TownCharacter changed = actor with { OperationSequence = operation };
         TownCharacter? otherChanged = null;

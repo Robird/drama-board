@@ -134,7 +134,7 @@ public sealed partial class TownEconomicTotals : IDurableObject {
 }
 
 /// <summary>An immutable application root. Kernel time is copied here only at authoritative fact application.</summary>
-[DurableType("DramaBoard.Microtown.BusinessState", 1)]
+[DurableType("DramaBoard.Microtown.BusinessState", 2)]
 public sealed partial class TownBusinessState : IDurableObject {
     [DurableField(1)] private readonly ModelTime _time;
     public ModelTime Time => _time;
@@ -156,21 +156,24 @@ public sealed partial class TownBusinessState : IDurableObject {
     public long Generation => _generation;
     [DurableField(10)] private readonly bool _ended;
     public bool Ended => _ended;
+    [DurableField(11)] private readonly TownTradeState _trades;
+    public TownTradeState Trades => _trades;
     public TownBusinessState(ModelTime time, ModelTime endTime, IEnumerable<TownCharacter> characters,
         TownMarket market, TownEconomicTotals economy, GraphSpatialState spatial, string? lastServedActorId = null,
-        string? openDecisionActorId = null, long generation = 0, bool ended = false) {
+        string? openDecisionActorId = null, long generation = 0, bool ended = false, TownTradeState? trades = null) {
         _time = time; _endTime = endTime; _characters = characters.ToList(); _market = market;
         _economy = economy; _spatial = spatial; _lastServedActorId = lastServedActorId;
         _openDecisionActorId = openDecisionActorId; _generation = generation; _ended = ended;
+        _trades = trades ?? TownTradeState.Empty;
     }
     public TownCharacter Character(string id) => Characters.Single(actor => actor.Id == id);
     public string? Place(string id) => Spatial.TryGetEntity(new(id), out SpatialEntity? entity) && entity!.Location is AtPlaceLocation at ? at.PlaceId.Value : null;
     public TownCharacter WorstOff => Characters.OrderBy(actor => actor.FoodReserve).ThenBy(actor => actor.Id, StringComparer.Ordinal).First();
     internal TownBusinessState Change(IEnumerable<TownCharacter>? characters = null, TownMarket? market = null,
         TownEconomicTotals? economy = null, GraphSpatialState? spatial = null, ModelTime? time = null,
-        string? lastServed = null, string? openDecision = null, bool ended = false) => new(time ?? Time, EndTime,
+        string? lastServed = null, string? openDecision = null, bool ended = false, TownTradeState? trades = null) => new(time ?? Time, EndTime,
         characters ?? Characters, market ?? Market, economy ?? Economy, spatial ?? Spatial,
-        lastServed ?? LastServedActorId, openDecision, checked(Generation + 1), ended || Ended);
+        lastServed ?? LastServedActorId, openDecision, checked(Generation + 1), ended || Ended, trades ?? Trades);
     public void Validate() {
         if (Characters.Count != 3 || Characters.Select(actor => actor.Id).Distinct(StringComparer.Ordinal).Count() != Characters.Count ||
             Time < ModelTime.Zero || EndTime < Time || Generation < 0 || Market.NextRefresh < Time || Market.Cycle < 0 ||
@@ -229,6 +232,8 @@ public sealed partial class TownBusinessState : IDurableObject {
             throw new InvalidOperationException("A decision requires an available resident.");
         }
         Economy.Verify(this);
+        if (Trades is null) { throw new InvalidOperationException("Town requires a trade state."); }
+        Trades.Validate(this);
     }
 }
 

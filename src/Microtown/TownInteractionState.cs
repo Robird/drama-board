@@ -98,6 +98,7 @@ public sealed partial class TownInteractionState : IDurableObject {
         LastSequence, LastSequence, DeliveredThrough, NeedsResponse);
 
     public TownInteractionState ClearResponse() => new(_entries, LastSequence, DeliveredThrough, OpeningAfter, false);
+    public TownInteractionState RequestResponse() => new(_entries, LastSequence, DeliveredThrough, OpeningAfter, true);
 
     public void Validate(string ownerId, ModelTime now) {
         if (string.IsNullOrWhiteSpace(ownerId) || now < ModelTime.Zero || _entries is null ||

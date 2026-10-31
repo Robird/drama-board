@@ -20,7 +20,7 @@ public static class TownDurableModels {
 /// <summary>Application identity and rules revision; schema revision is an independent representation concern.</summary>
 public static class TownGameRevision {
     public const string GameId = "microtown";
-    public const int Current = 2;
+    public const int Current = 3;
 
     internal static void RequireSupported(string gameId, int revision) {
         if (gameId != GameId || revision != Current) {

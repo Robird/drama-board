@@ -6,9 +6,9 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.Microtown;
 
-public enum TownPredictionKind { Failure, MarketRefresh, Spatial, Activity, End, Decision }
+public enum TownPredictionKind { Failure, TradeExpiry, MarketRefresh, Spatial, Activity, End, Decision }
 public sealed record TownPrediction(TownPredictionKind Kind, ModelTime Due, string? ActorId = null,
-    OccurrenceCandidate<SpatialOccurrenceData>? SpatialCandidate = null);
+    OccurrenceCandidate<SpatialOccurrenceData>? SpatialCandidate = null, string? TradeId = null);
 
 /// <summary>One Kernel owns all town and spatial occurrences. Controllers run only after an open-decision State has completed.</summary>
 public static class TownEngine {
@@ -110,6 +110,8 @@ public static class TownEngine {
                 predictions.Add(new(TownPredictionKind.Failure, new(checked(business.Time.Ticks + remaining)), actor.Id));
                 if (actor.Activity is { } activity) { predictions.Add(new(TownPredictionKind.Activity, activity.Due, actor.Id)); }
             }
+            predictions.AddRange(business.Trades.Offers.Where(offer => offer.Status == TownTradeStatus.Active)
+                .Select(offer => new TownPrediction(TownPredictionKind.TradeExpiry, offer.ExpiresAt, TradeId: offer.Id)));
             predictions.AddRange(_spatial.Forecast(world.Spatial, rules).Concat(_contacts.Forecast(world.Spatial, rules)).Select(candidate =>
                 new TownPrediction(TownPredictionKind.Spatial, candidate.Due.ModelTime, SpatialCandidate: candidate)));
             if (NextDecisionActor(world) is { } deciding) { predictions.Add(new(TownPredictionKind.Decision, business.Time, deciding)); }
@@ -117,7 +119,8 @@ public static class TownEngine {
             TownPredictionKind kind = predictions.Where(prediction => prediction.Due == due).Min(prediction => prediction.Kind);
             return predictions.Where(prediction => prediction.Due == due && prediction.Kind == kind)
                 .Select(prediction => new OccurrenceCandidate<TownPrediction>(
-                    new CandidateKey($"town:{business.Generation}:{prediction.Kind}:{prediction.ActorId}:{prediction.SpatialCandidate?.Key}"),
+                    new CandidateKey($"town:{business.Generation}:{prediction.Kind}:{prediction.ActorId}:{prediction.SpatialCandidate?.Key}" +
+                        (prediction.TradeId is { } tradeId ? $":{tradeId}" : "")),
                     new(prediction.Due), prediction)).ToArray();
         }
 
@@ -131,8 +134,11 @@ public static class TownEngine {
                 if (before.OpenDecisionActorId is null) {
                     TownCharacter actor = before.Character(id);
                     TownCharacter opened = actor with { DecisionSequence = checked(actor.DecisionSequence + 1), Interaction = actor.Interaction.OpenDecision() };
+                    TownTradeState trades = before.Trades.OpenDecision(id, opened.DecisionSequence,
+                        before.Characters.Where(resident => resident.Failed).Select(resident => resident.Id).ToArray());
                     return new([new(TownEventKind.DecisionOpened, before,
-                        TownPlanning.Replace(before, opened, id), id, "Decision boundary opened.")]);
+                        before.Change(before.Characters.Select(current => current.Id == id ? opened : current), openDecision: id, trades: trades),
+                        id, "Decision boundary opened.")]);
                 }
                 return new([await planDecision(world, id, cancellationToken).ConfigureAwait(false)]);
             }
@@ -141,7 +147,11 @@ public static class TownEngine {
             TownFact fact;
             switch (prediction.Kind) {
                 case TownPredictionKind.End:
-                    fact = new(TownEventKind.Ended, before, at.Change(ended: true), result: "Finite experiment ended; work in progress remains accounted for.");
+                    fact = new(TownEventKind.Ended, before, TownTradeRules.CloseForEnd(at.Change(ended: true)), result: "Finite experiment ended; work in progress remains accounted for and pending offers are closed.");
+                    break;
+                case TownPredictionKind.TradeExpiry:
+                    fact = new(TownEventKind.TradeExpired, before, TownTradeRules.Expire(at, prediction.TradeId!),
+                        result: $"Offer {prediction.TradeId} expired without transferring assets.");
                     break;
                 case TownPredictionKind.MarketRefresh:
                     fact = new(TownEventKind.MarketRefreshed, before, at.Change(market: TownMarket.Fresh(
@@ -157,7 +167,9 @@ public static class TownEngine {
                     };
                     GraphSpatialFact[] spatialFacts = [new EntityRemovedFact(new(actor.Id))];
                     GraphSpatialState spatial = TownPlanning.ApplySpatial(at.Spatial, prediction.Due, spatialFacts);
-                    fact = new(TownEventKind.Failed, before, at.Change(at.Characters.Select(current => current.Id == actor.Id ? failed : current), spatial: spatial),
+                    TownBusinessState failedState = TownTradeRules.CloseForFailure(
+                        at.Change(at.Characters.Select(current => current.Id == actor.Id ? failed : current), spatial: spatial), actor.Id);
+                    fact = new(TownEventKind.Failed, before, failedState,
                         actor.Id, "Food exhausted; unused production inputs remain in the resident's estate.", spatialFacts: spatialFacts);
                     break;
                 }

@@ -48,6 +48,8 @@
 | 有界个人交互记录（Bounded interaction history） | 本人收发的有限语义记录，区别于最近操作回执、活动结果和宿主审计日志；同一交互两边共用身份，各用本地序号。 | 小镇 [TownInteractionState / TownInteractionEntry](../src/Microtown/TownInteractionState.cs)：最多待交付 32 条、本次 opening 新项 32 条、此前 16 条；未读不裁剪，队列满拒绝发送。不是完整长期记忆。 |
 | 材料交付高水位（Delivered-through sequence） | 已纳入发布的决策材料的最高本地记录序号，不证明控制器已阅读或回答；与 Console 输出消费游标分开。 | `TownInteractionState.DeliveredThrough` 在 `DecisionOpened` 推进，`OpeningAfter` 标记该次新项下界；渲染不修改两者。 |
 | 忙碌响应（Busy response） | 活动仍进行时，为待响应通知提供决策机会；唤醒不取消活动，交付材料也不等于完成响应。 | 小镇 `TownInteractionState.NeedsResponse` 与交付游标独立。即时成功操作轮转但保留标记；`continue` 清标记且保留活动期限，`cancel` 结束等待/生产并一次退料。途中移动不开放该窗口。 |
+| 居民报价（Resident trade offer） | 指定双方、每边一种资产的交换条款；未接受前不转移或预留资产，接受时重验并一次结算。 | 小镇 [TownTradeOffer / TownTradeRules](../src/Microtown/TownTradeRules.cs)；`offer`、`accept`、`reject`、`withdraw`，到期/参与者失败/终局也会关闭。区别于角色口头承诺与候选行动提示。 |
+| 报价版本交付（Offer-version delivery） | 某一报价的有效或终态版本首次纳入参与者 Opening；不代表同意、阅读或完成响应。 | [TownTradeState](../src/Microtown/TownTradeState.cs) 独立于普通消息容量，每方保存已交付版本/决策序号；最多保留 24 份、每发起人 8 份，终态无需新容量，双方交付后在后续 Opening 可回收。失败方免除等待，不伪造交付。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
 | 原始操作提交（Submission） | 控制器产生的行动文本和已捕获身份；语法或合法性失败也进入同一提交边界。 | `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`；共享 `CycleCommandParser` 产生命令，`OperationRejected` 产生纯拒绝条目；Console 元命令不通过此入口。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [CycleCommand、CycleActions.Check](../src/ResourceCycle/CycleActions.cs) |
@@ -143,7 +145,7 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图及起始游标；可以组合程序化生成器，不负责升级旧世界。 | `CycleGameFactory.CreateBatch` / `CreatePlayable`；发布由 `CycleDurableHistory.Create` 负责。 |
-| 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 山林由 `CycleGameRevision.Current` 定义；小镇 `TownGameRevision.Current = 2`，S/E 均携带修订，Character Schema 同为 2 仅是本轮数值巧合。旧小镇开发档不迁移，可能先在 DG 还原阶段拒绝；不还原业务图的分支/日志管理仍可读。 |
+| 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 山林由 `CycleGameRevision.Current` 定义；小镇 `TownGameRevision.Current = 3`，S/E 均携带修订，Business/EventKind/Fact/Experience Schema 为 2，数值不要求相同。旧小镇开发档不迁移，可能先在 DG 还原阶段拒绝；不还原业务图的分支/日志管理仍可读。 |
 | 游戏状态修订（Game revision） | 加载时协调升级 State 与可选 pending E 的内存表示；不执行事件、不推进游标、不写盘，pending 工作留给正常流程。 | `CycleGameRevision.UpgradeLoadedBoundary`；[实施合同](design/game-initialization-and-revision.md)，生产只接受当前版本，跨版本政策由夹具验证。 |
 | 模拟世界版本（WorldVersion） | 模拟谱系及已完成转换次数，标识模拟位置；不表示游戏内容或规则修订。 | [WorldVersion](../src/Kernel/Simulation/WorldVersion.cs) |
 
@@ -178,7 +180,7 @@ ResourceCycle 的原 `--play` 采集场景保持单地点；`--survival` 探索�
 | 物品库存（Item inventory）与背包（Backpack） | 物品 ID 到数量的不可变快照；背包是角色对它的一种用途，独立于资源点余量。 | `DramaBoard.Inventory.ItemInventory`；角色属性仍为 `CycleCharacter.Backpack`。 |
 | 总件数容量（Unit capacity） | 所有物品数量之和的可选上限，不是物品种类数或资源点容量；null 表示无玩法限制，0 表示零容量。 | `ItemInventory.UnitCapacity` 持久化；`TotalCount` 派生；默认 demo 不设置上限。 |
 | 库存接纳（Inventory admission） | 当前快照能否接纳单份物品的局部查询；不预留，成功/失败如何改变活动由游戏决定。 | `ItemInventory.CheckAdd` / `InventoryAdmission`；单项表示上限优先于总容量上限。 |
-| 活动结算空间（Activity settlement capacity） | 在当前库存之外，分别保证活动完成和取消退料两种互斥结果可表示、可接纳；不是把两种未来结果相加预留。 | 小镇 `TownPlanning.CanSettleActivity` 配合购买/赠物接纳、生产开始及世界校验使用；在制品仍由 `TownActivity.InputItem/InputCount` 保存。 |
+| 活动结算空间（Activity settlement capacity） | 在当前库存之外，分别保证活动完成和取消退料两种互斥结果可表示、可接纳；不是把两种未来结果相加预留。 | 小镇 `TownPlanning.CanSettleActivity` 配合购买/赠物接纳、交易双方最终库存、生产开始及世界校验使用；在制品仍由 `TownActivity.InputItem/InputCount` 保存。 |
 | 内核（Kernel） | 通用发生项调度、转换与发布协议。 | `src/Kernel` |
 | 空间层（Spatial） | 客观图空间、运动及交会规则。 | `src/Spatial` |
 | 宿主（Host） | 驱动 Kernel 运行的程序层职责，不等同于角色控制器。 | [SimulationHost](../src/Host/SimulationHost.cs)、应用 Console 入口 |

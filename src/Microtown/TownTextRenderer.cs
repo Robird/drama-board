@@ -129,8 +129,54 @@ public static class TownTextRenderer {
         }
         if (observation.SocialActions.Count == 0) { text.AppendLine("- No eligible nearby target; speech and gifts require another resident at your current place."); }
         text.AppendLine();
+        AppendTrades(text, observation);
         AppendGoals(text, observation);
         return text.ToString();
+    }
+
+    private static void AppendTrades(StringBuilder text, TownObservation observation) {
+        text.AppendLine("## Your resident trade offers");
+        text.AppendLine("An offer reserves no inventory or money. Create/accept require living participants at the same place; acceptance rechecks both sides and transfers both legs atomically. Accept strictly before expiry: at the exact expiry time it is too late.");
+        if (observation.Activity is not null) {
+            text.AppendLine("Instant trade commands preserve the current activity and due time; continue releases the response without accepting, rejecting or withdrawing offers. Cancelling an activity does not withdraw an offer.");
+        }
+        foreach (TownVisibleTradeOffer offer in observation.TradeOffers) {
+            string marker = offer.AwaitingDelivery ? "pending inclusion in decision material"
+                : offer.NewInLatestDecision ? "new in latest decision" : "retained";
+            text.AppendLine($"- {Data(offer.Id)}: {offer.Status} ({marker}); proposer {Data(offer.ProposerId)} → recipient {Data(offer.RecipientId)}.");
+            bool proposer = offer.ProposerId == observation.ActorId;
+            TownTradeAsset give = proposer ? offer.Give : offer.Want;
+            TownTradeAsset receive = proposer ? offer.Want : offer.Give;
+            text.AppendLine($"  You give {give.Amount} {Data(give.AssetId)}; you receive {receive.Amount} {Data(receive.AssetId)}. Created at hour {Hours(offer.CreatedAt.Ticks)}; expires at hour {Hours(offer.ExpiresAt.Ticks)}.");
+            if (offer.ClosedAt is { } closed) {
+                text.AppendLine($"  Closed at hour {Hours(closed.Ticks)}. {(offer.Status == TownTradeStatus.Accepted ? "Both transfers already happened; do not repeat them." : "This offer closed without transferring its assets.")}");
+            }
+            foreach (TownVisibleTradeAction action in offer.Actions) { AppendTradeAction(text, action); }
+        }
+        if (observation.TradeOffers.Count == 0) { text.AppendLine("- No retained offer involving you."); }
+        if (observation.TradeOffers.Count != 0) {
+            text.AppendLine("Your active offers persist outside speech history. Closed notices may retire after both participants' decision materials include them (failed residents exempt). Inclusion is not proof of reading or agreement; retain lasting plans in goals.");
+        }
+        text.AppendLine("### Propose a trade");
+        text.AppendLine("`offer <resident> <give-asset> <give-count> <want-asset> <want-count> <hours>`: give is YOUR payment, want is YOUR receipt. Lifetime: 1..24 whole hours; items: 1..1000; money: positive whole integer.");
+        string heldAssets = string.Join("; ",
+            observation.Inventory.Items.OrderBy(item => item.Key, StringComparer.Ordinal)
+                .Select(item => $"{item.Key}: 1..{Math.Min(1000, item.Value)}")
+                .Concat(observation.Money > 0 ? new[] { $"money: 1..{observation.Money}" } : Array.Empty<string>()));
+        text.AppendLine("Your available payment ranges: " + (heldAssets.Length == 0 ? "none" : heldAssets) + ".");
+        text.AppendLine("Requestable IDs: " + string.Join(", ", observation.Market.Select(item => item.ItemId).Append("money")) + "; counterpart holdings unknown. Examples are editable syntax, not recommended prices.");
+        text.AppendLine($"Limit: {TownTradeState.MaximumPerProposer} retained offers you proposed, including unretired closed notices. Even same-asset exchanges require full outgoing amounts, not just the net difference.");
+        foreach (TownVisibleTradeAction proposal in observation.TradeProposals) { AppendTradeAction(text, proposal); }
+        if (observation.TradeProposals.Count == 0) { text.AppendLine("- No nearby recipient: cannot create a resident trade offer here."); }
+        text.AppendLine();
+    }
+
+    private static void AppendTradeAction(StringBuilder text, TownVisibleTradeAction action) {
+        string status = action.BlockedReason is { } reason ? "blocked: " + Data(reason)
+            : action.CreatesOffer ? "may submit proposal; no transfer or reservation, and future acceptance checks both sides"
+            : action.RevalidatesCounterparty ? "may attempt; counterpart resources and acceptance conditions are revalidated, not guaranteed executable"
+            : "available under current visible rules";
+        text.AppendLine($"  - `{action.Command}` — {status}.");
     }
 
     private static void AppendGoals(StringBuilder text, TownObservation observation) {

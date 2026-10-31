@@ -41,7 +41,7 @@ public sealed partial record TownOperationReceipt(
 }
 
 /// <summary>One resident's latest activity outcome, independent of their latest command receipt. This is not a complete memory history.</summary>
-[DurableType("DramaBoard.Microtown.Experience", 1)]
+[DurableType("DramaBoard.Microtown.Experience", 2)]
 public sealed partial record TownExperience(
     [field: DurableField(1)] TownEventKind Kind,
     [field: DurableField(2)] ModelTime At,

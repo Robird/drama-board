@@ -14,6 +14,15 @@ public sealed record TownVisibleSocialAction(string Syntax, string Example, stri
     public bool CanOffer => BlockedReason is null;
 }
 public sealed record TownVisibleInteraction(TownInteractionEntry Entry, bool NewThisDecision, bool AwaitingDelivery);
+/// <summary>A locally checkable command; accepting still revalidates private counterpart state, while proposing transfers nothing.</summary>
+public sealed record TownVisibleTradeAction(string Command, string? BlockedReason, bool RevalidatesCounterparty, bool CreatesOffer = false) {
+    public bool CanAttempt => BlockedReason is null;
+}
+/// <summary>Only terms shared with this participant and this participant's own publication markers.</summary>
+public sealed record TownVisibleTradeOffer(string Id, string ProposerId, string RecipientId,
+    TownTradeAsset Give, TownTradeAsset Want, ModelTime CreatedAt, ModelTime ExpiresAt,
+    TownTradeStatus Status, ModelTime? ClosedAt, bool NewInLatestDecision, bool AwaitingDelivery,
+    IReadOnlyList<TownVisibleTradeAction> Actions);
 
 /// <summary>One command family at this observation boundary. Quantified families accept every integer from 1 through MaximumQuantity.</summary>
 /// <remarks>Example is a complete command. A zero maximum denotes a blocked family, with a concrete reason.
@@ -60,6 +69,8 @@ public sealed class TownObservation {
     public ModelTime NextMarketRefresh { get; }
     public IReadOnlyList<TownVisibleAction> Actions { get; }
     public IReadOnlyList<TownVisibleSocialAction> SocialActions { get; }
+    public IReadOnlyList<TownVisibleTradeOffer> TradeOffers { get; }
+    public IReadOnlyList<TownVisibleTradeAction> TradeProposals { get; }
 
     private TownObservation(TownWorld world, string actorId) {
         TownBusinessState state = world.Business;
@@ -122,6 +133,28 @@ public sealed class TownObservation {
                 "Offer your money to this nearby resident; transfer is all-or-nothing.", actor.Money, true);
         }
         SocialActions = social.AsReadOnly();
+        TradeOffers = Array.AsReadOnly(state.Trades.Offers
+            .Where(offer => offer.ProposerId == actorId || offer.RecipientId == actorId)
+            .Select(offer => {
+                var controls = new List<TownVisibleTradeAction>();
+                if (offer.Status == TownTradeStatus.Active) {
+                    if (offer.RecipientId == actorId) {
+                        controls.Add(TradeAction($"accept {offer.Id}", true));
+                        controls.Add(TradeAction($"reject {offer.Id}", false));
+                    } else { controls.Add(TradeAction($"withdraw {offer.Id}", false)); }
+                }
+                return new TownVisibleTradeOffer(offer.Id, offer.ProposerId, offer.RecipientId,
+                    offer.Give, offer.Want, offer.CreatedAt, offer.ExpiresAt, offer.Status, offer.ClosedAt,
+                    offer.DeliveryDecisionSequenceFor(actorId) == actor.DecisionSequence && offer.DeliveredVersionFor(actorId) == offer.Version,
+                    offer.DeliveredVersionFor(actorId) < offer.Version, controls.AsReadOnly());
+            }).ToArray());
+        string proposalAsset = TownContent.Items.FirstOrDefault(item => actor.Inventory.Count(item) > 0) ?? "money";
+        string requestedAsset = proposalAsset == "money" ? "meal" : "money";
+        TradeProposals = Array.AsReadOnly(Residents.Select(resident =>
+            TradeAction($"offer {resident.Id} {proposalAsset} 1 {requestedAsset} 1 1", false, true)).ToArray());
+
+        TownVisibleTradeAction TradeAction(string raw, bool revalidate, bool createsOffer = false) =>
+            new(raw, TownTradeRules.CheckVisible(state, actorId, TownCommand.Parse(raw)), revalidate, createsOffer);
 
         void AddSocial(string syntax, string example, string description, long maximum, bool gift) {
             // This check deliberately excludes recipient-private capacity and counters. Never probe
