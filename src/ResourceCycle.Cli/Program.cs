@@ -18,6 +18,7 @@ try {
 
             dotnet run --project src/ResourceCycle.Cli -- [options]
               --store PATH          创建或恢复单根存档；省略则仅内存运行
+              --branch ID           打开已有存档的指定分支；多分支时不能省略
               --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
               --survival            单角色山林探索；可配合 --store 续玩，不接受批处理选项
               --duo                 双角色山林探索；共用 Console，配合 --llm 时 a 由人类、b 由模型控制
@@ -30,6 +31,15 @@ try {
               --max-failures N      连续完整响应协议错误上限（默认 3）
               --max-context-chars N 完整 Context 的 UTF-16 长度上限（默认 200000）
               --llm-log PATH        本次独立 JSONL 证据文件；默认在存档或 artifacts 下新建
+              --gym                 配合 --llm --store 记录角色实验轨迹
+              --feedback            配合 --llm --store 启用反馈工具，同时启用 --gym
+              --branches            仅列出 --store 中的分支，不运行游戏
+              --gym-feedbacks       仅列出反馈；可按 --branch ID / --actor ID 筛选
+              --gym-export FILE     导出角色轨迹到新文件；需 --store、--actor，可选 --branch
+              --gym-fork ID         从反馈 ID 的决定前 S 注册分支，需 --store、--fork-label
+              --gym-fork-request ID 从已记录请求的决定前 S 注册分支，需 --store、--fork-label
+              --fork-label LABEL    新分支显示名称；注册后须另用 --branch 续跑
+              --actor ID            管理查询的角色 ID，不改变游戏角色绑定
               --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
               --steps N             本次最多推进 N 次转换（默认 10000）
               --full-recompute      每次重算全部预测者，用于对照
@@ -43,6 +53,13 @@ try {
             """);
         return 0;
     }
+    if (options.Management is { } management) {
+        GymCommands.Run(options.Store!, options.Branch, management, Console.Out);
+        return 0;
+    }
+    if (options.Branch is not null && !Directory.Exists(options.Store)) {
+        throw new ArgumentException("指定分支需要已有存档。");
+    }
 
     using var cancellation = new CancellationTokenSource();
     ConsoleCancelEventHandler cancelHandler = (_, eventArgs) => {
@@ -53,11 +70,11 @@ try {
     try {
         if (options.Play || options.Survival || options.Duo) {
             if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, duo: options.Duo); }
-            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival || options.Duo, duo: options.Duo);
+            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival || options.Duo, duo: options.Duo, branch: options.Branch);
         }
         using CycleDurableHistory? durable = options.Store is { } store
             ? Directory.Exists(store)
-                ? CycleDurableHistory.Open(store)
+                ? options.Branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, options.Branch)
                 : CreateStore(store)
             : null;
         IOccurrenceHistory<CycleWorld, CycleFact> history;
@@ -113,7 +130,7 @@ try {
         ? "已停止。已完成的进度已保存，使用同一 --store 路径可继续。"
         : "已停止。内存中的进度未保存。");
     return 130;
-} catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or OverflowException) {
+} catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or OverflowException or FormatException) {
     Console.Error.WriteLine($"ResourceCycle: {error.Message}");
     return 1;
 }
@@ -124,7 +141,8 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, bool Duo = false) {
+    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, bool Duo = false,
+    string? Branch = null, GymManagementOptions? Management = null) {
     public static Options Parse(string[] args) {
         string? store = null;
         string? snapshot = null;
@@ -132,6 +150,8 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
         int steps = 10_000;
         bool full = false, trace = false, help = false, play = false, survival = false;
         bool llm = false, duo = false;
+        bool gym = false, feedback = false, branches = false, feedbacks = false;
+        string? branch = null, actor = null, export = null, fork = null, forkRequest = null, forkLabel = null;
         string? model = null, authFile = null, catalog = null, connection = null, llmLog = null;
         int maxCalls = 128, maxFailures = 3, maxContextCharacters = 200_000;
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -160,6 +180,16 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--survival": survival = true; break;
                 case "--duo": duo = true; break;
                 case "--llm": llm = true; break;
+                case "--branch": branch = Value(); break;
+                case "--actor": actor = Value(); break;
+                case "--gym": gym = true; break;
+                case "--feedback": feedback = true; break;
+                case "--branches": branches = true; break;
+                case "--gym-feedbacks": feedbacks = true; break;
+                case "--gym-export": export = Path.GetFullPath(Value()); break;
+                case "--gym-fork": fork = Value(); break;
+                case "--gym-fork-request": forkRequest = Value(); break;
+                case "--fork-label": forkLabel = Value(); break;
                 case "--model": model = Value(); break;
                 case "--auth-file": authFile = Path.GetFullPath(Value()); break;
                 case "--catalog": catalog = Path.GetFullPath(Value()); break;
@@ -170,6 +200,33 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--max-context-chars": maxContextCharacters = Positive(Value(), option); break;
                 default: throw new ArgumentException($"未知参数：{option}；使用 --help 查看用法。");
             }
+        }
+        GymManagementOptions? management = null;
+        int managementModes = (branches ? 1 : 0) + (feedbacks ? 1 : 0) + (export is not null ? 1 : 0)
+            + (fork is not null ? 1 : 0) + (forkRequest is not null ? 1 : 0);
+        if (!help && managementModes > 0) {
+            if (managementModes != 1 || store is null) { throw new ArgumentException("管理模式只能选择一种，并必须指定 --store。"); }
+            string[] allowed = branches ? ["--store", "--branches"] : feedbacks
+                ? ["--store", "--gym-feedbacks", "--branch", "--actor"] : export is not null
+                ? ["--store", "--gym-export", "--branch", "--actor"]
+                : ["--store", "--gym-fork", "--gym-fork-request", "--fork-label"];
+            if (seen.Any(option => !allowed.Contains(option, StringComparer.Ordinal))) {
+                throw new ArgumentException("管理模式不能混用游戏、模型或其他管理配置。");
+            }
+            if (export is not null && actor is null) { throw new ArgumentException("--gym-export 必须指定 --actor。"); }
+            if ((fork is not null || forkRequest is not null) && forkLabel is null) { throw new ArgumentException("分叉必须指定 --fork-label。"); }
+            management = new(branches ? GymManagementKind.Branches : feedbacks ? GymManagementKind.Feedbacks : export is not null
+                ? GymManagementKind.Export : fork is not null ? GymManagementKind.ForkFeedback : GymManagementKind.ForkRequest,
+                actor, export, fork ?? forkRequest, forkLabel);
+        }
+        if (!help && managementModes == 0 && (actor is not null || forkLabel is not null)) {
+            throw new ArgumentException("--actor / --fork-label 仅用于对应的管理模式。");
+        }
+        if (!help && branch is not null && store is null) { throw new ArgumentException("--branch 必须配合已有 --store。"); }
+        if (!help && (gym || feedback) && (!llm || store is null)) { throw new ArgumentException("--gym / --feedback 必须配合 --llm 和 --store。"); }
+        if (!help && branch is not null) {
+            try { branch = CycleDurableHistory.FormatBranchId(CycleDurableHistory.ParseBranchId(branch)); }
+            catch (FormatException error) { throw new ArgumentException("--branch 必须为有效分支 ID。", error); }
         }
         if (!help && (play && (survival || duo) || survival && duo)) { throw new ArgumentException("--play、--survival、--duo 请选择一种。"); }
         if (!help && llm && !survival && !duo) { throw new ArgumentException("--llm 必须配合 --survival 或 --duo。"); }
@@ -184,7 +241,8 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
         }
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
         return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival,
-            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog) : null, duo);
+            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog,
+                gym || feedback, feedback, branch) : null, duo, branch, management);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

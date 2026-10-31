@@ -5,14 +5,20 @@ namespace DramaBoard.ResourceCycle.Completion;
 public sealed record LlmControllerOptions {
     public int MaxCalls { get; init; } = 128;
     public int MaxConsecutiveProtocolFailures { get; init; } = 3;
-    /// <summary>Maximum full rendered context length in UTF-16 code units. Excess is rejected, never truncated.</summary>
+    /// <summary>Maximum rendered context plus local feedback history and correction material in UTF-16 code units.
+    /// Native action blocks are counted by serialized size. Excess is rejected, never truncated.</summary>
     public int MaxContextCharacters { get; init; } = 200_000;
     /// <summary>Maximum decoded action string length in UTF-16 code units.</summary>
     public int MaxCommandCharacters { get; init; } = 8192;
+    /// <summary>Successful host feedback submissions allowed within one character service.</summary>
+    public int MaxFeedbackPerDecision { get; init; } = 3;
+    /// <summary>Maximum combined decoded feedback fields, measured in UTF-16 code units.</summary>
+    public int MaxFeedbackCharacters { get; init; } = 4000;
 
     internal void Validate() {
         if (MaxCalls <= 0 || MaxConsecutiveProtocolFailures <= 0 || MaxContextCharacters <= 0 ||
-            MaxCommandCharacters <= 0 || MaxCommandCharacters > int.MaxValue / 6 - 1024) {
+            MaxCommandCharacters <= 0 || MaxCommandCharacters > int.MaxValue / 6 - 1024 ||
+            MaxFeedbackPerDecision <= 0 || MaxFeedbackCharacters <= 0 || MaxFeedbackCharacters > int.MaxValue / 6 - 1024) {
             throw new ArgumentOutOfRangeException(nameof(LlmControllerOptions), "All limits must be positive and the command limit must support bounded JSON input.");
         }
     }

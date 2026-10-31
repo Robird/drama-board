@@ -2,7 +2,7 @@ using Atelia.Completion.Abstractions;
 
 namespace DramaBoard.ResourceCycle.Completion;
 
-public enum LlmControllerTraceKind { Request, Response, Failure }
+public enum LlmControllerTraceKind { Request, Response, Failure, Feedback }
 
 /// <summary>Host-only evidence of generation, not proof of a committed game operation.</summary>
 /// <remarks>Includes model-visible materials and outputs, never connection configuration or credentials.
@@ -15,4 +15,6 @@ public sealed record LlmControllerTrace(
     CompletionRequest Request,
     CompletionResult? Result = null,
     string? ProtocolError = null,
-    CycleControllerOperation? Operation = null);
+    CycleControllerOperation? Operation = null,
+    string? RequestId = null,
+    string? FeedbackId = null);

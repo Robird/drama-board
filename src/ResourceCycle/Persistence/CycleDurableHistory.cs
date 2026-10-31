@@ -5,12 +5,12 @@ using DramaBoard.Kernel.Simulation;
 
 namespace DramaBoard.ResourceCycle;
 
-/// <summary>Single-branch E/S history: disk stores business/cursor, the session keeps a ready runtime world.</summary>
+/// <summary>One selected branch's E/S history: disk stores business/cursor, the session keeps a ready runtime world.</summary>
 /// <remarks>
 /// Exclusively owned by one Kernel. Any failed commit attempt retires this adapter; dispose and reopen
 /// before inspecting durable progress. Disposing never completes pending work or saves memory changes.
 /// </remarks>
-public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFact>, IDisposable {
+public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFact>, IDisposable {
     private readonly Repository _repository;
     private readonly WorkingCopy _work;
     private readonly int _gameRevision;
@@ -111,10 +111,15 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
         }
     }
 
-    /// <summary>Opens exactly one root branch. Pending E is exposed; the Kernel explicitly recovers it.</summary>
+    /// <summary>Opens an unambiguous single root branch. Multiple branches require an explicit selection.</summary>
     /// <remarks>Restores S/E, upgrades their in-memory representations, then validates and rebuilds State.
     /// Loading neither publishes nor executes pending work. Unsupported revisions are rejected.</remarks>
     public static CycleDurableHistory Open(string path) => OpenCore(path, CycleGameRevision.Current);
+
+    /// <summary>Opens the selected branch, preserving any pending Event for normal Kernel recovery.</summary>
+    public static CycleDurableHistory Open(string path, BranchId branch) => OpenCore(path, CycleGameRevision.Current, branch: branch);
+
+    public static CycleDurableHistory Open(string path, string branchId) => Open(path, ParseBranchId(branchId));
 
     // Fixture seam for historical semantics; it uses the same adapter, version checks and publication path.
     internal static CycleDurableHistory Open(string path, int targetRevision,
@@ -124,14 +129,18 @@ public sealed class CycleDurableHistory : IOccurrenceHistory<CycleWorld, CycleFa
 
     private static CycleDurableHistory OpenCore(string path, int targetRevision,
         Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
-        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null,
+        BranchId? branch = null) {
         Repository repository = Repository.OpenExisting(path, CreateModels());
         try {
-            BranchInfo[] branches = repository.ListBranches();
-            if (branches.Length != 1 || branches[0].ForkedFromCommitId is not null) {
-                throw new InvalidDataException("ResourceCycle requires exactly one root branch and no forks.");
+            if (branch is not { } selected) {
+                BranchInfo[] branches = repository.ListBranches();
+                if (branches.Length != 1 || branches[0].ForkedFromCommitId is not null) {
+                    throw new InvalidDataException("Multiple ResourceCycle branches require an explicit branch ID.");
+                }
+                selected = branches[0].Id;
             }
-            return Attach(repository, branches[0].Id, targetRevision, upgradeState, upgradeEvent);
+            return Attach(repository, selected, targetRevision, upgradeState, upgradeEvent);
         } catch {
             repository.Dispose();
             throw;

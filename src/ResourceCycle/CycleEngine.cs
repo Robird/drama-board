@@ -7,12 +7,25 @@ using DramaBoard.Spatial;
 namespace DramaBoard.ResourceCycle;
 
 public static class CycleEngine {
+    internal const int MaximumTransitionsPerModelTime = 1024;
+
+    /// <summary>Finds the actor the existing arbitration policy would serve next, without planning or invoking a controller.</summary>
+    internal static string? NextDecisionActor(CycleWorld world, KernelCursor cursor) {
+        IReadOnlyList<OccurrenceCandidate<CyclePrediction>> candidates = new CycleRule(new CycleMetrics(), null)
+            .Forecast(world, new SimulationRules(0, MaximumTransitionsPerModelTime));
+        if (candidates.Count != 1 || candidates[0].Data.Kind != CyclePredictionKind.RequestDecision ||
+            candidates[0].Due.ModelTime != world.Time || cursor.LastCauseKey == candidates[0].Key ||
+            cursor.Version.TransitionCount == long.MaxValue || cursor.LastInstant is { } last &&
+            last.ModelTime == world.Time && last.CausalOrdinal >= MaximumTransitionsPerModelTime - 1) { return null; }
+        return candidates[0].Data.TargetId;
+    }
+
     public static SimulationKernel<CycleWorld, CyclePrediction, CycleFact> CreateKernel(
         IOccurrenceHistory<CycleWorld, CycleFact> history, PredictionMode mode = PredictionMode.Incremental,
         CycleMetrics? metrics = null, ICycleCharacterController? characterController = null) {
         if (!Enum.IsDefined(mode)) { throw new ArgumentOutOfRangeException(nameof(mode)); }
         CycleMetrics measurements = metrics ?? new();
-        return new(history, new SimulationRules(0, 1024), [new CycleRule(measurements, characterController)],
+        return new(history, new SimulationRules(0, MaximumTransitionsPerModelTime), [new CycleRule(measurements, characterController)],
             Fold, (before, instant, facts, folded) => Complete(before, instant, facts, folded, mode, measurements), Validate);
     }
     public static CycleWorld Rebuild(CycleBusinessState business, ModelTime boundaryTime) {

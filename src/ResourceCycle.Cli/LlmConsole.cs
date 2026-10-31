@@ -12,15 +12,19 @@ using DramaBoard.ResourceCycle.Completion;
 
 internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = null, string? Catalog = null,
     string? Connection = null, int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
-    string? LogPath = null);
+    string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null);
 
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
     public static async Task<int> RunAsync(string? store, LlmHostOptions options, CancellationToken cancellationToken,
         TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, bool duo = false, TextReader? inputReader = null) {
         TextWriter output = outputWriter ?? Console.Out;
+        if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) {
+            throw new ArgumentException("Gym、反馈和分支运行需要 --store。");
+        }
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
-            ? CycleDurableHistory.Open(store) : CreateStore(store, duo);
+            ? options.Branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, options.Branch)
+            : options.Branch is null ? CreateStore(store, duo) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
@@ -31,7 +35,7 @@ internal static class LlmConsole {
         string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", duo ? "duo-llm-runs" : "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
         using var audit = new LlmRunAudit(logPath, output);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
-            : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
+            : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
         var human = duo ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
@@ -47,6 +51,9 @@ internal static class LlmConsole {
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
+        using GymSession? gym = options.Gym || options.Feedback ? new GymSession(store!, durable!, options, logPath, recovered) : null;
+        audit.Gym = gym;
+        gym?.CaptureCommitted(kernel.World, operations);
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
             Version = kernel.Version.ToString(), Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
         output.WriteLine($"{(duo ? "双角色模式：a = Human，b = LLM" : "LLM 旁观模式")}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 {(duo ? "--duo" : "--survival")} --llm 和连接配置。");
@@ -77,7 +84,8 @@ internal static class LlmConsole {
                 return new LlmCharacterController(client, model,
                     context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
                     new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
-                        MaxContextCharacters = options.MaxContextCharacters }, audit.Trace);
+                        MaxContextCharacters = options.MaxContextCharacters }, audit.Trace,
+                    feedbackSink: options.Feedback ? gym!.SaveFeedback : null);
             });
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -89,6 +97,7 @@ internal static class LlmConsole {
                 StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
                 if (status != StepStatus.Committed) { throw new InvalidOperationException($"生存世界无法继续：{status}。"); }
                 PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
+                gym?.CaptureCommitted(kernel.World, operations);
                 foreach (CycleFact fact in kernel.LastCompletion!.Event.Facts) {
                     audit.Write("committed", new { At = fact.At.Ticks, Kind = fact.Kind.ToString(), fact.ActorId,
                         fact.ToolCallId, fact.OperationRecordId, Disposition = fact.OperationDisposition?.ToString(),
@@ -196,6 +205,7 @@ internal sealed class LlmRunAudit : IDisposable {
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
     private readonly StreamWriter _file;
     public TextWriter Output { get; }
+    public GymSession? Gym { get; set; }
     public LlmRunAudit(string path, TextWriter output) {
         path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -203,6 +213,10 @@ internal sealed class LlmRunAudit : IDisposable {
         Output = output;
     }
     public void Write(string kind, object payload, string? summary = null) {
+        if (kind == "host-stop" || kind == "summary") {
+            JsonElement details = JsonSerializer.SerializeToElement(payload);
+            Gym?.Stop(details.TryGetProperty("Reason", out var reason) ? reason.GetString() ?? kind : kind);
+        }
         string json = JsonSerializer.Serialize(new { Kind = kind, Payload = payload }, JsonOptions);
         _file.WriteLine(json);
         // Full request/response evidence stays in JSONL; do not dump opaque provider replay/reasoning blobs to the terminal.
@@ -211,21 +225,26 @@ internal sealed class LlmRunAudit : IDisposable {
         Output.Flush();
     }
     public void Trace(LlmControllerTrace trace) {
+        Gym?.Trace(trace);
+        if (trace.Kind == LlmControllerTraceKind.Feedback) {
+            Write("feedback-receipt", new { trace.RequestId, trace.FeedbackId }, "反馈已保存；继续选择行动。是否收到回执以随后请求为准。");
+            return;
+        }
         if (trace.Kind == LlmControllerTraceKind.Request) {
-            Write("model-input", new { trace.CallNumber, trace.CharacterId, trace.ContextSequence,
+            Write("model-input", new { trace.RequestId, trace.CallNumber, trace.CharacterId, trace.ContextSequence,
                 trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
-                OutputContract = DescribeContract(trace.Request.PromptPrefix.OutputContract),
-                Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(SerializeRuntime).ToArray(),
-                Tail = trace.Request.TailMessages.Select(SerializeRuntime).ToArray() });
+                OutputContract = GymMessageProjection.Contract(trace.Request.PromptPrefix.OutputContract),
+                Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(GymMessageProjection.Message).ToArray(),
+                Tail = trace.Request.TailMessages.Select(GymMessageProjection.Message).ToArray() });
             Output.WriteLine(trace.Request.PromptPrefix.SystemPrompt);
             foreach (ObservationMessage material in trace.Request.PromptPrefix.SharedContextMessages.Concat(trace.Request.TailMessages).OfType<ObservationMessage>()) {
                 Output.WriteLine(material.Content);
             }
         } else {
-            Write("model-output", new { trace.CallNumber, trace.CharacterId, trace.ContextSequence,
+            Write("model-output", new { trace.RequestId, trace.CallNumber, trace.CharacterId, trace.ContextSequence,
                 Stage = trace.Kind.ToString(), trace.ProtocolError, trace.Operation,
                 Invocation = trace.Result?.Invocation, Termination = trace.Result?.Termination, Usage = trace.Result?.Usage,
-                Blocks = trace.Result?.Message.Blocks.Select(SerializeRuntime).ToArray() });
+                Blocks = trace.Result?.Message.Blocks.Select(block => GymMessageProjection.Runtime(block)).ToArray() });
             Output.WriteLine($"调用 {trace.CallNumber}：{trace.Result?.Termination.Kind.ToString() ?? trace.Kind.ToString()}；"
                 + $"{trace.ProtocolError ?? (trace.Operation is null ? "未形成行动" : "待游戏校验，尚未提交")}");
             if (trace.Result is { } result) {
@@ -241,21 +260,5 @@ internal sealed class LlmRunAudit : IDisposable {
             Output.Flush();
         }
     }
-    private static object DescribeContract(CompletionOutputContract contract) => new {
-        contract.ToolChoice, contract.AllowParallelToolCalls,
-        Tools = contract.Tools.Select(tool => {
-            // This adapter's single act tool has an object of scalar fields. Fail explicitly if its contract changes.
-            var schema = tool.InputSchema as ToolSchema.Object ?? throw new InvalidOperationException("Expected an object action schema.");
-            return new { tool.Name, tool.Description, InputSchema = new {
-                Type = "object", schema.AdditionalProperties,
-                Properties = schema.Properties.Select(property => new {
-                    property.Name, property.IsRequired,
-                    Schema = SerializeRuntime(property.Schema as ToolSchema.Value
-                        ?? throw new InvalidOperationException("Expected a scalar action parameter."))
-                }).ToArray()
-            } };
-        }).ToArray()
-    };
-    private static JsonElement SerializeRuntime<T>(T value) where T : notnull => JsonSerializer.SerializeToElement(value, value.GetType(), JsonOptions);
     public void Dispose() => _file.Dispose();
 }

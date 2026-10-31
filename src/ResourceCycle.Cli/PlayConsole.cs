@@ -7,11 +7,12 @@ using DramaBoard.ResourceCycle;
 internal static class PlayConsole {
     public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken, bool survival = false,
         Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null,
-        bool duo = false) {
+        bool duo = false, string? branch = null) {
         TextWriter output = outputWriter ?? Console.Out;
         bool restoring = store is not null && Directory.Exists(store);
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
-            ? CycleDurableHistory.Open(store) : CreateStore(store, survival, duo);
+            ? branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, branch)
+            : branch is null ? CreateStore(store, survival, duo) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) {
             history = durable;
@@ -28,7 +29,7 @@ internal static class PlayConsole {
         if (survival) { SurvivalHost.RequireMode(history.State, duo); }
 
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
-            : CycleOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
+            : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
         var presentation = PlayPresentation.ForMode(survival);
         var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, inputReader: inputReader, outputWriter: output,
             writeBoundary: outputWriter is null ? WriteBoundary : null,
