@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-30；[生存逃离 Demo](docs/design/survival-demo-milestone.md)一期已验收；二期 2A LLM 接线、2B 双角色生存与路由已落地；2C 同地交流、赠与已实施，继续真实合作试玩。
+> 最近整理：2026-10-31；下一个里程碑为[角色目标管理](docs/design/goal-management/README.md)，设计与用户故事已记录，尚未施工；生存二期的实际人类合作验收单独保留。
 
 ## 最终目标
 
@@ -26,7 +26,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：继续[二期目标](docs/design/survival-demo-milestone.md) 2C 的真实合作试玩；[交流合同](docs/implementation/survival-communication-plan.md)与[验收记录](docs/experiments/survival-communication-acceptance.md)已落地同地 say/give、有限发送、接收唤醒但保留活动、署名 Context 与原子恢复。真实模型预演发现合作约定需主动写入 handoff，提示打磨后已完成一局保留分工、互赠补给的共同逃离；证据仍是 coding agent 代 Human 入口。2A [适配库与宿主](docs/implementation/survival-llm-controller.md)和 2B [双角色合同](docs/implementation/survival-duo.md)均可复用。尚需至少一次实际人类控制 a、真实模型控制 b 的合作通关，记录交流或赠物如何改变选择；coding agent 代输入只作预演，不能替代该验收。
+**当前焦点**：用户选定[角色目标管理](docs/design/goal-management/milestone.md)为下一个里程碑。先落实目标图、独立焦点与状态、未结束事项自动进入 Context；更广泛的结构化记忆管理暂缓。当前[设计草案](docs/design/goal-management/design.md)与[用户故事](docs/design/goal-management/user-stories.md)已记录，尚无目标管理生产 API。下一步收敛焦点/状态转换、容量保留与操作合同，再形成可玩的持久编辑和跨回合材料闭环；以分工兑现、临时切换后返回、共享子目标三类场景验证，允许必要的小型内容扩展，不前置通用规划器或新游戏框架。
+
+**独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
@@ -57,7 +59,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 ## 延期与重开条件
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
-- **Player 与玩法扩展**：二期交流赠与继续通过真实合作检验，跨回合约定先复用 handoff；完整笔记编辑器、长期 Plan、概率采集产出、主动后台插话、唯一目标失效和通用规则包按真实需求重开。旧实现保持归档并按需调查复用；出现激活过多的试玩证据后再设计通知过滤。
+- **Player 与玩法扩展**：目标管理已进入下一里程碑，当前仍只有 handoff 可承载跨回合约定。结构化经历召回、实体解析、完整笔记编辑器、自动规划与条件提醒按目标管理实测缺口重开；概率产出、主动后台插话、唯一目标失效和通用规则包按真实玩法需要重开。旧运行时保持归档；出现激活过多的证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：2A 已验证未发布 E 可重新调用、已发布 E 不重问或重复效果；可玩 fork/倒带、完整 Player closure、原生模型会话恢复和完整异常/retry 历史仍延期。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。

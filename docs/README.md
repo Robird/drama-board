@@ -20,6 +20,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+The next milestone is [character goal management](design/goal-management/README.md): a persistent goal graph, separate focus and lifecycle state, and automatic visibility of unfinished goals in each Context. The topic directory contains the [milestone](design/goal-management/milestone.md), [design draft](design/goal-management/design.md) and [user stories](design/goal-management/user-stories.md), including small gameplay extensions as an incubator for reusable goal management. This is documented direction, not an implemented API; broad structured memory/recall remains deferred. The existing survival milestone's genuine Human/LLM cooperation acceptance remains separately outstanding.
+
 The [Attribute threshold forecast design](design/attribute-threshold-forecasts.md) is implemented: each attribute carries frozen threshold/depletion times, while action hints only describe changed assumptions such as leaving shelter. Both layouts and delta rendering share these materials; see [engineering and four-session playtest acceptance](experiments/attribute-threshold-forecasts-acceptance.md).
 
 The [Attribute rate explanation design](design/attribute-rate-explanations.md) is implemented with evaluated contributions and one derived total, shared by physical rates, frozen character observations and all layouts; see [engineering and independent playtest acceptance](experiments/attribute-rate-explanations-acceptance.md). Attribute-local explanations and source-grouped displays are projections of the same material, without a general Buff lifecycle framework.
