@@ -39,11 +39,15 @@
 
 开始生产扣料进入在制品，到期才累计配方消耗和产出；失败退回未完成原料到遗产，实验结束保留在制品。原料、成品、在制品逐项核对，失败居民不移出人口或最差生活统计。同刻顺序明确为饥饿失败、市场刷新、空间发生项、活动完成、实验结束、决定；临界饥饿和产出同刻时先失败。
 
-第一片即时成功操作后轮转服务其他空闲居民，拒绝保留当前服务；新服务先发布 `DecisionOpened`，下一 Step 才调用脚本。忙碌通知、实际角色可见 Context 与原始操作身份在下一片接入，不以完整世界脚本接口冒充角色 API。空间到达与接触均须进入同一个 Kernel，不能维护接触预测却漏掉其消费路径。Town 自身的 owner 预测缓存尚待接入；Spatial 已复用增量 Complete/Rebuild。
+即时成功操作后轮转服务其他空闲居民，拒绝保留当前服务；新服务先发布 `DecisionOpened`，下一 Step 才调用控制器。生产入口 `CreateControlledKernel` 交付冻结 `TownObservation`，返回原始操作和来源身份；完整世界脚本入口只用于开发测试。忙碌通知仍待接入。空间到达与接触均须进入同一个 Kernel，不能维护接触预测却漏掉其消费路径。Town 自身的 owner 预测缓存尚待接入；Spatial 已复用增量 Complete/Rebuild。
 
 ## 3. 统计与角色信息
 
 开发者可读取世界真相做统计；角色材料只含依法可知的信息。指标不自动进入模型提示词，不隐式成为所有居民共同优化的目标。
+
+当前冻结观察包含本人库存、现金、饱食、Goals、活动、最近操作回执与最近本人活动结果；附近居民只透露同地公开身份和活动类型。地图/配方/价格/市场刷新规律是公共规则，实时库存及收购余额只有市场现场可见，远处明确标未知。`TownTextRenderer` 不查询世界，根据冻结值显示命令、合法整数范围和阻因；局部验证查询不修改状态。
+
+最近一条回执和一条本人经历是当前最小持久记忆，不是完整的角色 Context 生命周期。它足以让拒绝重试、活动完成及冷开不遗忘紧邻结果；居民交流/报价切片必须增加有界交付历史，不能用宿主 Gym 日志填补角色记忆。一次结果再次展示不代表需要重做动作。
 
 | 维度 | 首版统计建议 |
 | --- | --- |
@@ -84,8 +88,14 @@ Context 暂不泛型化：山林的冻结观察、目标回执及经历校验有
 
 需要可识别游戏种类、游戏修订及所需模型注册的加载路径，不能仅因为两游戏恰好有同一 GameRevision 就误开。具体元数据存放和启动命令先做最小方案；不默认统一根 Schema 或引入多模块版本管理器。
 
-首片已将山林/采集游戏的 GameRevision 升到 16，共享 Goals 使用 `DramaBoard.Goals.*` 持久身份，包含这些类型的原游戏 Schema 显式升版。旧开发图没有别名或升级器，可能在 DG 类型还原阶段即拒绝；不宣称修订 15 存档可继续。小镇使用独立 `Microtown` 程序集、总根身份和修订号，具体磁盘入口在领域切片后接入。
+首片已将山林/采集游戏的 GameRevision 升到 16，共享 Goals 使用 `DramaBoard.Goals.*` 持久身份，包含这些类型的原游戏 Schema 显式升版。旧开发图没有别名或升级器，可能在 DG 类型还原阶段即拒绝；不宣称修订 15 存档可继续。小镇使用独立 `Microtown` 程序集、`DramaBoard.Microtown.Root/Event` 持久身份，S/E 分别携带 `GameId=microtown` 和 `GameRevision=1`，当前只接受此版本。
+
+`TownDurableHistory.Open` 检查根/事件身份、修订与相邻 S/E/游标关系，重建就绪世界；不执行 pending、不发布新 E/S。pending 的业务应用及完整验证由正常 Kernel 恢复完成，不能把 Open 当成已完成 pending。`TownFact` 暂用完整不可变 NextBusiness 加 typed SpatialFacts，E 与 S 独立对象图；后续跨版本转换须同时考虑 pending 内的替换业务图。
+
+控制器来源 `TownControllerOperation` 在解析前保存 RawInput/ToolCallId/OperationRecordId；成功和拒绝都把 `TownOperationReceipt` 存入事实及本人状态。拒绝保持 DecisionSequence，递增 OperationSequence 并产生新 S。`CaptureDecisionBoundary` 捕获当前精确完成 S、角色/操作序号、游标和游戏版本；未来每次真实模型 Request 都应重新捕获，不能按 DecisionSequence 复用旧锚点。
+
+`Fork` 验证源分支历史成员、精确 S 及公开决策窗口，再直接注册子分支；不造新的业务 S，不改变 lineage、时间、随机坐标或累计账。Console 当前仅通过 `--branch` 选择运行分支，反馈定位与 fork 管理接入留给下一 Gym 切片。
 
 现有 E/S 独立修订、完成 S fork、pending 恢复与角色可见性合同保留。旧开发存档不承诺全面兼容；若拆分改变 Schema 或序列化身份，明确拒绝/支持范围，保留旧证据，不隐式改写。当前程序产生的新档须完成冷开与 fork 验收。
 
-至少支持分别启动山林和小镇、为角色选择 Human/脚本/LLM 的必要绑定，并复用模型连接配置与 Gym 管理能力。可以有薄的独立 exe 或统一宿主明确选择游戏；不要复制完整 CLI 和模型协议循环。
+已选择独立薄 [Microtown.Cli](../../../src/Microtown.Cli/README.md)，当前复用同一个 Human Console 服务三居民，支持新档、冷开、操作预算、EOF/:quit 暂停与全知经济统计。后续为角色选择 Human/脚本/LLM 的必要绑定，并复用模型连接配置与 Gym 管理能力；不复制完整原 CLI 和模型协议循环。

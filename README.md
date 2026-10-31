@@ -13,9 +13,21 @@ dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaH
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains Kernel, Spatial, Host, Inventory, ResourceCycle, its Console entrypoint and their tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
+Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains the core libraries, shared Inventory/Goals/controller/Gym modules, ResourceCycle and Microtown with their Console entrypoints and tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
 
 [Inventory](src/Inventory/ItemInventory.cs) is a small domain module for immutable item counts and optional total-unit capacity. It depends on DurableGraph, independently of the spacetime core and the game. ResourceCycle composes it with gathering rules and registers its models under the same game root; see [layering and composition](docs/design/layering-and-composition.md).
+
+## Microtown economy prototype
+
+[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Human Console currently serves the residents in turn, with independent saves and character-visible material. LLM/Gym integration and resident-to-resident social trade are still being implemented; see the [active milestone](docs/codex-goals/microtown/README.md).
+
+```powershell
+dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town --hours 48
+dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town
+pwsh -NoProfile -File scripts/Smoke-Microtown.ps1
+```
+
+Use `:quit` or EOF to pause, `:look` to redisplay, and `--max-operations` to bound the current run. See [Console usage](src/Microtown.Cli/README.md) and [persistence/interaction evidence](docs/experiments/microtown-persistence-acceptance.md).
 
 ## Day/night resource cycle experiment
 

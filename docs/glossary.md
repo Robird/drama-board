@@ -6,11 +6,11 @@
 
 ## 游戏与共享代码
 
-见[分层与组合](design/layering-and-composition.md)及待实施的[微型小镇里程碑](codex-goals/microtown/README.md)。以下是职责用语，不表示已有统一框架类型。
+见[分层与组合](design/layering-and-composition.md)及实施中的[微型小镇里程碑](codex-goals/microtown/README.md)。以下是职责用语，不表示已有统一框架类型。
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | 当前 ResourceCycle；微型小镇待实施，不预设统一根接口。 |
+| 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | ResourceCycle 与 Microtown 各自拥有领域根和存档适配，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `CycleGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
 | 共享领域模块（Shared domain module） | 一项可复用能力的状态与局部规则；游戏组合协调跨模块变化并统一发布。 | Inventory 为现有实例；Goals 等后续提取按实际消费者验证，不把模块等同 ECS 组件。 |
 

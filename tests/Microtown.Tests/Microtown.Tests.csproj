@@ -8,5 +8,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/Microtown/Microtown.csproj" />
+    <ProjectReference Include="../../src/ResourceCycle/ResourceCycle.csproj" />
   </ItemGroup>
 </Project>

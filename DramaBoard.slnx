@@ -7,6 +7,7 @@
     <Project Path="src/Inventory/Inventory.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
     <Project Path="src/Microtown/Microtown.csproj" />
+    <Project Path="src/Microtown.Cli/Microtown.Cli.csproj" />
     <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
     <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
     <Project Path="src/ResourceCycle.Completion/ResourceCycle.Completion.csproj" />

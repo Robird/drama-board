@@ -14,8 +14,34 @@ public sealed record TownPrediction(TownPredictionKind Kind, ModelTime Due, stri
 public static class TownEngine {
     public static SimulationKernel<TownWorld, TownPrediction, TownFact> CreateKernel(
         IOccurrenceHistory<TownWorld, TownFact> history,
-        Func<TownDecision, CancellationToken, ValueTask<TownCommand>> controller) =>
-        new(history, new SimulationRules(0, 1024), [new TownRule(controller)], Fold, Complete, Validate);
+        Func<TownDecision, CancellationToken, ValueTask<TownCommand>> controller) {
+        ArgumentNullException.ThrowIfNull(controller);
+        return CreateCore(history, async (world, actorId, cancellationToken) => {
+            TownCommand command = await controller(new(world, actorId), cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("A script must return a command.");
+            cancellationToken.ThrowIfCancellationRequested();
+            return TownPlanning.Plan(world, actorId, command);
+        });
+    }
+
+    /// <summary>Production controller seam: only detached actor-visible material is supplied, and raw output is captured before parsing.</summary>
+    public static SimulationKernel<TownWorld, TownPrediction, TownFact> CreateControlledKernel(
+        IOccurrenceHistory<TownWorld, TownFact> history,
+        Func<TownObservation, CancellationToken, ValueTask<TownControllerOperation>> controller) {
+        ArgumentNullException.ThrowIfNull(controller);
+        return CreateCore(history, async (world, actorId, cancellationToken) => {
+            TownObservation observation = TownObservation.Capture(world, actorId);
+            TownControllerOperation operation = await controller(observation, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("A controller must return captured operation provenance.");
+            cancellationToken.ThrowIfCancellationRequested();
+            return TownPlanning.Plan(world, actorId, operation);
+        });
+    }
+
+    private static SimulationKernel<TownWorld, TownPrediction, TownFact> CreateCore(
+        IOccurrenceHistory<TownWorld, TownFact> history,
+        Func<TownWorld, string, CancellationToken, ValueTask<TownFact>> planDecision) =>
+        new(history, new SimulationRules(0, 1024), [new TownRule(planDecision)], Fold, Complete, Validate);
 
     public static TownWorld Rebuild(TownBusinessState business) {
         ArgumentNullException.ThrowIfNull(business);
@@ -28,6 +54,16 @@ public static class TownEngine {
         if (fact.PreviousGeneration != world.Business.Generation || fact.At != instant.ModelTime ||
             fact.NextBusiness.Generation <= fact.PreviousGeneration) {
             throw new InvalidOperationException("Town fact does not continue this business boundary.");
+        }
+        if (fact.OperationReceipt is { } receipt) {
+            receipt.Validate();
+            TownCharacter actor = fact.NextBusiness.Character(receipt.ActorId);
+            if (fact.Kind != TownEventKind.Operation || fact.ActorId != receipt.ActorId || fact.Accepted != receipt.Accepted ||
+                fact.Result != receipt.Result || fact.At != receipt.At || actor.DecisionSequence != receipt.DecisionSequence ||
+                actor.OperationSequence != receipt.OperationSequence || actor.LastOperationReceipt != receipt ||
+                (fact.GoalReceipt is null ? receipt.GoalReceipt is not null : !fact.GoalReceipt.SameAs(receipt.GoalReceipt))) {
+                throw new InvalidOperationException("Town operation fact and resident receipt disagree.");
+            }
         }
         return new(fact.NextBusiness, new(fact.NextBusiness.Spatial, world.Spatial.Contacts));
     }
@@ -58,7 +94,7 @@ public static class TownEngine {
         return null;
     }
 
-    private sealed class TownRule(Func<TownDecision, CancellationToken, ValueTask<TownCommand>> controller)
+    private sealed class TownRule(Func<TownWorld, string, CancellationToken, ValueTask<TownFact>> planDecision)
         : IOccurrenceRule<TownWorld, TownPrediction, TownFact> {
         private readonly SpatialOccurrenceRule _spatial = new(TownContent.Graph);
         private readonly SpatialContactOccurrenceRule _contacts = new(TownContent.Graph);
@@ -98,10 +134,7 @@ public static class TownEngine {
                     return new([new(TownEventKind.DecisionOpened, before,
                         TownPlanning.Replace(before, opened, id), id, "Decision boundary opened.")]);
                 }
-                TownCommand command = await controller(new(world, id), cancellationToken).ConfigureAwait(false)
-                    ?? throw new InvalidOperationException("A controller must return a command.");
-                cancellationToken.ThrowIfCancellationRequested();
-                return new([TownPlanning.Plan(world, id, command)]);
+                return new([await planDecision(world, id, cancellationToken).ConfigureAwait(false)]);
             }
 
             TownBusinessState at = TownPlanning.At(before, prediction.Due);
@@ -118,6 +151,7 @@ public static class TownEngine {
                     TownCharacter actor = at.Character(prediction.ActorId!);
                     TownCharacter failed = actor with {
                         Failed = true, FoodReserve = 0, MinimumFoodReserve = 0, Activity = null,
+                        LastExperience = new(TownEventKind.Failed, prediction.Due, "Food exhausted; unused production inputs remain in your estate."),
                         Inventory = actor.Activity?.InputItem is { } input ? actor.Inventory.Add(input, actor.Activity.InputCount) : actor.Inventory
                     };
                     GraphSpatialFact[] spatialFacts = [new EntityRemovedFact(new(actor.Id))];
@@ -137,9 +171,11 @@ public static class TownEngine {
                         changed = changed with { Inventory = actor.Inventory.Add(recipe.Output, checked(recipe.OutputCount * activity.Batches)) };
                         economy = economy.Produce(recipe, activity.Batches);
                     }
+                    string outcome = produced ? $"Produced {TownContent.Recipe(activity.RecipeId!)!.OutputCount * activity.Batches} {TownContent.Recipe(activity.RecipeId!)!.Output}." : "Waiting completed.";
+                    changed = changed with { LastExperience = new(produced ? TownEventKind.ProductionCompleted : TownEventKind.WaitCompleted, prediction.Due, outcome) };
                     fact = new(produced ? TownEventKind.ProductionCompleted : TownEventKind.WaitCompleted, before,
                         at.Change(at.Characters.Select(current => current.Id == actor.Id ? changed : current), economy: economy), actor.Id,
-                        produced ? "Production completed." : "Waiting completed.");
+                        outcome);
                     break;
                 }
                 case TownPredictionKind.Spatial: {
@@ -149,7 +185,14 @@ public static class TownEngine {
                         : await _spatial.PlanSelectedAsync(world.Spatial, prediction.SpatialCandidate, cancellationToken).ConfigureAwait(false);
                     GraphSpatialState spatial = TownPlanning.ApplySpatial(at.Spatial, prediction.Due, draft.Facts);
                     string? actor = draft.Facts.OfType<TraversalArrivedFact>().FirstOrDefault()?.EntityId.Value;
-                    fact = new(contact ? TownEventKind.ContactOccurred : TownEventKind.Arrived, before, at.Change(spatial: spatial), actor,
+                    IEnumerable<TownCharacter> characters = at.Characters;
+                    if (actor is not null) {
+                        string destination = ((AtPlaceLocation)spatial.Entities.Single(entity => entity.Id.Value == actor).Location).PlaceId.Value;
+                        characters = characters.Select(current => current.Id == actor ? current with {
+                            LastExperience = new(TownEventKind.Arrived, prediction.Due, $"Arrived at {destination}.")
+                        } : current);
+                    }
+                    fact = new(contact ? TownEventKind.ContactOccurred : TownEventKind.Arrived, before, at.Change(characters, spatial: spatial), actor,
                         contact ? "Passage contact consumed; residents continue their journeys." : "Movement completed.", spatialFacts: draft.Facts);
                     break;
                 }

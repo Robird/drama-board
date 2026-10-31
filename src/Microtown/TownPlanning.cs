@@ -47,7 +47,17 @@ public static class TownPlanning {
         return "Unknown command.";
     }
 
-    public static TownFact Plan(TownWorld world, string actorId, TownCommand command) {
+    /// <summary>Developer/script seam. No controller provenance is invented for an already parsed command.</summary>
+    public static TownFact Plan(TownWorld world, string actorId, TownCommand command) => PlanCore(world, actorId, command, null);
+
+    /// <summary>Validates captured provenance before parsing; both accepted and rejected results are recorded in the fact and resident state.</summary>
+    public static TownFact Plan(TownWorld world, string actorId, TownControllerOperation operation) {
+        ArgumentNullException.ThrowIfNull(operation);
+        operation.Validate();
+        return PlanCore(world, actorId, TownCommand.Parse(operation.RawInput), operation);
+    }
+
+    private static TownFact PlanCore(TownWorld world, string actorId, TownCommand command, TownControllerOperation? source) {
         TownBusinessState before = world.Business;
         if (before.OpenDecisionActorId != actorId) { throw new InvalidOperationException("The operation requires this actor's published decision boundary."); }
         TownCharacter actor = before.Character(actorId);
@@ -57,8 +67,10 @@ public static class TownPlanning {
             ? GoalRules.Apply(actor.Goals, command.Goal!, actor.DecisionSequence, operation) : null;
         error ??= goal?.Error;
         if (error is not null) {
-            TownCharacter rejected = actor with { OperationSequence = operation };
-            return new(TownEventKind.Operation, before, Replace(before, rejected, openDecision: actorId), actorId, error, false, goalReceipt: goal?.Receipt);
+            TownOperationReceipt? receipt = source is null ? null : new(actorId, source, false, error, before.Time, actor.DecisionSequence, operation, goal?.Receipt);
+            TownCharacter rejected = actor with { OperationSequence = operation, LastOperationReceipt = receipt ?? actor.LastOperationReceipt };
+            return new(TownEventKind.Operation, before, Replace(before, rejected, openDecision: actorId), actorId, error, false,
+                goalReceipt: goal?.Receipt, operationReceipt: receipt);
         }
         TownCharacter changed = actor with { OperationSequence = operation };
         TownMarket market = before.Market;
@@ -95,10 +107,23 @@ public static class TownPlanning {
             case TownCommandKind.Goal:
                 changed = changed with { Goals = goal!.After }; break;
         }
+        string result = command.Kind switch {
+            TownCommandKind.Buy => $"Bought {command.Quantity} {command.Target} for {(long)TownContent.BuyPrice(command.Target!) * command.Quantity} money.",
+            TownCommandKind.Sell => $"Sold {command.Quantity} {command.Target} for {(long)TownContent.SellPrice(command.Target!) * command.Quantity} money.",
+            TownCommandKind.Produce => $"Started {command.Quantity} batch(es) of {command.Target}; reserved {changed.Activity!.InputCount} {changed.Activity.InputItem}; due {changed.Activity.Due}.",
+            TownCommandKind.Eat => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Consumed one meal; food is now {changed.Food:0.###}/100."),
+            TownCommandKind.Wait => $"Waiting {command.Quantity} hour(s), due {changed.Activity!.Due}.",
+            TownCommandKind.Go => $"Started movement along {command.Target}.",
+            TownCommandKind.Goal => goal!.Receipt.Message,
+            _ => throw new InvalidOperationException("An accepted operation must have a known command kind.")
+        };
+        TownOperationReceipt? acceptedReceipt = source is null ? null : new(actorId, source, true, result, before.Time, actor.DecisionSequence, operation, goal?.Receipt);
+        changed = changed with { LastOperationReceipt = acceptedReceipt ?? actor.LastOperationReceipt };
         GraphSpatialState spatial = ApplySpatial(before.Spatial, before.Time, spatialFacts);
         TownBusinessState next = before.Change(before.Characters.Select(character => character.Id == actorId ? changed : character), market, economy, spatial,
             lastServed: actorId);
-        return new(TownEventKind.Operation, before, next, actorId, $"{command.Kind} accepted.", spatialFacts: spatialFacts, goalReceipt: goal?.Receipt);
+        return new(TownEventKind.Operation, before, next, actorId, result, spatialFacts: spatialFacts, goalReceipt: goal?.Receipt,
+            operationReceipt: acceptedReceipt);
     }
 
     internal static TownBusinessState Replace(TownBusinessState before, TownCharacter actor, string? openDecision = null) =>
