@@ -53,17 +53,17 @@
 
 **控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；角色观察和纯命令校验已接入，LLM 适配器使用独立 Context 请求；完整原生工具会话恢复仍未实施。
 
-## 角色实验环境（方向已定，尚未实施）
+## 角色实验环境（一期已实现）
 
-见[专题入口](design/character-gym/README.md)。以下为设计概念，不要求各有同名类型。
+见[专题入口](design/character-gym/README.md)与[使用说明](design/character-gym/usage.md)。概念不要求各有同名类型；宿主证据不是角色记忆。
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 角色实验环境（Character Gym） | 支持角色轨迹回看、需求反馈与定位分叉续跑的宿主实验能力；不等于训练平台或自动优化器。 | 一期设计，专用入口未实施。 |
-| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | 现有 `LlmRunAudit` 是基础，稳定关联设计待实施。 |
-| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | 现有审计和操作日志可供接线，完整导出未实施。 |
-| 需求反馈（Feedback report） | 控制器报告的 issue / feature-request，关联具体请求及现场；不是游戏操作回执、世界事实或已批准需求。 | 宿主反馈工具待实施。 |
-| 重跑起点（Rerun anchor） | 可持久定位的已完成 S 决策边界；关联请求但不等同于某次模型调用。 | 游戏适配待实施；不能只用模型时间或 Context 序号定位。 |
+| 角色实验环境（Character Gym） | 支持角色轨迹回看、需求反馈与定位分叉续跑的宿主实验能力；不等于训练平台或自动优化器。 | [GymSession](../src/ResourceCycle.Cli/Gym/GymSession.cs)、`GymCommands`；`--gym` / `--feedback` 及独立管理入口。 |
+| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | `GymSession.RunId`、[GymJournal](../src/ResourceCycle.Cli/Gym/GymJournal.cs) 的 run-start/end；每次模型请求另有 RequestId。 |
+| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | [GymTraceExporter](../src/ResourceCycle.Cli/Gym/GymTraceExporter.cs) 按角色及分支截点继承祖先前缀，并报告证据缺口。 |
+| 需求反馈（Feedback report） | 控制器报告的 issue / feature-request，关联具体请求及现场；不是游戏操作回执、世界事实或已批准需求。 | [LlmFeedbackSubmission](../src/ResourceCycle.Completion/LlmFeedbackSubmission.cs)、`report-feedback`；保存成功才返回 FeedbackId，正文不会自动进入角色状态。 |
+| 重跑起点（Rerun anchor） | 可持久定位的已完成 S 决策边界；关联请求但不等同于某次模型调用。 | [CycleDecisionBoundary](../src/ResourceCycle/Persistence/CycleBranchBoundary.cs)，以分支/commit/角色及游标校验，不能只用模型时间或 Context 序号定位。 |
 
 ## 角色目标管理（已实现）
 

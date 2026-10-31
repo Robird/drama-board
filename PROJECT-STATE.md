@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；下一主线为[角色实验环境一期](docs/design/character-gym/README.md)：轨迹、反馈与定位分叉续跑。基础文档已建立，尚未施工；闭环改进留到二期。
+> 最近整理：2026-10-31；[角色实验环境一期](docs/design/character-gym/README.md)已完成：轨迹、反馈与定位分叉续跑。可开始积累现场；闭环改进留到二期，尚未启动。
 
 ## 最终目标
 
@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户已确定[角色实验环境一期](docs/design/character-gym/milestone.md)，交付按角色回看轨迹、LLM 反馈及从反馈线索定位完成 S 并 fork 续跑；不要求修复反馈或比较改进效果。文档已建立，尚未施工；下一步按[实施入口](docs/implementation/character-gym-plan.md)核实请求/存档身份、分叉边界与恢复合同，再逐步接通三项能力。剩余问题与切片状态只在实施入口维护。
+**当前焦点**：[角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，按[使用说明](docs/design/character-gym/usage.md)记录角色轨迹、提交反馈并定位完成 S 分叉续跑；下一步是积累实际现场，二期修复/对照评估需另行启动，重开条件集中在[实施入口](docs/implementation/character-gym-plan.md)。
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
@@ -62,8 +62,8 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
 - **Player 与玩法扩展**：长期约定由角色 Goals 承载，handoff 保持一次性交接。结构化经历召回、实体解析、完整笔记编辑器、自动规划与条件提醒按目标管理实测缺口重开；概率产出、主动后台插话、唯一目标失效和通用规则包按真实玩法需要重开。旧运行时保持归档；出现激活过多的证据后再设计通知过滤。
-- **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏、分支或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
-- **分支、续局与外部调用**：2A 已验证未发布 E 可重新调用、已发布 E 不重问或重复效果；可玩 fork 的有限完成 S 入口由角色实验环境一期重开；任意位置倒带、完整 Player closure、原生模型会话恢复和全面异常/retry 恢复仍延期。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
+- **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
+- **分支、续局与外部调用**：2A 保留未发布 E 可重新调用、已发布 E 不重问或重复效果；Gym 支持串行选择完成 S 分叉，保留源 lineage/随机坐标、独立分支操作日志与截断的证据前缀；任意位置倒带、并发分支运行、完整 Player closure、原生模型会话恢复和全面异常/retry 恢复按真实需求重开。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
 - **Spatial 扩展**：空间拓扑、运动数学和更多途中互动需独立需求再重开。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。
 - **持久 Script VM**：研究材料已归档；只有需要持久执行状态时才重新选择方案。
 

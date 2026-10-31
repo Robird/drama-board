@@ -1,6 +1,6 @@
 # 角色实验环境一期里程碑
 
-状态：2026-10-31，已确定范围，尚待实施。设计边界见[设计思路](design.md)，动态剩余工作只维护在[实施入口](../../implementation/character-gym-plan.md)。
+状态：2026-10-31，一期已完成。证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实模型串联试玩](../../experiments/character-gym-playtest.md)。设计边界见[设计思路](design.md)，动态剩余工作只维护在[实施入口](../../implementation/character-gym-plan.md)。
 
 ## 1. 交付能力
 
@@ -10,7 +10,7 @@
 | 需求反馈 | LLM CharacterController 可选用工具提交 issue / feature-request；宿主记录稳定身份，自动关联角色、调用、实际材料和决定前存档位置。反馈有简短回执，不成为世界行动；提交后仍能正常选择行动 |
 | 反馈定位与分叉续跑 | 开发者可从反馈找到支持的已完成 S 边界，使用 DurableGraph 分支能力建立新分支、选择并冷开该分支，以原有或显式选择的控制器配置继续。原分支的头、状态与既有历史不被改写，子分支记录来源 |
 
-首版以 ResourceCycle 生存模式及现有 Completion 控制器为消费者，包含双角色中的角色隔离；不要求提取通用引擎或新建 GUI。具体 CLI 拼写、文件布局和类型名在实施时确定。
+首版以 ResourceCycle 生存模式及现有 Completion 控制器为消费者，包含双角色中的角色隔离；不要求提取通用引擎或新建 GUI。实际 CLI 和文件布局见[使用说明](usage.md)。
 
 ## 2. 最小端到端验收
 
