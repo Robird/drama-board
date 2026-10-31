@@ -30,7 +30,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
-目标管理[设计草案](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)：目的与方法分离，完成标准区分过程/结果与历史/当前条件，Open/Paused 均可保留短复查线索，信息获取允许否定答案完成。一次性成果失效默认另建，错误判断的更正/重开及留痕仍待裁决。[角色决策规约](docs/design/goal-management/decision-policy.md)采用简短固定系统提示词，随目标能力接通替换长期 handoff 指引，并验证同回合反馈续接；强约束仍由代码保证。两者均待实施，不引入固定用户消息流程、多阶段 LLM 管线、自动规划或行为预测。
+目标管理[设计](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)，当前正通过内部迭代收敛实施合同。状态转换、显式重开和有限敏感修订、Focus 来源路径/回退及解绑已确定，反例集中在[合同验收用例](docs/design/goal-management/acceptance-cases.md)；继续收敛容量、查询材料和操作接线。[角色决策规约](docs/design/goal-management/decision-policy.md)采用简短固定系统提示词，随目标能力接通替换长期 handoff 指引，并验证同回合反馈续接；强约束仍由代码保证。均待实施，不引入固定用户消息流程、多阶段 LLM 管线、自动规划或行为预测。
 
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
