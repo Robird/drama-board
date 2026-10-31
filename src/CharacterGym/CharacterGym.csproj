@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="$(CompletionSourceRoot)/src/Completion.Abstractions/Completion.Abstractions.csproj" />
+    <InternalsVisibleTo Include="DramaBoard.CharacterGym.Tests" />
+  </ItemGroup>
+</Project>

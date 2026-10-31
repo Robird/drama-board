@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；下一主线为[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)，已建立 Goal 工作草案，尚未施工；Character Gym 一期已完成，二期闭环改进继续延期。
+> 最近整理：2026-10-31；下一主线为[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)，Goal 已启动，共享模块和小镇内存经济切片已落地，下一步接持久化与角色交互；Character Gym 一期已完成，二期闭环改进继续延期。
 
 ## 最终目标
 
@@ -26,13 +26,13 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户已选择以第二款独立游戏[微型小镇](docs/codex-goals/microtown/README.md)带动多游戏共享代码提取与必要关联重构，并增加生产、交易和居民生活等玩法；已保存[设计草案](docs/codex-goals/microtown/design.md)及[下一轮 Goal 提示词](docs/codex-goals/microtown/goal.md)，尚未施工。下一步先核对 Context/Goals/控制器/Gym 的组合边界，再以可运行切片同时推进共享能力与小镇，具体问题只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。保留山林求生回归，不将第二游戏做成求生开关堆积；详细数值与物理拆分按实施证据调整。
+**当前焦点**：用户已选择以第二款独立游戏[微型小镇](docs/codex-goals/microtown/README.md)带动多游戏共享代码提取与必要关联重构，并增加生产、交易和居民生活等玩法；已进入迭代施工。[Goals](src/Goals/GoalRules.cs)、[CharacterControl.Completion](src/CharacterControl.Completion/LlmDecisionLoop.cs)、[CharacterGym](src/CharacterGym/GymJournal.cs) 已提取并由山林游戏使用；各游戏保持强类型 Context 与独立发布根。[小镇](src/Microtown/README.md) 三居民 Kernel/Spatial 内存经济循环已通过脚本验收；下一步贯通持久恢复、角色可见 Context、控制器与 Gym，具体问题只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。保留山林求生回归，不将第二游戏做成求生开关堆积；详细数值与物理拆分按实施证据调整。
 
 [角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
-目标管理首版已完成[工程验收](docs/experiments/goal-management-acceptance.md)与[真实试玩](docs/experiments/goal-management-playtest.md)，复杂结构有明确引导的使用证据，不宣称模型自发选用。[设计](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)。[CycleGoalRules](src/ResourceCycle/Goals/CycleGoalRules.cs)实施状态/更正、显式 Focus、共享 DAG、容量清理与原子操作；[GoalView](src/ResourceCycle.Cli/GoalView.cs)复用冻结 Context 投影当前目标、短回执和最近有效查询，不另建详情状态。[角色决策规约](docs/design/goal-management/decision-policy.md)已按实际能力替换长期 handoff 指引；剩余体验问题统一见设计末节，不引入固定用户流程、多阶段 LLM 管线、自动规划或行为预测。
+目标管理首版已完成[工程验收](docs/experiments/goal-management-acceptance.md)与[真实试玩](docs/experiments/goal-management-playtest.md)，复杂结构有明确引导的使用证据，不宣称模型自发选用。[设计](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)。[GoalRules](src/Goals/GoalRules.cs)实施状态/更正、显式 Focus、共享 DAG、容量清理与原子操作；[GoalView](src/ResourceCycle.Cli/GoalView.cs)复用冻结 Context 投影当前目标、短回执和最近有效查询，不另建详情状态。[角色决策规约](docs/design/goal-management/decision-policy.md)已按实际能力替换长期 handoff 指引；剩余体验问题统一见设计末节，不引入固定用户流程、多阶段 LLM 管线、自动规划或行为预测。
 
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
@@ -52,9 +52,9 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 15](src/ResourceCycle/Persistence/CycleGameRevision.cs)，目标相关 Schema 边界见[目标管理验收](docs/experiments/goal-management-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 16](src/ResourceCycle/Persistence/CycleGameRevision.cs)，目标相关 Schema 边界见[目标管理验收](docs/experiments/goal-management-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
-当前构建包含三个核心、Inventory、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
+当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Microtown 内存领域、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
 Dynamic-Programmer R1–R8 的既有实现、验收、Player 运行时理念与长期 Plan 设计统一保留在[Player 归档](docs/archive/player-runtime.md)，不驱动当前施工。
 

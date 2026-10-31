@@ -5,6 +5,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="DramaBoard.ResourceCycle.Cli.Tests" />
     <ProjectReference Include="../ResourceCycle/ResourceCycle.csproj" />
+    <ProjectReference Include="../CharacterGym/CharacterGym.csproj" />
     <ProjectReference Include="../ResourceCycle.Completion/ResourceCycle.Completion.csproj" />
     <ProjectReference Include="$(CompletionSourceRoot)/src/Completion/Completion.csproj" />
   </ItemGroup>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using DramaBoard.Goals;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Pure action syntax; world validity remains the domain's responsibility.</summary>
@@ -7,8 +8,8 @@ public static class CycleCommandParser {
     public static CycleCommand? Parse(string input) {
         ArgumentNullException.ThrowIfNull(input);
         string trimmed = input.Trim();
-        if (CycleGoalCommandParser.IsGoalCommand(trimmed)) {
-            return CycleGoalCommandParser.TryParse(input, out CycleGoalCommand? goal, out _) && goal is not null
+        if (GoalCommandParser.IsGoalCommand(trimmed)) {
+            return GoalCommandParser.TryParse(input, out GoalCommand? goal, out _) && goal is not null
                 ? CycleCommand.ManageGoal(goal) : null;
         }
         if (trimmed.StartsWith("handoff", StringComparison.Ordinal) && trimmed.Length > 7 && char.IsWhiteSpace(trimmed[7])) {
@@ -48,7 +49,7 @@ public static class CycleCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(CycleCommand command) => command.Kind switch {
-        CycleCommandKind.Goal => CycleGoalCommandParser.Format(command.Goal!),
+        CycleCommandKind.Goal => GoalCommandParser.Format(command.Goal!),
         CycleCommandKind.Say => $"say {command.TargetActorId} {command.SpeechText}",
         CycleCommandKind.Give => $"give {command.TargetActorId} {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",

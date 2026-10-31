@@ -1,3 +1,4 @@
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Spatial;
 using System.Reflection;
@@ -98,7 +99,7 @@ public sealed class GoalIntegrationTests {
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: commands);
         for (int i = 0; i < 5; i++) { await NextOperation(kernel); }
         Assert.Equal(new[] { "G1", "G3" }, Goals(kernel.World).Focus);
-        Assert.Equal(CycleGoalStatus.Open, Goals(kernel.World).Goals.Single(goal => goal.Id == "G3").Status);
+        Assert.Equal(GoalStatus.Open, Goals(kernel.World).Goals.Single(goal => goal.Id == "G3").Status);
         await NextOperation(kernel);
         Assert.Equal(new[] { "G3" }, Goals(kernel.World).Focus);
         await NextOperation(kernel);
@@ -109,8 +110,8 @@ public sealed class GoalIntegrationTests {
         Assert.Equal(completed, MaterialSnapshot(Goals(kernel.World)));
         await NextOperation(kernel);
         await NextOperation(kernel);
-        CycleGoal goal = Goals(kernel.World).Goals.Single(goal => goal.Id == "G3");
-        Assert.Equal(CycleGoalStatus.Open, goal.Status);
+        Goal goal = Goals(kernel.World).Goals.Single(goal => goal.Id == "G3");
+        Assert.Equal(GoalStatus.Open, goal.Status);
         Assert.Null(goal.EndNote);
         Assert.Equal(2, goal.Revisions.Count);
         Assert.Equal("No water here", goal.Revisions[0].OldEndNote);
@@ -140,7 +141,7 @@ public sealed class GoalIntegrationTests {
         Assert.Equal(paused, MaterialSnapshot(Context(kernel.World).Opening.Observation.Goals));
         Assert.Equal(paused, MaterialSnapshot(Goals(kernel.World)));
         Assert.Equal("one-time route hint", Context(kernel.World).Opening.PreviousAdvance!.Handoff);
-        Assert.Equal(CycleGoalStatus.Open, Assert.Single(saved.LatestObservation.Goals!.Goals).Status);
+        Assert.Equal(GoalStatus.Open, Assert.Single(saved.LatestObservation.Goals!.Goals).Status);
         Assert.Equal(new[] { "G1" }, saved.LatestObservation.Goals.Focus);
         Assert.Equal(Hour(9), kernel.World.Time);
     }
@@ -205,7 +206,7 @@ public sealed class GoalIntegrationTests {
                 original.OperationRecordId!));
         } else if (corruption == "after-goals") {
             CharacterInteractionState state = Assert.Single(original.InteractionChanges);
-            CycleGoalSet goals = new([new("G1", "silently substituted purpose", "different result")],
+            GoalSet goals = new([new("G1", "silently substituted purpose", "different result")],
                 focus: ["G1"], nextGoalId: 2);
             goals.Validate(); // The forgery is structurally valid; it is not the submitted effect.
             CharacterContext context = state.CurrentContext!;
@@ -219,8 +220,8 @@ public sealed class GoalIntegrationTests {
             forged = original.WithInteractions([new(state.ActorId, changedContext, state.PendingAdvance,
                 state.UndeliveredExperiences, state.DraftHandoff, state.NextExperienceSequence, goals)]);
         } else {
-            CycleGoalReceipt receipt = original.GoalOperation!;
-            CycleGoalReceipt changed = corruption == "receipt-changed"
+            GoalReceipt receipt = original.GoalOperation!;
+            GoalReceipt changed = corruption == "receipt-changed"
                 ? new(receipt.Kind, true, false, receipt.Message, receipt.GoalId,
                     focusBefore: receipt.FocusAfter, focusAfter: receipt.FocusAfter)
                 : new(receipt.Kind, receipt.Success, receipt.Changed, receipt.Message, "G99", receipt.LinkId,
@@ -241,7 +242,7 @@ public sealed class GoalIntegrationTests {
         string raw = malformed switch {
             "duplicate" => """create-goal {"title":"one","title":"two","criteria":"answer"}""",
             "unknown" => """create-goal {"title":"one","criteria":"answer","otherActor":"b"}""",
-            _ => new string(' ', CycleGoalLimits.MaximumCommandCodeUnits + 1) + Create
+            _ => new string(' ', GoalLimits.MaximumCommandCodeUnits + 1) + Create
         };
         CycleWorld initial = CycleGameFactory.CreateSurvival(Hour(8), enableWeather: false).World;
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: new RawController([raw]));
@@ -261,13 +262,13 @@ public sealed class GoalIntegrationTests {
 
     // Clone a frozen material only for a corruption fixture; keep unrelated fields exact without
     // invoking observation projection or mutating the valid baseline's shared immutable instance.
-    private static CycleObservation CopyObservationWithGoals(CycleObservation source, CycleGoalSet goals) {
+    private static CycleObservation CopyObservationWithGoals(CycleObservation source, GoalSet goals) {
         var copy = (CycleObservation)typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(source, null)!;
         typeof(CycleObservation).GetField("_goals", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(copy, goals);
         return copy;
     }
 
-    private static CycleGoalSet Goals(CycleWorld world, string actor = "a") => world.Business.InteractionStates[actor].Goals;
+    private static GoalSet Goals(CycleWorld world, string actor = "a") => world.Business.InteractionStates[actor].Goals;
     private static CharacterContext Context(CycleWorld world) => world.Business.InteractionStates["a"].CurrentContext!;
     private static CycleFact Last(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) => Assert.Single(kernel.LastCompletion!.Event.Facts);
     private static string Physical(CycleWorld world) => MaterialSnapshot(new {

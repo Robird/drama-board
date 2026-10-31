@@ -23,8 +23,8 @@
 | 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；采集场景同一 Console 服务三个角色，探索场景服务一个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
-| 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 的 `SystemPrompt` 与按能力选择的 `GoalGuidance` / `HandoffGuidance`；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
-| 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 尚未实施；保存 ToolCallId 不等于保存完整协议会话，二期首版不以前者冒充后者。 |
+| 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
+| 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 共享 `LlmDecisionLoop` 在单次决策内保留反馈所需原生 Tail；跨决策清空，不支持冷开恢复原生会话。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 某个角色当时可知的完整状态快照；不等同于完整世界对象，也不包含上下文历史。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；CycleDecisionContext 读取已保存最新观察，另持权威命令校验。 |
 | 行程观察（Journey observation） | 角色正在行走的路线知识：出发地、通路与方向线索、已知目的地；未探索目的地不公开身份。 | [CycleJourneyObservation](../src/ResourceCycle/CycleJourneyObservation.cs) 冻结于 `CycleObservation.Journey`，与 `ArrivalDue` 同时存在；抵达后清除，途中终局保留。 |
@@ -70,9 +70,9 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 角色实验环境（Character Gym） | 支持角色轨迹回看、需求反馈与定位分叉续跑的宿主实验能力；不等于训练平台或自动优化器。 | [GymSession](../src/ResourceCycle.Cli/Gym/GymSession.cs)、`GymCommands`；`--gym` / `--feedback` 及独立管理入口。 |
-| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | `GymSession.RunId`、[GymJournal](../src/ResourceCycle.Cli/Gym/GymJournal.cs) 的 run-start/end；每次模型请求另有 RequestId。 |
-| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | [GymTraceExporter](../src/ResourceCycle.Cli/Gym/GymTraceExporter.cs) 按角色及分支截点继承祖先前缀，并报告证据缺口。 |
-| 需求反馈（Feedback report） | 控制器报告的 issue / feature-request，关联具体请求及现场；不是游戏操作回执、世界事实或已批准需求。 | [LlmFeedbackSubmission](../src/ResourceCycle.Completion/LlmFeedbackSubmission.cs)、`report-feedback`；保存成功才返回 FeedbackId，正文不会自动进入角色状态。 |
+| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | `GymSession.RunId`、[GymJournal](../src/CharacterGym/GymJournal.cs) 的 run-start/end；每次模型请求另有 RequestId。 |
+| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | [GymTraceExporter](../src/CharacterGym/GymTraceExporter.cs) 按角色及分支截点继承祖先前缀，并报告证据缺口。 |
+| 需求反馈（Feedback report） | 控制器报告的 issue / feature-request，关联具体请求及现场；不是游戏操作回执、世界事实或已批准需求。 | [LlmFeedbackSubmission](../src/CharacterControl.Completion/LlmFeedbackSubmission.cs)、`report-feedback`；保存成功才返回 FeedbackId，正文不会自动进入角色状态。 |
 | 重跑起点（Rerun anchor） | 可持久定位的已完成 S 决策边界；关联请求但不等同于某次模型调用。 | [CycleDecisionBoundary](../src/ResourceCycle/Persistence/CycleBranchBoundary.cs)，以分支/commit/角色及游标校验，不能只用模型时间或 Context 序号定位。 |
 
 ## 角色目标管理（已实现）
@@ -81,13 +81,13 @@
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 目标（Goal） | 角色明确采纳的目的及完成标准、进展和续接信息；标准区分结果/过程、历史成果/当前条件。角色判断不等于世界事实；不等于 coding agent 的外部工作 Goal。 | [CycleGoal](../src/ResourceCycle/Goals/CycleGoalModel.cs)；上述语义区别不对应新增类型枚举。 |
-| 目标来源关联（GoalLink） | 父目标使用子目标的独立关系，保留该来源的理由；多个父目标可显式引用同一子目标，同父子对最多一条边。 | `CycleGoalLink`；不按同文去重，不自动推断依赖调度或资源分配。 |
-| 焦点 / 焦点路径（Focus / Focus path） | 当前优先处理的目标及选定来源路径；末端 Open，祖先可保留其他状态的来源背景；独立于物理活动。 | `CycleGoalSet.Focus`；[CycleGoalRules](../src/ResourceCycle/Goals/CycleGoalRules.cs) 处理显式路径及回退，没有隐藏的历史焦点栈。 |
-| 未结束目标（Unfinished goal） | Open 与 Paused 的合称，跨 Context 保留可发现入口。 | `CycleGoalStatus` 的 Open / Paused / Completed / Abandoned；`CycleGoal.IsUnfinished`。 |
-| 目标挂起（Goal pause） | 暂时不推进，保留原因与恢复线索；不取消 Activity，不递归暂停共享子目标。 | `pause-goal` / `CycleGoalOperationKind.Pause`；不另设 suspend 状态。 |
-| 复查线索（Revisit cue） | 提示哪些关键假设或变化值得重新考虑的短文本；Open/Paused 均可携带，包含挂起时的恢复线索用途。 | `CycleGoal.Revisit`；不自动订阅事件、唤醒、恢复目标或变更 Activity。 |
-| 目标重开（Goal reopen） | 将已结束目标显式改回 Open，保留身份和有限的旧判断；用于更正误判或重新采纳放弃的目的。 | `reopen-goal` / `CycleGoalRevision`；成果正常消耗后再次需要，默认另建目标。 |
+| 目标（Goal） | 角色明确采纳的目的及完成标准、进展和续接信息；标准区分结果/过程、历史成果/当前条件。角色判断不等于世界事实；不等于 coding agent 的外部工作 Goal。 | [Goal](../src/Goals/GoalModel.cs)；上述语义区别不对应新增类型枚举。 |
+| 目标来源关联（GoalLink） | 父目标使用子目标的独立关系，保留该来源的理由；多个父目标可显式引用同一子目标，同父子对最多一条边。 | `GoalLink`；不按同文去重，不自动推断依赖调度或资源分配。 |
+| 焦点 / 焦点路径（Focus / Focus path） | 当前优先处理的目标及选定来源路径；末端 Open，祖先可保留其他状态的来源背景；独立于物理活动。 | `GoalSet.Focus`；[GoalRules](../src/Goals/GoalRules.cs) 处理显式路径及回退，没有隐藏的历史焦点栈。 |
+| 未结束目标（Unfinished goal） | Open 与 Paused 的合称，跨 Context 保留可发现入口。 | `GoalStatus` 的 Open / Paused / Completed / Abandoned；`Goal.IsUnfinished`。 |
+| 目标挂起（Goal pause） | 暂时不推进，保留原因与恢复线索；不取消 Activity，不递归暂停共享子目标。 | `pause-goal` / `GoalOperationKind.Pause`；不另设 suspend 状态。 |
+| 复查线索（Revisit cue） | 提示哪些关键假设或变化值得重新考虑的短文本；Open/Paused 均可携带，包含挂起时的恢复线索用途。 | `Goal.Revisit`；不自动订阅事件、唤醒、恢复目标或变更 Activity。 |
+| 目标重开（Goal reopen） | 将已结束目标显式改回 Open，保留身份和有限的旧判断；用于更正误判或重新采纳放弃的目的。 | `reopen-goal` / `GoalRevision`；成果正常消耗后再次需要，默认另建目标。 |
 | 目标遗忘（Goal forget） | 显式移除已结束且无任何关联的当前目标记录。 | `forget-goal`；不删除历史 E/S 或旧冻结观察，不复用 ID。 |
 
 长期目标管理与一次性 handoff 各有用途；具体完成标准、材料限制及共享关系规则以专题文档为准。

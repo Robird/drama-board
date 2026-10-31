@@ -1,3 +1,4 @@
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -143,8 +144,8 @@ public static class CycleEngine {
                 }
                 CycleCommand? command = CycleCommandParser.Parse(operation.RawInput);
                 string? rejection = command is null ? "无法识别行动格式，请使用当前列出的行动命令。" : decision.Check(command);
-                if (command is null && CycleGoalCommandParser.IsGoalCommand(operation.RawInput)) {
-                    CycleGoalCommandParser.TryParse(operation.RawInput, out _, out string? goalError);
+                if (command is null && GoalCommandParser.IsGoalCommand(operation.RawInput)) {
+                    GoalCommandParser.TryParse(operation.RawInput, out _, out string? goalError);
                     rejection = goalError ?? rejection;
                 }
                 if (rejection is not null) {

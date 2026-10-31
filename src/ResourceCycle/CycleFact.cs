@@ -1,4 +1,5 @@
 using Atelia.DurableGraph;
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
 
@@ -8,7 +9,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CycleOperationDisposition { Succeeded, Rejected }
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 12)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 13)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -34,8 +35,8 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(24)] private string? _speechText;
     [DurableField(25)] private string? _itemId;
     [DurableField(26)] private int _itemCount;
-    [DurableField(27)] private CycleGoalReceipt? _goalOperation;
-    public CycleGoalReceipt? GoalOperation => _goalOperation;
+    [DurableField(27)] private GoalReceipt? _goalOperation;
+    public GoalReceipt? GoalOperation => _goalOperation;
     public string? TargetActorId => _targetActorId;
     public string? SpeechText => _speechText;
     public string? ItemId => _itemId;
@@ -67,7 +68,7 @@ public sealed partial class CycleFact : IDurableObject {
         CycleEnvironment? environment = null,
         string? toolCallId = null, string? operationRecordId = null, CycleGatherStopReason? gatherStopReason = null, IEnumerable<CycleObservedEvent>? observedEvents = null,
         IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, CycleOperationDisposition? operationDisposition = null,
-        string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0, CycleGoalReceipt? goalOperation = null) {
+        string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0, GoalReceipt? goalOperation = null) {
         _goalOperation = goalOperation;
         _targetActorId = targetActorId; _speechText = speechText; _itemId = itemId; _itemCount = itemCount;
         _interactionChanges = interactionChanges?.ToList() ?? [];

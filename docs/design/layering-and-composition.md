@@ -28,6 +28,7 @@
 - [Spatial](../../src/Spatial/Simulation/SpatialSimulation.cs) 是可选的空间能力，依赖 Kernel；不并入 Kernel，也不要求所有角色或所有 demo 使用空间。
 - [Host](../../src/Host/SimulationHost.cs) 是通用驱动循环。它属于运行适配职责，但仍可保持现有独立核心项目地位；名称分类不要求搬迁。
 - [Inventory](../../src/Inventory/ItemInventory.cs) 是独立领域模块，只依赖 DG，提供不可变数量快照、单份接纳和可选总件数上限；不拥有角色、资源点、时间或发布入口。
+- [Goals](../../src/Goals/GoalRules.cs) 是独立目标图模块，提供局部纯编辑、校验与 DG 注册；角色所有权和原子发布由游戏负责。[CharacterControl.Completion](../../src/CharacterControl.Completion/LlmDecisionLoop.cs) 提供无跨角色语义记忆的调用/反馈循环，[CharacterGym](../../src/CharacterGym/GymJournal.cs) 提供宿主证据记录和导出；各游戏适配自己的强类型 Context、完成边界与操作结果。后续双游戏验收由[小镇目标](../codex-goals/microtown/README.md)驱动。
 - ResourceCycle 同时包含领域状态/规则、具体场景与游戏持久化适配；[CLI](../../src/ResourceCycle.Cli/PlayConsole.cs) 提供当前展示与人类控制器。职责有待进一步梳理，不宣称已经完全物理隔离。
 
 ### 基础机制与规则不要混同

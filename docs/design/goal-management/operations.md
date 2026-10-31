@@ -16,7 +16,7 @@ show-goal {"id":"G1"}
 
 JSON 对象只接受该操作声明的键；拒绝重复键、未知键、错类型、多余尾文本、非法 Unicode 和超过 4 层的嵌套。可用数组仅为 focus 的 ID 路径，至多 32 个不同 ID，不支持操作数组。未提供字段不变，可空正文显式 null 或空白表示清空；必填文本不能用 null/空白。解析不改变游戏状态，格式错误走现有记录式拒绝。
 
-共享 [CycleGoalCommandParser](../../../src/ResourceCycle/Goals/CycleGoalCommandParser.cs) 对完整目标命令执行至多 8192 UTF-16 code units 的门槛，Human 与 LLM 都适用；这不是所有 Console 输入的统一限制。Completion 仍先执行自身传输检查；字段 scalar 上限与输入 UTF-16 上限分别提示，不能混称 token 限制。JSON 转义会占输入额度，即使各字段长度合法，整条超限仍拒绝，可采用更短编码或拆分非原子必要的编辑；不在 parser 悄悄裁字。被领域拒绝的原始提交照现有合同保存，这不等于建立宿主日志总大小上限。
+共享 [GoalCommandParser](../../../src/Goals/GoalCommandParser.cs) 对完整目标命令执行至多 8192 UTF-16 code units 的门槛，Human 与 LLM 都适用；这不是所有 Console 输入的统一限制。Completion 仍先执行自身传输检查；字段 scalar 上限与输入 UTF-16 上限分别提示，不能混称 token 限制。JSON 转义会占输入额度，即使各字段长度合法，整条超限仍拒绝，可采用更短编码或拆分非原子必要的编辑；不在 parser 悄悄裁字。被领域拒绝的原始提交照现有合同保存，这不等于建立宿主日志总大小上限。
 
 null 只用于 focus.id 清焦点，以及 progress/nextStep/revisit 清正文；show.id、parent、via 等出现时必须是声明类型，不能传 null，目录查询用 `{}`。no-op 也先验证全部已提供字段，不能绕过无效或超长 reason。同名 reason 按语义限长：pause.reason 是挂起说明（240 scalar）；reopen/update 敏感修订理由及 link/update-link 理由为 160 scalar。
 
@@ -71,7 +71,7 @@ Fact 保存完整已决定效果及冻结材料，Fold 按既有方式核验与�
 
 ## 4. 当前实现入口与边界
 
-局部模型与规则为 [CycleGoalModel / CycleGoalLimits](../../../src/ResourceCycle/Goals/CycleGoalModel.cs)、[CycleGoalRules](../../../src/ResourceCycle/Goals/CycleGoalRules.cs) 和 [CycleGoalReceipt](../../../src/ResourceCycle/Goals/CycleGoalReceipt.cs)；[CycleGoalInteractionRules](../../../src/ResourceCycle/CycleGoalInteractionRules.cs) 组合角色私有替换、冻结观察与原操作身份，并对记录效果作纯规则比对。
+局部模型与规则为 [GoalModel / GoalLimits](../../../src/Goals/GoalModel.cs)、[GoalRules](../../../src/Goals/GoalRules.cs) 和 [GoalReceipt](../../../src/Goals/GoalReceipt.cs)；[CycleGoalInteractionRules](../../../src/ResourceCycle/CycleGoalInteractionRules.cs) 组合角色私有替换、冻结观察与原操作身份，并对记录效果作纯规则比对。
 
 | 当前入口 | 接线职责 |
 | --- | --- |

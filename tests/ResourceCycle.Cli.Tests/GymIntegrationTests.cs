@@ -20,6 +20,10 @@ public sealed class GymIntegrationTests {
         Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client, duo: true, inputReader: input));
 
         var snapshot = files.Read();
+        JsonElement builds = Assert.Single(snapshot.Records, record => record.Kind == "run-start").Payload.GetProperty("Builds");
+        Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.CharacterGym");
+        Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.CharacterControl.Completion");
+        Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.Goals");
         GymRecord[] requests = snapshot.Records.Where(r => r.Kind == "request").ToArray();
         Assert.Equal(2, requests.Length);
         Assert.All(requests, request => Assert.Equal("b", request.ActorId));
@@ -71,6 +75,17 @@ public sealed class GymIntegrationTests {
         using var operations = CycleOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
         Assert.Equal(new[] { "a", "b", "a" }, operations.Entries.Select(entry => entry.Received.ActorId));
         Assert.All(operations.Entries, entry => Assert.NotNull(entry.Completed));
+        foreach (CycleOperationEntry entry in operations.Entries) {
+            JsonElement recorded = Assert.Single(snapshot.Records, record => record.Kind == "operation" &&
+                Text(record, "OperationRecordId") == entry.Received.OperationRecordId).Payload.GetProperty("Result");
+            CycleOperationResult completed = entry.Completed!;
+            Assert.Equal(completed.Status.ToString(), recorded.GetProperty("Status").GetString());
+            Assert.Equal(completed.ToolCallId, recorded.GetProperty("ToolCallId").GetString());
+            Assert.Equal(completed.Result, recorded.GetProperty("Result").GetString());
+            Assert.Equal(completed.WorldVersion, recorded.GetProperty("WorldVersion").GetString());
+            Assert.Equal(completed.DomainEvent, recorded.GetProperty("DomainEvent").GetString());
+            Assert.Equal(completed.ExactResult, recorded.GetProperty("ExactResult").GetBoolean());
+        }
         string exported = GymTraceExporter.Render(snapshot, boundary.BranchId, "b");
         Assert.Contains("model-private", exported);
         Assert.Contains("fixture-obstacle", exported);

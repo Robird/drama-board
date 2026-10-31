@@ -6,7 +6,7 @@
 
 | 已核对入口 | 基础职责 | 一期实现 |
 | --- | --- | --- |
-| [LlmControllerTrace](../../../src/ResourceCycle.Completion/LlmControllerTrace.cs)、[LlmConsole / LlmRunAudit](../../../src/ResourceCycle.Cli/LlmConsole.cs) | 保存实际请求、响应/失败及已提交事实；每次宿主运行使用新审计文件 | [GymSession](../../../src/ResourceCycle.Cli/Gym/GymSession.cs) 关联 Run/Request/S；[GymTraceExporter](../../../src/ResourceCycle.Cli/Gym/GymTraceExporter.cs) 按角色导出 |
+| [LlmControllerTrace](../../../src/CharacterControl.Completion/LlmControllerTrace.cs)、[LlmConsole / LlmRunAudit](../../../src/ResourceCycle.Cli/LlmConsole.cs) | 保存实际请求、响应/失败及已提交事实；每次宿主运行使用新审计文件 | [GymSession](../../../src/ResourceCycle.Cli/Gym/GymSession.cs) 关联 Run/Request/S；[GymTraceExporter](../../../src/CharacterGym/GymTraceExporter.cs) 按角色导出 |
 | [CycleOperationJournal](../../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 原始提交与结果按身份配对，可补录已有游戏结果；独立于游戏 E/S | 根/子分支使用各自操作日志；Gym 导入结果，明确 Interrupted、恢复补录和没有领域事件的查询不是游戏提交证明 |
 | [LlmCharacterController](../../../src/ResourceCycle.Completion/LlmCharacterController.cs) | 每次从角色材料构造独立服务，最终返回一个 act | 可选 report-feedback，持久回执后携原始消息继续本次服务；协议重试、字符与调用预算共同约束 |
 | [CycleDurableHistory](../../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | E/S 提交和恢复仍由游戏适配器负责 | [CycleBranchBoundary](../../../src/ResourceCycle/Persistence/CycleBranchBoundary.cs) 捕获/检查完成 S、列分支、显式打开与 fork；多分支时拒绝默认猜选 |
@@ -37,7 +37,7 @@
 
 ## 4. 反馈交互
 
-工具为 `report-feedback(kind, summary, obstacle, desired_support?)`，kind 区分 issue / feature-request。模型描述“想做什么、被什么阻碍”，改进建议可选。身份与现场引用由宿主填入，模型不负责抄写 commit。具体字段与额度由 [LlmFeedbackSubmission](../../../src/ResourceCycle.Completion/LlmFeedbackSubmission.cs)、控制器工具合同及 Options 校验。
+工具为 `report-feedback(kind, summary, obstacle, desired_support?)`，kind 区分 issue / feature-request。模型描述“想做什么、被什么阻碍”，改进建议可选。身份与现场引用由宿主填入，模型不负责抄写 commit。具体字段与额度由 [LlmFeedbackSubmission](../../../src/CharacterControl.Completion/LlmFeedbackSubmission.cs)、控制器工具合同及 Options 校验。
 
 反馈可选、可关闭、不强制每回合检查；有正文/调用预算，不能无限报告而永不行动。收到反馈后返回收据并继续同一次角色服务，只有最终游戏操作走原有权威入口。不消耗游戏通信次数、不放行世界；宿主 LLM 调用仍计入调用预算。原始 assistant 消息与工具回执组成临时 Tail；不引入完整持久 Agent 状态机。
 
@@ -72,4 +72,4 @@
 - 原根分支保留现有 operations.jsonl；子分支使用独立操作日志，避免冷开补录误结算父分支待完成操作。Gym 记录统一可查，但角色导出严格按角色和分支前缀筛选。
 - 反馈在控制器的一次服务内用原始 assistant 消息与工具结果续问，默认最多三条；只在最终 act 返回后走游戏提交。局部协议历史不跨冷开恢复，原始请求与反馈仍可回看；从其中某次请求关联的 S 重跑会启动新的角色服务。
 
-工程及模型验收状态只在[实施入口](../../implementation/character-gym-plan.md)维护，使用命令见[操作说明](usage.md)。当前只接受游戏修订 15 和日志格式 1；没有新增游戏 Schema。原始材料保留在宿主证据中，不自动注入角色记忆，也不承诺跨进程恢复原生工具会话。
+工程及模型验收状态只在[实施入口](../../implementation/character-gym-plan.md)维护，使用命令见[操作说明](usage.md)。Gym 一期验收对应游戏修订 15、日志格式 1；当前游戏修订以 [CycleGameRevision](../../../src/ResourceCycle/Persistence/CycleGameRevision.cs) 为准，共享 Goals 提取已进入修订 16。日志格式仍为 1，旧数字形式的 Interrupted 仍可解释，新写操作状态使用名称。原始材料保留在宿主证据中，不自动注入角色记忆，也不承诺跨进程恢复原生工具会话。

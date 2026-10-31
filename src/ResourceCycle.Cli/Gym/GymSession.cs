@@ -1,3 +1,4 @@
+using DramaBoard.CharacterGym;
 using System.Security.Cryptography;
 using System.Text.Json;
 using DramaBoard.ResourceCycle;
@@ -40,7 +41,9 @@ internal sealed class GymSession : IDisposable {
                 RecoveredPending = recovered, AuditPath = Path.GetFullPath(logPath),
                 options.Model, options.Connection, options.MaxCalls, options.MaxFailures, options.MaxContextCharacters,
                 FeedbackEnabled = options.Feedback, Presentation = "decision/full/character-context",
-                Builds = new[] { typeof(GymSession).Assembly, typeof(CycleWorld).Assembly, typeof(LlmCharacterController).Assembly }
+                Builds = new[] { typeof(GymSession).Assembly, typeof(CycleWorld).Assembly, typeof(LlmCharacterController).Assembly,
+                    typeof(DramaBoard.CharacterControl.Completion.LlmDecisionLoop).Assembly, typeof(GymJournal).Assembly,
+                    typeof(DramaBoard.Goals.GoalSet).Assembly }
                     .Select(assembly => new { Name = assembly.GetName().Name, Sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assembly.Location))) }).ToArray(),
                 TailGapBytes = _journal.DiscardedTailBytes
             });
@@ -98,8 +101,12 @@ internal sealed class GymSession : IDisposable {
         _lastState = state;
         foreach (CycleOperationEntry entry in operations.Entries.Where(entry => entry.Completed is not null)) {
             if (_recordedOperations.Contains(entry.Received.OperationRecordId)) { continue; }
+            CycleOperationResult completed = entry.Completed!;
             Append("operation", entry.Received.ActorId, new { entry.Received.OperationRecordId,
-                Received = entry.Received, Result = entry.Completed, StateCommitId = state,
+                Received = entry.Received, Result = new {
+                    completed.ToolCallId, Status = completed.Status.ToString(), completed.Result,
+                    completed.WorldVersion, completed.DomainEvent, completed.ExactResult
+                }, StateCommitId = state,
                 Association = "operation identity is authoritative; state is recording boundary, not necessarily original result commit" });
             _recordedOperations.Add(entry.Received.OperationRecordId);
         }

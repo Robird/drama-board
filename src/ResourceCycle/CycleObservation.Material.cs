@@ -1,4 +1,5 @@
 using Atelia.DurableGraph;
+using DramaBoard.Goals;
 using System.Collections.ObjectModel;
 using DramaBoard.Inventory;
 using DramaBoard.Kernel.Time;
@@ -63,7 +64,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 4)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 5)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -111,9 +112,9 @@ public sealed partial class CycleObservation : IDurableObject {
     public CycleJourneyObservation? Journey { get => _journey; init => _journey = value; }
     [DurableField(23)] private CycleCommunicationObservation? _communication;
     public CycleCommunicationObservation? Communication { get => _communication; init => _communication = value; }
-    [DurableField(24)] private CycleGoalSet? _goals;
+    [DurableField(24)] private GoalSet? _goals;
     /// <summary>Frozen private goal material; null means this scenario has no goal capability.</summary>
-    public CycleGoalSet? Goals { get => _goals; init => _goals = value; }
+    public GoalSet? Goals { get => _goals; init => _goals = value; }
     internal void ValidateJourney() {
         if ((ArrivalDue is null) != (Journey is null) || Journey is not null && (!IsExpedition || PlaceId is not null)) {
             throw new InvalidOperationException("Journey and visible location disagree.");

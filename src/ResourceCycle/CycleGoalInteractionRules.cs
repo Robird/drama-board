@@ -1,16 +1,17 @@
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Composes private goal edits with the existing recorded interaction boundary.</summary>
 internal static class CycleGoalInteractionRules {
-    internal static CycleFact Plan(CycleWorld world, string actorId, CycleGoalCommand command,
+    internal static CycleFact Plan(CycleWorld world, string actorId, GoalCommand command,
         CycleControllerOperation operation) {
         CharacterInteractionState state = world.Business.InteractionStates[actorId];
         CharacterContext current = state.CurrentContext is { Status: CharacterContextStatus.Open } open ? open
             : throw new InvalidOperationException("A goal operation requires an open decision context.");
         long sequence = checked(current.LastOperationSequence + 1);
-        CycleGoalOperationResult result = CycleGoalRules.Apply(state.Goals, command, current.ContextSequence, sequence);
+        GoalOperationResult result = GoalRules.Apply(state.Goals, command, current.ContextSequence, sequence);
         if (!result.Success) { return CycleInteractionRules.Reject(world, actorId, operation, result.Error!); }
 
         var fact = new CycleFact(CycleEventKind.GoalOperation, world.Time, actorId,
@@ -43,7 +44,7 @@ internal static class CycleGoalInteractionRules {
             }
         }
         bool knownGoal = fact.RawInput is not null &&
-            CycleGoalCommandParser.TryGetKind(fact.RawInput, out _);
+            GoalCommandParser.TryGetKind(fact.RawInput, out _);
         if (fact.Kind == CycleEventKind.GoalOperation) {
             Require(before.Expedition is not null && fact.ActorId is not null && fact.GoalOperation is { Success: true } &&
                 fact.ObservedEvents.Count == 0 && fact.InteractionChanges.Count == 1 && fact.InteractionChanges[0].ActorId == fact.ActorId,
@@ -51,16 +52,16 @@ internal static class CycleGoalInteractionRules {
             CharacterInteractionState state = before.InteractionStates[fact.ActorId!];
             CharacterContext current = state.CurrentContext is { Status: CharacterContextStatus.Open } open ? open
                 : throw new InvalidOperationException("A goal operation requires an open context.");
-            Require(CycleGoalCommandParser.TryParse(fact.RawInput!, out CycleGoalCommand? command, out _) && command is not null,
+            Require(GoalCommandParser.TryParse(fact.RawInput!, out GoalCommand? command, out _) && command is not null,
                 "A goal fact must retain a valid original goal command.");
-            CycleGoalOperationResult expected = CycleGoalRules.Apply(state.Goals, command!, current.ContextSequence,
+            GoalOperationResult expected = GoalRules.Apply(state.Goals, command!, current.ContextSequence,
                 checked(current.LastOperationSequence + 1));
             Require(expected.Success && expected.After.SameAs(after.InteractionStates[fact.ActorId!].Goals) &&
                 expected.Receipt.SameAs(fact.GoalOperation) && fact.Result == expected.Receipt.Message,
                 "Recorded goal effects, identities and receipt differ from the accepted operation.");
         } else if (fact.Kind == CycleEventKind.OperationRejected && knownGoal) {
-            CycleGoalCommandParser.TryGetKind(fact.RawInput!, out CycleGoalOperationKind kind);
-            Require(CycleGoalRules.Reject(kind, fact.Result!).SameAs(fact.GoalOperation),
+            GoalCommandParser.TryGetKind(fact.RawInput!, out GoalOperationKind kind);
+            Require(GoalRules.Reject(kind, fact.Result!).SameAs(fact.GoalOperation),
                 "A rejected goal operation must retain its bounded typed refusal.");
         } else {
             Require(fact.GoalOperation is null, "Only goal submissions carry goal receipts.");

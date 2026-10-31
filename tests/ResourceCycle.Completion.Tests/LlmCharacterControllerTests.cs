@@ -59,7 +59,7 @@ public sealed class LlmCharacterControllerTests {
         });
         Assert.Equal(new[] { LlmControllerTraceKind.Request, LlmControllerTraceKind.Response,
             LlmControllerTraceKind.Request, LlmControllerTraceKind.Response }, traces.Select(t => t.Kind));
-        Assert.Equal(first, traces[1].Operation);
+        Assert.Equal(new CommandSubmission(first.ToolCallId, first.RawInput, first.OperationRecordId), traces[1].Operation);
         Assert.All(traces, trace => Assert.Equal("a", trace.CharacterId));
     }
 
@@ -230,6 +230,49 @@ public sealed class LlmCharacterControllerTests {
         Assert.Equal(90, context.LatestObservation.Survival!.Water);
         Assert.Equal("接下来探索", kernel.World.Business.InteractionStates["a"].DraftHandoff);
         Assert.Equal(initial.World.Time, kernel.World.Time);
+    }
+
+    [Fact]
+    public async Task Concurrent_and_pre_cancelled_services_do_not_invoke_the_renderer() {
+        var client = new PendingClient();
+        int rendered = 0;
+        var controller = new LlmCharacterController(client, "fixture-model", _ => {
+            rendered++;
+            return "frozen character material";
+        });
+        CycleDecisionContext context = await Context();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var cancellation = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await controller.ChooseCommandAsync(context, cancelled.Token));
+        Assert.Equal(cancelled.Token, cancellation.CancellationToken);
+        Assert.Equal(0, rendered);
+
+        Task<CycleControllerOperation> first = controller.ChooseCommandAsync(context, default).AsTask();
+        try {
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await controller.ChooseCommandAsync(context, default));
+            Assert.Equal(1, rendered);
+            Assert.Equal(1, client.Calls);
+        } finally { client.Response.SetResult(Result(Call("one", "wait 1"))); }
+        Assert.Equal("wait 1", (await first).RawInput);
+
+        // Completion releases the adapter gate; later services may render again.
+        await controller.ChooseCommandAsync(context, default);
+        Assert.Equal(2, rendered);
+        Assert.Equal(2, client.Calls);
+    }
+
+    private sealed class PendingClient : ICompletionClient {
+        public string Name => "fixture";
+        public string ApiSpecId => "fixture-api";
+        public int Calls { get; private set; }
+        public TaskCompletionSource<CompletionResult> Response { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<CompletionResult> StreamCompletionAsync(CompletionRequest request, CompletionStreamObserver? observer,
+            CancellationToken cancellationToken = default) {
+            Calls++;
+            return Response.Task;
+        }
     }
 
     private static CompletionDescriptor Descriptor => new("fixture", "fixture-api", "fixture-model");

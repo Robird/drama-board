@@ -3,6 +3,7 @@
     <DurableGraphGenerateDefinitions>true</DurableGraphGenerateDefinitions>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../Goals/Goals.csproj" />
     <ProjectReference Include="../Inventory/Inventory.csproj" />
     <ProjectReference Include="../Kernel/Kernel.csproj" />
     <ProjectReference Include="../Spatial/Spatial.csproj" />

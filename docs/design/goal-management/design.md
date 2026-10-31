@@ -16,14 +16,14 @@ Focus 不代表角色的全部承诺，也不代表一种固定方法。目标�
 
 ## 2. 目标与来源关联
 
-首版数据职责（实现位于 [CycleGoalModel](../../../src/ResourceCycle/Goals/CycleGoalModel.cs)）：
+首版数据职责（实现位于 [GoalModel](../../../src/Goals/GoalModel.cs)）：
 
 | 对象 | 最小信息及职责 |
 | --- | --- |
-| Goal（`CycleGoal`） | 稳定 ID、标题/想达成的结果、完成标准、状态、进展、下一步提示；可选复查线索，挂起原因或结束说明 |
-| GoalLink（`CycleGoalLink`） | 独立关联 ID、父目标 ID、子目标 ID、该来源为什么需要此目标 |
-| Focus（`CycleGoalSet.Focus`） | 当前目标及选定的来源路径；路径可以只包含一个目标 |
-| 角色目标集合（`CharacterInteractionState.Goals`） | `CycleGoalSet` 保存该角色的目标、关联和焦点；属于游戏根下角色私有状态 |
+| Goal（`Goal`） | 稳定 ID、标题/想达成的结果、完成标准、状态、进展、下一步提示；可选复查线索，挂起原因或结束说明 |
+| GoalLink（`GoalLink`） | 独立关联 ID、父目标 ID、子目标 ID、该来源为什么需要此目标 |
+| Focus（`GoalSet.Focus`） | 当前目标及选定的来源路径；路径可以只包含一个目标 |
+| 角色目标集合（`CharacterInteractionState.Goals`） | `GoalSet` 保存该角色的目标、关联和焦点；属于游戏根下角色私有状态 |
 
 来源可先用角色写下的文字表达，已有感知/操作身份可按实际需要附引用；不以自然语言实体抽取或完整经历档案作为前提。
 

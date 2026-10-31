@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Kernel/Kernel.csproj" />
+    <ProjectReference Include="../Spatial/Spatial.csproj" />
+    <ProjectReference Include="../Inventory/Inventory.csproj" />
+    <ProjectReference Include="../Goals/Goals.csproj" />
+  </ItemGroup>
+</Project>

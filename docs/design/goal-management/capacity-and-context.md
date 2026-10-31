@@ -78,6 +78,6 @@ Console append/delta 继续输出新发生的变化与回执，已打印的旧�
 
 本方案防止目标长全文按成功操作次数重复进入完整输入，并未给 Context 成功 Items 或磁盘日志建立新的全局容量。当前同刻转换护栏、调用预算和换 Context 规则仍有效；长期存储裁剪只有在实际规模证据下另开，不以 UI 隐藏宣称回收。
 
-当前 [LlmControllerOptions](../../../src/ResourceCycle.Completion/LlmControllerOptions.cs) 的默认完整输入门槛是 200000 UTF-16 code units，不是 token 预算；超限会暂停，不能删未结束事项、警告或合法操作来假装成功。目标字段上限不能保证整份 Context 永不超限。
+当前 [LlmControllerOptions](../../../src/CharacterControl.Completion/LlmControllerOptions.cs) 的默认完整输入门槛是 200000 UTF-16 code units，不是 token 预算；超限会暂停，不能删未结束事项、警告或合法操作来假装成功。目标字段上限不能保证整份 Context 永不超限。
 
 施工须用最大合法图、最长 Focus 路径、高度共享、非 BMP Unicode 与需要转义的文本实际渲染量测；确保单次默认区、一个 show、3 条回执及典型世界材料在默认宿主预算内。连续 show/编辑应验证完整输入不重复所有目标全文，详情失效、警告保留和重开一致。若不满足，先降低这些原型默认量或缩减重复呈现，再记录取舍；不能用静默截断未结束目录过关。目录可读性、数字最优值和 Human 的清理成本留给真实试用，不阻塞以这些默认值施工。

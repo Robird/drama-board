@@ -1,17 +1,25 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Goals/Goals.csproj" />
+    <Project Path="src/CharacterControl.Completion/CharacterControl.Completion.csproj" />
+    <Project Path="src/CharacterGym/CharacterGym.csproj" />
     <Project Path="src/Host/Host.csproj" />
     <Project Path="src/Inventory/Inventory.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
+    <Project Path="src/Microtown/Microtown.csproj" />
     <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
     <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
     <Project Path="src/ResourceCycle.Completion/ResourceCycle.Completion.csproj" />
     <Project Path="src/Spatial/Spatial.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Goals.Tests/Goals.Tests.csproj" />
+    <Project Path="tests/CharacterControl.Completion.Tests/CharacterControl.Completion.Tests.csproj" />
+    <Project Path="tests/CharacterGym.Tests/CharacterGym.Tests.csproj" />
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Inventory.Tests/Inventory.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
+    <Project Path="tests/Microtown.Tests/Microtown.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj" />
     <Project Path="tests/ResourceCycle.Completion.Tests/ResourceCycle.Completion.Tests.csproj" />

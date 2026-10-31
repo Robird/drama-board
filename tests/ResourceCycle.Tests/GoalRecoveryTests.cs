@@ -1,3 +1,4 @@
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using Atelia.DurableGraph;
@@ -95,7 +96,7 @@ public sealed class GoalRecoveryTests {
         var finalKernel = CycleEngine.CreateKernel(final, characterController: noController);
         Assert.False(finalKernel.RecoverPending());
         Assert.Equal(0, noController.Calls);
-        CycleGoalSet savedGoals = final.State.Business.InteractionStates["a"].Goals;
+        GoalSet savedGoals = final.State.Business.InteractionStates["a"].Goals;
         Assert.Equal(baseline.World.Business.InteractionStates["a"].Goals.NextGoalId, savedGoals.NextGoalId);
         Assert.Equal(baseline.World.Business.InteractionStates["a"].Goals.NextLinkId, savedGoals.NextLinkId);
         if (scenario == "reopen") { Assert.Single(Assert.Single(savedGoals.Goals).Revisions); }
@@ -124,7 +125,7 @@ public sealed class GoalRecoveryTests {
         var resumed = CycleEngine.CreateKernel(reopened, characterController: next);
         Assert.False(resumed.RecoverPending());
         await UntilTarget(resumed, "goal/next-target");
-        CycleGoalSet goals = resumed.World.Business.InteractionStates["a"].Goals;
+        GoalSet goals = resumed.World.Business.InteractionStates["a"].Goals;
         Assert.Equal("G2", Assert.Single(goals.Goals).Id);
         Assert.Equal(3, goals.NextGoalId);
         Assert.Equal(1, goals.NextLinkId);
@@ -143,12 +144,12 @@ public sealed class GoalRecoveryTests {
         CharacterInteractionState state = kernel.World.Business.InteractionStates["a"];
         CharacterContext context = state.CurrentContext!;
         Assert.Equal(0, context.LastOperationSequence);
-        CycleGoal goal = marker == "finish"
-            ? new("G1", "claim", "result", CycleGoalStatus.Completed, endNote: "future conclusion",
+        Goal goal = marker == "finish"
+            ? new("G1", "claim", "result", GoalStatus.Completed, endNote: "future conclusion",
                 finishedContextSequence: context.ContextSequence, finishedOperationSequence: 1)
-            : new("G1", "revised", "result", revisions: [new(CycleGoalStatus.Open, "prior", "result", null,
+            : new("G1", "revised", "result", revisions: [new(GoalStatus.Open, "prior", "result", null,
                 "future correction", context.ContextSequence, 1)]);
-        var goals = new CycleGoalSet([goal], nextGoalId: 2);
+        var goals = new GoalSet([goal], nextGoalId: 2);
         goals.Validate(); // Values and graph are locally legal; only the containing time boundary makes them invalid.
         var observation = (CycleObservation)typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(context.Opening.Observation, null)!;

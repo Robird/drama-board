@@ -1,5 +1,6 @@
 using System.Text;
 using Atelia.DurableGraph;
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Time;
 
 namespace DramaBoard.ResourceCycle;
@@ -8,7 +9,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CharacterContextStatus { Open, Closed, Terminal }
 
 /// <summary>Actor-owned interaction material, separate from the actor's physical state.</summary>
-[DurableType("DramaBoard.ResourceCycle.CharacterInteractionState", 2)]
+[DurableType("DramaBoard.ResourceCycle.CharacterInteractionState", 3)]
 public sealed partial class CharacterInteractionState : IDurableObject {
     public const int MaximumHandoffScalars = 2000;
     [DurableField(1)] private string _actorId;
@@ -17,8 +18,8 @@ public sealed partial class CharacterInteractionState : IDurableObject {
     [DurableField(4)] private List<CharacterExperience> _undeliveredExperiences;
     [DurableField(5)] private string? _draftHandoff;
     [DurableField(6)] private long _nextExperienceSequence;
-    [DurableField(7)] private CycleGoalSet _goals;
-    public CycleGoalSet Goals => _goals;
+    [DurableField(7)] private GoalSet _goals;
+    public GoalSet Goals => _goals;
     public string ActorId => _actorId;
     public CharacterContext? CurrentContext => _currentContext;
     public PendingAdvance? PendingAdvance => _pendingAdvance;
@@ -28,14 +29,14 @@ public sealed partial class CharacterInteractionState : IDurableObject {
 
     public CharacterInteractionState(string actorId, CharacterContext? currentContext = null,
         PendingAdvance? pendingAdvance = null, IEnumerable<CharacterExperience>? undeliveredExperiences = null,
-        string? draftHandoff = null, long nextExperienceSequence = 1, CycleGoalSet? goals = null) {
+        string? draftHandoff = null, long nextExperienceSequence = 1, GoalSet? goals = null) {
         _actorId = actorId;
         _currentContext = currentContext;
         _pendingAdvance = pendingAdvance;
         _undeliveredExperiences = undeliveredExperiences?.ToList() ?? [];
         _draftHandoff = draftHandoff;
         _nextExperienceSequence = nextExperienceSequence;
-        _goals = goals ?? CycleGoalSet.Empty;
+        _goals = goals ?? GoalSet.Empty;
     }
 
     public static bool ValidHandoff(string? text) => text is null || text.EnumerateRunes().Count() <= MaximumHandoffScalars;
@@ -112,7 +113,7 @@ public sealed partial class CharacterContext : IDurableObject {
         long lastItem = 0;
         long lastOperation = 0;
         ModelTime lastObservationAt = Opening.Observation.Time;
-        CycleGoalSet? priorGoals = Opening.Observation.Goals;
+        GoalSet? priorGoals = Opening.Observation.Goals;
         foreach (CharacterContextItem item in Items) {
             if (item is null || item.ItemSequence <= lastItem) {
                 throw new InvalidOperationException("Context item identities must be strictly increasing.");
@@ -123,10 +124,10 @@ public sealed partial class CharacterContext : IDurableObject {
             item.Observation?.Goals?.ValidateThrough(ContextSequence, item.OperationSequence ?? lastOperation);
             if (item.GoalOperation is { Success: true } goalReceipt) {
                 if (priorGoals is null || item.OperationSequence is not { } sequence ||
-                    !CycleGoalCommandParser.TryParse(item.RawInput!, out CycleGoalCommand? command, out _) || command is null) {
+                    !GoalCommandParser.TryParse(item.RawInput!, out GoalCommand? command, out _) || command is null) {
                     throw new InvalidOperationException("A successful goal item requires its frozen prestate and parsed command.");
                 }
-                CycleGoalOperationResult expected = CycleGoalRules.Apply(priorGoals, command, ContextSequence, sequence);
+                GoalOperationResult expected = GoalRules.Apply(priorGoals, command, ContextSequence, sequence);
                 if (!expected.Success || !expected.Receipt.SameAs(goalReceipt) || !expected.After.SameAs(item.Observation?.Goals)) {
                     throw new InvalidOperationException("Frozen goal history does not match its recorded operation.");
                 }
@@ -234,7 +235,7 @@ public sealed partial class CharacterExperience : IDurableObject {
 }
 
 /// <summary>One atomic request/result group or independent perception with its full updated visible observation.</summary>
-[DurableType("DramaBoard.ResourceCycle.CharacterContextItem", 2)]
+[DurableType("DramaBoard.ResourceCycle.CharacterContextItem", 3)]
 public sealed partial class CharacterContextItem : IDurableObject {
     [DurableField(1)] private long _itemSequence;
     [DurableField(2)] private long? _operationSequence;
@@ -245,8 +246,8 @@ public sealed partial class CharacterContextItem : IDurableObject {
     [DurableField(7)] private List<CharacterExperience> _experiences;
     [DurableField(8)] private CycleObservation? _observation;
     [DurableField(9)] private bool _isRejected;
-    [DurableField(10)] private CycleGoalReceipt? _goalOperation;
-    public CycleGoalReceipt? GoalOperation => _goalOperation;
+    [DurableField(10)] private GoalReceipt? _goalOperation;
+    public GoalReceipt? GoalOperation => _goalOperation;
     public long ItemSequence => _itemSequence;
     public long? OperationSequence => _operationSequence;
     public string? RawInput => _rawInput;
@@ -259,7 +260,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
 
     public CharacterContextItem(long itemSequence, long? operationSequence = null, string? rawInput = null,
         string? toolCallId = null, string? operationRecordId = null, string? result = null,
-        IEnumerable<CharacterExperience>? experiences = null, CycleObservation? observation = null, bool isRejected = false, CycleGoalReceipt? goalOperation = null) {
+        IEnumerable<CharacterExperience>? experiences = null, CycleObservation? observation = null, bool isRejected = false, GoalReceipt? goalOperation = null) {
         _itemSequence = itemSequence;
         _operationSequence = operationSequence;
         _rawInput = rawInput;
@@ -296,9 +297,9 @@ public sealed partial class CharacterContextItem : IDurableObject {
         Observation?.Communication?.Validate();
         Observation?.Goals?.Validate();
         GoalOperation?.Validate();
-        if (RawInput is not null && CycleGoalCommandParser.TryGetKind(RawInput, out CycleGoalOperationKind goalKind)) {
+        if (RawInput is not null && GoalCommandParser.TryGetKind(RawInput, out GoalOperationKind goalKind)) {
             if (GoalOperation is null || GoalOperation.Kind != goalKind ||
-                IsRejected && !CycleGoalRules.Reject(goalKind, Result!).SameAs(GoalOperation)) {
+                IsRejected && !GoalRules.Reject(goalKind, Result!).SameAs(GoalOperation)) {
                 throw new InvalidOperationException("Goal submissions require a matching typed result.");
             }
         } else if (GoalOperation is not null) {

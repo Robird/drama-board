@@ -1,3 +1,4 @@
+using DramaBoard.Goals;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Spatial;
 
@@ -26,8 +27,8 @@ internal static class CycleInteractionRules {
         CharacterContext current = state.CurrentContext is { Status: CharacterContextStatus.Open } open ? open
             : throw new InvalidOperationException("A rejected operation requires an open context.");
         long sequence = checked(current.LastOperationSequence + 1);
-        CycleGoalReceipt? goalReceipt = CycleGoalCommandParser.TryGetKind(operation.RawInput, out CycleGoalOperationKind kind)
-            ? CycleGoalRules.Reject(kind, reason) : null;
+        GoalReceipt? goalReceipt = GoalCommandParser.TryGetKind(operation.RawInput, out GoalOperationKind kind)
+            ? GoalRules.Reject(kind, reason) : null;
         var item = new CharacterContextItem(current.NextItemSequence, sequence, operation.RawInput,
             operation.ToolCallId, operation.OperationRecordId, reason, isRejected: true, goalOperation: goalReceipt);
         var context = new CharacterContext(current.ContextSequence, CharacterContextStatus.Open, current.Opening,

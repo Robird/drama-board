@@ -15,7 +15,7 @@
 
 A1/A2/B 已形成可编辑、持久化及跨回合呈现的闭环并通过工程验证；C 已保留真实模型自行调用目标操作、跨 Context 行动和磁盘续局证据。显式分目标/共享关系的引导试验与模型自发选择分别报告，不能把机制可用扩大为一般自主规划可靠。
 
-当前源码入口：局部模型/额度在 [CycleGoalModel](../../src/ResourceCycle/Goals/CycleGoalModel.cs)，语法与转换在 [CycleGoalCommandParser](../../src/ResourceCycle/Goals/CycleGoalCommandParser.cs) / [CycleGoalRules](../../src/ResourceCycle/Goals/CycleGoalRules.cs)，持久交互组合在 [CycleGoalInteractionRules](../../src/ResourceCycle/CycleGoalInteractionRules.cs)，当前材料投影在 [GoalView](../../src/ResourceCycle.Cli/GoalView.cs)，能力对应的固定提示词在 [LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs)。
+当前源码入口：局部模型/额度在 [GoalModel](../../src/Goals/GoalModel.cs)，语法与转换在 [GoalCommandParser](../../src/Goals/GoalCommandParser.cs) / [GoalRules](../../src/Goals/GoalRules.cs)，持久交互组合在 [CycleGoalInteractionRules](../../src/ResourceCycle/CycleGoalInteractionRules.cs)，当前材料投影在 [GoalView](../../src/ResourceCycle.Cli/GoalView.cs)，能力对应的固定提示词在 [LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs)。
 
 ## 必须守住的接线点
 

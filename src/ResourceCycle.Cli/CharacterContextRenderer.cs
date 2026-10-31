@@ -1,3 +1,4 @@
+using DramaBoard.Goals;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -62,7 +63,7 @@ internal static class CharacterContextRenderer {
                     if (includeGoals) {
                         text.Append(GoalView.RenderReceipt(item));
                         if (receipt.Changed) { text.Append(GoalView.RenderDefault(observation.Goals)); }
-                        if (receipt.Changed || receipt is { Kind: CycleGoalOperationKind.Show, Success: true }) {
+                        if (receipt.Changed || receipt is { Kind: GoalOperationKind.Show, Success: true }) {
                             text.Append(GoalView.RenderQuery(context, item.ItemSequence));
                         }
                     }
