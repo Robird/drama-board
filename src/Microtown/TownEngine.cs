@@ -11,7 +11,7 @@ public sealed record TownPrediction(TownPredictionKind Kind, ModelTime Due, stri
     OccurrenceCandidate<SpatialOccurrenceData>? SpatialCandidate = null, string? TradeId = null);
 
 /// <summary>One Kernel owns all town and spatial occurrences. Controllers run only after an open-decision State has completed.</summary>
-public static class TownEngine {
+public static partial class TownEngine {
     public static SimulationKernel<TownWorld, TownPrediction, TownFact> CreateKernel(
         IOccurrenceHistory<TownWorld, TownFact> history,
         Func<TownDecision, CancellationToken, ValueTask<TownCommand>> controller) {
@@ -45,7 +45,8 @@ public static class TownEngine {
 
     public static TownWorld Rebuild(TownBusinessState business) {
         ArgumentNullException.ThrowIfNull(business);
-        var world = new TownWorld(business, TownContent.Simulation.Rebuild(business.Spatial, business.Time));
+        business.Validate();
+        var world = new TownWorld(business, TownContent.Simulation.Rebuild(business.Spatial, business.Time), TownPredictionMaintenance.Rebuild(business));
         Validate(world, business.Time);
         return world;
     }
@@ -65,13 +66,13 @@ public static class TownEngine {
                 throw new InvalidOperationException("Town operation fact and resident receipt disagree.");
             }
         }
-        return new(fact.NextBusiness, new(fact.NextBusiness.Spatial, world.Spatial.Contacts));
+        return new(fact.NextBusiness, new(fact.NextBusiness.Spatial, world.Spatial.Contacts), world.Forecasts);
     }
 
     public static TownWorld Complete(TownWorld before, LogicalInstant instant, IReadOnlyList<TownFact> facts, TownWorld folded) {
         GraphSpatialFact[] spatial = facts.SelectMany(fact => fact.SpatialFacts).ToArray();
         SpatialSimulationState prepared = TownContent.Simulation.Complete(before.Spatial, instant, spatial, folded.Spatial);
-        return new(folded.Business, prepared);
+        return new(folded.Business, prepared, TownPredictionMaintenance.Complete(before.Business, folded.Business, before.Forecasts));
     }
 
     public static void Validate(TownWorld world, ModelTime at) {
@@ -80,10 +81,12 @@ public static class TownEngine {
             throw new InvalidOperationException("Town runtime and publication boundary must share business state and time.");
         }
         TownContent.Simulation.Validate(world.Spatial, at);
+        world.Forecasts.Validate(world.Business);
     }
 
-    public static string? NextDecisionActor(TownWorld world) {
-        TownBusinessState business = world.Business;
+    public static string? NextDecisionActor(TownWorld world) => NextDecisionActor(world.Business);
+
+    internal static string? NextDecisionActor(TownBusinessState business) {
         if (business.Ended) { return null; }
         if (business.OpenDecisionActorId is { } open) { return open; }
         int last = business.Characters.ToList().FindIndex(actor => actor.Id == business.LastServedActorId);
@@ -98,31 +101,7 @@ public static class TownEngine {
         : IOccurrenceRule<TownWorld, TownPrediction, TownFact> {
         private readonly SpatialOccurrenceRule _spatial = new(TownContent.Graph);
         private readonly SpatialContactOccurrenceRule _contacts = new(TownContent.Graph);
-        public IReadOnlyList<OccurrenceCandidate<TownPrediction>> Forecast(TownWorld world, SimulationRules rules) {
-            TownBusinessState business = world.Business;
-            if (business.Ended) { return []; }
-            var predictions = new List<TownPrediction> {
-                new(TownPredictionKind.End, business.EndTime),
-                new(TownPredictionKind.MarketRefresh, business.Market.NextRefresh)
-            };
-            foreach (TownCharacter actor in business.Characters.Where(actor => !actor.Failed)) {
-                long remaining = checked((actor.FoodReserve + TownContent.FoodDecayPerHour - 1) / TownContent.FoodDecayPerHour);
-                predictions.Add(new(TownPredictionKind.Failure, new(checked(business.Time.Ticks + remaining)), actor.Id));
-                if (actor.Activity is { } activity) { predictions.Add(new(TownPredictionKind.Activity, activity.Due, actor.Id)); }
-            }
-            predictions.AddRange(business.Trades.Offers.Where(offer => offer.Status == TownTradeStatus.Active)
-                .Select(offer => new TownPrediction(TownPredictionKind.TradeExpiry, offer.ExpiresAt, TradeId: offer.Id)));
-            predictions.AddRange(_spatial.Forecast(world.Spatial, rules).Concat(_contacts.Forecast(world.Spatial, rules)).Select(candidate =>
-                new TownPrediction(TownPredictionKind.Spatial, candidate.Due.ModelTime, SpatialCandidate: candidate)));
-            if (NextDecisionActor(world) is { } deciding) { predictions.Add(new(TownPredictionKind.Decision, business.Time, deciding)); }
-            ModelTime due = predictions.Min(prediction => prediction.Due);
-            TownPredictionKind kind = predictions.Where(prediction => prediction.Due == due).Min(prediction => prediction.Kind);
-            return predictions.Where(prediction => prediction.Due == due && prediction.Kind == kind)
-                .Select(prediction => new OccurrenceCandidate<TownPrediction>(
-                    new CandidateKey($"town:{business.Generation}:{prediction.Kind}:{prediction.ActorId}:{prediction.SpatialCandidate?.Key}" +
-                        (prediction.TradeId is { } tradeId ? $":{tradeId}" : "")),
-                    new(prediction.Due), prediction)).ToArray();
-        }
+        public IReadOnlyList<OccurrenceCandidate<TownPrediction>> Forecast(TownWorld world, SimulationRules rules) => TownEngine.Forecast(world, rules);
 
         public async ValueTask<TransitionDraft<TownFact>> PlanSelectedAsync(TownWorld world,
             OccurrenceCandidate<TownPrediction> winner, CancellationToken cancellationToken) {

@@ -33,7 +33,7 @@ Inventory/Goals 不擅自提交整个世界，Completion/Gym 不解释游戏规�
 
 持久 Business 与运行时缓存分开。新建/冷开显式 Rebuild；运行时 Complete 依据已提交候选事实准备下一份派生状态。不要另起一个定时器循环直接修改角色或库存。空间除了移动完成，也必须接入已有接触候选的消费路径。
 
-小镇当前自身预测仍在逐步迁移 owner 维护；不能把目前全量 Forecast 当作新的缓存设计范式。成熟的增量/冷开边界参考 [CyclePredictionMaintenance](../../src/ResourceCycle/CyclePredictionMaintenance.cs) 与[派生预测设计](../design/runtime-derived-predictions.md)，全量重算可作为测试 oracle。
+小镇的 [TownForecasts / TownPredictionMaintenance](../../src/Microtown/TownForecasts.cs) 按角色、市场、报价等 owner 检查依赖并维护预测；全局决策可保守重算，纯时间推进不重建未改变的绝对饥饿截止。缓存绑定对应 Business，Fold 中间态必须经过 Complete 才能成为就绪世界。山林使用 [CyclePredictionMaintenance](../../src/ResourceCycle/CyclePredictionMaintenance.cs) 的绑定路由；两者共享发布合同，不强制相同的应用依赖模型。参见[派生预测设计](../design/runtime-derived-predictions.md)；全量重算保留为测试 oracle，不能把它偷偷放进每次 Validate 来掩盖增量维护缺口。
 
 ## 4. 先用脚本跑通，再提供冻结角色材料
 

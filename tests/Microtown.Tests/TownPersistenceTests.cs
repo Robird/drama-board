@@ -166,16 +166,39 @@ public sealed class TownPersistenceTests {
         using var directory = new TemporaryStore();
         var start = TownGameFactory.Create(2);
         string expected;
+        KeyValuePair<string, TownPrediction>[] expectedForecasts;
+        int calls = 0;
         using (var history = TownDurableHistory.Create(directory.Path, start.World, start.Cursor)) {
+            var opening = TownEngine.CreateKernel(history, (_, _) => throw new InvalidOperationException("Opening called the controller."));
+            Assert.Equal(StepStatus.Committed, await opening.StepAsync(start.World.Business.EndTime));
+            Assert.Equal("a", history.State.Business.OpenDecisionActorId);
             TownWorld old = history.State;
+            KernelCursor oldCursor = history.Cursor;
+            TownForecasts oldForecasts = old.Forecasts;
+            KeyValuePair<string, TownPrediction>[] oldEntries = oldForecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+            Assert.DoesNotContain("actor:a:activity", oldForecasts.Entries.Keys);
             var observed = new CrashOnState(history, afterPublication);
-            var kernel = TownEngine.CreateKernel(observed, BuyGrain);
+            var kernel = TownEngine.CreateKernel(observed, (_, _) => {
+                calls++;
+                return ValueTask.FromResult(TownCommand.Parse("wait 1"));
+            });
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.StepAsync(start.World.Business.EndTime).AsTask());
             Assert.IsType<IOException>(error.InnerException);
+            Assert.Equal(1, calls);
             Assert.True(kernel.IsFaulted);
             Assert.Same(old, kernel.World);
-            Assert.Equal(start.Cursor, kernel.Cursor);
-            expected = Snapshot(Assert.IsType<TownWorld>(observed.Prepared));
+            Assert.Equal(oldCursor, kernel.Cursor);
+            Assert.Same(oldForecasts, kernel.World.Forecasts);
+            Assert.Equal(oldEntries, oldForecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal));
+            foreach (var entry in oldEntries) { Assert.Same(entry.Value, oldForecasts.Entries[entry.Key]); }
+            Assert.DoesNotContain("actor:a:activity", oldForecasts.Entries.Keys);
+            TownWorld prepared = Assert.IsType<TownWorld>(observed.Prepared);
+            Assert.NotSame(oldForecasts, prepared.Forecasts);
+            Assert.Equal(TownPredictionKind.Activity, prepared.Forecasts.Entries["actor:a:activity"].Kind);
+            Assert.Same(oldForecasts.Entries["actor:a:failure"], prepared.Forecasts.Entries["actor:a:failure"]);
+            AssertForecastIntegrity(prepared);
+            expected = Snapshot(prepared);
+            expectedForecasts = prepared.Forecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
             if (afterPublication) {
                 Assert.Same(observed.Prepared, history.State);
                 Assert.Null(history.PendingEvent);
@@ -186,8 +209,12 @@ public sealed class TownPersistenceTests {
         }
         using var reopened = TownDurableHistory.Open(directory.Path);
         var recovered = TownEngine.CreateKernel(reopened, (_, _) => throw new InvalidOperationException("Recovery replanned."));
+        AssertForecastIntegrity(reopened.State);
         Assert.Equal(!afterPublication, recovered.RecoverPending());
         Assert.Equal(expected, Snapshot(recovered.World));
+        Assert.Equal(expectedForecasts, recovered.World.Forecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal));
+        AssertForecastIntegrity(recovered.World);
+        Assert.Equal(1, calls);
         Assert.False(recovered.RecoverPending());
     }
 
@@ -337,6 +364,14 @@ public sealed class TownPersistenceTests {
         string command = operation < initial.Length ? initial[(int)operation]
             : decision.Character.Food <= 40 && decision.Character.Inventory.Count("meal") > 0 ? "eat" : "wait 4";
         return ValueTask.FromResult(TownCommand.Parse(command));
+    }
+
+    private static void AssertForecastIntegrity(TownWorld world) {
+        TownWorld rebuilt = TownEngine.Rebuild(world.Business);
+        Assert.Equal(rebuilt.Forecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal),
+            world.Forecasts.Entries.OrderBy(pair => pair.Key, StringComparer.Ordinal));
+        var rules = new SimulationRules(0, 1024);
+        Assert.Equal(TownEngine.ForecastOracle(rebuilt, rules), TownEngine.Forecast(world, rules));
     }
 
     private static string Snapshot(TownWorld world) => JsonSerializer.Serialize(new {

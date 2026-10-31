@@ -31,10 +31,12 @@ LLM/Gym 宿主通过 [Microtown.Completion](../Microtown.Completion/README.md) �
 
 边界：报价是显式双边交易，不是通用撮合市场、库存托管或远程交易。有界交互/报价记录加最近一条操作回执/活动结果不是完整 Context 历史；长期承诺应写入 Goals。`TownDecision.World` / `CreateKernel` 保留为开发者脚本接缝，包含其他角色私有状态，**不能直接传给模型**。即时成功轮转不保证任意控制器都能推进时间；Kernel 的同刻护栏不替代宿主操作/模型调用预算。
 
-当前 Town 预测每次 Forecast 从业务派生；Spatial 仍使用已有增量缓存与 Rebuild/Complete。尚未把 Town 预测按 owner 增量维护。`TownFact` 保存完整不可变业务替换值和强类型空间事实；E 与 S 是独立持久图，恢复不依赖跨图引用相等，也不重新规划。领域状态及回执均已有 DG Schema。
+`TownForecasts` 在运行时按居民、市场、报价、终点和全局决策 owner 维护纯派生预测；`Complete` 检查依赖后只重算受影响者，冷开全量 `Rebuild`，`ForecastOracle` 保留原全量推导供对照。空间继续使用已有到达投影、接触增量缓存与 Rebuild/Complete。预测缓存不落盘，也不改变当前 GameRevision 3。`TownFact` 保存完整不可变业务替换值和强类型空间事实；E 与 S 是独立持久图，恢复不依赖跨图引用相等，也不重新规划。领域状态及回执均已有 DG Schema。
 
 验证：`dotnet test tests/Microtown.Tests/Microtown.Tests.csproj -c Release -m:1`。测试通过真实 Kernel 路径覆盖三居民 48 小时经济循环、市场刷新、竞争、拒绝、决定前完成边界、不可变旧快照、失败及在制品核对；不是实际模型试玩证据。
 
 社交、忙碌响应、持久恢复与本人饱食预览的证据边界见[社交切片验收](../../docs/experiments/microtown-social-acceptance.md)。
 
 报价切片的构建、测试与实际试玩证据集中在[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)；实现说明本身不表示验收已通过，也不代表真实模型已完成整个经济日。
+
+owner 预测维护的全量 oracle、真实磁盘恢复、提交隔离与 25h 产品 Console 证据见[预测验收](../../docs/experiments/microtown-prediction-acceptance.md)。

@@ -237,6 +237,6 @@ public sealed partial class TownBusinessState : IDurableObject {
     }
 }
 
-public sealed record TownWorld(TownBusinessState Business, SpatialSimulationState Spatial) {
+public sealed record TownWorld(TownBusinessState Business, SpatialSimulationState Spatial, TownForecasts Forecasts) {
     public ModelTime Time => Business.Time;
 }

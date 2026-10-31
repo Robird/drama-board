@@ -4,9 +4,9 @@
 
 ## 当前下一步
 
-居民报价、原子交换、拒绝/撤回/过期与可靠终态交付已通过[交易切片验收](../../experiments/microtown-trade-acceptance.md)，当前 Town GameRevision 为 3；此前[交流/赠与、忙碌响应和饱食预览](../../experiments/microtown-social-acceptance.md)继续成立。下一片实现 Town owner 预测维护并以全量 oracle/冷开对照，然后进入完整经济日真实模型试玩。先前[共享 LLM/Gym 接线](../../experiments/microtown-llm-gym-acceptance.md)、[持久交互](../../experiments/microtown-persistence-acceptance.md)及[首片](../../experiments/microtown-foundation-acceptance.md)证据保留；旧真实模型探针仅覆盖时间 0，旧档不迁移，不能代替新版完整经济日试玩。
+Town owner 预测维护已通过[全量 oracle、真实冷开/pending/fork 与产品 Console 验收](../../experiments/microtown-prediction-acceptance.md)，当前 GameRevision 仍为 3；[居民报价](../../experiments/microtown-trade-acceptance.md)、[交流/赠与、忙碌响应和饱食预览](../../experiments/microtown-social-acceptance.md)继续成立。下一片进入完整经济日真实模型试玩。先前[共享 LLM/Gym 接线](../../experiments/microtown-llm-gym-acceptance.md)、[持久交互](../../experiments/microtown-persistence-acceptance.md)及[首片](../../experiments/microtown-foundation-acceptance.md)证据保留；旧真实模型探针仅覆盖时间 0，旧档不迁移，不能代替新版完整经济日试玩。
 
-已保存决定前完成 S、原始操作身份与可见回执，具备只读还原、pending 恢复和 API 精确 fork。`CreateControlledKernel` 只交付冻结角色观察；完整 World 仍只供开发脚本。报价当前条款与终态已有独立有界状态，最近回执/本人经历和这些记录仍不是完整 Context 历史。Town 预测仍每次 Forecast 派生，后续改 owner 维护与冷开 Rebuild；旧游戏缓存合同不变。[新增游戏接线说明](../../implementation/adding-a-game.md)已提供两消费者调用点，最终收尾时随实际预测接线修订。
+已保存决定前完成 S、原始操作身份与可见回执，具备只读还原、pending 恢复和 API 精确 fork。`CreateControlledKernel` 只交付冻结角色观察；完整 World 仍只供开发脚本。报价当前条款与终态已有独立有界状态，最近回执/本人经历和这些记录仍不是完整 Context 历史。[新增游戏接线说明](../../implementation/adding-a-game.md)已包含两消费者及实际预测维护边界，最终收尾仍需整体复核。
 
 ## 建议切片
 
@@ -26,11 +26,10 @@
 | ID | 当前问题 | 下一项最小证据 |
 | --- | --- | --- |
 | TOWN-07 | 加入社交后如何公平服务，并完成完整经济日实测？ | 社交/报价的独立材料、busy 响应与 Human Console 脚本已验证；真实多居民跑到市场更新及有限终点，检查生活/交易/饱食预览，并用当前版本重新完成反馈定位/fork/冷开行动；成功即时操作轮转不等于任意控制器下时间必然前进 |
-| TOWN-08 | Town 预测如何按 owner 维护，空间组合不漏发生项？ | 以当前全量派生为 oracle，增量/冷开比较；对向相遇回归已补，按需核对山林同类组合接线 |
 
-这些问题当前没有外部阻碍，先由实现与试验消解。选择薄 exe 还是统一宿主、普通数值及局部命名均可自主裁决。出现需要扩大产品范围或改变已有关键合同的选择时再明确提请用户，同时继续无依赖工作。
+这些问题当前没有外部阻碍，先由实现与试验消解。普通数值、材料排版及局部命名可按证据自主调整。出现需要扩大产品范围或改变已有关键合同的选择时再明确提请用户，同时继续无依赖工作。
 
-预测维护优先在运行时 wrapper 中保存纯派生值，按角色/市场/报价等真实 owner 更新，保留当前全量 Forecast 作为测试 oracle；不可为缓存而增加持久化权威。冷开、pending、fork 与同刻 Failure → TradeExpiry → MarketRefresh → Spatial → Activity → End → Decision 顺序均需对照。随后模型实验应先声明时长/预算/停止条件，允许有效失败但不能把耗尽调用预算当作达到终点。移动中响应/取消保持延期。
+下一实验拟定 30h 有限父局，三个居民均由模型独立行动；预算 200 calls / 180 operations / 45 分钟，后续选真实反馈另开最多 12 calls / 10 operations 的子局。准备稿与未执行的单次运行脚本在 `artifacts/microtown-economic-day/`；启动前核对当前 DLL 并向用户说明预算，不自动续局扩大限额。记录生产、消费、进出口、社交与报价机会、hour 24 更新及终点；初始储备可能足够活过 30h，不能只凭存活证明经营覆盖。允许有效失败，但调用预算暂停、全灭后系统空转到终点都不能冒充完整生活体验。模型未自然覆盖的能力如实记录，再依据证据选择后续实验或改进。移动中响应/取消保持延期。
 
 ## 每轮维护方式
 
