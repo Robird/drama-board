@@ -1,6 +1,6 @@
 # 目标操作与游戏接线合同
 
-状态：2026-10-31，首版施工依据，尚无这些生产命令。领域语义见[设计](design.md)，材料与限额见[容量及 Context](capacity-and-context.md)。本合同固定行为和首版传输选择；具体 C# 类型名不是公共 API 承诺。
+状态：2026-10-31，首版命令、权威校验和持久提交已实现并通过工程验证。领域语义见[设计](design.md)，材料与限额见[容量及 Context](capacity-and-context.md)，证据见[工程验收](../../experiments/goal-management-acceptance.md)。本合同固定行为和首版传输选择；当前类型映射见第 4 节，不构成长期公共 API 稳定性承诺。
 
 ## 1. 一次提交一项操作
 
@@ -16,7 +16,7 @@ show-goal {"id":"G1"}
 
 JSON 对象只接受该操作声明的键；拒绝重复键、未知键、错类型、多余尾文本、非法 Unicode 和超过 4 层的嵌套。可用数组仅为 focus 的 ID 路径，至多 32 个不同 ID，不支持操作数组。未提供字段不变，可空正文显式 null 或空白表示清空；必填文本不能用 null/空白。解析不改变游戏状态，格式错误走现有记录式拒绝。
 
-共享目标 parser 新增完整命令至多 8192 UTF-16 code units 的门槛，Human 与 LLM 都适用；当前 Console 尚无此共同限制，不能视为已实现。Completion 仍先执行自身传输检查；字段 scalar 上限与输入 UTF-16 上限分别提示，不能混称 token 限制。JSON 转义会占输入额度，即使各字段长度合法，整条超限仍拒绝，可采用更短编码或拆分非原子必要的编辑；不在 parser 悄悄裁字。被领域拒绝的原始提交照现有合同保存，这不等于建立宿主日志总大小上限。
+共享 [CycleGoalCommandParser](../../../src/ResourceCycle/Goals/CycleGoalCommandParser.cs) 对完整目标命令执行至多 8192 UTF-16 code units 的门槛，Human 与 LLM 都适用；这不是所有 Console 输入的统一限制。Completion 仍先执行自身传输检查；字段 scalar 上限与输入 UTF-16 上限分别提示，不能混称 token 限制。JSON 转义会占输入额度，即使各字段长度合法，整条超限仍拒绝，可采用更短编码或拆分非原子必要的编辑；不在 parser 悄悄裁字。被领域拒绝的原始提交照现有合同保存，这不等于建立宿主日志总大小上限。
 
 null 只用于 focus.id 清焦点，以及 progress/nextStep/revisit 清正文；show.id、parent、via 等出现时必须是声明类型，不能传 null，目录查询用 `{}`。no-op 也先验证全部已提供字段，不能绕过无效或超长 reason。同名 reason 按语义限长：pause.reason 是挂起说明（240 scalar）；reopen/update 敏感修订理由及 link/update-link 理由为 160 scalar。
 
@@ -65,18 +65,20 @@ Fact 保存完整已决定效果及冻结材料，Fold 按既有方式核验与�
 
 因此 show 是**目标与世界只读、交互有记录**的查询。纯详情投影函数无副作用，但提交 show 不等于无 E/S 写入。这样下一次独立模型调用、S 冷开和 E-only 恢复都能获得同一次查询材料，不需要额外本地 tool-loop。
 
-所有目标操作只在角色已有合法输入机会时可用，不能主动唤醒正忙且无感知的角色。在移动中的输入机会也允许；须扩展当前 travelling 白名单，不能因此让移动可取消。编辑/show 不推进 ModelTime、不释放模拟、不清除身体/通信/资源待响应警告、不改变活动期限、库存或随机流；其他角色可在同 tick 获得轮流输入，不等于自动推进时间。
+所有目标操作只在角色已有合法输入机会时可用，不能主动唤醒正忙且无感知的角色。[CycleActions.Check](../../../src/ResourceCycle/CycleActions.cs) 已将目标操作纳入途中输入白名单；移动仍不可取消。编辑/show 不推进 ModelTime、不释放模拟、不清除身体/通信/资源待响应警告、不改变活动期限、库存或随机流；其他角色可在同 tick 获得轮流输入，不等于自动推进时间。
 
 沿用宿主调用/连续协议失败预算与 Kernel 同刻转换护栏，不把瞬时目标操作算作通信发送额度，也不因 show、拒绝或 no-op 返还预算。宿主调用计数与角色业务状态是不同层次，不将现有每进程预算夸大为跨冷开持久预算；Kernel 的既有同刻护栏仍按当前恢复合同工作。
 
-## 4. 具体施工位置与边界
+## 4. 当前实现入口与边界
 
-| 现有入口 | 必需接线 |
+局部模型与规则为 [CycleGoalModel / CycleGoalLimits](../../../src/ResourceCycle/Goals/CycleGoalModel.cs)、[CycleGoalRules](../../../src/ResourceCycle/Goals/CycleGoalRules.cs) 和 [CycleGoalReceipt](../../../src/ResourceCycle/Goals/CycleGoalReceipt.cs)；[CycleGoalInteractionRules](../../../src/ResourceCycle/CycleGoalInteractionRules.cs) 组合角色私有替换、冻结观察与原操作身份，并对记录效果作纯规则比对。
+
+| 当前入口 | 接线职责 |
 | --- | --- |
 | [CycleCommandParser](../../../src/ResourceCycle/CycleCommandParser.cs)、[CycleEngine](../../../src/ResourceCycle/CycleEngine.cs) | 严格语法、角色权威校验、目标交互分派；按操作形状组织代码，不无限增加互斥可选参数 |
 | [CharacterInteractionState](../../../src/ResourceCycle/CharacterContext.cs) 与应用工厂 | 独立目标集合/计数及不可变材料，创建/冷开/新 Context 均一致 |
 | CycleFact / CycleFactApplication / CycleInteractionValidation | 目标替换与操作摘要、状态/容量/Focus/世界不变校验；pending 恢复只用记录效果 |
-| [CycleOperationResults](../../../src/ResourceCycle/CycleOperationResults.cs)、[ReadCommittedOperations](../../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 为没有 ObservedEvents 的成功目标操作生成同源短回执；当前 survival 分支只接纳 handoff/continue，须扩展并验证日志冷开补录 |
+| [CycleOperationResults](../../../src/ResourceCycle/CycleOperationResults.cs)、[ReadCommittedOperations](../../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 目标操作优先投影 typed receipt，覆盖没有 ObservedEvents 的成功/show/no-op；同源用于日志冷开补录 |
 | [CycleObservation](../../../src/ResourceCycle/CycleObservation.cs)、观察相等比较与冻结验证 | 只观察本人目标，快照不原地变异，覆盖无变化和其他角色隔离 |
 | [CharacterContextRenderer](../../../src/ResourceCycle.Cli/CharacterContextRenderer.cs)、布局与 delta | 实现目标单次当前投影、有限回执及最近有效 show；见容量文档，不把视图窗口当存储回收 |
 | [LlmCharacterController](../../../src/ResourceCycle.Completion/LlmCharacterController.cs) | 继续单 act；能力可用时替换长期 handoff 提示，保留实际系统提示词和模型材料证据 |

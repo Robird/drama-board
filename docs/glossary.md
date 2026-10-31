@@ -13,7 +13,7 @@
 | 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；采集场景同一 Console 服务三个角色，探索场景服务一个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
-| 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [目标管理配套设计](design/goal-management/decision-policy.md)尚待接入；当前 `LlmCharacterController.SystemPrompt` 已有基础指引，代码校验仍是强约束权威。 |
+| 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 的 `SystemPrompt` 与按能力选择的 `GoalGuidance` / `HandoffGuidance`；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
 | 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 尚未实施；保存 ToolCallId 不等于保存完整协议会话，二期首版不以前者冒充后者。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
 | 观察（Observation） | 某个角色当时可知的完整状态快照；不等同于完整世界对象，也不包含上下文历史。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；CycleDecisionContext 读取已保存最新观察，另持权威命令校验。 |
@@ -41,7 +41,7 @@
 | 感知通知（Notice） | 角色收到、等待控制器响应的业务信息，例如他人加入或资源耗尽；不是世界所有事件的副本。 | `CycleNotice`、`CycleCharacter.Notices`；会持久化。 |
 | 决策请求 / 待决策（Decision request） | 当前应给予角色控制器交互机会。可因空闲或有待响应感知产生。 | `NeedsDecision`、`CyclePredictionKind.RequestDecision`；没有独立持久请求对象。 |
 | 唤醒（Wake-up） | 服务决策请求：展示角色材料并等待操作提交；拒绝保持原服务机会。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
-| 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，轮流选择下一个被服务者。保证服务机会，不保证资源公平分配。 | `CycleBusinessState.LastServedActorId`；查询和非法输入不交棒。 |
+| 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，轮流选择下一个被服务者。保证服务机会，不保证资源公平分配。 | `CycleBusinessState.LastServedActorId`；拒绝和 Console 纯查询不交棒；目标 show/no-op 是记录式成功操作，会交棒。 |
 | 个人终局（Character ending） | 角色获救或死亡的权威记录，停止本人的活动、需求和决策；保存结束时刻、原因与历史位置。 | `CycleCharacter.Ending` / `CycleCharacterEnding`；同时退休 Spatial 实体，其他人可继续。 |
 | 整局总结（Expedition summary） | 从所有个人终局派生的宿主结果；不是局内角色自动知道的信息。 | `CycleWorld.ExpeditionSummary`；Exploring / AllEscaped / PartiallyEscaped / NoneEscaped，不单独持久化。 |
 
@@ -53,20 +53,20 @@
 
 **控制器不私藏角色的跨决策记忆。** 已采纳[共享无状态控制器决策](design/stateless-character-controller.md)：游戏维护角色状态并构造动态上下文，控制器可共享运行设施，本次工具交互使用独立局部会话。三层状态归属、可见性及恢复边界以该文档为准；角色观察和纯命令校验已接入，LLM 适配器使用独立 Context 请求；完整原生工具会话恢复仍未实施。
 
-## 角色目标管理（已选定方向，尚未实施）
+## 角色目标管理（已实现）
 
-下一个[里程碑](design/goal-management/README.md)采用以下概念；名称是设计术语，不表示已存在同名类型或命令。
+当前[里程碑](design/goal-management/README.md)采用以下概念，源码映射如下；实际验收证据集中见[工程验收](experiments/goal-management-acceptance.md)与[试玩记录](experiments/goal-management-playtest.md)，实现存在不等于模型效果已验收。
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 目标（Goal） | 角色明确采纳的目的及完成标准、进展和续接信息；标准区分结果/过程、历史成果/当前条件。角色判断不等于世界事实；不等于 coding agent 的外部工作 Goal。 | 尚未实施；见[设计草案](design/goal-management/design.md)，上述语义区别不对应新增类型枚举。 |
-| 目标来源关联（GoalLink） | 父目标使用子目标的独立关系，保留该来源的理由；多个父目标可显式引用同一子目标，同父子对最多一条边。 | 设计已定，尚未实施；不按同文去重，不自动推断依赖调度或资源分配。 |
-| 焦点 / 焦点路径（Focus / Focus path） | 当前优先处理的目标及选定来源路径；末端 Open，祖先可保留其他状态的来源背景；独立于物理活动。 | 尚未实施；显式路径及回退规则见设计，不存在隐藏的历史焦点栈。 |
-| 未结束目标（Unfinished goal） | Open 与 Paused 的合称，跨 Context 保留可发现入口。 | Open / Paused / Completed / Abandoned 为首版设计状态名；未新增生产枚举。 |
-| 目标挂起（Goal pause） | 暂时不推进，保留原因与恢复线索；不取消 Activity，不递归暂停共享子目标。 | 尚未实施；pause/suspend 不设计为两种近义状态。 |
-| 复查线索（Revisit cue） | 提示哪些关键假设或变化值得重新考虑的短文本；Open/Paused 均可携带，包含挂起时的恢复线索用途。 | 采用独立可选 revisit 字段，尚未实施；不自动订阅事件、唤醒、恢复目标或变更 Activity。 |
-| 目标重开（Goal reopen） | 将已结束目标显式改回 Open，保留身份和有限的旧判断；用于更正误判或重新采纳放弃的目的。 | 尚未实施；成果正常消耗后再次需要，默认另建目标。 |
-| 目标遗忘（Goal forget） | 显式移除已结束且无任何关联的当前目标记录。 | 尚未实施；不删除历史 E/S 或旧冻结观察，不复用 ID。 |
+| 目标（Goal） | 角色明确采纳的目的及完成标准、进展和续接信息；标准区分结果/过程、历史成果/当前条件。角色判断不等于世界事实；不等于 coding agent 的外部工作 Goal。 | [CycleGoal](../src/ResourceCycle/Goals/CycleGoalModel.cs)；上述语义区别不对应新增类型枚举。 |
+| 目标来源关联（GoalLink） | 父目标使用子目标的独立关系，保留该来源的理由；多个父目标可显式引用同一子目标，同父子对最多一条边。 | `CycleGoalLink`；不按同文去重，不自动推断依赖调度或资源分配。 |
+| 焦点 / 焦点路径（Focus / Focus path） | 当前优先处理的目标及选定来源路径；末端 Open，祖先可保留其他状态的来源背景；独立于物理活动。 | `CycleGoalSet.Focus`；[CycleGoalRules](../src/ResourceCycle/Goals/CycleGoalRules.cs) 处理显式路径及回退，没有隐藏的历史焦点栈。 |
+| 未结束目标（Unfinished goal） | Open 与 Paused 的合称，跨 Context 保留可发现入口。 | `CycleGoalStatus` 的 Open / Paused / Completed / Abandoned；`CycleGoal.IsUnfinished`。 |
+| 目标挂起（Goal pause） | 暂时不推进，保留原因与恢复线索；不取消 Activity，不递归暂停共享子目标。 | `pause-goal` / `CycleGoalOperationKind.Pause`；不另设 suspend 状态。 |
+| 复查线索（Revisit cue） | 提示哪些关键假设或变化值得重新考虑的短文本；Open/Paused 均可携带，包含挂起时的恢复线索用途。 | `CycleGoal.Revisit`；不自动订阅事件、唤醒、恢复目标或变更 Activity。 |
+| 目标重开（Goal reopen） | 将已结束目标显式改回 Open，保留身份和有限的旧判断；用于更正误判或重新采纳放弃的目的。 | `reopen-goal` / `CycleGoalRevision`；成果正常消耗后再次需要，默认另建目标。 |
+| 目标遗忘（Goal forget） | 显式移除已结束且无任何关联的当前目标记录。 | `forget-goal`；不删除历史 E/S 或旧冻结观察，不复用 ID。 |
 
 长期目标管理与一次性 handoff 各有用途；具体完成标准、材料限制及共享关系规则以专题文档为准。
 

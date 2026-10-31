@@ -1,6 +1,6 @@
 # 目标管理用户故事与实验场景
 
-状态：2026-10-31，尚未实施。US-01～US-08 支撑[本里程碑](milestone.md)；EX 系列为后续孵化候选，不要求本轮全部开发。故事中的目标命令采用[设计草案](design.md)的语义，不是当前可执行语法。
+状态：2026-10-31，目标操作与跨回合材料已实现，已运行核心场景及相关工程验证。US-01～US-08 支撑[本里程碑](milestone.md)；EX 系列为后续孵化候选，不要求本轮全部开发。命令语法见[操作合同](operations.md)；工程证据见[工程验收](../../experiments/goal-management-acceptance.md)，真实模型使用情况见[试玩记录](../../experiments/goal-management-playtest.md)，不能由命令已实现推定全部故事通过。
 
 ## 核心故事
 

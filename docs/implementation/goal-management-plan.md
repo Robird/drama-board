@@ -1,6 +1,6 @@
 # 角色目标管理：首版施工入口
 
-状态：2026-10-31，施工方案，未实施。内部可裁决的状态、Focus、容量和操作合同已收敛；范围以[里程碑](../design/goal-management/milestone.md)为准，本文不新增目标或代替真实模型验收。
+状态：2026-10-31，A1/A2/B 已实现并通过工程验证，C 的核心场景试用已完成，模型自发行为与明确引导试验分别留证。范围以[里程碑](../design/goal-management/milestone.md)为准，本文保留实施切片与源码入口，不新增目标或代替真实模型验收。实际工程结果统一见[工程验收](../experiments/goal-management-acceptance.md)，模型行为见[试玩记录](../experiments/goal-management-playtest.md)。
 
 ## 合同与推进顺序
 
@@ -13,7 +13,9 @@
 | B 跨回合材料 | 冻结目标快照、单次当前投影、有界回执、最近成功 show 失效、full/delta 与两种布局；能力同时接通 Completion 的新固定规约，替换长期 handoff 指引。量测最大合法图/Unicode 输入；连续操作不叠加旧全文，不裁危险/交流 |
 | C 孵化与模型试用 | US-01 分工兑现、US-02 临时切换返回、US-03 共享探索及其变体；真实模型自行编辑、跨 Context 与至少一次落盘重开。保留原始材料、实际提示词、操作和失败，按里程碑而非漂亮单局判断 |
 
-A1/A2/B 可连续实施成一个可玩的最小闭环，不要以“有模型类”或“能编辑”宣称完成目标管理里程碑。有限单元测试可以先于 UI；只有存档和真实材料接通后才开始模型行为实验。
+A1/A2/B 已形成可编辑、持久化及跨回合呈现的闭环并通过工程验证；C 已保留真实模型自行调用目标操作、跨 Context 行动和磁盘续局证据。显式分目标/共享关系的引导试验与模型自发选择分别报告，不能把机制可用扩大为一般自主规划可靠。
+
+当前源码入口：局部模型/额度在 [CycleGoalModel](../../src/ResourceCycle/Goals/CycleGoalModel.cs)，语法与转换在 [CycleGoalCommandParser](../../src/ResourceCycle/Goals/CycleGoalCommandParser.cs) / [CycleGoalRules](../../src/ResourceCycle/Goals/CycleGoalRules.cs)，持久交互组合在 [CycleGoalInteractionRules](../../src/ResourceCycle/CycleGoalInteractionRules.cs)，当前材料投影在 [GoalView](../../src/ResourceCycle.Cli/GoalView.cs)，能力对应的固定提示词在 [LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs)。
 
 ## 必须守住的接线点
 

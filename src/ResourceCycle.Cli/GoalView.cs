@@ -120,6 +120,7 @@ internal static class GoalView {
         if (observation.Goals is null || observation.Outcome != CycleExpeditionOutcome.Exploring) { return ""; }
         return "### 目标操作（零耗时）\n"
             + "每次提交一个命令和严格 JSON 对象；以下 ID 是示例，须换成现有 ID。未提供字段保留，progress/nextStep/revisit 的 null 表示清空。\n"
+            + "状态规则：pause 仅 Open；resume 仅 Paused；finish 仅 Open/Paused；reopen 仅 Completed/Abandoned；focus 路径末端须 Open。\n"
             + "finish 的 outcome 可选 completed 或 abandoned；结束记录仅可带 reason 勘误 endNote，修改其他正文须先 reopen。\n"
             + "```text\n"
             + "create-goal {\"title\":\"准备饮水\",\"criteria\":\"出发时携带两份水\",\"focus\":true}\n"

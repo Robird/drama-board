@@ -1,6 +1,6 @@
 # 目标容量、保留与 Context 投影
 
-状态：2026-10-31，首版实施合同，尚未实现或量测。本文补充[领域设计](design.md)，操作入口见[操作合同](operations.md)。数字是可调整的原型默认值，不能当成真实模型实验结论。
+状态：2026-10-31，容量规则与当前材料投影已实现，完成工程验证及规模量测。本文补充[领域设计](design.md)，操作入口见[操作合同](operations.md)；量测与实际运行证据集中在[工程验收](../../experiments/goal-management-acceptance.md)及[试玩记录](../../experiments/goal-management-playtest.md)。数字是可调整的原型默认值，不能当成真实模型实验结论。
 
 ## 1. 当前目标集合的界限
 
@@ -60,7 +60,7 @@
 
 ## 4. 当前材料一次投影，历史仍冻结
 
-源码现状：[CharacterContextRenderer](../../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 将 Opening 与有序 Items 渲染为完整输入；[RetainItems](../../../src/ResourceCycle/CycleInteractionRules.cs) 只裁近期范围外的拒绝，成功 Item 保留。直接把每次编辑全文或 show 全文继续追加会重复占用材料。
+当前实现：[CharacterContextRenderer](../../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 保留 Opening 与有序 Items 的一般材料，通过 [GoalView](../../../src/ResourceCycle.Cli/GoalView.cs) 单次投影当前目标、有限回执及有效查询；[RetainItems](../../../src/ResourceCycle/CycleInteractionRules.cs) 仍只裁近期范围外的拒绝，成功 Item 保留。显示裁剪不等于持久历史回收。
 
 首版对新增目标类别采用下面的局部投影，不改其他经历/警告/交流的保留规则：
 
