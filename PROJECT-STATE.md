@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；下一个里程碑为[角色目标管理](docs/design/goal-management/README.md)，设计与用户故事已记录，尚未施工；生存二期的实际人类合作验收单独保留。
+> 最近整理：2026-10-31；下一个里程碑为[角色目标管理](docs/design/goal-management/README.md)，首版实施合同已收敛，尚未施工；生存二期的实际人类合作验收单独保留。
 
 ## 最终目标
 
@@ -26,11 +26,11 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户选定[角色目标管理](docs/design/goal-management/milestone.md)为下一个里程碑。先落实目标图、独立焦点与状态、未结束事项自动进入 Context；更广泛的结构化记忆管理暂缓。当前[设计草案](docs/design/goal-management/design.md)与[用户故事](docs/design/goal-management/user-stories.md)已记录，尚无目标管理生产 API。下一步收敛焦点/状态转换、容量保留与操作合同，再形成可玩的持久编辑和跨回合材料闭环；以分工兑现、临时切换后返回、共享子目标三类场景验证，允许必要的小型内容扩展，不前置通用规划器或新游戏框架。
+**当前焦点**：用户选定[角色目标管理](docs/design/goal-management/milestone.md)为下一个里程碑，尚无目标管理生产 API。内部设计收敛后，下一步按[施工入口](docs/implementation/goal-management-plan.md)实现局部规则、真实持久提交和跨 Context 材料闭环；以分工兑现、临时切换后返回、共享子目标验证。A/B 验收包含共享图/Focus/容量不变量、S 与 E-only 冷开、角色隔离、冻结呈现及最大合法材料量测；C 再检验真实模型使用。允许必要小型内容扩展，不前置通用规划器、新框架或更广泛的结构化记忆管理。
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
-目标管理[设计](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)，当前正通过内部迭代收敛实施合同。状态转换、显式重开和有限敏感修订、Focus 来源路径/回退及解绑已确定，反例集中在[合同验收用例](docs/design/goal-management/acceptance-cases.md)；继续收敛容量、查询材料和操作接线。[角色决策规约](docs/design/goal-management/decision-policy.md)采用简短固定系统提示词，随目标能力接通替换长期 handoff 指引，并验证同回合反馈续接；强约束仍由代码保证。均待实施，不引入固定用户消息流程、多阶段 LLM 管线、自动规划或行为预测。
+目标管理[设计](docs/design/goal-management/design.md)已吸收[跨领域研究](docs/research/goal-management/README.md)，并确定状态/更正、Focus、显式清理、原子操作和记录式查询合同。容量与当前材料投影复用冻结 Context，不另建详情状态；反例集中在[合同验收用例](docs/design/goal-management/acceptance-cases.md)，剩余量测/试玩问题统一见设计末节。[角色决策规约](docs/design/goal-management/decision-policy.md)采用简短固定系统提示词，随目标能力接通替换长期 handoff 指引；强约束仍由代码保证。均待实施，不引入固定用户消息流程、多阶段 LLM 管线、自动规划或行为预测。
 
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
