@@ -30,6 +30,8 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
+目标管理的[跨领域研究](docs/research/goal-management/README.md)已形成候选建议：目的与方法分离、区分历史成果和当前条件、短复议线索、信息获取子目标及多解释的行为判断。它们用于下一轮细化合同与实验，尚未增加已批准字段、自动规划或行为预测范围。
+
 [属性速率解释](docs/design/attribute-rate-explanations.md)与[属性阈值预测](docs/design/attribute-threshold-forecasts.md)已贯通冻结观察、Context 与两种布局，见[验收](docs/experiments/attribute-threshold-forecasts-acceptance.md)；继续通过实际控制器体验打磨，Buff 生命周期、非加法解释与部分可见原因按真实玩法重开。
 
 [角色上下文 Model](docs/design/character-context-model.md)已通过[验收](docs/experiments/character-context-model-acceptance.md)。角色信息真相为冻结 Opening＋保留的有序 Items，Console 游标仅优化绘制；纯输出独立于终端实录。2A 已提供宿主调用/连续协议失败预算、显式暂停及超大材料拒绝；现有同刻 1024 转换护栏不代替调用预算。其他材料容量与历史保留按真实运行证据另行裁决，不以呈现重构宣称这些已完成。

@@ -46,6 +46,7 @@ The previous [Spacetime engine TODO / task brief](implementation/spacetime-engin
 
 ## Application research
 
+- [Goal management and behavior prediction](research/goal-management/README.md): four perspectives on military intent, commercial workflow, investigative hypotheses and AI planning/recognition; primary-source findings, transfer limits and small game experiments. Recommendations remain research candidates, not newly approved APIs or milestone requirements.
 - [Game revision cross-review](research/game-revision-review.md): independent challenges and cross-examination of load-time State/Event upgrades; source-state stability, mixed-version alignment and a smaller application API.
 - [New-combination discovery and simulation algorithms](research/prediction-discovery/README.md): five parallel surveys, primary sources, current time-semantics counterexamples, and a staged local-discovery proposal; algorithm and API recommendations remain provisional.
 - [Bringing Mud's player experience to a new DemoApp](research/mud-experience-portability.md): source-backed feasibility, reusable presentation and action contracts, application gaps, time/persistence integration boundaries, and suggested slices. This is an investigation, not an approved implementation plan.
