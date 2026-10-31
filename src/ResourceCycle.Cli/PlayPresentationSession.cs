@@ -76,8 +76,7 @@ internal sealed class PlayPresentationSession(PlayPresentation presentation, Con
         if (!first && !switching && !forceFull && !newItems && Baseline is not null) { return; }
         bool full = first || switching || forceFull || Baseline is null || presentation.Mode == PlayOutputMode.Full;
         string text = full
-            ? CharacterContextRenderer.RenderOpening(state, presentation.Current) +
-                CharacterContextRenderer.RenderItems(state, presentation.Current, full: presentation.Mode == PlayOutputMode.Full)
+            ? CharacterContextRenderer.RenderBody(state, presentation.Current)
             : CharacterContextRenderer.RenderItems(state, presentation.Current, delivered!.ItemSequence);
         try {
             if (StartupText is { } startup) { Reply(startup); }

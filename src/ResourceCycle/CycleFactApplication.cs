@@ -14,6 +14,7 @@ internal static class CycleFactApplication {
         ValidateFact(business, fact);
         CycleBusinessState result = ApplyReplacements(business, instant, fact);
         CycleObservedEventValidation.Validate(business, result, fact);
+        CycleGoalInteractionRules.Validate(business, result, fact);
         CycleInteractionValidation.Validate(business, result, fact);
         return result;
     }
@@ -53,7 +54,7 @@ internal static class CycleFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
         bool rejected = fact.Kind == CycleEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
         if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
@@ -73,6 +74,7 @@ internal static class CycleFactApplication {
             (CycleCommandKind.Go, CycleEventKind.MoveStarted) or
             (CycleCommandKind.Use, CycleEventKind.ItemUsed) or
             (CycleCommandKind.Handoff, CycleEventKind.HandoffEdited) or
+            (CycleCommandKind.Goal, CycleEventKind.GoalOperation) or
             (CycleCommandKind.Say, CycleEventKind.SpeechSent) or
             (CycleCommandKind.Give, CycleEventKind.ItemGiven))) {
             throw new InvalidOperationException("The accepted raw input must parse to the recorded operation kind.");
@@ -91,7 +93,7 @@ internal static class CycleFactApplication {
             CycleEventKind.GatherYielded => actorEffect && oneResource && fact.Light is null && fact.Script is null,
             CycleEventKind.GatherStarted or CycleEventKind.GatherFinished => actorEffect && fact.ResourceId is not null && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null,
             CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or
-                CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected =>
+                CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
@@ -105,7 +107,7 @@ internal static class CycleFactApplication {
         };
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
         ValidateCommunicationState(business, fact, communication);
-        if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
+        if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
             CycleCharacter before = business.GetCharacter(fact.ActorId!);
             CycleCharacter after = fact.ChangedCharacters[0];
             if (fact.At != business.Time || !CycleActions.NeedsDecision(business, before.Id) ||

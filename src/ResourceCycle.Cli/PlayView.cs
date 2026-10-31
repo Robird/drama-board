@@ -57,6 +57,7 @@ internal static class PlayView {
             text.AppendLine($"- 原活动进行中，当前周期仍于 {FormatTime(active.Due)} 结算。");
         }
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
+        if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
         if (ended) {
@@ -127,7 +128,7 @@ internal static class PlayView {
             text.AppendLine(observation.EndingReason);
             text.AppendLine("此角色的旅程已经结束，不再安排或结算活动。");
         } else {
-            text.Append(RenderCommands(observation));
+            text.Append(RenderCommands(observation, snapshot.IncludeGoals));
         }
         return text.ToString();
     }
@@ -190,12 +191,13 @@ internal static class PlayView {
         text.AppendLine();
     }
 
-    public static string RenderCommands(CycleObservation observation) {
+    public static string RenderCommands(CycleObservation observation, bool includeGoals = true) {
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) { return "此角色的旅程已经结束，没有可用行动。\n"; }
         var text = new StringBuilder();
         text.AppendLine("## 可用命令");
         text.AppendLine();
         text.AppendLine("行动命令与标识区分大小写，需提供完整命令和标识。");
+        if (includeGoals) { text.Append(GoalView.RenderHelp(observation)); }
         if (observation.Survival is not null) { text.AppendLine("属性预测见身体状态；改变预测条件的行动另有提示。"); }
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
             text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");

@@ -8,7 +8,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CycleOperationDisposition { Succeeded, Rejected }
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 11)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 12)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -34,6 +34,8 @@ public sealed partial class CycleFact : IDurableObject {
     [DurableField(24)] private string? _speechText;
     [DurableField(25)] private string? _itemId;
     [DurableField(26)] private int _itemCount;
+    [DurableField(27)] private CycleGoalReceipt? _goalOperation;
+    public CycleGoalReceipt? GoalOperation => _goalOperation;
     public string? TargetActorId => _targetActorId;
     public string? SpeechText => _speechText;
     public string? ItemId => _itemId;
@@ -65,7 +67,8 @@ public sealed partial class CycleFact : IDurableObject {
         CycleEnvironment? environment = null,
         string? toolCallId = null, string? operationRecordId = null, CycleGatherStopReason? gatherStopReason = null, IEnumerable<CycleObservedEvent>? observedEvents = null,
         IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, CycleOperationDisposition? operationDisposition = null,
-        string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0) {
+        string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0, CycleGoalReceipt? goalOperation = null) {
+        _goalOperation = goalOperation;
         _targetActorId = targetActorId; _speechText = speechText; _itemId = itemId; _itemCount = itemCount;
         _interactionChanges = interactionChanges?.ToList() ?? [];
         _rawInput = rawInput; _operationDisposition = operationDisposition;
@@ -77,17 +80,17 @@ public sealed partial class CycleFact : IDurableObject {
         _toolCallId = toolCallId; _operationRecordId = operationRecordId; _gatherStopReason = gatherStopReason; _observedEvents = observedEvents?.ToList() ?? [];
     }
     internal CycleFact WithVisits(IEnumerable<CycleVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation);
     internal CycleFact WithCharacters(IEnumerable<CycleCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation);
     internal CycleFact WithOperation(CycleControllerOperation operation, CycleOperationDisposition disposition = CycleOperationDisposition.Succeeded) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition, TargetActorId, SpeechText, ItemId, ItemCount);
+        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation);
     internal CycleFact WithObservedEvents(IEnumerable<CycleObservedEvent> events) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation);
     internal CycleFact WithInteractions(IEnumerable<CharacterInteractionState> changes) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation);
     public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}]" +
         (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason};disposition={OperationDisposition};target={TargetActorId};speech={SpeechText};item={ItemId}:{ItemCount}";
 }

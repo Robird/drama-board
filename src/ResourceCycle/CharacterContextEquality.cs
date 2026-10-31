@@ -13,7 +13,8 @@ internal static class CharacterContextEquality {
         a.ItemSequence == b.ItemSequence && a.OperationSequence == b.OperationSequence &&
         a.RawInput == b.RawInput && a.ToolCallId == b.ToolCallId && a.OperationRecordId == b.OperationRecordId &&
         a.Result == b.Result && SameList(a.Experiences, b.Experiences, Same) &&
-        SameObservation(a.Observation, b.Observation) && a.IsRejected == b.IsRejected;
+        SameObservation(a.Observation, b.Observation) && a.IsRejected == b.IsRejected &&
+        (a.GoalOperation is null ? b.GoalOperation is null : a.GoalOperation.SameAs(b.GoalOperation));
 
     internal static bool Same(CharacterExperience? a, CharacterExperience? b) =>
         ReferenceEquals(a, b) || a is not null && b is not null &&

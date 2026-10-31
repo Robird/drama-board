@@ -130,10 +130,17 @@ public static class CycleEngine {
                 }
                 CycleCommand? command = CycleCommandParser.Parse(operation.RawInput);
                 string? rejection = command is null ? "无法识别行动格式，请使用当前列出的行动命令。" : decision.Check(command);
+                if (command is null && CycleGoalCommandParser.IsGoalCommand(operation.RawInput)) {
+                    CycleGoalCommandParser.TryParse(operation.RawInput, out _, out string? goalError);
+                    rejection = goalError ?? rejection;
+                }
                 if (rejection is not null) {
                     return new([CycleInteractionRules.Reject(world, prediction.TargetId, operation, rejection)]);
                 }
                 if (command is null) { throw new InvalidOperationException("A successful parse requires an action."); }
+                if (command.Kind == CycleCommandKind.Goal) {
+                    return new([CycleGoalInteractionRules.Plan(world, prediction.TargetId, command.Goal!, operation)]);
+                }
                 if (command.Kind == CycleCommandKind.Handoff) {
                     return new([CycleInteractionRules.Enrich(world, CycleInteractionRules.EditHandoff(world, prediction.TargetId).WithOperation(operation), operation)]);
                 }

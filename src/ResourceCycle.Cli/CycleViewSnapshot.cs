@@ -14,17 +14,19 @@ internal sealed class CycleViewSnapshot {
     public CycleBackground Background { get; }
     public string? DraftHandoff { get; }
     public bool IncludeHistory { get; }
+    public bool IncludeGoals { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> Values { get; }
     public IReadOnlyDictionary<CycleStateKey, CycleAttributeView> RateExplanations { get; }
 
     private CycleViewSnapshot(CycleObservation observation, CharacterInteractionState? interactionState,
-        CharacterContext? context = null, string? draftHandoff = null, bool includeHistory = true) {
+        CharacterContext? context = null, string? draftHandoff = null, bool includeHistory = true, bool includeGoals = true) {
         Observation = observation;
         InteractionState = interactionState;
         Context = context ?? interactionState?.CurrentContext;
         Background = Context?.Opening.Background ?? CycleBackground.For(observation);
         DraftHandoff = context is not null ? draftHandoff : interactionState?.DraftHandoff;
         IncludeHistory = includeHistory;
+        IncludeGoals = includeGoals;
         Values = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(_values);
         RateExplanations = new ReadOnlyDictionary<CycleStateKey, CycleAttributeView>(_rateExplanations);
         Project();
@@ -33,7 +35,7 @@ internal sealed class CycleViewSnapshot {
     public static CycleViewSnapshot Create(CycleObservation observation, CharacterInteractionState? interactionState = null) => new(observation, interactionState);
 
     public static CycleViewSnapshot CreateRecorded(CycleObservation observation, CharacterContext context,
-        string? draftHandoff, bool includeHistory = true) => new(observation, null, context, draftHandoff, includeHistory);
+        string? draftHandoff, bool includeHistory = true, bool includeGoals = true) => new(observation, null, context, draftHandoff, includeHistory, includeGoals);
 
     public string? KnownLabel(CycleStateKey key) => _values.ContainsKey(key) ? Label(key) : null;
 

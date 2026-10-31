@@ -14,7 +14,7 @@ internal static class CycleInteractionRules {
             changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()], result: "已开启新的决策回合。");
         CycleWorld candidate = Candidate(world, fact);
         CharacterContext context = CreateContext(candidate, state, state.UndeliveredExperiences, terminal: false);
-        return fact.WithInteractions([new(actorId, context, nextExperienceSequence: state.NextExperienceSequence)]);
+        return fact.WithInteractions([new(actorId, context, nextExperienceSequence: state.NextExperienceSequence, goals: state.Goals)]);
     }
 
     internal static CycleFact EditHandoff(CycleWorld world, string actorId) => new(CycleEventKind.HandoffEdited,
@@ -26,14 +26,16 @@ internal static class CycleInteractionRules {
         CharacterContext current = state.CurrentContext is { Status: CharacterContextStatus.Open } open ? open
             : throw new InvalidOperationException("A rejected operation requires an open context.");
         long sequence = checked(current.LastOperationSequence + 1);
+        CycleGoalReceipt? goalReceipt = CycleGoalCommandParser.TryGetKind(operation.RawInput, out CycleGoalOperationKind kind)
+            ? CycleGoalRules.Reject(kind, reason) : null;
         var item = new CharacterContextItem(current.NextItemSequence, sequence, operation.RawInput,
-            operation.ToolCallId, operation.OperationRecordId, reason, isRejected: true);
+            operation.ToolCallId, operation.OperationRecordId, reason, isRejected: true, goalOperation: goalReceipt);
         var context = new CharacterContext(current.ContextSequence, CharacterContextStatus.Open, current.Opening,
             RetainItems(current.Items, sequence).Append(item), checked(current.NextItemSequence + 1), sequence);
         var fact = new CycleFact(CycleEventKind.OperationRejected, world.Time, actorId,
-            changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()], result: reason);
+            changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()], result: reason, goalOperation: goalReceipt);
         return fact.WithOperation(operation, CycleOperationDisposition.Rejected).WithInteractions([
-            new(actorId, context, state.PendingAdvance, state.UndeliveredExperiences, state.DraftHandoff, state.NextExperienceSequence)]);
+            new(actorId, context, state.PendingAdvance, state.UndeliveredExperiences, state.DraftHandoff, state.NextExperienceSequence, state.Goals)]);
     }
 
     internal static CycleFact Enrich(CycleWorld world, CycleFact fact, CycleControllerOperation? operation = null) {
@@ -56,7 +58,7 @@ internal static class CycleInteractionRules {
             bool terminal = actor.IsActive && !candidate.GetCharacter(actor.Id).IsActive;
             if (terminal) {
                 CharacterContext context = CreateContext(candidate, state, state.UndeliveredExperiences.Concat(experiences), terminal: true);
-                changes.Add(new(actor.Id, context, nextExperienceSequence: nextExperience));
+                changes.Add(new(actor.Id, context, nextExperienceSequence: nextExperience, goals: state.Goals));
                 continue;
             }
             bool own = operation is not null && fact.ActorId == actor.Id;
@@ -74,7 +76,7 @@ internal static class CycleInteractionRules {
             if (current?.Status != CharacterContextStatus.Open) {
                 if (experiences.Length != 0 || own) {
                     changes.Add(new(actor.Id, current, pending, state.UndeliveredExperiences.Concat(experiences),
-                        own ? draftAfter : state.DraftHandoff, nextExperience));
+                        own ? draftAfter : state.DraftHandoff, nextExperience, state.Goals));
                 }
                 continue;
             }
@@ -88,7 +90,7 @@ internal static class CycleInteractionRules {
             current = new(current.ContextSequence, CharacterContextStatus.Open, current.Opening,
                 RetainItems(current.Items, operationSequence).Append(item), checked(current.NextItemSequence + 1), operationSequence);
             changes.Add(new(actor.Id, current, draftHandoff: own ? draftAfter : state.DraftHandoff,
-                nextExperienceSequence: nextExperience));
+                nextExperienceSequence: nextExperience, goals: state.Goals));
         }
         return fact.WithInteractions(changes);
     }

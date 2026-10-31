@@ -91,7 +91,7 @@ internal static class CyclePredictionMaintenance {
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
                 CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged,
-                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.HandoffEdited, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
+                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven }) {

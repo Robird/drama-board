@@ -112,6 +112,7 @@ public sealed class CycleDecisionContext {
                 : id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id }, StringComparer.Ordinal);
         var observation = new CycleObservation {
             Time = actor.Ending?.At ?? world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
+            Goals = expedition is null ? null : world.Business.InteractionStates[actorId].Goals,
             Actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity,
                 Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId),
             Resources = Array.AsReadOnly(resources),

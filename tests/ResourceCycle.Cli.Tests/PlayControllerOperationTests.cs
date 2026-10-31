@@ -278,7 +278,12 @@ public sealed class PlayControllerOperationTests {
         var preview = journal.Entries[0];
         Assert.Equal(CycleOperationStatus.Succeeded, preview.Completed!.Status);
         Assert.Equal(preview.Received.ToolCallId, preview.Completed.ToolCallId);
-        Assert.Contains(presentation.FindLayout(target)!.RenderFull(CycleViewSnapshot.Create(context.Observation, context.InteractionState)), preview.Completed.Result);
+        IPlayLayout selected = presentation.FindLayout(target)!;
+        Assert.Contains(CharacterContextRenderer.RenderLatestState(context.InteractionState, selected), preview.Completed.Result);
+        Assert.Contains(target == "classic" ? "## 你的活动" : "## 眼前的行动", preview.Completed.Result);
+        Assert.Contains("## 目标记录", preview.Completed.Result);
+        Assert.Equal(1, preview.Completed.Result.Split("## 目标记录", StringSplitOptions.None).Length - 1);
+        Assert.Contains("show-goal {}", preview.Completed.Result);
         Assert.Contains(preview.Completed.Result, output.ToString());
         Assert.All(journal.Entries.Skip(1).Take(3), entry => Assert.Equal(CycleOperationStatus.Rejected, entry.Completed!.Status));
         Assert.Equal(1, output.ToString().Split("LLM 上下文开始").Length - 1);

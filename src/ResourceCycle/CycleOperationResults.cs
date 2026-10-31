@@ -6,6 +6,7 @@ namespace DramaBoard.ResourceCycle;
 public static class CycleOperationResults {
     public static string Describe(CycleFact fact) {
         ArgumentNullException.ThrowIfNull(fact);
+        if (fact.GoalOperation is { } goal) { return goal.Message; }
         if (fact.OperationDisposition == CycleOperationDisposition.Rejected) {
             return !string.IsNullOrWhiteSpace(fact.Result) ? fact.Result
                 : throw new InvalidOperationException("A rejected operation must retain its visible reason.");

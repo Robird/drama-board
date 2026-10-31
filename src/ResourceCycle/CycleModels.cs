@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 9)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 10)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
-    SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected, SpeechSent, ItemGiven
+    SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected, SpeechSent, ItemGiven, GoalOperation
 }
 public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }
@@ -114,7 +114,14 @@ public sealed partial class CycleBusinessState : IDurableObject {
             _interactionStates.Any(pair => pair.Key != pair.Value.ActorId)) {
             throw new InvalidOperationException("Interaction states must belong one-to-one to the world's characters.");
         }
-        foreach (CharacterInteractionState state in _interactionStates.Values) { state.Validate(state.ActorId, Time); }
+        foreach (CharacterInteractionState state in _interactionStates.Values) {
+            state.Validate(state.ActorId, Time);
+            if (state.CurrentContext is { } context && (Expedition is null
+                ? context.LatestObservation.Goals is not null
+                : !state.Goals.SameAs(context.LatestObservation.Goals))) {
+                throw new InvalidOperationException("Current goal state and the character's latest frozen material disagree.");
+            }
+        }
         foreach (CycleResource resource in _resources) { resource.Validate(Time, Light.IsDay); }
         foreach (CycleCharacter actor in _characters) {
             actor.Validate(Time);

@@ -17,6 +17,9 @@ internal static class CycleUpdateRenderer {
             }
             text.Append(RenderCommandStates(update.CurrentValues));
         }
+        if (update.GoalsChanged) {
+            text.Append(update.Snapshot.Observation.Goals is null ? "目标能力当前不可用。\n" : GoalView.RenderDefault(update.Snapshot.Observation.Goals));
+        }
         return text.ToString();
     }
 

@@ -20,7 +20,15 @@ internal static class CharacterContextRenderer {
         BeginMarker(state) + Environment.NewLine + RenderBody(state, layout) + EndMarker(state) + Environment.NewLine;
 
     public static string RenderBody(CharacterInteractionState state, IPlayLayout layout) =>
-        RenderOpening(state, layout) + RenderItems(state, layout);
+        RenderBodyThrough(state, layout, long.MaxValue);
+
+    /// <summary>Pure replay of a frozen prefix. Unlike append's after cursor, this is an inclusive upper boundary.</summary>
+    internal static string RenderBodyThrough(CharacterInteractionState state, IPlayLayout layout, long throughItemSequence) {
+        CharacterContext context = RequireContext(state);
+        return layout.RenderFull(CycleViewSnapshot.CreateRecorded(context.Opening.Observation, context, null, includeGoals: false))
+            + RenderItemsCore(state, layout, 0, false, throughItemSequence, includeGoals: false)
+            + GoalView.RenderCurrent(context, throughItemSequence);
+    }
 
     public static string RenderOpening(CharacterInteractionState state, IPlayLayout layout) {
         CharacterContext context = RequireContext(state);
@@ -30,21 +38,38 @@ internal static class CharacterContextRenderer {
 
     public static string RenderLatestState(CharacterInteractionState state, IPlayLayout layout) {
         CharacterContext context = RequireContext(state);
-        return layout.RenderFull(CycleViewSnapshot.CreateRecorded(context.LatestObservation, context, LatestDraft(context)));
+        return layout.RenderFull(CycleViewSnapshot.CreateRecorded(context.LatestObservation, context, LatestDraft(context), includeGoals: false))
+            + GoalView.RenderCurrent(context);
     }
 
     public static string RenderItems(CharacterInteractionState state, IPlayLayout layout,
-        long afterItemSequence = 0, bool full = false) {
+        long afterItemSequence = 0, bool full = false) =>
+        RenderItemsCore(state, layout, afterItemSequence, full, long.MaxValue, includeGoals: true);
+
+    private static string RenderItemsCore(CharacterInteractionState state, IPlayLayout layout,
+        long afterItemSequence, bool full, long throughItemSequence, bool includeGoals) {
         CharacterContext context = RequireContext(state);
         var text = new StringBuilder();
         CycleObservation previousObservation = context.Opening.Observation;
         string? draft = null;
-        foreach (CharacterContextItem item in context.Items) {
-            var previous = CycleViewSnapshot.CreateRecorded(previousObservation, context, draft, includeHistory: false);
+        foreach (CharacterContextItem item in context.Items.Where(item => item.ItemSequence <= throughItemSequence)) {
+            var previous = CycleViewSnapshot.CreateRecorded(previousObservation, context, draft, includeHistory: false, includeGoals: includeGoals);
             draft = ApplyDraft(draft, item);
             CycleObservation observation = item.Observation ?? previousObservation;
-            var current = CycleViewSnapshot.CreateRecorded(observation, context, draft, includeHistory: false);
+            var current = CycleViewSnapshot.CreateRecorded(observation, context, draft, includeHistory: false, includeGoals: includeGoals);
             if (item.ItemSequence > afterItemSequence) {
+                if (item.GoalOperation is { } receipt) {
+                    if (includeGoals) {
+                        text.Append(GoalView.RenderReceipt(item));
+                        if (receipt.Changed) { text.Append(GoalView.RenderDefault(observation.Goals)); }
+                        if (receipt.Changed || receipt is { Kind: CycleGoalOperationKind.Show, Success: true }) {
+                            text.Append(GoalView.RenderQuery(context, item.ItemSequence));
+                        }
+                    }
+                    // Goal operations carry no world experiences. Their complete raw input remains in the saved Item.
+                    previousObservation = observation;
+                    continue;
+                }
                 text.AppendLine();
                 if (item.OperationSequence is not null) {
                     text.AppendLine($"### 本轮操作 {item.OperationSequence}（{(item.IsRejected ? "未执行" : "已执行")}）");

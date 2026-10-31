@@ -11,17 +11,19 @@ internal sealed class CycleViewUpdate {
     public IReadOnlyDictionary<CycleStateKey, CycleVisibleValue> CurrentValues { get; }
     public PlayDeliveryPhase Phase { get; }
     public bool FullTail { get; }
+    public bool GoalsChanged { get; }
     public IReadOnlyList<CycleObservedEventSource> Sources { get; }
     private readonly IReadOnlyDictionary<CycleStateKey, string> _labels;
     public string Label(CycleStateKey key) => _labels.GetValueOrDefault(key) ?? Snapshot.Label(key);
 
     private CycleViewUpdate(CycleViewSnapshot snapshot, IReadOnlyList<CycleObservedEvent> events,
         Dictionary<CycleStateKey, CycleVisibleValue> currentValues, PlayDeliveryPhase phase, bool fullTail,
-        IReadOnlyList<CycleObservedEventSource> sources, IReadOnlyDictionary<CycleStateKey, string> labels) {
+        IReadOnlyList<CycleObservedEventSource> sources, IReadOnlyDictionary<CycleStateKey, string> labels, bool goalsChanged) {
         Snapshot = snapshot; Events = events; CurrentValues = new ReadOnlyDictionary<CycleStateKey, CycleVisibleValue>(currentValues);
         Phase = phase; FullTail = fullTail;
         Sources = sources;
         _labels = labels;
+        GoalsChanged = goalsChanged;
     }
 
     public static CycleViewUpdate Create(CycleViewSnapshot previous, CycleViewSnapshot current,
@@ -58,6 +60,7 @@ internal sealed class CycleViewUpdate {
         return new(current, Array.AsReadOnly(visibleEvents), keys.OrderBy(k => k.Category, StringComparer.Ordinal)
             .ThenBy(k => k.ObjectId, StringComparer.Ordinal).ThenBy(k => k.Field, StringComparer.Ordinal)
             .ToDictionary(key => key, current.Resolve), phase, fullTail, Array.AsReadOnly(visibleSources),
-            new ReadOnlyDictionary<CycleStateKey, string>(labels));
+            new ReadOnlyDictionary<CycleStateKey, string>(labels), current.IncludeGoals &&
+            !(previous.Observation.Goals is { } beforeGoals ? beforeGoals.SameAs(current.Observation.Goals) : current.Observation.Goals is null));
     }
 }

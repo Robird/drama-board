@@ -8,6 +8,27 @@ namespace DramaBoard.ResourceCycle.Completion.Tests;
 
 public sealed class LlmCharacterControllerTests {
     [Fact]
+    public async Task Shared_controller_selects_guidance_from_each_roles_actual_capabilities() {
+        var client = new FakeClient(Result(Call("survival", "wait 1")), Result(Call("gathering", "wait 1")));
+        var controller = new LlmCharacterController(client, "fixture-model", _ => "角色材料");
+        await controller.ChooseCommandAsync(await Context(), default);
+        var initial = CycleGameFactory.CreatePlayable(characters: [new CycleCharacter("a", "阿青")]);
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor));
+        Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(30 * CycleTime.Hour)));
+        await controller.ChooseCommandAsync(CycleDecisionContext.Create(kernel.World, "a"), default);
+
+        string goals = client.Requests[0].PromptPrefix.SystemPrompt;
+        string gathering = client.Requests[1].PromptPrefix.SystemPrompt;
+        Assert.Contains("界面已提供目标管理", goals);
+        Assert.Contains("不必再次抄写", goals);
+        Assert.DoesNotContain("先用 handoff", goals);
+        Assert.DoesNotContain("界面已提供目标管理", gathering);
+        Assert.DoesNotContain("handoff", gathering);
+        Assert.DoesNotContain("reopen", gathering);
+        Assert.All(client.Requests, request => Assert.Empty(request.TailMessages));
+    }
+
+    [Fact]
     public async Task Each_decision_projects_current_material_without_native_history_and_preserves_call_identity() {
         var client = new FakeClient(Result(Call("  provider:id/原值  ", "use item.water")), Result(Call("same-id", "handoff 计划")));
         var traces = new List<LlmControllerTrace>();

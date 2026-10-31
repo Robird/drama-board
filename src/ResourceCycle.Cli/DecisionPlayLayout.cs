@@ -52,8 +52,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         PlayView.RenderOtherCharacters(text, observation);
         RenderSupplies(text, observation, ended: false);
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
+        if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         RenderResources(text, observation);
         text.AppendLine("## 眼前的行动");
+        if (snapshot.IncludeGoals) { text.Append(GoalView.RenderHelp(observation)); }
         CommunicationView.Render(text, observation);
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；闲置时确认不推进时间");
         if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
@@ -166,6 +168,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**旅程结束。只是这一次未能走出山林。**");
         text.AppendLine(observation.EndingReason);
         text.AppendLine("以下为此角色结束时的冻结记录；未完成的活动不会继续结算。其他角色仍可继续探索。");
+        if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         if (snapshot.IncludeHistory) { text.Append(ContextHistoryPlayView.RenderHistory(observation, snapshot.Context)); }
         text.AppendLine("## 结束前的历史通知与最近天气");
         RenderEvents(text, observation, ended: true);

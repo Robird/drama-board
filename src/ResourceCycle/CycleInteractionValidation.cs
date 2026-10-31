@@ -60,7 +60,8 @@ internal static class CycleInteractionValidation {
                 if (own) {
                     Require(item.OperationSequence == next.LastOperationSequence && item.ToolCallId == fact.ToolCallId &&
                         item.OperationRecordId == fact.OperationRecordId && item.RawInput == fact.RawInput &&
-                        item.Result == CycleOperationResults.Describe(fact),
+                        item.Result == CycleOperationResults.Describe(fact) &&
+                        (item.GoalOperation is null ? fact.GoalOperation is null : item.GoalOperation.SameAs(fact.GoalOperation)),
                         "The operation result must retain the original captured identity and recorded answer.");
                     if (!rejected) { ValidateInstantCommand(before, after, fact, recorded); }
                 } else {
@@ -179,6 +180,8 @@ internal static class CycleInteractionValidation {
 
     private static void ValidateObservation(CycleBusinessState state, string actorId, CycleObservation observation) {
         CycleCharacter actor = state.GetCharacter(actorId);
+        Require(state.Expedition is null ? observation.Goals is null : state.InteractionStates[actorId].Goals.SameAs(observation.Goals),
+            "The frozen goal material must match only this character's own goal collection.");
         Require(observation.Communication == (state.Expedition is null ? null : new CycleCommunicationObservation(
             CycleCommunicationRules.Remaining(actor, state.Time), CycleCommunicationRules.SendLimit,
             actor.Communication.AttentionPending, CycleCommunicationRules.MaximumSpeechScalars)),
@@ -224,7 +227,7 @@ internal static class CycleInteractionValidation {
             CycleCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.PassageId),
             CycleCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
             CycleCommandKind.Use => actor.Survival is not null && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
-            CycleCommandKind.Handoff => state.Expedition is not null,
+            CycleCommandKind.Handoff or CycleCommandKind.Goal => state.Expedition is not null,
             _ => true
         }), "A recorded command catalogue must not expose unseen identities or unavailable scenario capabilities.");
     }

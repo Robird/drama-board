@@ -9,15 +9,29 @@ namespace DramaBoard.ResourceCycle.Completion;
 /// Sequential use is required; concurrent calls fail before any model invocation. The injected client is borrowed.</remarks>
 public sealed class LlmCharacterController : ICycleCharacterController {
     public const string ToolName = "act";
-    public const string SystemPrompt = "你在一个持续运行的生存游戏中控制当前角色。当前观察及保留经历是你的全部游戏信息；不要假定未提供的地图或资源。"
+    public const string SystemPrompt = "你在一个持续运行的游戏中控制当前角色。仅使用当前角色可知的观察、保留经历和明确提供的角色记录；不要假定未提供的地图或资源。"
         + "每次调用都是新的独立决策，请根据提供的完整角色上下文行动。调用一次 act 工具，command 为界面列出的一个游戏行动字符串。"
         + "即时行动或拒绝之后仍可继续决策；耗时行动会放行世界。自由文本不会成为游戏对白、事实或持久记忆。"
+        + "注意当前身体危险、活动、最近结果和既有承诺，区分当前事实、历史成果、他人陈述和推测。危险需要取舍，不等于必须取消当前活动。"
         + "若界面提供同地同伴与交流行动，可用 say 沟通计划、用 give 分享补给；对方的话是署名陈述，不等于已经亲眼证实。"
         + "交流次数有限，收到交流无需取消原活动；按界面说明用 continue 确认后继续。"
-        + "首次规划路线或补给安排时，先用 handoff 留下希望下一决策回合继续记得的简短计划。"
+        + "检查同回合反馈：已成功的操作不要重复，拒绝原因未变化时不要原样重试。没有需要记录的新变化时直接行动，无需输出检查清单或完整推理。"
+        + "需要补给时可使用界面提供的即时 use 行动。不要调用 Console 元命令。";
+
+    private const string GoalGuidance = "界面已提供目标管理。对照所有未结束事项与复查线索；方法失效不自动取消仍成立的目的。"
+        + "新采纳的承诺、重要进展、方法变更或调查结论需要跨回合保留时，用界面中的目标命令记录简短内容和依据。"
+        + "一次提交一条固定目标命令及 JSON 对象；以实际帮助中的字段和容量为准。成功编辑后根据结果继续行动，不因下一次独立调用重新创建。"
+        + "Focus 只是注意力，挂起或结束目标不会取消活动；无焦点时仍要检查未结束目录。Completed 是你的判断，不会创造世界效果。"
+        + "原完成判断错误可带理由 reopen；确实取得的成果后来耗尽，则为新的需要另建目标。调查得到可靠否定答案也能完成调查，但不自动完成父目的。"
+        + "show 只展开已有目标记录，不能探索未知世界；标为过期的详情需要重查，当前世界信息仍以观察为准。"
+        + "handoff 只留短期一次性交接；目标已经保存的长期事项不必再次抄写。旧回合完整对话不会自动带入。";
+
+    private const string HandoffGuidance = "首次规划路线或补给安排时，先用 handoff 留下希望下一决策回合继续记得的简短计划。"
         + "新通信改变你采纳的分工或承诺时，若草稿尚未覆盖，先更新一次 handoff：记明谁承诺何物、自己的下一步及待核实事项。"
-        + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。"
-        + "需要补给时可使用即时 use 行动。不要调用 Console 元命令。";
+        + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。";
+
+    private static string PromptFor(CycleObservation observation) => SystemPrompt + (observation.Goals is not null
+        ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly ICompletionClient _client;
     private readonly string _modelId;
@@ -65,7 +79,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
                     ? [new ObservationMessage(material)]
                     : [new ObservationMessage(material), new ObservationMessage(
                         $"上次响应未成为游戏操作（协议错误：{protocolError}）。请只调用一次 act，参数仅含字符串 command。")];
-                var request = new CompletionRequest(_modelId, new(SystemPrompt, _outputContract, messages), []);
+                var request = new CompletionRequest(_modelId, new(PromptFor(context.Observation), _outputContract, messages), []);
                 int call = ++CallsMade;
                 void Trace(LlmControllerTraceKind kind, CompletionResult? result = null,
                     string? error = null, CycleControllerOperation? operation = null) =>

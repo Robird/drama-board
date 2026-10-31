@@ -11,6 +11,7 @@ internal static class CycleVisibleEndpointChanges {
     internal static bool Changed(CycleBusinessState before, CycleBusinessState after, string actorId) {
         if (before.Time != after.Time || before.Light.IsDay != after.Light.IsDay ||
             before.Light.NextChange != after.Light.NextChange) { return true; }
+        if (!before.InteractionStates[actorId].Goals.SameAs(after.InteractionStates[actorId].Goals)) { return true; }
         CycleCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);
         if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
             a.NextActivityId != b.NextActivityId || !SameInventory(a.Backpack, b.Backpack) ||

@@ -8,7 +8,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CharacterContextStatus { Open, Closed, Terminal }
 
 /// <summary>Actor-owned interaction material, separate from the actor's physical state.</summary>
-[DurableType("DramaBoard.ResourceCycle.CharacterInteractionState", 1)]
+[DurableType("DramaBoard.ResourceCycle.CharacterInteractionState", 2)]
 public sealed partial class CharacterInteractionState : IDurableObject {
     public const int MaximumHandoffScalars = 2000;
     [DurableField(1)] private string _actorId;
@@ -17,6 +17,8 @@ public sealed partial class CharacterInteractionState : IDurableObject {
     [DurableField(4)] private List<CharacterExperience> _undeliveredExperiences;
     [DurableField(5)] private string? _draftHandoff;
     [DurableField(6)] private long _nextExperienceSequence;
+    [DurableField(7)] private CycleGoalSet _goals;
+    public CycleGoalSet Goals => _goals;
     public string ActorId => _actorId;
     public CharacterContext? CurrentContext => _currentContext;
     public PendingAdvance? PendingAdvance => _pendingAdvance;
@@ -26,13 +28,14 @@ public sealed partial class CharacterInteractionState : IDurableObject {
 
     public CharacterInteractionState(string actorId, CharacterContext? currentContext = null,
         PendingAdvance? pendingAdvance = null, IEnumerable<CharacterExperience>? undeliveredExperiences = null,
-        string? draftHandoff = null, long nextExperienceSequence = 1) {
+        string? draftHandoff = null, long nextExperienceSequence = 1, CycleGoalSet? goals = null) {
         _actorId = actorId;
         _currentContext = currentContext;
         _pendingAdvance = pendingAdvance;
         _undeliveredExperiences = undeliveredExperiences?.ToList() ?? [];
         _draftHandoff = draftHandoff;
         _nextExperienceSequence = nextExperienceSequence;
+        _goals = goals ?? CycleGoalSet.Empty;
     }
 
     public static bool ValidHandoff(string? text) => text is null || text.EnumerateRunes().Count() <= MaximumHandoffScalars;
@@ -42,6 +45,8 @@ public sealed partial class CharacterInteractionState : IDurableObject {
             NextExperienceSequence <= 0 || !ValidHandoff(DraftHandoff)) {
             throw new InvalidOperationException("Invalid character interaction identity or handoff.");
         }
+        if (Goals is null) { throw new InvalidOperationException("The character must own its goal collection."); }
+        Goals.ValidateThrough(CurrentContext?.ContextSequence ?? 0, CurrentContext?.LastOperationSequence ?? 0);
         long lastExperience = 0;
         if (CurrentContext is { } context) {
             context.Validate(actorId, worldTime, ref lastExperience);
@@ -98,6 +103,7 @@ public sealed partial class CharacterContext : IDurableObject {
             throw new InvalidOperationException("Invalid character context identity or sequence.");
         }
         Opening.Validate(actorId, worldTime, ref lastExperience);
+        Opening.Observation.Goals?.ValidateThrough(ContextSequence, 0);
         if (Opening.PreviousAdvance is { } previous && previous.SourceContextSequence != ContextSequence - 1 ||
             (Status == CharacterContextStatus.Terminal) != (Opening.ActivityState == CycleOutcomeActivityState.Terminal) ||
             Status == CharacterContextStatus.Terminal && (Items.Count != 0 || LastOperationSequence != 0)) {
@@ -106,11 +112,29 @@ public sealed partial class CharacterContext : IDurableObject {
         long lastItem = 0;
         long lastOperation = 0;
         ModelTime lastObservationAt = Opening.Observation.Time;
+        CycleGoalSet? priorGoals = Opening.Observation.Goals;
         foreach (CharacterContextItem item in Items) {
             if (item is null || item.ItemSequence <= lastItem) {
                 throw new InvalidOperationException("Context item identities must be strictly increasing.");
             }
             item.Validate(actorId, worldTime, ref lastExperience);
+            // Perceptions have no operation identity: their snapshot is bounded by the
+            // preceding operation, never by a later operation in the same Context.
+            item.Observation?.Goals?.ValidateThrough(ContextSequence, item.OperationSequence ?? lastOperation);
+            if (item.GoalOperation is { Success: true } goalReceipt) {
+                if (priorGoals is null || item.OperationSequence is not { } sequence ||
+                    !CycleGoalCommandParser.TryParse(item.RawInput!, out CycleGoalCommand? command, out _) || command is null) {
+                    throw new InvalidOperationException("A successful goal item requires its frozen prestate and parsed command.");
+                }
+                CycleGoalOperationResult expected = CycleGoalRules.Apply(priorGoals, command, ContextSequence, sequence);
+                if (!expected.Success || !expected.Receipt.SameAs(goalReceipt) || !expected.After.SameAs(item.Observation?.Goals)) {
+                    throw new InvalidOperationException("Frozen goal history does not match its recorded operation.");
+                }
+            } else if (item.Observation is { } unchanged &&
+                (priorGoals is null ? unchanged.Goals is not null : !priorGoals.SameAs(unchanged.Goals))) {
+                throw new InvalidOperationException("Non-goal observations cannot change private goals.");
+            }
+            if (item.Observation is { } visible) { priorGoals = visible.Goals; }
             lastItem = item.ItemSequence;
             if (item.OperationSequence is { } operation) {
                 if (operation <= lastOperation || operation > LastOperationSequence) {
@@ -165,6 +189,7 @@ public sealed partial class CharacterContextOpening : IDurableObject {
         Observation.Survival?.Validate(Observation.Time);
         Observation.ValidateJourney();
         Observation.Communication?.Validate();
+        Observation.Goals?.Validate();
         PreviousAdvance?.Validate(actorId, DeliveredAt);
         CharacterExperience.ValidateSequence(Experiences, actorId, DeliveredAt, ref lastExperience);
     }
@@ -209,7 +234,7 @@ public sealed partial class CharacterExperience : IDurableObject {
 }
 
 /// <summary>One atomic request/result group or independent perception with its full updated visible observation.</summary>
-[DurableType("DramaBoard.ResourceCycle.CharacterContextItem", 1)]
+[DurableType("DramaBoard.ResourceCycle.CharacterContextItem", 2)]
 public sealed partial class CharacterContextItem : IDurableObject {
     [DurableField(1)] private long _itemSequence;
     [DurableField(2)] private long? _operationSequence;
@@ -220,6 +245,8 @@ public sealed partial class CharacterContextItem : IDurableObject {
     [DurableField(7)] private List<CharacterExperience> _experiences;
     [DurableField(8)] private CycleObservation? _observation;
     [DurableField(9)] private bool _isRejected;
+    [DurableField(10)] private CycleGoalReceipt? _goalOperation;
+    public CycleGoalReceipt? GoalOperation => _goalOperation;
     public long ItemSequence => _itemSequence;
     public long? OperationSequence => _operationSequence;
     public string? RawInput => _rawInput;
@@ -232,7 +259,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
 
     public CharacterContextItem(long itemSequence, long? operationSequence = null, string? rawInput = null,
         string? toolCallId = null, string? operationRecordId = null, string? result = null,
-        IEnumerable<CharacterExperience>? experiences = null, CycleObservation? observation = null, bool isRejected = false) {
+        IEnumerable<CharacterExperience>? experiences = null, CycleObservation? observation = null, bool isRejected = false, CycleGoalReceipt? goalOperation = null) {
         _itemSequence = itemSequence;
         _operationSequence = operationSequence;
         _rawInput = rawInput;
@@ -242,6 +269,7 @@ public sealed partial class CharacterContextItem : IDurableObject {
         _experiences = experiences?.ToList() ?? [];
         _observation = observation;
         _isRejected = isRejected;
+        _goalOperation = goalOperation;
     }
 
     internal void Validate(string actorId, ModelTime worldTime, ref long lastExperience) {
@@ -266,6 +294,20 @@ public sealed partial class CharacterContextItem : IDurableObject {
         Observation?.Survival?.Validate(Observation.Time);
         Observation?.ValidateJourney();
         Observation?.Communication?.Validate();
+        Observation?.Goals?.Validate();
+        GoalOperation?.Validate();
+        if (RawInput is not null && CycleGoalCommandParser.TryGetKind(RawInput, out CycleGoalOperationKind goalKind)) {
+            if (GoalOperation is null || GoalOperation.Kind != goalKind ||
+                IsRejected && !CycleGoalRules.Reject(goalKind, Result!).SameAs(GoalOperation)) {
+                throw new InvalidOperationException("Goal submissions require a matching typed result.");
+            }
+        } else if (GoalOperation is not null) {
+            throw new InvalidOperationException("A non-goal submission cannot carry a goal receipt.");
+        }
+        if (GoalOperation is { } goal && (OperationSequence is null || goal.Success == IsRejected ||
+            goal.Message != Result || Experiences.Count != 0)) {
+            throw new InvalidOperationException("A goal receipt must match its own recorded operation without world experiences.");
+        }
         CharacterExperience.ValidateSequence(Experiences, actorId, Observation?.Time ?? worldTime, ref lastExperience);
     }
 }
