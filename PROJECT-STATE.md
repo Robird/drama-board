@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；[角色实验环境一期](docs/design/character-gym/README.md)已完成：轨迹、反馈与定位分叉续跑。可开始积累现场；闭环改进留到二期，尚未启动。
+> 最近整理：2026-10-31；下一主线为[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)，已建立 Goal 工作草案，尚未施工；Character Gym 一期已完成，二期闭环改进继续延期。
 
 ## 最终目标
 
@@ -26,7 +26,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，按[使用说明](docs/design/character-gym/usage.md)记录角色轨迹、提交反馈并定位完成 S 分叉续跑；下一步是积累实际现场，二期修复/对照评估需另行启动，重开条件集中在[实施入口](docs/implementation/character-gym-plan.md)。
+**当前焦点**：用户已选择以第二款独立游戏[微型小镇](docs/codex-goals/microtown/README.md)带动多游戏共享代码提取与必要关联重构，并增加生产、交易和居民生活等玩法；已保存[设计草案](docs/codex-goals/microtown/design.md)及[下一轮 Goal 提示词](docs/codex-goals/microtown/goal.md)，尚未施工。下一步先核对 Context/Goals/控制器/Gym 的组合边界，再以可运行切片同时推进共享能力与小镇，具体问题只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。保留山林求生回归，不将第二游戏做成求生开关堆积；详细数值与物理拆分按实施证据调整。
+
+[角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
