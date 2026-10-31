@@ -37,6 +37,6 @@ LLM/Gym 宿主通过 [Microtown.Completion](../Microtown.Completion/README.md) �
 
 社交、忙碌响应、持久恢复与本人饱食预览的证据边界见[社交切片验收](../../docs/experiments/microtown-social-acceptance.md)。
 
-报价切片的构建、测试与实际试玩证据集中在[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)；实现说明本身不表示验收已通过，也不代表真实模型已完成整个经济日。
+报价切片的构建、测试与实际 Console 证据见[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)。当前三个真实模型居民已完成 30h 经济日、反馈分叉和有引导的交易探针，见[试玩报告](../../docs/experiments/microtown-playtest.md)；整体交付见[总验收](../../docs/experiments/microtown-acceptance.md)。
 
 owner 预测维护的全量 oracle、真实磁盘恢复、提交隔离与 25h 产品 Console 证据见[预测验收](../../docs/experiments/microtown-prediction-acceptance.md)。

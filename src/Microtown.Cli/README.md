@@ -122,4 +122,4 @@ pwsh -NoProfile -File scripts/Smoke-Microtown.ps1
 
 本轮社交、忙碌继续/取消、冷开及饱食预览的验证范围见[社交切片验收](../../docs/experiments/microtown-social-acceptance.md)。
 
-报价命令与本版存档的验证进度见[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)；上述操作说明不代表测试已通过或真实模型已完成整个经济日。
+报价规则与本版存档的证据见[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)。三个真实 LLM 居民已跑至预定 30h，覆盖市场刷新、双商品生产/外销及消费；另完成反馈定位分叉和有引导的居民成交，见[试玩报告](../../docs/experiments/microtown-playtest.md)与[总验收](../../docs/experiments/microtown-acceptance.md)。两段子局因预算暂停，不能按 exit 0 当作游戏结束。

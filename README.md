@@ -19,7 +19,7 @@ Source roots, generator/schema wiring and validation boundaries are documented i
 
 ## Microtown economy prototype
 
-[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Console serves Human or LLM residents in turn, with independent saves, character-visible material and Gym feedback/trajectory/fork tools. Residents can exchange speech and gifts, including during notified production/waiting responses. Addressed offers support atomic item/money exchange, rejection, withdrawal and expiry. Prediction maintenance and full-economic-day model acceptance remain in progress; see the [active milestone](docs/codex-goals/microtown/README.md).
+[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Console serves Human or LLM residents in turn, with independent saves, character-visible material and Gym feedback/trajectory/fork tools. Residents can exchange speech and gifts, including during notified production/waiting responses. Addressed offers support atomic item/money exchange, rejection, withdrawal and expiry. Owner prediction maintenance, a real three-resident 30-hour economic day, feedback fork and guided resident trade are verified; see [milestone acceptance](docs/experiments/microtown-acceptance.md) and [playtest limits](docs/experiments/microtown-playtest.md).
 
 ```powershell
 dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town --hours 48

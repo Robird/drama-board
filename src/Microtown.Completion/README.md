@@ -20,4 +20,4 @@
 
 [测试](../../tests/Microtown.Completion.Tests/TownLlmCharacterControllerTests.cs) 使用真实共享循环与 fake completion，覆盖三居民材料/Tail 隔离、反馈、预算、取消、串行渲染、操作身份及游戏拒绝的下一次呈现。这些测试不等于真实模型试玩或人机协作验收。
 
-本版领域为 GameRevision 3，Business/EventKind/Fact/Experience Schema 2；存档边界见[领域说明](../Microtown/README.md)。本轮验证范围由[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)记录，不以适配器接线宣称测试已通过或真实模型完整经济日已完成。
+本版领域为 GameRevision 3，Business/EventKind/Fact/Experience Schema 2；存档边界见[领域说明](../Microtown/README.md)。规则和恢复证据见[报价交易验收](../../docs/experiments/microtown-trade-acceptance.md)；当前真实三居民 30h 经济日、精确反馈分叉和有引导的成交见[试玩报告](../../docs/experiments/microtown-playtest.md)。没有真实模型的全命令覆盖或自发合作结论。
