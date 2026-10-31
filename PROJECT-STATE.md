@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；主线为[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)，共享模块、小镇持久经济与 Human/LLM/Gym 已接通，下一步完善居民交互与完整经济日体验；Character Gym 一期已完成，二期闭环改进继续延期。
+> 最近整理：2026-10-31；主线为[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)，共享模块、小镇持久经济与 Human/LLM/Gym 已接通，下一步实现居民报价交易、预测维护与完整经济日体验；Character Gym 一期已完成，二期闭环改进继续延期。
 
 ## 最终目标
 
@@ -26,7 +26,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户已选择以第二款独立游戏[微型小镇](docs/codex-goals/microtown/README.md)带动多游戏共享代码提取与必要关联重构，并增加生产、交易和居民生活等玩法；已进入迭代施工。[Goals](src/Goals/GoalRules.cs)、[CharacterControl.Completion](src/CharacterControl.Completion/LlmDecisionLoop.cs)、[CharacterGym](src/CharacterGym/GymJournal.cs) 已提取并由山林游戏使用；各游戏保持强类型角色材料与独立发布根。[小镇](src/Microtown/README.md) 已贯通三居民经济、独立 S/E、冷开/fork、冻结观察及 [Human Console](src/Microtown.Cli/README.md)，见[持久交互验收](docs/experiments/microtown-persistence-acceptance.md)；共享 LLM/Gym 已完成[接线及真实反馈分叉短探针](docs/experiments/microtown-llm-gym-acceptance.md)，下一步增加有界社交材料、忙碌响应与居民交易。当前最近回执/本人经历不等于完整 Context 历史，短局不替代完整经济日模型验收。具体问题只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。保留山林求生回归，不将第二游戏做成求生开关堆积。
+**当前焦点**：用户已选择以第二款独立游戏[微型小镇](docs/codex-goals/microtown/README.md)带动多游戏共享代码提取与必要关联重构，并增加生产、交易和居民生活等玩法；已进入迭代施工。[Goals](src/Goals/GoalRules.cs)、[CharacterControl.Completion](src/CharacterControl.Completion/LlmDecisionLoop.cs)、[CharacterGym](src/CharacterGym/GymJournal.cs) 已提取并由山林游戏使用；各游戏保持强类型角色材料与独立发布根。[小镇](src/Microtown/README.md) 已贯通三居民经济、独立 S/E、冷开/fork、冻结观察及 [Human Console](src/Microtown.Cli/README.md)，见[持久交互验收](docs/experiments/microtown-persistence-acceptance.md)；共享 LLM/Gym 已完成[接线及真实反馈分叉短探针](docs/experiments/microtown-llm-gym-acceptance.md)，同地交流/赠与、有界个人记录和忙碌响应已有[交互验收](docs/experiments/microtown-social-acceptance.md)。下一步接居民报价交易、Town owner 预测维护与完整经济日模型体验；当前有界记录不等于完整 Context 历史，短局不替代完整经济日验收。具体问题只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。保留山林求生回归，不将第二游戏做成求生开关堆积。
 
 [角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 

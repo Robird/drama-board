@@ -20,7 +20,7 @@ public sealed partial record TownActivity(
     [field: DurableField(7)] int InputCount = 0) : IDurableObject;
 
 /// <summary>FoodReserve uses unit-hours in millisecond ticks, so elapsed need loss is exact and independent of step frequency.</summary>
-[DurableType("DramaBoard.Microtown.Character", 1)]
+[DurableType("DramaBoard.Microtown.Character", 2)]
 public sealed partial record TownCharacter(
     [field: DurableField(1)] string Id,
     [field: DurableField(2)] string Name,
@@ -36,6 +36,8 @@ public sealed partial record TownCharacter(
     [field: DurableField(12)] long NextActivityId = 1,
     [field: DurableField(13)] TownOperationReceipt? LastOperationReceipt = null,
     [field: DurableField(14)] TownExperience? LastExperience = null) : IDurableObject {
+    [DurableField(15)] private readonly TownInteractionState _interaction = TownInteractionState.Empty;
+    public TownInteractionState Interaction { get => _interaction; init => _interaction = value ?? throw new ArgumentNullException(nameof(value)); }
     public double Food => (double)FoodReserve / TownContent.Hour;
     public double MinimumFood => (double)MinimumFoodReserve / TownContent.Hour;
 }
@@ -184,6 +186,12 @@ public sealed partial class TownBusinessState : IDurableObject {
             actor.Inventory.Validate(); actor.Goals.ValidateThrough(actor.DecisionSequence, actor.OperationSequence);
             actor.LastOperationReceipt?.Validate();
             actor.LastExperience?.Validate();
+            if (actor.Interaction is null) { throw new InvalidOperationException("A resident requires interaction state."); }
+            actor.Interaction.Validate(actor.Id, Time);
+            if (actor.Interaction.Entries.Any(entry => !Characters.Any(other => other.Id == entry.SenderId) ||
+                !Characters.Any(other => other.Id == entry.RecipientId))) {
+                throw new InvalidOperationException("Interaction participants must be town residents.");
+            }
             if (actor.LastOperationReceipt is { } receipt && (receipt.ActorId != actor.Id || receipt.At > Time ||
                 receipt.DecisionSequence > actor.DecisionSequence || receipt.OperationSequence > actor.OperationSequence) ||
                 actor.LastExperience is { } experience && experience.At > Time) {
@@ -209,11 +217,15 @@ public sealed partial class TownBusinessState : IDurableObject {
                         activity.InputCount != (long)recipe.InputCount * activity.Batches || Place(actor.Id) != "workshop") {
                         throw new InvalidOperationException("Production must retain the recipe's exact work-in-progress ingredients.");
                     }
+                    if (!TownPlanning.CanSettleActivity(actor, actor.Inventory)) {
+                        throw new InvalidOperationException("Inventory must accommodate both production completion and cancellation separately.");
+                    }
                 }
             }
         }
         if (Spatial.Entities.Count != Characters.Count(actor => !actor.Failed)) { throw new InvalidOperationException("Unexpected town spatial entity."); }
-        if (OpenDecisionActorId is { } id && (Character(id).Failed || Character(id).Activity is not null || Place(id) is null)) {
+        if (OpenDecisionActorId is { } id && (Character(id).Failed ||
+            Character(id).Activity is not null && !Character(id).Interaction.NeedsResponse || Place(id) is null)) {
             throw new InvalidOperationException("A decision requires an available resident.");
         }
         Economy.Verify(this);

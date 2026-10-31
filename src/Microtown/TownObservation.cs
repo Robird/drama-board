@@ -8,6 +8,12 @@ namespace DramaBoard.Microtown;
 public sealed record TownVisibleResident(string Id, string Name, string Activity);
 public sealed record TownVisibleRoute(string PassageId, string Destination, long DurationTicks);
 public sealed record TownVisibleMarketItem(string ItemId, int BuyPrice, int SellPrice, int? AvailableStock, int? RemainingDemand);
+/// <summary>An offer derived from the sender's visible facts, not a guarantee of recipient acceptance.</summary>
+public sealed record TownVisibleSocialAction(string Syntax, string Example, string Description,
+    long MaximumOfferedQuantity, string? BlockedReason, bool IsGift) {
+    public bool CanOffer => BlockedReason is null;
+}
+public sealed record TownVisibleInteraction(TownInteractionEntry Entry, bool NewThisDecision, bool AwaitingDelivery);
 
 /// <summary>One command family at this observation boundary. Quantified families accept every integer from 1 through MaximumQuantity.</summary>
 /// <remarks>Example is a complete command. A zero maximum denotes a blocked family, with a concrete reason.
@@ -20,7 +26,8 @@ public sealed record TownVisibleAction(string Syntax, string Example, string Des
 /// <summary>A frozen actor-visible value projection; it retains no world, callbacks or other residents' private state.</summary>
 /// <remarks>Inventory and Goals are immutable snapshots. Market prices and refresh schedules are public;
 /// live stock and demand are visible only at the market. Other residents are visible only at the same place.
-/// This first slice is an observation, not a persistent interaction-history model.</remarks>
+/// The interaction journal belongs to the character; this is only a frozen projection of its bounded records,
+/// not another owner of history or evidence that a controller consumed a published decision.</remarks>
 public sealed class TownObservation {
     public string ActorId { get; }
     public string Name { get; }
@@ -43,12 +50,16 @@ public sealed class TownObservation {
     public TownActivity? Activity { get; }
     public TownOperationReceipt? LastOperationReceipt { get; }
     public TownExperience? LastExperience { get; }
+    public bool NeedsResponse { get; }
+    public long DroppedInteractionCount { get; }
+    public IReadOnlyList<TownVisibleInteraction> Interactions { get; }
     public IReadOnlyList<TownVisibleResident> Residents { get; }
     public IReadOnlyList<TownVisibleRoute> Routes { get; }
     public IReadOnlyList<TownRecipe> Recipes { get; }
     public IReadOnlyList<TownVisibleMarketItem> Market { get; }
     public ModelTime NextMarketRefresh { get; }
     public IReadOnlyList<TownVisibleAction> Actions { get; }
+    public IReadOnlyList<TownVisibleSocialAction> SocialActions { get; }
 
     private TownObservation(TownWorld world, string actorId) {
         TownBusinessState state = world.Business;
@@ -59,6 +70,12 @@ public sealed class TownObservation {
         PlaceId = state.Place(actorId); Money = actor.Money; FoodReserve = actor.FoodReserve;
         MinimumFoodReserve = actor.MinimumFoodReserve; Inventory = actor.Inventory; Goals = actor.Goals; Activity = actor.Activity;
         LastOperationReceipt = actor.LastOperationReceipt; LastExperience = actor.LastExperience;
+        NeedsResponse = actor.Interaction.NeedsResponse;
+        DroppedInteractionCount = actor.Interaction.Entries.Count == 0 ? actor.Interaction.LastSequence
+            : actor.Interaction.Entries[0].Sequence - 1;
+        Interactions = Array.AsReadOnly(actor.Interaction.Entries.Select(entry => new TownVisibleInteraction(entry,
+            entry.Sequence > actor.Interaction.OpeningAfter && entry.Sequence <= actor.Interaction.DeliveredThrough,
+            entry.Sequence > actor.Interaction.DeliveredThrough)).ToArray());
         if (state.Spatial.TryGetEntity(new(actorId), out SpatialEntity? entity) && entity!.Location is TraversingLocation travel) {
             PassageId = travel.PassageId.Value; Destination = travel.TargetPlaceId.Value; ArrivalDue = travel.ArrivalDue;
         }
@@ -81,6 +98,8 @@ public sealed class TownObservation {
         var actions = new List<TownVisibleAction>();
         Add("eat", "eat", $"Consume one meal; instant, +{TownContent.MealFood} food capped at 100.");
         Add("wait <hours>", "wait 1", "Wait for the specified whole hours; hunger continues.", true);
+        Add("continue", "continue", "Acknowledge the response opportunity and keep the current activity's original completion time.");
+        Add("cancel", "cancel", "Stop waiting or production; production returns all reserved ingredients, with no partial output.");
         foreach (TownVisibleRoute route in Routes) {
             Add($"go {route.PassageId}", $"go {route.PassageId}", $"Travel to {route.Destination}; duration shown in adjacent routes.");
         }
@@ -92,6 +111,24 @@ public sealed class TownObservation {
             if (item.SellPrice > 0) { Add($"sell {item.ItemId} <count>", $"sell {item.ItemId} 1", $"Export at {item.SellPrice} money per unit; instant at market.", true); }
         }
         Actions = actions.AsReadOnly();
+        var social = new List<TownVisibleSocialAction>();
+        foreach (TownVisibleResident resident in Residents) {
+            AddSocial($"say {resident.Id} <text>", $"say {resident.Id} Hello", "Send a private utterance to this nearby resident.", 1, false);
+            foreach (string item in TownContent.Items) {
+                AddSocial($"give {resident.Id} {item} <count>", $"give {resident.Id} {item} 1",
+                    "Offer your items to this nearby resident; transfer is all-or-nothing.", Math.Min(1000, actor.Inventory.Count(item)), true);
+            }
+            AddSocial($"give {resident.Id} money <count>", $"give {resident.Id} money 1",
+                "Offer your money to this nearby resident; transfer is all-or-nothing.", actor.Money, true);
+        }
+        SocialActions = social.AsReadOnly();
+
+        void AddSocial(string syntax, string example, string description, long maximum, bool gift) {
+            // This check deliberately excludes recipient-private capacity and counters. Never probe
+            // TownPlanning.Check with increasing gift quantities to infer the recipient's inventory.
+            string? reason = TownPlanning.CheckSocialOffer(state, actorId, TownCommand.Parse(example));
+            social.Add(new(syntax, example, description, reason is null ? maximum : 0, reason, gift));
+        }
 
         void Add(string syntax, string example, string description, bool quantity = false) {
             TownCommand command = TownCommand.Parse(example);

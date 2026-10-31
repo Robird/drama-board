@@ -84,6 +84,10 @@ try {
     }
     if (actor is not null || label is not null) { throw new ArgumentException("--actor and --fork-label require a management operation."); }
     return await TownConsole.RunAsync(options, cancellationToken: cancellation.Token);
+} catch (InvalidDataException error) {
+    // DG can reject a former schema while hydrating children, before the application revision is readable.
+    Console.Error.WriteLine($"Microtown cannot read this data/schema with game revision {TownGameRevision.Current}. Old development saves are not migrated; use a new store. Detail: {error.Message}");
+    return 1;
 } catch (Exception error) when (error is ArgumentException or FormatException or IOException or InvalidOperationException or KeyNotFoundException) {
     Console.Error.WriteLine($"Microtown stopped: {error.Message}");
     return 1;

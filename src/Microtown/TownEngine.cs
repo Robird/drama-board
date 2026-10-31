@@ -89,7 +89,7 @@ public static class TownEngine {
         int last = business.Characters.ToList().FindIndex(actor => actor.Id == business.LastServedActorId);
         for (int offset = 1; offset <= business.Characters.Count; offset++) {
             TownCharacter actor = business.Characters[(last + offset) % business.Characters.Count];
-            if (!actor.Failed && actor.Activity is null && business.Place(actor.Id) is not null) { return actor.Id; }
+            if (!actor.Failed && (actor.Activity is null || actor.Interaction.NeedsResponse) && business.Place(actor.Id) is not null) { return actor.Id; }
         }
         return null;
     }
@@ -130,7 +130,7 @@ public static class TownEngine {
                 string id = prediction.ActorId!;
                 if (before.OpenDecisionActorId is null) {
                     TownCharacter actor = before.Character(id);
-                    TownCharacter opened = actor with { DecisionSequence = checked(actor.DecisionSequence + 1) };
+                    TownCharacter opened = actor with { DecisionSequence = checked(actor.DecisionSequence + 1), Interaction = actor.Interaction.OpenDecision() };
                     return new([new(TownEventKind.DecisionOpened, before,
                         TownPlanning.Replace(before, opened, id), id, "Decision boundary opened.")]);
                 }
@@ -151,8 +151,9 @@ public static class TownEngine {
                     TownCharacter actor = at.Character(prediction.ActorId!);
                     TownCharacter failed = actor with {
                         Failed = true, FoodReserve = 0, MinimumFoodReserve = 0, Activity = null,
+                        Interaction = actor.Interaction.ClearResponse(),
                         LastExperience = new(TownEventKind.Failed, prediction.Due, "Food exhausted; unused production inputs remain in your estate."),
-                        Inventory = actor.Activity?.InputItem is { } input ? actor.Inventory.Add(input, actor.Activity.InputCount) : actor.Inventory
+                        Inventory = TownPlanning.ReturnActivityInputs(actor)
                     };
                     GraphSpatialFact[] spatialFacts = [new EntityRemovedFact(new(actor.Id))];
                     GraphSpatialState spatial = TownPlanning.ApplySpatial(at.Spatial, prediction.Due, spatialFacts);
