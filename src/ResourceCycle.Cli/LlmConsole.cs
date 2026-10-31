@@ -57,7 +57,7 @@ internal static class LlmConsole {
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
             Version = kernel.Version.ToString(), Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
         output.WriteLine($"{(duo ? "双角色模式：a = Human，b = LLM" : "LLM 旁观模式")}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 {(duo ? "--duo" : "--survival")} --llm 和连接配置。");
-        CompletionConnectionRegistry? registry = null;
+        CompletionConnectionBinding? binding = null;
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
         void DeliverTerminals() {
             human?.RenderCommitted(kernel.World, "a");
@@ -77,8 +77,10 @@ internal static class LlmConsole {
                     client = suppliedClient;
                     model = options.Model ?? "gpt-6.1-sol";
                 } else {
-                    (registry, string connectionId, model) = await ConnectAsync(options, cancellationToken);
-                    client = registry.GetClient(connectionId);
+                    binding = await CompletionConnectionBinding.ConnectAsync(new(options.Model, options.AuthFile, options.Catalog, options.Connection), cancellationToken);
+                    string connectionId = binding.ConnectionId;
+                    model = binding.Model;
+                    client = binding.Client;
                     audit.Write("binding", new { ActorId = duo ? "b" : "a", ConnectionId = connectionId, ModelId = model });
                 }
                 return new LlmCharacterController(client, model,
@@ -133,7 +135,7 @@ internal static class LlmConsole {
             output.WriteLine($"LLM 宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
             return 1;
         } finally {
-            if (registry is not null) { await registry.DisposeAsync(); }
+            if (binding is not null) { await binding.DisposeAsync(); }
         }
     }
 
@@ -146,37 +148,6 @@ internal static class LlmConsole {
         string text = CharacterContextRenderer.RenderFull(world.Business.InteractionStates[actorId], new DecisionPlayLayout());
         audit.Write("terminal", new { ActorId = actorId, Outcome = world.GetCharacter(actorId).Ending!.Outcome.ToString(), Context = text });
         audit.Output.WriteLine(text);
-    }
-
-    private static async Task<(CompletionConnectionRegistry Registry, string ConnectionId, string Model)> ConnectAsync(
-        LlmHostOptions options, CancellationToken cancellationToken) {
-        CompletionConnectionCatalogConfig catalog;
-        CompletionConnectionConfig selected;
-        ICompletionClientFactory factory = new DefaultCompletionClientFactory();
-        if (options.Catalog is not null) {
-            catalog = CompletionConnectionConfigLoader.LoadCatalogFile(options.Catalog);
-            selected = catalog.Connections.SingleOrDefault(c => c.Id == options.Connection)
-                ?? throw new ArgumentException("所指定连接不存在于 Completion 目录中。");
-            if (options.Model is not null) { selected = selected with { ModelId = options.Model }; }
-            // Resolve only the selected connection; unused providers need not have their secrets configured.
-            catalog = CompletionConnectionConfigLoader.NormalizeAndValidateCatalog(new([selected]));
-            selected = catalog.Connections.Single();
-            if (selected.Kind == CodexSubscriptionCompletionClientFactory.ConnectionKind) {
-                factory = CodexSubscriptionCompletionClientFactory.CreateFromEnvironment(factory, productName: "DramaBoard");
-            }
-        } else {
-            selected = new("drama-codex", CodexSubscriptionCompletionClientFactory.ConnectionKind,
-                options.Model ?? "gpt-6.1-sol", CodexSubscriptionCompletionClientFactory.CompletionSurfaceId,
-                CodexSubscriptionCompletionClientFactory.CanonicalBaseAddress);
-            var credentials = options.AuthFile is null ? new CodexCliAuthFileCredentialProvider()
-                : new CodexCliAuthFileCredentialProvider(options.AuthFile);
-            // Provision this explicitly selected host run; credentials and account metadata are never logged or persisted.
-            CodexSubscriptionCredential credential = await credentials.GetCredentialAsync(cancellationToken);
-            factory = new CodexSubscriptionCompletionClientFactory(credentials, credential.AccountFingerprint,
-                productName: "DramaBoard", fallback: factory);
-            catalog = new([selected]);
-        }
-        return (new CompletionConnectionRegistry(catalog, factory), selected.Id, selected.ModelId);
     }
 
     private sealed class RecordedController(CycleOperationJournal journal) : ICycleCharacterController {

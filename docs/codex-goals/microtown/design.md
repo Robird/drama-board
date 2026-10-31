@@ -92,10 +92,14 @@ Context 暂不泛型化：山林的冻结观察、目标回执及经历校验有
 
 `TownDurableHistory.Open` 检查根/事件身份、修订与相邻 S/E/游标关系，重建就绪世界；不执行 pending、不发布新 E/S。pending 的业务应用及完整验证由正常 Kernel 恢复完成，不能把 Open 当成已完成 pending。`TownFact` 暂用完整不可变 NextBusiness 加 typed SpatialFacts，E 与 S 独立对象图；后续跨版本转换须同时考虑 pending 内的替换业务图。
 
-控制器来源 `TownControllerOperation` 在解析前保存 RawInput/ToolCallId/OperationRecordId；成功和拒绝都把 `TownOperationReceipt` 存入事实及本人状态。拒绝保持 DecisionSequence，递增 OperationSequence 并产生新 S。`CaptureDecisionBoundary` 捕获当前精确完成 S、角色/操作序号、游标和游戏版本；未来每次真实模型 Request 都应重新捕获，不能按 DecisionSequence 复用旧锚点。
+控制器来源 `TownControllerOperation` 在解析前保存 RawInput/ToolCallId/OperationRecordId；成功和拒绝都把 `TownOperationReceipt` 存入事实及本人状态。拒绝保持 DecisionSequence，递增 OperationSequence 并产生新 S。`CaptureDecisionBoundary` 捕获当前精确完成 S、角色/操作序号、游标和游戏版本；Gym 每次真实模型 Request 都重新捕获，不能按 DecisionSequence 复用旧锚点。
 
-`Fork` 验证源分支历史成员、精确 S 及公开决策窗口，再直接注册子分支；不造新的业务 S，不改变 lineage、时间、随机坐标或累计账。Console 当前仅通过 `--branch` 选择运行分支，反馈定位与 fork 管理接入留给下一 Gym 切片。
+`Fork` 验证源分支历史成员、精确 S 及公开决策窗口，再直接注册子分支；不造新的业务 S，不改变 lineage、时间、随机坐标或累计账。Console 通过 `--branch` 选择运行分支；`--gym-fork` / `--gym-fork-request` 分别按反馈/请求定位原完成 S。子分支证据前缀截至源请求之前，不混入父未来；原生工具 Tail 不作为游戏状态恢复。
 
 现有 E/S 独立修订、完成 S fork、pending 恢复与角色可见性合同保留。旧开发存档不承诺全面兼容；若拆分改变 Schema 或序列化身份，明确拒绝/支持范围，保留旧证据，不隐式改写。当前程序产生的新档须完成冷开与 fork 验收。
 
-已选择独立薄 [Microtown.Cli](../../../src/Microtown.Cli/README.md)，当前复用同一个 Human Console 服务三居民，支持新档、冷开、操作预算、EOF/:quit 暂停与全知经济统计。后续为角色选择 Human/脚本/LLM 的必要绑定，并复用模型连接配置与 Gym 管理能力；不复制完整原 CLI 和模型协议循环。
+已选择独立薄 [Microtown.Cli](../../../src/Microtown.Cli/README.md)，同一个 Console 默认服务三位 Human 居民，`--llm` 绑定三个模型居民，`--human` 可保留一位由人类调试接管。一个 Town 适配器串行调用共享 `LlmDecisionLoop`，每次只接冻结观察，预算跨居民计数，跨决策不保留语义 Tail。`CompletionConnectionBinding` 也被山林宿主使用：恢复后首次真实调用才初始化，目录只解析选中连接的环境变量。
+
+`TownGymSession` 复用共享日志、消息投影及导出。先恢复 pending E，再依据当前分支已完成 E/S 的精确操作回执补录宿主结果；无提交的旧输入标 Interrupted，绝不从日志重放。反馈持久化后才返回工具回执。只读管理不修复日志；写会话也先只读核对游戏身份，不能在拒绝外来日志前修剪尾行。每次运行记录预算、角色绑定、程序集哈希和显式实验指令；运行时实际解析的模型/连接另记 binding，不保存凭据。
+
+共享部分不解释 Town 的世界根、历史边界或经济账。`ReadCommittedOperations` 目前扫描选定分支历史以找待补回执，适合当前有限实验，尚未提供大型长期运行的索引；性能优化须保留精确 E/S 和 fork 前缀语义。当前接线与短局验证不替代完整经济日、社交及忙碌通知验收。

@@ -19,11 +19,12 @@ Source roots, generator/schema wiring and validation boundaries are documented i
 
 ## Microtown economy prototype
 
-[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Human Console currently serves the residents in turn, with independent saves and character-visible material. LLM/Gym integration and resident-to-resident social trade are still being implemented; see the [active milestone](docs/codex-goals/microtown/README.md).
+[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Console serves Human or LLM residents in turn, with independent saves, character-visible material and Gym feedback/trajectory/fork tools. Resident-to-resident social trade and the full multi-day experience remain in progress; see the [active milestone](docs/codex-goals/microtown/README.md).
 
 ```powershell
 dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town --hours 48
 dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town
+dotnet run --project src/Microtown.Cli -c Release -- --llm --feedback --store artifacts/my-llm-town --max-calls 32
 pwsh -NoProfile -File scripts/Smoke-Microtown.ps1
 ```
 

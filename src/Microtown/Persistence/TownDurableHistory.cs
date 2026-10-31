@@ -14,7 +14,7 @@ public sealed record TownDecisionBoundary(string GameId, int GameRevision, Branc
 
 /// <summary>One branch's E/S publication adapter. Opening restores values and predictions, never executes pending work.</summary>
 /// <remarks>One Kernel owns this instance. Any commit failure retires it; dispose and reopen to discover durable progress.</remarks>
-public sealed class TownDurableHistory : IOccurrenceHistory<TownWorld, TownFact>, IDisposable {
+public sealed partial class TownDurableHistory : IOccurrenceHistory<TownWorld, TownFact>, IDisposable {
     private readonly Repository _repository;
     private readonly WorkingCopy _work;
     private TownDurableRoot _root;
@@ -50,6 +50,7 @@ public sealed class TownDurableHistory : IOccurrenceHistory<TownWorld, TownFact>
     public OccurrenceEvent<TownFact>? PendingEvent { get { RequireUsable(); return _pending?.Occurrence; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
     public BranchId BranchId { get { RequireUsable(); return _work.BranchId; } }
+    public TownBranchInfo CurrentBranch { get { RequireUsable(); return Describe(_repository, _repository.ReadBranchInfo(_work.BranchId)); } }
     public CommitId HeadCommitId { get { RequireUsable(); return _work.BaseCommitId; } }
     public CommitId CompletedStateCommitId { get { RequireUsable(); return _work.StateSourceCommitId!.Value; } }
 
@@ -58,12 +59,7 @@ public sealed class TownDurableHistory : IOccurrenceHistory<TownWorld, TownFact>
         if (_pending is not null || HeadCommitId != CompletedStateCommitId) {
             throw new InvalidOperationException("A decision anchor requires a completed State without pending work.");
         }
-        if (_root.Business.OpenDecisionActorId != actorId || TownEngine.NextDecisionActor(_state) != actorId) {
-            throw new InvalidOperationException("This resident does not own the current open decision.");
-        }
-        TownCharacter actor = _root.Business.Character(actorId);
-        return new(_root.GameId, _root.GameRevision, BranchId, CompletedStateCommitId, actorId,
-            actor.DecisionSequence, actor.OperationSequence, Cursor.Version.LineageId, Cursor.Version.TransitionCount, Cursor.CurrentModelTime.Ticks);
+        return DescribeDecisionBoundary(BranchId, CompletedStateCommitId, _root, _state, actorId);
     }
 
     public static TownDurableHistory Create(string path, TownWorld world, KernelCursor cursor) {
@@ -134,18 +130,11 @@ public sealed class TownDurableHistory : IOccurrenceHistory<TownWorld, TownFact>
     /// <summary>Registers a child at an exact, open decision State in the specified source history, without publishing another State.</summary>
     public static TownBranchInfo Fork(string path, BranchId sourceBranch, CommitId completedState, string label) {
         using Repository repository = Repository.OpenExisting(path, CreateModels());
-        CommitInfo? selected = repository.ReadFrames(sourceBranch).FirstOrDefault(commit => commit.Id == completedState);
-        if (selected is null || selected.Kind != CommitKind.State) {
-            throw new InvalidDataException("Fork requires an exact completed State in the selected source branch history.");
-        }
-        TownDurableRoot root = repository.LoadState(completedState) as TownDurableRoot
-            ?? throw new InvalidDataException("The fork State is not a Microtown root.");
-        root.Validate();
-        ValidateCompletedBoundary(repository, completedState, root);
-        TownWorld world = TownEngine.Rebuild(root.Business);
-        if (root.Business.OpenDecisionActorId is not { } actor || TownEngine.NextDecisionActor(world) != actor) {
+        TownDurableRoot root = ReadSelectedState(repository, sourceBranch, completedState);
+        if (root.Business.OpenDecisionActorId is not { } actor) {
             throw new InvalidDataException("The selected State must contain an open resident decision.");
         }
+        DescribeDecisionBoundary(sourceBranch, completedState, root, TownEngine.Rebuild(root.Business), actor);
         BranchInfo child = repository.ForkBranch(completedState, label);
         // No graph loading or publication after registering the child: a successful result is unambiguous.
         return new(child.Id, child.DisplayLabel, completedState, completedState, completedState, false);

@@ -14,7 +14,9 @@
 
 `TownObservation` 只有本人私有状态、同地居民公开身份/活动，以及可知的地图和经济规则。实时市场余量只在市场可见；其他地点只显示公共价格和刷新时刻。`TownTextRenderer` 仅从冻结值产生 Markdown，列出动作形状、合法数量范围和阻因。
 
-边界：尚未接入 LLM/Gym 宿主、交流/报价或忙碌通知。当前仅保留最近一条操作回执与本人活动结果，不是完整 Context 历史；社交切片需进一步完善。`TownDecision.World` / `CreateKernel` 保留为开发者脚本接缝，包含其他角色私有状态，**不能直接传给模型**。尚不暴露 cancel。Kernel 的同刻护栏不替代宿主预算，Console 另有每次运行操作上限。
+LLM/Gym 宿主通过 [Microtown.Completion](../Microtown.Completion/README.md) 和 [Microtown.Cli](../Microtown.Cli/README.md) 接入；领域库不依赖模型客户端或宿主日志。`InspectDecisionBoundary` 只读验证历史精确 S；`ReadCommittedOperations` 查询当前分支已完成 E/S 的操作回执，排除 pending 和初始快照中复制的旧回执。Gym 日志只是证据，不能授权重做游戏动作。
+
+边界：交流/报价和忙碌通知仍待实现。当前仅保留最近一条操作回执与本人活动结果，不是完整 Context 历史；社交切片需进一步完善。`TownDecision.World` / `CreateKernel` 保留为开发者脚本接缝，包含其他角色私有状态，**不能直接传给模型**。尚不暴露 cancel。Kernel 的同刻护栏不替代宿主操作/模型调用预算。
 
 当前 Town 预测每次 Forecast 从业务派生；Spatial 仍使用已有增量缓存与 Rebuild/Complete。尚未把 Town 预测按 owner 增量维护。`TownFact` 保存完整不可变业务替换值和强类型空间事实；E 与 S 是独立持久图，恢复不依赖跨图引用相等，也不重新规划。领域状态及回执均已有 DG Schema。
 
