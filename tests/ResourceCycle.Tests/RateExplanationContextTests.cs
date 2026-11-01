@@ -176,8 +176,10 @@ public sealed class RateExplanationContextTests {
         CycleCharacter actor = world.GetCharacter("a");
         CycleSurvival body = actor.Survival!;
         var replacement = actor.WithSurvival(body.WithRates(world.Time, body.FoodRate, body.WaterRate, rate));
-        return CycleInteractionRules.Enrich(world, new CycleFact(CycleEventKind.ResourceDestroyed, world.Time,
-            resourceId: "wood", changedResources: [world.GetResource("wood")], script: world.Script, changedCharacters: [replacement]));
+        var fact = new CycleFact(CycleEventKind.ResourceDestroyed, world.Time,
+            resourceId: "wood", changedResources: [world.GetResource("wood")], script: world.Script, changedCharacters: [replacement]);
+        // Keep the normal location-observation boundary while varying only the rate explanation.
+        return CycleInteractionRules.Enrich(world, CyclePlanning.Observe(world, fact));
     }
 
     private static CharacterContext Context(CycleWorld world) => world.Business.InteractionStates["a"].CurrentContext!;

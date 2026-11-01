@@ -67,11 +67,10 @@ public sealed partial class CycleSurvival : IDurableObject {
         CycleSurvival value = Project(at);
         if (value.IsFatal) { throw new InvalidOperationException("A depleted vital need cannot be revived by same-boundary consumption."); }
         long food = value.FoodUnits, water = value.WaterUnits, warmth = value.WarmthUnits;
-        switch (itemId) {
-            case "item.food": food = Math.Min(MaximumUnits, food + 35 * Scale); break;
-            case "item.water": water = Math.Min(MaximumUnits, water + 45 * Scale); break;
-            default: throw new ArgumentException("Unknown survival supply.", nameof(itemId));
-        }
+        int foodGain = LivingWorldEconomyContent.SupplyFood(itemId), waterGain = LivingWorldEconomyContent.SupplyWater(itemId);
+        if (foodGain == 0 && waterGain == 0) { throw new ArgumentException("Unknown survival supply.", nameof(itemId)); }
+        food = Math.Min(MaximumUnits, food + foodGain * Scale);
+        water = Math.Min(MaximumUnits, water + waterGain * Scale);
         return new CycleSurvival(at, food, water, warmth, FoodRate, WaterRate, WarmthRate,
             value.WarnedMask, value.PendingMask, value.PendingSince).Project(at);
     }

@@ -10,7 +10,7 @@
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 山野镇（Hillside） | 正在融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 当前沿用 ResourceCycle 项目和 Cycle 类型；生产经济尚待从 Microtown 迁入，完成状态见专题工作计划。 |
+| 山野镇（Hillside） | 正在融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 当前沿用 ResourceCycle 项目和 Cycle 类型；已融合生产、现金、市场与赠钱，居民报价待迁入；完成状态见专题工作计划。 |
 | 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | ResourceCycle 与 Microtown 各自拥有领域根和存档适配，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `CycleGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
 | 共享领域模块（Shared domain module） | 一项可复用能力的状态与局部规则；游戏组合协调跨模块变化并统一发布。 | Inventory 为现有实例；Goals 等后续提取按实际消费者验证，不把模块等同 ECS 组件。 |
@@ -22,7 +22,7 @@
 | 角色（Character） | 世界内承受规则效果的对象，拥有技能、背包和活动。不能用 Player 指代角色状态。 | [CycleCharacter](../src/ResourceCycle/CycleCharacter.cs) |
 | 跟随（Following） | 队员主动授权领队带自己移动的持续关系；期间禁止自己的移动与其他耗时活动，到点可显式解除；不等于采集/等待 Activity。领队和队员由关系派生。 | `CycleCharacter.FollowingLeaderId`；`follow` / `unfollow` / `dismiss-followers`；游戏内 `CycleFollowingRules` 与唯一 `CycleActions.NeedsDecision`。见[跟随合同](design/character-following.md)。 |
 | 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前应用接口为 [ICycleCharacterController](../src/ResourceCycle/CycleActions.cs)，尚未提取通用引擎接口。 |
-| Console 控制器（Human Console，旧称 HumanPlayer） | 通过终端取得角色决策；操作者可以是真人或使用终端的 Coding Agent。操作者、控制器和被控角色是三个不同概念；与游戏内直接调用模型的 LLM 控制器区分。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；同一入口可服务多个角色，生存场景当前支持 1–3 人。后续[融合世界](codex-goals/living-world/README.md)沿用此区分，尚未实施融合。 |
+| Console 控制器（Human Console，旧称 HumanPlayer） | 通过终端取得角色决策；操作者可以是真人或使用终端的 Coding Agent。操作者、控制器和被控角色是三个不同概念；与游戏内直接调用模型的 LLM 控制器区分。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；同一入口可服务多个角色，生存场景当前支持 1–3 人。当前[融合世界](codex-goals/living-world/README.md)沿用此区分，支持指定 Human 角色与模型角色同局。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
 | 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |

@@ -217,10 +217,16 @@ public sealed partial class CharacterExperience : IDurableObject {
                 entry.From.Ticks < 0 || entry.At < entry.From || entry.At > worldTime) {
                 throw new InvalidOperationException("Invalid actor experience identity, order or interval.");
             }
-            if ((entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven) != (entry.Communication is not null)) {
+            if ((entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven or CycleObservedEventKind.MoneyGiven) != (entry.Communication is not null)) {
                 throw new InvalidOperationException("Communication experiences must retain their signed content.");
             }
             entry.Communication?.Validate(actorId, entry.Kind);
+            if ((entry.Kind is CycleObservedEventKind.ProductionStarted or CycleObservedEventKind.ProductionCompleted) != (entry.Production is not null) ||
+                entry.Production is { } production && (string.IsNullOrWhiteSpace(production.RecipeId) || production.Batches <= 0 ||
+                    string.IsNullOrWhiteSpace(production.InputItem) || production.InputCount <= 0 ||
+                    string.IsNullOrWhiteSpace(production.OutputItem) || production.OutputCount <= 0)) {
+                throw new InvalidOperationException("Production experiences must retain their typed production order.");
+            }
             if (entry.Kind == CycleObservedEventKind.SpeechShouted &&
                 (string.IsNullOrWhiteSpace(entry.SubjectId) || string.IsNullOrWhiteSpace(entry.SubjectName) ||
                     !CycleCommunicationRules.ValidSpeech(entry.Detail))) {
@@ -370,7 +376,7 @@ public sealed partial class PendingAdvance : IDurableObject {
         // This is an historical acceptance record, not a handle to the actor's current activity.
         // A following Continue may have no timed association; its acceptance fact checks the relation.
         bool validAssociation = Command?.Kind switch {
-            CycleCommandKind.Wait or CycleCommandKind.Gather => ActivityId is not null && MovementGeneration is null,
+            CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Produce => ActivityId is not null && MovementGeneration is null,
             CycleCommandKind.Go => ActivityId is null && MovementGeneration is not null,
             CycleCommandKind.Follow => ActivityId is null && MovementGeneration is null,
             CycleCommandKind.Continue => ActivityId is null || MovementGeneration is null,

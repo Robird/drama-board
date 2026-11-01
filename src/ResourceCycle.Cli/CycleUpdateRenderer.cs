@@ -67,7 +67,7 @@ internal static class CycleUpdateRenderer {
     private static string TextValue(string text, CycleStateKey? key) => key switch {
         { Category: "continuity", Field: "draft" } => CharacterContextRenderer.DataLiteral(text),
         { Category: "activity", Field: "kind" } or { Category: "continuity", Field: "pending" } => text switch {
-            "Follow" => "跟随", "Wait" => "等待", "Gather" => "采集", "Go" => "移动", "Continue" => "确认后继续", _ => text
+            "Follow" => "跟随", "Wait" => "等待", "Gather" => "采集", "Produce" => "生产", "Go" => "移动", "Continue" => "确认后继续", _ => text
         },
         { Category: "world", Field: "outcome" } => text switch {
             "Exploring" => "探索中", "Escaped" => "获救", "Dead" => "旅程结束", _ => text
@@ -92,7 +92,16 @@ internal static class CycleUpdateRenderer {
             if (communication.SpeechText is { } speech) {
                 return $"{sender} 对 {recipient} 说（角色话语，未经世界证实）：{CharacterContextRenderer.DataLiteral(speech)}";
             }
+            if (e.Kind == CycleObservedEventKind.MoneyGiven) { return $"{sender} 赠给 {recipient} {communication.MoneyAmount} 钱。"; }
             return $"{sender} 赠给 {recipient} {communication.ItemCount} 份物品 {CharacterContextRenderer.DataLiteral(communication.ItemId!)}。";
+        }
+        if (e.Production is { } production) {
+            string recipe = CharacterContextRenderer.DataLiteral(production.RecipeId);
+            string input = CharacterContextRenderer.DataLiteral(production.InputItem);
+            string output = CharacterContextRenderer.DataLiteral(production.OutputItem);
+            return e.Kind == CycleObservedEventKind.ProductionStarted
+                ? $"开始生产 {recipe} ×{production.Batches} 批；已预留 {input} ×{production.InputCount}，计划产出 {output} ×{production.OutputCount}。"
+                : $"生产完成：{recipe} ×{production.Batches} 批，取得 {output} ×{production.OutputCount}。";
         }
         string subject = e.SubjectName ?? e.SubjectId ?? "";
         string title = e.Kind.ToString() switch {
@@ -105,6 +114,9 @@ internal static class CycleUpdateRenderer {
             "HandoffEdited" => "已更新下回合留言。", "ResourceRegenerated" => $"{subject}再生。", "ResourceDestroyed" => $"{subject}资源被清空。",
             "FollowStarted" => "已建立跟随关系。", "FollowEnded" => "跟随关系已解除。", "FollowersDismissed" => "已解散直属队员。",
             "CommunicationBudgetRenewed" => "时间已推进，本时刻通信额度恢复。",
+            "MarketBought" => $"从市场买入{subject}。", "MarketSold" => $"向市场卖出{subject}。",
+            "ProductionStarted" => $"开始生产{subject}，投入已预留。", "ProductionCompleted" => $"生产完成：{subject}。",
+            "MarketRefreshed" => "市场库存与收购额度已补充。",
             _ => $"{e.Kind}：{subject}。"
         };
         return e.Detail is { Length: > 0 } detail ? title + " " + (detail switch {
@@ -128,6 +140,11 @@ internal static class CycleUpdateRenderer {
         foreach (var parts in commands.Where(parts => parts[0] != nameof(CycleCommandKind.Wait))) {
             yield return parts[0] switch {
                 nameof(CycleCommandKind.Gather) => $"gather {parts[2]} {(parts[4] == "all" ? "all" : parts[3])}",
+                nameof(CycleCommandKind.Buy) => $"buy {parts[6]} {parts[3]}",
+                nameof(CycleCommandKind.Sell) => $"sell {parts[6]} {parts[3]}",
+                nameof(CycleCommandKind.Produce) => $"produce {parts[8]} {parts[3]}",
+                nameof(CycleCommandKind.GiveMoney) => $"give {parts[7]} money {parts[9]}",
+                nameof(CycleCommandKind.Give) => $"give {parts[7]} {parts[6]} {parts[3]}",
                 nameof(CycleCommandKind.Follow) => $"follow {parts[7]}",
                 nameof(CycleCommandKind.DismissFollowers) => "dismiss-followers",
                 nameof(CycleCommandKind.Go) => $"go {parts[5]}", nameof(CycleCommandKind.Use) => $"use {parts[6]}",

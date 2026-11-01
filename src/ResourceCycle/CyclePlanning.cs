@@ -13,12 +13,15 @@ internal static class CyclePlanning {
         CyclePredictionKind.CompleteActivity => CompleteActivity(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning => CycleSurvivalRules.Boundary(world, prediction),
         CyclePredictionKind.Weather => CycleEnvironmentRules.Plan(world, prediction.Due),
+        CyclePredictionKind.MarketRefresh => CycleEconomyRules.Refresh(world, prediction.Due),
         _ => throw new InvalidOperationException("This occurrence requires a Player decision.")
     };
 
     public static CycleFact Decision(CycleWorld world, string actorId, CycleCommand command) {
         CycleCharacter actor = world.GetCharacter(actorId);
         switch (command.Kind) {
+            case CycleCommandKind.Buy or CycleCommandKind.Sell or CycleCommandKind.Produce or CycleCommandKind.GiveMoney:
+                return CycleEconomyRules.Plan(world, actorId, command);
             case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:
                 return CycleFollowingRules.Plan(world, actor, command);
             case CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.Shout:
@@ -32,9 +35,9 @@ internal static class CyclePlanning {
                 CycleActivity current = actor.Activity!;
                 string result = current.Kind == CycleActivityKind.Gather
                     ? $"已取消采集，目标 {current.TargetCount} 份，已取得 {current.CompletedCount} 份；未完成的一份不结算。"
-                    : "已取消等待。";
+                    : current.Kind == CycleActivityKind.Produce ? "已取消生产，托管原料全部退回。" : "已取消等待。";
                 return new(CycleEventKind.ActivityCancelled, world.Time, actorId,
-                    changedCharacters: [actor.Change(null, notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId, result: result);
+                    changedCharacters: [actor.Change(null, CycleEconomyRules.ReturnActivityInputs(actor), notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId, result: result);
             }
             case CycleCommandKind.Wait: {
                 long duration = command.Hours * CycleTime.Hour;
@@ -153,6 +156,7 @@ internal static class CyclePlanning {
     private static CycleFact CompleteActivity(CycleWorld world, string actorId, ModelTime time) {
         CycleCharacter actor = world.GetCharacter(actorId);
         CycleActivity activity = actor.Activity ?? throw new InvalidOperationException("No activity can complete.");
+        if (activity.Kind == CycleActivityKind.Produce) { return CycleEconomyRules.Complete(world, actorId, time); }
         if (activity.Kind == CycleActivityKind.Wait) {
             string result = $"等待完成，现在是 {time}。";
             return new(CycleEventKind.WaitCompleted, time, actorId,

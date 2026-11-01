@@ -36,6 +36,11 @@ public static class CycleOperationResults {
                 CycleObservedEventKind.FollowersDismissed => "已解散全部跟随者。",
                 CycleObservedEventKind.SpeechShouted => "已大喊。",
                 CycleObservedEventKind.SpeechSent => $"已向 {e.Communication!.RecipientName}（{e.Communication.RecipientId}）发送署名话语。",
+                CycleObservedEventKind.MarketBought => $"购入了{e.SubjectName}。",
+                CycleObservedEventKind.MarketSold => $"出售了{e.SubjectName}。",
+                CycleObservedEventKind.ProductionStarted => $"开始生产 {e.Production!.RecipeId}，共 {e.Production.Batches} 批。",
+                CycleObservedEventKind.ProductionCompleted => $"完成生产 {e.Production!.RecipeId}，共 {e.Production.Batches} 批。",
+                CycleObservedEventKind.MoneyGiven => $"已将 {e.Communication!.MoneyAmount} 钱赠与 {e.Communication.RecipientName}（{e.Communication.RecipientId}）。",
                 CycleObservedEventKind.ItemGiven => $"已将 {e.Communication!.ItemId} ×{e.Communication.ItemCount} 赠与 {e.Communication.RecipientName}（{e.Communication.RecipientId}）。",
                 _ => e.Kind.ToString()
             };
@@ -57,6 +62,7 @@ public static class CycleOperationResults {
     };
     private static string Label(CycleStateKey key) => (key.Category, key.Field) switch {
         ("body", "food") => "饱食", ("body", "water") => "水分", ("body", "warmth") => "温暖",
+        ("money", "balance") => "现金",
         ("inventory", "count") => key.ObjectId,
         ("communication", "remaining") => "本时刻剩余交流次数",
         ("communication", "pending") => "待响应通信",

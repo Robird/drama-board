@@ -12,11 +12,38 @@ internal static class CycleFactApplication {
             throw new InvalidOperationException("A fact must apply at its recorded time and cannot move time backwards.");
         }
         ValidateFact(business, fact);
+        CycleEconomyValidation.Validate(business, fact);
         CycleBusinessState result = ApplyReplacements(business, instant, fact);
+        ValidateRecordedVisits(business, result, fact);
         CycleObservedEventValidation.Validate(business, result, fact);
         CycleGoalInteractionRules.Validate(business, result, fact);
         CycleInteractionValidation.Validate(business, result, fact);
         return result;
+    }
+    private static void ValidateRecordedVisits(CycleBusinessState before, CycleBusinessState after, CycleFact fact) {
+        if (before.Expedition is null || fact.Kind is CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected or
+            CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechShouted) {
+            if (fact.Visits.Count != 0) { throw new InvalidOperationException("This event cannot create geographic knowledge."); }
+            return;
+        }
+        var expected = new List<(string ActorId, string PlaceId)>();
+        foreach (CycleCharacter actor in before.Characters.Where(value => value.IsActive)) {
+            SpatialLocation? location = CycleActions.Location(after, actor.Id);
+            if (fact.Kind == CycleEventKind.MoveStarted && fact.SpatialFacts.OfType<TraversalStartedFact>().Any(value => value.EntityId.Value == actor.Id)) {
+                location = CycleActions.Location(before, actor.Id);
+            }
+            if (location is AtPlaceLocation at) { expected.Add((actor.Id, at.PlaceId.Value)); }
+        }
+        if (!expected.SequenceEqual(fact.Visits.Select(visit => (visit.ActorId, visit.PlaceId)))) {
+            throw new InvalidOperationException("Visits must record exactly the active observers' actual places.");
+        }
+        foreach (CycleVisit visit in fact.Visits) {
+            CycleResource[] visible = after.Resources.Where(resource => CycleExpeditionMap.GetResourcePlace(resource.Id) == visit.PlaceId).ToArray();
+            if (visit.At != fact.At || visit.Resources.Count != visible.Length ||
+                !visit.Resources.Zip(visible).All(pair => CycleObservationEquality.SameResource(pair.First, pair.Second))) {
+                throw new InvalidOperationException("Visit time and resource snapshots must match the recorded boundary.");
+            }
+        }
     }
     // Planning-only candidate: no material validation until the event and interaction replacements exist.
     internal static CycleBusinessState ApplyReplacements(CycleBusinessState business, LogicalInstant instant, CycleFact fact) {
@@ -29,10 +56,11 @@ internal static class CycleFactApplication {
             expedition = expedition.Change(spatial, fact.Visits, fact.Environment);
         }
         return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
-            fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges);
+            fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges, fact.Economy);
     }
     internal static bool SameFoldedBusiness(CycleBusinessState expected, CycleBusinessState actual) =>
         expected.Time == actual.Time && ReferenceEquals(expected.Light, actual.Light) && ReferenceEquals(expected.Script, actual.Script) &&
+        ReferenceEquals(expected.Economy, actual.Economy) &&
         expected.LastServedActorId == actual.LastServedActorId && expected.Resources.Count == actual.Resources.Count &&
         expected.Resources.Zip(actual.Resources).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
         expected.Characters.Count == actual.Characters.Count && expected.Characters.Zip(actual.Characters).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
@@ -55,7 +83,7 @@ internal static class CycleFactApplication {
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
         bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted or
-            CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed;
+            CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed or CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.MoneyGiven;
         bool rejected = fact.Kind == CycleEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
         if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
@@ -79,16 +107,25 @@ internal static class CycleFactApplication {
             (CycleCommandKind.Say, CycleEventKind.SpeechSent) or
             (CycleCommandKind.Shout, CycleEventKind.SpeechShouted) or
             (CycleCommandKind.Give, CycleEventKind.ItemGiven) or
+            (CycleCommandKind.Buy, CycleEventKind.MarketBought) or
+            (CycleCommandKind.Sell, CycleEventKind.MarketSold) or
+            (CycleCommandKind.Produce, CycleEventKind.ProductionStarted) or
+            (CycleCommandKind.GiveMoney, CycleEventKind.MoneyGiven) or
             (CycleCommandKind.Follow, CycleEventKind.FollowStarted) or
             (CycleCommandKind.Unfollow, CycleEventKind.FollowEnded) or
             (CycleCommandKind.DismissFollowers, CycleEventKind.FollowersDismissed))) {
             throw new InvalidOperationException("The accepted raw input must parse to the recorded operation kind.");
         }
         bool communication = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted;
-        if (!communication && (fact.TargetActorId is not null && fact.Kind != CycleEventKind.FollowStarted || fact.SpeechText is not null || fact.ItemId is not null || fact.ItemCount != 0)) {
+        if (!communication && (fact.TargetActorId is not null && fact.Kind is not (CycleEventKind.FollowStarted or CycleEventKind.MoneyGiven) || fact.SpeechText is not null ||
+            (fact.ItemId is not null || fact.ItemCount != 0) && fact.Kind is not (CycleEventKind.MarketBought or CycleEventKind.MarketSold))) {
             throw new InvalidOperationException("Only communication or follow-start facts may carry their declared target or payload.");
         }
         bool valid = fact.Kind switch {
+            CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.ProductionCompleted =>
+                actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
+            CycleEventKind.MoneyGiven => actorEffect && fact.ChangedCharacters.Count == 2 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
+            CycleEventKind.MarketRefreshed => fact.ActorId is null && fact.ChangedCharacters.Count == 0 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
             CycleEventKind.SpeechShouted => actorEffect && fact.TargetActorId is null && fact.ItemId is null && fact.ItemCount == 0 &&
                 fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.Visits.Count == 0,
             CycleEventKind.SpeechSent or CycleEventKind.ItemGiven => actorEffect && fact.ChangedCharacters.Count == 2 &&
@@ -225,11 +262,13 @@ internal static class CycleFactApplication {
     }
 
     private static void ValidateCommunicationState(CycleBusinessState business, CycleFact fact, bool communication) {
+        // Monetary gift participant state is checked together with its exact wallet effects.
+        if (fact.Kind == CycleEventKind.MoneyGiven) { return; }
         if (!communication) {
             foreach (CycleCharacter changed in fact.ChangedCharacters) {
                 CycleCommunicationState before = business.GetCharacter(changed.Id).Communication;
                 bool acknowledge = !changed.IsActive || changed.Id == fact.ActorId && fact.Kind is
-                    CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted;
+                    CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ProductionStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted;
                 if (changed.Communication != (acknowledge ? before.Acknowledge() : before)) {
                     throw new InvalidOperationException("Only accepted communication spends budget; only explicit acknowledgement clears its attention.");
                 }
@@ -366,9 +405,7 @@ internal static class CycleFactApplication {
         }
     }
 
-    private static bool SameActivity(CycleActivity? a, CycleActivity? b) => ReferenceEquals(a, b) || a is not null && b is not null &&
-        (a.Kind, a.Id, a.StartedAt, a.DurationTicks, a.Due, a.ResourceId, a.TargetCount, a.CompletedCount, a.SelectedAll, a.CycleIndex) ==
-        (b.Kind, b.Id, b.StartedAt, b.DurationTicks, b.Due, b.ResourceId, b.TargetCount, b.CompletedCount, b.SelectedAll, b.CycleIndex);
+    private static bool SameActivity(CycleActivity? a, CycleActivity? b) => CycleObservationEquality.SameActivity(a, b);
     private static bool SameSurvival(CycleSurvival? a, CycleSurvival? b) => ReferenceEquals(a, b) || a is not null && b is not null &&
         (a.BaselineAt, a.FoodUnits, a.WaterUnits, a.WarmthUnits, a.WarnedMask, a.PendingMask, a.PendingSince) ==
         (b.BaselineAt, b.FoodUnits, b.WaterUnits, b.WarmthUnits, b.WarnedMask, b.PendingMask, b.PendingSince) &&

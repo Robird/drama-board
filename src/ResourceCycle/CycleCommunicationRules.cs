@@ -70,7 +70,9 @@ public static class CycleCommunicationRules {
             return ValidSpeech(command.SpeechText) ? null : $"话语需要非空文本，最多 {MaximumSpeechScalars} 个 Unicode 字符。";
         }
         if (sender.Backpack.Count(command.ItemId!) < command.Count) { return "背包中的物品数量不足。"; }
-        return world.GetCharacter(command.TargetActorId!).Backpack.CheckAdd(command.ItemId!, command.Count) == InventoryAdmission.Allowed
+        CycleCharacter receiver = world.GetCharacter(command.TargetActorId!);
+        return receiver.Backpack.CheckAdd(command.ItemId!, command.Count) == InventoryAdmission.Allowed &&
+            CycleEconomyRules.CanSettleActivity(receiver, receiver.Backpack.Add(command.ItemId!, command.Count))
             ? null : "对方当前无法接收这份物品。";
     }
     internal static CycleFact Plan(CycleWorld world, string senderId, CycleCommand command) {

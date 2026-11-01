@@ -5,11 +5,20 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.ActivityKind", 1)]
-public enum CycleActivityKind { Wait, Gather }
+[DurableType("DramaBoard.ResourceCycle.ActivityKind", 2)]
+public enum CycleActivityKind { Wait, Gather, Produce }
+
+[DurableType("DramaBoard.ResourceCycle.ProductionOrder", 1)]
+public sealed partial record CycleProductionOrder(
+    [field: DurableField(1)] string RecipeId,
+    [field: DurableField(2)] int Batches,
+    [field: DurableField(3)] string InputItem,
+    [field: DurableField(4)] int InputCount,
+    [field: DurableField(5)] string OutputItem,
+    [field: DurableField(6)] int OutputCount) : IDurableObject;
 
 /// <summary>A committed arrangement, including the current cycle's duration snapshot.</summary>
-[DurableType("DramaBoard.ResourceCycle.Activity", 1)]
+[DurableType("DramaBoard.ResourceCycle.Activity", 2)]
 public sealed partial class CycleActivity : IDurableObject {
     [DurableField(1)] private CycleActivityKind _kind;
     [DurableField(2)] private long _id;
@@ -21,6 +30,8 @@ public sealed partial class CycleActivity : IDurableObject {
     [DurableField(8)] private int _completedCount;
     [DurableField(9)] private bool _selectedAll;
     [DurableField(10)] private int _cycleIndex;
+    [DurableField(11)] private CycleProductionOrder? _production;
+    public CycleProductionOrder? Production => _production;
     public CycleActivityKind Kind => _kind;
     public long Id => _id;
     public ModelTime StartedAt => _startedAt;
@@ -32,10 +43,11 @@ public sealed partial class CycleActivity : IDurableObject {
     public bool SelectedAll => _selectedAll;
     public int CycleIndex => _cycleIndex;
     public CycleActivity(CycleActivityKind kind, long id, ModelTime startedAt, long durationTicks, ModelTime due,
-        string? resourceId = null, int targetCount = 0, int completedCount = 0, bool selectedAll = false, int cycleIndex = 0) {
+        string? resourceId = null, int targetCount = 0, int completedCount = 0, bool selectedAll = false, int cycleIndex = 0, CycleProductionOrder? production = null) {
         _kind = kind; _id = id; _startedAt = startedAt; _durationTicks = durationTicks; _due = due;
         _resourceId = resourceId; _targetCount = targetCount; _completedCount = completedCount;
         _selectedAll = selectedAll; _cycleIndex = cycleIndex;
+        _production = production;
     }
     internal void Validate(ModelTime time) {
         if (!Enum.IsDefined(Kind) || Id <= 0 || StartedAt.Ticks < 0 || StartedAt > time || Due < time ||
@@ -45,8 +57,15 @@ public sealed partial class CycleActivity : IDurableObject {
                 : ResourceId is not null || TargetCount != 0 || CompletedCount != 0 || SelectedAll || CycleIndex != 0)) {
             throw new InvalidOperationException("Invalid committed activity.");
         }
+        if ((Kind == CycleActivityKind.Produce) != (Production is not null)) { throw new InvalidOperationException("Production requires its escrow record."); }
+        if (Production is { } order) {
+            CycleRecipe? recipe = LivingWorldEconomyContent.Recipe(order.RecipeId);
+            if (recipe is null || order.Batches is < 1 or > 1000 || order.InputItem != recipe.InputItem || order.OutputItem != recipe.OutputItem ||
+                order.InputCount != (long)recipe.InputCount * order.Batches || order.OutputCount != (long)recipe.OutputCount * order.Batches ||
+                DurationTicks != recipe.DurationTicks * order.Batches) { throw new InvalidOperationException("Invalid production escrow or duration."); }
+        }
     }
-    public override string ToString() => $"{Kind}:{Id}:{StartedAt.Ticks}:{DurationTicks}:{Due.Ticks}:{ResourceId}:{TargetCount}:{CompletedCount}:{SelectedAll}:{CycleIndex}";
+    public override string ToString() => $"{Kind}:{Id}:{StartedAt.Ticks}:{DurationTicks}:{Due.Ticks}:{ResourceId}:{TargetCount}:{CompletedCount}:{SelectedAll}:{CycleIndex}:{Production}";
 }
 
 [DurableType("DramaBoard.ResourceCycle.NoticeKind", 1)]
@@ -76,7 +95,7 @@ public sealed partial class CycleNotice : IDurableObject {
     public override string ToString() => $"{Kind}:{ResourceId}:{ActorId}:{SourceId}:{At.Ticks}:{Count}:{Reason}";
 }
 
-[DurableType("DramaBoard.ResourceCycle.Character", 8)]
+[DurableType("DramaBoard.ResourceCycle.Character", 9)]
 public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(1)] private string _id;
     [DurableField(2)] private string _name;
@@ -91,6 +110,8 @@ public sealed partial class CycleCharacter : IDurableObject {
     [DurableField(11)] private CycleCharacterEnding? _ending;
     [DurableField(12)] private CycleCommunicationState _communication;
     [DurableField(13)] private string? _followingLeaderId;
+    [DurableField(14)] private long _money;
+    public long Money => _money;
     public string? FollowingLeaderId => _followingLeaderId;
     public CycleCommunicationState Communication => _communication;
     public CycleCharacterEnding? Ending => _ending;
@@ -107,28 +128,29 @@ public sealed partial class CycleCharacter : IDurableObject {
     public CycleSurvival? Survival => _survival;
     public CycleCharacter(string id, string name, int skillLevel = 0, ItemInventory? backpack = null,
         CycleActivity? activity = null, IEnumerable<CycleNotice>? notices = null, long decisionGeneration = 0,
-        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null, CycleCharacterEnding? ending = null, CycleCommunicationState? communication = null, string? followingLeaderId = null) {
+        string? lastResult = null, long nextActivityId = 1, CycleSurvival? survival = null, CycleCharacterEnding? ending = null, CycleCommunicationState? communication = null, string? followingLeaderId = null, long money = 0) {
         _id = id; _name = name; _skillLevel = skillLevel; _backpack = backpack ?? new(); _activity = activity;
         _notices = notices?.ToList() ?? []; _decisionGeneration = decisionGeneration; _lastResult = lastResult; _nextActivityId = nextActivityId;
         _survival = survival; _ending = ending; _communication = communication ?? new(new(0), 0, false);
         _followingLeaderId = followingLeaderId;
+        _money = money;
     }
     internal CycleCharacter Change(CycleActivity? activity, ItemInventory? backpack = null,
-        IEnumerable<CycleNotice>? notices = null, string? result = null, long? nextActivityId = null, CycleSurvival? survival = null, CycleCommunicationState? communication = null) =>
+        IEnumerable<CycleNotice>? notices = null, string? result = null, long? nextActivityId = null, CycleSurvival? survival = null, CycleCommunicationState? communication = null, long? money = null) =>
         new(Id, Name, SkillLevel, backpack ?? Backpack, activity, notices ?? _notices,
-            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival, Ending, communication ?? Communication, FollowingLeaderId);
+            checked(DecisionGeneration + 1), result ?? LastResult, nextActivityId ?? NextActivityId, survival ?? Survival, Ending, communication ?? Communication, FollowingLeaderId, money ?? Money);
     internal CycleCharacter WithSurvival(CycleSurvival survival) => new(Id, Name, SkillLevel, Backpack, Activity,
-        Notices, DecisionGeneration, LastResult, NextActivityId, survival, Ending, Communication, FollowingLeaderId);
+        Notices, DecisionGeneration, LastResult, NextActivityId, survival, Ending, Communication, FollowingLeaderId, Money);
     internal CycleCharacter AdvanceDecisionGeneration() =>
         new(Id, Name, SkillLevel, Backpack, Activity, Notices, checked(DecisionGeneration + 1),
-            LastResult, NextActivityId, Survival, Ending, Communication, FollowingLeaderId);
+            LastResult, NextActivityId, Survival, Ending, Communication, FollowingLeaderId, Money);
     internal CycleCharacter WithFollowing(string? leaderId, bool acknowledge = false, string? result = null) =>
         new(Id, Name, SkillLevel, Backpack, Activity, acknowledge ? [] : Notices, checked(DecisionGeneration + 1),
-            result ?? LastResult, NextActivityId, Survival, Ending, acknowledge ? Communication.Acknowledge() : Communication, leaderId);
+            result ?? LastResult, NextActivityId, Survival, Ending, acknowledge ? Communication.Acknowledge() : Communication, leaderId, Money);
     internal CycleCharacter End(CycleExpeditionOutcome outcome, ModelTime at, string reason, SpatialLocation location) {
         if (!IsActive || outcome == CycleExpeditionOutcome.Exploring) { throw new InvalidOperationException("A personal ending is final."); }
-        return new(Id, Name, SkillLevel, Backpack, null, [], checked(DecisionGeneration + 1), reason,
-            NextActivityId, Survival?.Freeze(at), new(outcome, at, reason, location), Communication.Acknowledge());
+        return new(Id, Name, SkillLevel, CycleEconomyRules.ReturnActivityInputs(this), null, [], checked(DecisionGeneration + 1), reason,
+            NextActivityId, Survival?.Freeze(at), new(outcome, at, reason, location), Communication.Acknowledge(), money: Money);
     }
     internal CycleCharacter Notify(CycleNotice notice) {
         CycleNotice? previous = _notices.SingleOrDefault(n => n.AggregationKey == notice.AggregationKey);
@@ -140,7 +162,7 @@ public sealed partial class CycleCharacter : IDurableObject {
     }
     internal void Validate(ModelTime time) {
         if (string.IsNullOrWhiteSpace(Id) || string.IsNullOrWhiteSpace(Name) || SkillLevel < 0 || Backpack is null ||
-            DecisionGeneration < 0 || NextActivityId <= 0 || (Activity is { } activity && activity.Id >= NextActivityId) ||
+            Money < 0 || DecisionGeneration < 0 || NextActivityId <= 0 || (Activity is { } activity && activity.Id >= NextActivityId) ||
             _notices.Select(n => n.AggregationKey).Distinct(StringComparer.Ordinal).Count() != _notices.Count ||
             _notices.Any(n => !Enum.IsDefined(n.Kind) || string.IsNullOrWhiteSpace(n.ResourceId) || string.IsNullOrWhiteSpace(n.SourceId) ||
                 string.IsNullOrWhiteSpace(n.Reason) || n.At.Ticks < 0 || n.At > time || n.Count <= 0)) {
@@ -160,9 +182,10 @@ public sealed partial class CycleCharacter : IDurableObject {
         Communication.Validate(time);
         Backpack.Validate();
         Activity?.Validate(time);
+        if (!CycleEconomyRules.CanSettleActivity(this, Backpack)) { throw new InvalidOperationException("Production completion and cancellation must both remain possible."); }
         Survival?.Validate();
         if (Survival?.BaselineAt > time) { throw new InvalidOperationException("Survival anchor cannot be in the future."); }
     }
     public override string ToString() => $"{Id}:{Name}:{SkillLevel};backpack={Backpack};activity={Activity};decision={DecisionGeneration};next={NextActivityId};notices=[{string.Join(';', _notices)}];result={LastResult}" +
-        (Survival is null ? "" : $";survival={Survival}") + $";ending={Ending};communication={Communication};following={FollowingLeaderId}";
+        (Survival is null ? "" : $";survival={Survival}") + $";ending={Ending};communication={Communication};following={FollowingLeaderId};money={Money}";
 }

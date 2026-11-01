@@ -160,7 +160,7 @@ public static class CycleEngine {
                 }
                 fact = CyclePlanning.Decision(world, prediction.TargetId, command).WithOperation(operation);
             } else { fact = CyclePlanning.Occurrence(world, prediction); }
-            return new([CycleInteractionRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, fact)), operation)]);
+            return new([CycleInteractionRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, CycleEconomyRules.Enrich(world, fact))), operation)]);
         }
         private static OccurrenceCandidate<CyclePrediction> Candidate(CyclePrediction prediction) =>
             new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);

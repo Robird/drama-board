@@ -47,16 +47,16 @@ public readonly partial record struct CycleVisibleValue {
     }
 }
 
-[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 4)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 5)]
 public enum CycleObservedEventKind {
     BodyChanged, ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, ExpeditionEnded, SpeechSent, ItemGiven,
-    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted
+    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted, MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven
 }
 
 /// <summary>Signed communication, not independently verified geography or another character's private state.</summary>
-[DurableType("DramaBoard.ResourceCycle.ObservedCommunication", 1)]
+[DurableType("DramaBoard.ResourceCycle.ObservedCommunication", 2)]
 public sealed partial record CycleObservedCommunication(
     [field: DurableField(1)] string SenderId,
     [field: DurableField(2)] string SenderName,
@@ -64,14 +64,18 @@ public sealed partial record CycleObservedCommunication(
     [field: DurableField(4)] string RecipientName,
     [field: DurableField(5)] string? SpeechText,
     [field: DurableField(6)] string? ItemId,
-    [field: DurableField(7)] int ItemCount) : IDurableObject {
+    [field: DurableField(7)] int ItemCount,
+    [field: DurableField(8)] long MoneyAmount = 0) : IDurableObject {
     internal void Validate(string observerId, CycleObservedEventKind kind) {
         if (string.IsNullOrWhiteSpace(SenderId) || string.IsNullOrWhiteSpace(SenderName) ||
             string.IsNullOrWhiteSpace(RecipientId) || string.IsNullOrWhiteSpace(RecipientName) ||
             SenderId == RecipientId || observerId != SenderId && observerId != RecipientId ||
-            (kind == CycleObservedEventKind.SpeechSent
-                ? !CycleCommunicationRules.ValidSpeech(SpeechText) || ItemId is not null || ItemCount != 0
-                : kind != CycleObservedEventKind.ItemGiven || SpeechText is not null || string.IsNullOrWhiteSpace(ItemId) || ItemCount <= 0)) {
+            !(kind switch {
+                CycleObservedEventKind.SpeechSent => CycleCommunicationRules.ValidSpeech(SpeechText) && ItemId is null && ItemCount == 0 && MoneyAmount == 0,
+                CycleObservedEventKind.ItemGiven => SpeechText is null && !string.IsNullOrWhiteSpace(ItemId) && ItemCount > 0 && MoneyAmount == 0,
+                CycleObservedEventKind.MoneyGiven => SpeechText is null && ItemId is null && ItemCount == 0 && MoneyAmount > 0,
+                _ => false
+            })) {
             throw new InvalidOperationException("Invalid signed communication material.");
         }
     }
@@ -89,7 +93,7 @@ public sealed partial class CycleObservedEffect : IDurableObject {
 }
 
 /// <summary>Experienced facts frozen in E; effects explain, but never execute, recorded business replacements.</summary>
-[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 4)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 5)]
 public sealed partial class CycleObservedEvent : IDurableObject {
     [DurableField(1)] private int _eventOrdinal;
     [DurableField(2)] private string _observerId;
@@ -101,6 +105,8 @@ public sealed partial class CycleObservedEvent : IDurableObject {
     [DurableField(8)] private string? _detail;
     [DurableField(9)] private List<CycleObservedEffect> _effects;
     [DurableField(10)] private CycleObservedCommunication? _communication;
+    [DurableField(11)] private CycleProductionOrder? _production;
+    public CycleProductionOrder? Production => _production;
     public int EventOrdinal => _eventOrdinal;
     public string ObserverId => _observerId;
     public CycleObservedEventKind Kind => _kind;
@@ -113,9 +119,10 @@ public sealed partial class CycleObservedEvent : IDurableObject {
     public CycleObservedCommunication? Communication => _communication;
     public CycleObservedEvent(int eventOrdinal, string observerId, CycleObservedEventKind kind, ModelTime from, ModelTime at,
         string? subjectId = null, string? subjectName = null, string? detail = null, IEnumerable<CycleObservedEffect>? effects = null,
-        CycleObservedCommunication? communication = null) {
+        CycleObservedCommunication? communication = null, CycleProductionOrder? production = null) {
         _eventOrdinal = eventOrdinal; _observerId = observerId; _kind = kind; _from = from; _at = at;
         _subjectId = subjectId; _subjectName = subjectName; _detail = detail; _effects = effects?.ToList() ?? [];
         _communication = communication;
+        _production = production;
     }
 }

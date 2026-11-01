@@ -42,7 +42,7 @@ internal static class CycleObservedEvents {
             bool received = ReceivesCommunication(fact, before.Id);
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
-            bool publicEvent = fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
+            bool publicEvent = fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.CurrentPlace(world, before.Id) == "market" || fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
             if (!subjectSelf && !received && !publicEvent && !movedSelf && !(relationCommand && following.Count > 0)) { continue; }
             var direct = new List<CycleObservedEffect>();
@@ -56,6 +56,7 @@ internal static class CycleObservedEvents {
             // Direct physiology is independent of the preceding elapsed-time interval.
             if (integrated is not null && final is not null) { AddVitals(direct, before.Id, integrated, final); }
             if (subjectSelf || received) {
+                Add(direct, new("money", before.Id, "balance"), Number(before.Money, "钱"), Number(after.Money, "钱"));
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
                     if (fact.Kind == CycleEventKind.ItemUsed && before.Backpack.Count(item) != after.Backpack.Count(item)) {
@@ -103,6 +104,9 @@ internal static class CycleObservedEvents {
                 CycleWeatherEffect weather = fact.Environment!.LastEffects.Single(effect => effect.ActorId == before.Id);
                 detail = fact.Environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
+            if (fact.Kind is CycleEventKind.MarketBought or CycleEventKind.MarketSold) {
+                subjectId = fact.ItemId; subjectName = ItemName(fact.ItemId!);
+            }
             if (fact.Kind == CycleEventKind.GatherFinished) { detail = fact.GatherStopReason?.ToString(); }
             if (fact.Kind == CycleEventKind.SpeechShouted) {
                 subjectId = fact.ActorId;
@@ -135,10 +139,12 @@ internal static class CycleObservedEvents {
             void Emit(CycleObservedEventKind eventKind, IEnumerable<CycleObservedEffect> effects, string? id = null,
                 string? name = null, string? detail = null, ModelTime? from = null) =>
                 events.Add(new(events.Count, before.Id, eventKind, from ?? fact.At, fact.At, id, name, detail, effects,
-                    eventKind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven
+                    eventKind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven or CycleObservedEventKind.MoneyGiven
                         ? new(fact.ActorId!, world.GetCharacter(fact.ActorId!).Name, fact.TargetActorId!,
-                            world.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount)
-                        : null));
+                            world.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount, fact.MoneyAmount)
+                        : null,
+                    eventKind == CycleObservedEventKind.ProductionStarted ? after.Activity!.Production :
+                        eventKind == CycleObservedEventKind.ProductionCompleted ? before.Activity!.Production : null));
         }
         return fact.WithObservedEvents(events);
     }
@@ -146,7 +152,7 @@ internal static class CycleObservedEvents {
     internal static bool ReceivesCommunication(CycleFact fact, string actorId) =>
         fact.Kind == CycleEventKind.SpeechShouted
             ? fact.ActorId != actorId && fact.ChangedCharacters.Any(character => character.Id == actorId)
-            : fact.TargetActorId == actorId && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+            : fact.TargetActorId == actorId && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.MoneyGiven;
 
     internal static bool MovedSelf(CycleFact fact, string actorId) => fact.SpatialFacts.Any(movement => movement switch {
         TraversalStartedFact started => started.EntityId.Value == actorId,
@@ -190,5 +196,5 @@ internal static class CycleObservedEvents {
     private static CycleVisibleValue Text(string? text) => text is null ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Literal(text);
     private static CycleVisibleValue PlaceValue(SpatialLocation location) => location is AtPlaceLocation at ? Text(at.PlaceId.Value) : CycleVisibleValue.KnownAbsent;
     private static CycleVisibleValue ArrivalValue(SpatialLocation location) => location is TraversingLocation moving ? Number(moving.ArrivalDue.Ticks, "ticks") : CycleVisibleValue.KnownAbsent;
-    private static string ItemName(string id) => id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id };
+    private static string ItemName(string id) => CycleEconomyObservation.ItemName(id);
 }

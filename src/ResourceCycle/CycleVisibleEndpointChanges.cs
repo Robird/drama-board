@@ -14,7 +14,7 @@ internal static class CycleVisibleEndpointChanges {
         if (!before.InteractionStates[actorId].Goals.SameAs(after.InteractionStates[actorId].Goals)) { return true; }
         CycleCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);
         if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
-            a.FollowingLeaderId != b.FollowingLeaderId ||
+            a.FollowingLeaderId != b.FollowingLeaderId || a.Money != b.Money ||
             !before.Characters.Where(c => c.FollowingLeaderId == actorId).Select(c => (c.Id, c.Name))
                 .SequenceEqual(after.Characters.Where(c => c.FollowingLeaderId == actorId).Select(c => (c.Id, c.Name))) ||
             a.FollowingLeaderId is { } leader && before.GetCharacter(leader).Name != after.GetCharacter(leader).Name ||
@@ -26,6 +26,7 @@ internal static class CycleVisibleEndpointChanges {
         if ((oldExpedition is null) != (newExpedition is null)) { return true; }
         string? oldPlace = Place(before, actorId), newPlace = Place(after, actorId);
         if (oldPlace != newPlace || Arrival(before, actorId) != Arrival(after, actorId)) { return true; }
+        if (oldPlace == "market" && !(before.Economy?.Market.SameState(after.Economy?.Market) ?? after.Economy is null)) { return true; }
         if (oldExpedition is not null && newExpedition is not null &&
             (!SameWeather(oldExpedition.Environment, newExpedition.Environment, actorId) ||
             !SameList(HistoricalVisits(oldExpedition, actorId, oldPlace), HistoricalVisits(newExpedition, actorId, newPlace), SameVisit))) {
@@ -53,6 +54,7 @@ internal static class CycleVisibleEndpointChanges {
 
     private static bool SamePublicCharacter(CycleCharacter a, CycleCharacter b) =>
         a.Id == b.Id && a.Name == b.Name && a.FollowingLeaderId == b.FollowingLeaderId &&
+        a.Activity?.Production?.RecipeId == b.Activity?.Production?.RecipeId &&
         (a.Activity is { Kind: CycleActivityKind.Gather } ag ? ag.ResourceId : null) ==
             (b.Activity is { Kind: CycleActivityKind.Gather } bg ? bg.ResourceId : null) &&
         (a.Activity?.Kind == CycleActivityKind.Wait) == (b.Activity?.Kind == CycleActivityKind.Wait);

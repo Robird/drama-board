@@ -30,6 +30,14 @@ public static class CycleCommandParser {
             }
         }
         string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts is ["give", var recipient, "money", var money] && long.TryParse(money, NumberStyles.None, CultureInfo.InvariantCulture, out long amount)) {
+            return CycleCommand.GiveMoney(recipient, amount);
+        }
+        if (parts is [var economic, var target, var units] && int.TryParse(units, NumberStyles.None, CultureInfo.InvariantCulture, out int economicCount)) {
+            if (economic == "buy") { return CycleCommand.Buy(target, economicCount); }
+            if (economic == "sell") { return CycleCommand.Sell(target, economicCount); }
+            if (economic == "produce") { return CycleCommand.Produce(target, economicCount); }
+        }
         if (parts is ["wait", var hours] && int.TryParse(hours, NumberStyles.None, CultureInfo.InvariantCulture, out int waitHours)) {
             return CycleCommand.Wait(waitHours);
         }
@@ -55,6 +63,10 @@ public static class CycleCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(CycleCommand command) => command.Kind switch {
+        CycleCommandKind.Buy => $"buy {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
+        CycleCommandKind.Sell => $"sell {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
+        CycleCommandKind.Produce => $"produce {command.RecipeId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
+        CycleCommandKind.GiveMoney => $"give {command.TargetActorId} money {command.MoneyAmount.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Follow => $"follow {command.TargetActorId}",
         CycleCommandKind.Unfollow => "unfollow",
         CycleCommandKind.DismissFollowers => "dismiss-followers",

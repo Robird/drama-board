@@ -16,6 +16,11 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "检查同回合反馈：已成功的操作不要重复，拒绝原因未变化时不要原样重试。没有需要记录的新变化时直接行动，无需输出检查清单或完整推理。"
         + "需要补给时可使用界面提供的即时 use 行动。不要调用 Console 元命令。";
 
+    private const string EconomyGuidance = "在镇里可按当前界面买卖与生产。市场的买入价是你付款，卖出价是市场向你付款；库存和收购额度有限，以提交结果为准。"
+        + "生产开始时预留全部投入，完成时取得产物；cancel 退回本次未完成生产的预留材料，不产生成品。买卖、补给和通信不会重置原活动期限。"
+        + "只使用眼前提供的市场、配方和物品标识；use item.ration 可补给，具体效果以当前材料为准。"
+        + "可用 give <actor-id> money <amount> 赠送自己的钱；接收或赠与不代表知道他人的余额或背包。";
+
     private const string GoalGuidance = "界面已提供目标管理。对照所有未结束事项与复查线索；方法失效不自动取消仍成立的目的。"
         + "新采纳的承诺、重要进展、方法变更或调查结论需要跨回合保留时，用界面中的目标命令记录简短内容和依据。"
         + "一次提交一条固定目标命令及 JSON 对象；以实际帮助中的字段和容量为准。成功编辑后根据结果继续行动，不因下一次独立调用重新创建。"
@@ -28,7 +33,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "新通信改变你采纳的分工或承诺时，若草稿尚未覆盖，先更新一次 handoff：记明谁承诺何物、自己的下一步及待核实事项。"
         + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。";
 
-    private const string FollowingGuidance = "结伴出行可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather 或 wait。"
+    private const string FollowingGuidance = "结伴出行可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather、produce 或 wait。"
         + "领队普通 go 带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
         + "跟随者收到提醒仍需处理，可 use 补给后 continue 继续跟随；say / give 仍仅限同地，途中不能改变跟随关系。";
 
@@ -36,7 +41,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "shout 与 say / give 共用发送额度，一次大喊只扣一次，无人听见也成功；回执不提供听众名单或接收确认。"
         + "听到大喊不取消原活动，也不自动集合；完成或取消活动后再自主返回和跟随。听见远处角色不代表同地可赠与或跟随，话语不等于世界证实。";
 
-    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance : "") + (observation.Goals is not null
+    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

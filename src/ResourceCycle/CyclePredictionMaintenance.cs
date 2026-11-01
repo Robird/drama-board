@@ -50,6 +50,7 @@ internal static class CyclePredictionMaintenance {
     // Fixed coarse subscriptions retain owners whose current output is absent. Child identity filtering
     // prevents attention-only changes from recalculating an activity or unrelated resource.
     private static bool Affected(string owner, CycleBusinessState before, CycleBusinessState after) {
+        if (owner == "market") { return !ReferenceEquals(before.Economy?.Market, after.Economy?.Market); }
         if (owner == "light") { return !ReferenceEquals(before.Light, after.Light); }
         if (owner == "script") { return !ReferenceEquals(before.Script, after.Script); }
         if (owner == "environment") { return !ReferenceEquals(before.Expedition?.Environment, after.Expedition?.Environment); }
@@ -68,6 +69,9 @@ internal static class CyclePredictionMaintenance {
         return activity ? !ReferenceEquals(previous.Activity, next.Activity) : !ReferenceEquals(previous, next);
     }
     private static IEnumerable<CycleBinding> CreateBindings(CycleBusinessState business) {
+        if (business.Economy is not null) {
+            foreach (CycleEventKind kind in new[] { CycleEventKind.MarketBought, CycleEventKind.MarketSold, CycleEventKind.MarketRefreshed }) { yield return new("market", kind, "*"); }
+        }
         yield return new("light", CycleEventKind.LightChanged, "*");
         yield return new("script", CycleEventKind.ResourceDestroyed, "*");
         if (business.Expedition?.Environment is not null) { yield return new("environment", CycleEventKind.WeatherResolved, "*"); }
@@ -89,16 +93,18 @@ internal static class CyclePredictionMaintenance {
                 }
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
-                CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled }) {
+                CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled,
+                CycleEventKind.ProductionStarted, CycleEventKind.ProductionCompleted }) {
                 yield return new($"actor:{actor.Id}:activity", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
                 CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged,
-                CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
+                CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected,
+                CycleEventKind.ProductionStarted, CycleEventKind.ProductionCompleted, CycleEventKind.MarketBought, CycleEventKind.MarketSold }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven, CycleEventKind.SpeechShouted,
-                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.FollowStarted, CycleEventKind.FollowEnded, CycleEventKind.FollowersDismissed }) {
+                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.FollowStarted, CycleEventKind.FollowEnded, CycleEventKind.FollowersDismissed, CycleEventKind.MoneyGiven }) {
                 yield return new($"actor:{actor.Id}:attention", kind, "*");
             }
         }
@@ -116,6 +122,9 @@ internal static class CyclePredictionMaintenance {
     }
     private static bool ValidIdentity(CycleBusinessState business, CyclePrediction prediction) {
         switch (prediction.Kind) {
+            case CyclePredictionKind.MarketRefresh:
+                return business.Economy is { } economy && prediction.OwnerId == "market" && prediction.TargetId == "world" &&
+                    prediction.Due == economy.Market.NextRefresh && prediction.Generation == economy.Market.Cycle && prediction.Sequence == 0;
             case CyclePredictionKind.ChangeLight:
                 return prediction.OwnerId == "light" && prediction.TargetId == "world" && prediction.Generation == 0 && prediction.Sequence == 0 && prediction.Due == business.Light.NextChange;
             case CyclePredictionKind.DestroyResource:
@@ -143,20 +152,23 @@ internal static class CyclePredictionMaintenance {
         }
     }
     private static string ConsumedOwner(CycleFact fact) => fact.Kind switch {
+        CycleEventKind.MarketRefreshed => "market",
         CycleEventKind.LightChanged => "light",
         CycleEventKind.ResourceDestroyed => "script",
         CycleEventKind.ResourceRegenerated => $"resource:{fact.ResourceId}:regen",
         CycleEventKind.WeatherResolved => "environment",
         CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed => $"actor:{fact.ActorId}:survival",
-        CycleEventKind.GatherYielded or CycleEventKind.GatherFinished or CycleEventKind.WaitCompleted => $"actor:{fact.ActorId}:activity",
+        CycleEventKind.GatherYielded or CycleEventKind.GatherFinished or CycleEventKind.WaitCompleted or CycleEventKind.ProductionCompleted => $"actor:{fact.ActorId}:activity",
         _ => $"actor:{fact.ActorId}:attention"
     };
     internal static IEnumerable<string> Owners(CycleBusinessState business) => new[] { "light", "script" }
+        .Concat(business.Economy is not null ? new[] { "market" } : [])
         .Concat(business.Resources.Select(r => $"resource:{r.Id}:regen"))
         .Concat(business.Characters.SelectMany(c => new[] { $"actor:{c.Id}:activity", $"actor:{c.Id}:attention" }))
         .Concat(business.Characters.Where(c => c.Survival is not null).Select(c => $"actor:{c.Id}:survival"))
         .Concat(business.Expedition?.Environment is not null ? new[] { "environment" } : []);
     internal static CyclePrediction? Predict(CycleBusinessState business, string owner) {
+        if (owner == "market") { return business.Economy is { } economy ? new(owner, CyclePredictionKind.MarketRefresh, "world", economy.Market.NextRefresh, economy.Market.Cycle) : null; }
         if (owner == "environment") {
             CycleEnvironment environment = business.Expedition!.Environment!;
             return environment.NextDue is { } due ? new(owner, CyclePredictionKind.Weather, "world", due, environment.Sequence) : null;

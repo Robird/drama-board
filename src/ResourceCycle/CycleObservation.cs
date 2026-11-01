@@ -76,7 +76,7 @@ public sealed class CycleDecisionContext {
             (expedition is null || place is not null && CycleActions.CurrentPlace(world, other.Id) == place))
             .Select(other => new CycleOtherCharacterObservation(other.Id, other.Name,
                 other.Activity is { Kind: CycleActivityKind.Gather } gathering ? gathering.ResourceId : null,
-                other.Activity?.Kind == CycleActivityKind.Wait, other.FollowingLeaderId)).ToArray();
+                other.Activity?.Kind == CycleActivityKind.Wait, other.FollowingLeaderId, other.Activity?.Production?.RecipeId)).ToArray();
         CycleNoticeObservation[] notices = actor.Notices.Select(notice => {
             CycleResource? visible = resources.SingleOrDefault(resource => resource.Id == notice.ResourceId);
             CycleResource? remembered = expedition?.Visits.Where(visit => visit.ActorId == actorId)
@@ -90,6 +90,8 @@ public sealed class CycleDecisionContext {
             return new CycleNoticeObservation(notice, visible?.Name ?? remembered?.Name ?? notice.ResourceId,
                 who, stillGathering, visible?.Stock, visible?.Capacity);
         }).ToArray();
+        IReadOnlyList<CycleMarketQuote> quotes = CycleEconomyObservation.Quotes(world.Business, place);
+        IReadOnlyList<CycleRecipe> recipes = CycleEconomyObservation.Recipes(world.Business, place);
         List<CycleCommand> commands = [CycleCommand.Continue(), CycleCommand.Cancel()];
         if (CycleActions.SupportsHandoff(world)) { commands.Add(CycleCommand.Handoff(null)); }
         foreach (CycleResource resource in resources) {
@@ -108,13 +110,18 @@ public sealed class CycleDecisionContext {
                 .Distinct(StringComparer.Ordinal).Where(id => CycleSurvivalRules.UseDescription(id) is not null)
                 .Order(StringComparer.Ordinal).Select(CycleCommand.Use));
         }
+        commands.AddRange(quotes.Where(quote => quote.BuyPrice > 0).Select(quote => CycleCommand.Buy(quote.ItemId)));
+        commands.AddRange(quotes.Where(quote => quote.SellPrice > 0).Select(quote => CycleCommand.Sell(quote.ItemId)));
+        commands.AddRange(recipes.Select(recipe => CycleCommand.Produce(recipe.Id)));
         CycleVisit[] visits = expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
         ModelTime? arrival = location is TraversingLocation moving ? moving.ArrivalDue : null;
         var itemNames = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
+            .Concat(quotes.Select(quote => quote.ItemId)).Concat(recipes.SelectMany(recipe => new[] { recipe.InputItem, recipe.OutputItem }))
+            .Concat(actor.Activity?.Production is { } production ? new[] { production.InputItem, production.OutputItem } : [])
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(id => id, id => expedition is null
                 ? world.Resources.FirstOrDefault(resource => resource.ItemId == id)?.Name ?? id
-                : id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id }, StringComparer.Ordinal);
+                : CycleEconomyObservation.ItemName(id), StringComparer.Ordinal);
         var observation = new CycleObservation {
             Time = actor.Ending?.At ?? world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
             Goals = expedition is null ? null : world.Business.InteractionStates[actorId].Goals,
@@ -123,8 +130,10 @@ public sealed class CycleDecisionContext {
             Followers = world.Characters.Where(other => other.FollowingLeaderId == actorId)
                 .ToDictionary(other => other.Id, other => other.Name, StringComparer.Ordinal),
             Actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity,
-                Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId),
+                Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId, actor.Money),
             Resources = Array.AsReadOnly(resources),
+            MarketQuotes = quotes, Recipes = recipes,
+            MarketRefreshAt = quotes.Count == 0 ? null : world.Business.Economy!.Market.NextRefresh,
             HarvestDurations = new System.Collections.ObjectModel.ReadOnlyDictionary<string, long>(resources.ToDictionary(
                 resource => resource.Id, resource => CycleActions.HarvestDuration(resource, actor), StringComparer.Ordinal)),
             ItemNames = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(itemNames),

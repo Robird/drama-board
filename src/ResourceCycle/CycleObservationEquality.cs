@@ -8,6 +8,8 @@ internal static class CycleObservationEquality {
         ReferenceEquals(a, b) ||
         a.Time == b.Time && a.IsDay == b.IsDay && a.NextLightChange == b.NextLightChange &&
         SameActor(a.Actor, b.Actor) && SameList(a.Resources, b.Resources, SameResource) &&
+        SameList(a.MarketQuotes, b.MarketQuotes, (x, y) => x == y) &&
+        SameList(a.Recipes, b.Recipes, (x, y) => x == y) && a.MarketRefreshAt == b.MarketRefreshAt &&
         SameDictionary(a.HarvestDurations, b.HarvestDurations) && SameDictionary(a.ItemNames, b.ItemNames) &&
         SameList(a.OtherCharacters, b.OtherCharacters, (x, y) => x == y) &&
         SameList(a.Notices, b.Notices, SameNoticeObservation) &&
@@ -25,7 +27,7 @@ internal static class CycleObservationEquality {
         a.Id == b.Id && a.Name == b.Name && a.SkillLevel == b.SkillLevel &&
         SameInventory(a.Backpack, b.Backpack) && SameActivity(a.Activity, b.Activity) &&
         SameList(a.Notices, b.Notices, SameNotice) && a.LastResult == b.LastResult &&
-        a.NextActivityId == b.NextActivityId;
+        a.NextActivityId == b.NextActivityId && a.Money == b.Money;
 
     internal static bool SameInventory(ItemInventory a, ItemInventory b) =>
         a.UnitCapacity == b.UnitCapacity && a.TotalCount == b.TotalCount && SameDictionary(a.Items, b.Items);
@@ -35,7 +37,7 @@ internal static class CycleObservationEquality {
         a.Kind == b.Kind && a.Id == b.Id && a.StartedAt == b.StartedAt &&
         a.DurationTicks == b.DurationTicks && a.Due == b.Due && a.ResourceId == b.ResourceId &&
         a.TargetCount == b.TargetCount && a.CompletedCount == b.CompletedCount &&
-        a.SelectedAll == b.SelectedAll && a.CycleIndex == b.CycleIndex;
+        a.SelectedAll == b.SelectedAll && a.CycleIndex == b.CycleIndex && a.Production == b.Production;
 
     internal static bool SameNotice(CycleNotice a, CycleNotice b) =>
         a.Kind == b.Kind && a.ResourceId == b.ResourceId && a.ActorId == b.ActorId &&

@@ -7,7 +7,7 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Only the requested character's own state. No other character or world graph is reachable.</summary>
-[DurableType("DramaBoard.ResourceCycle.ActorObservation", 1)]
+[DurableType("DramaBoard.ResourceCycle.ActorObservation", 2)]
 public sealed partial record CycleActorObservation(
     [field: DurableField(1)] string Id,
     [field: DurableField(2)] string Name,
@@ -16,18 +16,20 @@ public sealed partial record CycleActorObservation(
     [field: DurableField(5)] CycleActivity? Activity,
     IReadOnlyList<CycleNotice> Notices,
     [field: DurableField(7)] string? LastResult,
-    [field: DurableField(8)] long NextActivityId) : IDurableObject {
+    [field: DurableField(8)] long NextActivityId,
+    [field: DurableField(9)] long Money = 0) : IDurableObject {
     [DurableField(6)] private List<CycleNotice> _notices = new(Notices);
     public IReadOnlyList<CycleNotice> Notices { get => _notices.AsReadOnly(); init => _notices = new(value); }
 }
 
-[DurableType("DramaBoard.ResourceCycle.OtherCharacterObservation", 2)]
+[DurableType("DramaBoard.ResourceCycle.OtherCharacterObservation", 3)]
 public sealed partial record CycleOtherCharacterObservation(
     [field: DurableField(1)] string Id,
     [field: DurableField(2)] string Name,
     [field: DurableField(3)] string? GatheringResourceId,
     [field: DurableField(4)] bool Waiting,
-    [field: DurableField(5)] string? FollowingLeaderId = null) : IDurableObject;
+    [field: DurableField(5)] string? FollowingLeaderId = null,
+    [field: DurableField(6)] string? ProducingRecipeId = null) : IDurableObject;
 
 [DurableType("DramaBoard.ResourceCycle.PassageObservation", 1)]
 public sealed partial record CyclePassageObservation(
@@ -65,7 +67,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 6)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 7)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -123,6 +125,23 @@ public sealed partial class CycleObservation : IDurableObject {
     [DurableField(27)] private Dictionary<string, string> _followers = new(StringComparer.Ordinal);
     /// <summary>Known identities in the observer's own relationship, without sharing private state or geography.</summary>
     public IReadOnlyDictionary<string, string> Followers { get => new ReadOnlyDictionary<string, string>(_followers); init => _followers = new(value, StringComparer.Ordinal); }
+    [DurableField(28)] private List<CycleMarketQuote> _marketQuotes = [];
+    public IReadOnlyList<CycleMarketQuote> MarketQuotes { get => _marketQuotes.AsReadOnly(); init => _marketQuotes = new(value); }
+    [DurableField(29)] private List<CycleRecipe> _recipes = [];
+    public IReadOnlyList<CycleRecipe> Recipes { get => _recipes.AsReadOnly(); init => _recipes = new(value); }
+    [DurableField(30)] private ModelTime? _marketRefreshAt;
+    public ModelTime? MarketRefreshAt { get => _marketRefreshAt; init => _marketRefreshAt = value; }
+    internal void ValidateEconomy() {
+        if (Actor.Money < 0 || MarketQuotes.Select(q => q.ItemId).Distinct(StringComparer.Ordinal).Count() != MarketQuotes.Count ||
+            Recipes.Select(r => r.Id).Distinct(StringComparer.Ordinal).Count() != Recipes.Count ||
+            MarketQuotes.Any(q => string.IsNullOrWhiteSpace(q.ItemId) || q.BuyPrice < 0 || q.SellPrice < 0 || q.Stock < 0 || q.Demand < 0) ||
+            Recipes.Any(r => string.IsNullOrWhiteSpace(r.Id) || string.IsNullOrWhiteSpace(r.InputItem) || string.IsNullOrWhiteSpace(r.OutputItem) ||
+                r.InputCount <= 0 || r.OutputCount <= 0 || r.DurationTicks <= 0) ||
+            (MarketQuotes.Count != 0 || MarketRefreshAt is not null) && PlaceId != "market" ||
+            Recipes.Count != 0 && PlaceId != "workshop" || (MarketQuotes.Count != 0) != (MarketRefreshAt is not null)) {
+            throw new InvalidOperationException("Invalid frozen local economy material.");
+        }
+    }
     internal void ValidateFollowing() {
         if ((FollowingLeaderId is null) != (FollowingLeaderName is null) ||
             FollowingLeaderId is not null && (string.IsNullOrWhiteSpace(FollowingLeaderId) || string.IsNullOrWhiteSpace(FollowingLeaderName) ||
@@ -138,6 +157,7 @@ public sealed partial class CycleObservation : IDurableObject {
         }
         Journey?.Validate();
         ValidateFollowing();
+        ValidateEconomy();
     }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;

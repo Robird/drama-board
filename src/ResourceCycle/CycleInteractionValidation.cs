@@ -32,7 +32,7 @@ internal static class CycleInteractionValidation {
             }
             CharacterContext? oldContext = prior.CurrentContext;
             if (own) { Require(oldContext?.Status == CharacterContextStatus.Open, "An operation must belong to an open context."); }
-            bool release = own && (fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted ||
+            bool release = own && (fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted or CycleEventKind.ProductionStarted ||
                 fact.Kind == CycleEventKind.AttentionAcknowledged && !CycleActions.NeedsDecision(after, actorId));
             if (release) {
                 CharacterContext next = recorded.CurrentContext!;
@@ -108,7 +108,7 @@ internal static class CycleInteractionValidation {
         bool kindMatches = (pending.Command.Kind, fact.Kind) is
             (CycleCommandKind.Wait, CycleEventKind.WaitStarted) or (CycleCommandKind.Gather, CycleEventKind.GatherStarted) or
             (CycleCommandKind.Go, CycleEventKind.MoveStarted) or (CycleCommandKind.Continue, CycleEventKind.AttentionAcknowledged) or
-            (CycleCommandKind.Follow, CycleEventKind.FollowStarted);
+            (CycleCommandKind.Follow, CycleEventKind.FollowStarted) or (CycleCommandKind.Produce, CycleEventKind.ProductionStarted);
         SpatialEntity? entity = after.Expedition?.Spatial.Entities.Single(e => e.Id.Value == prior.ActorId);
         Require(kindMatches && pending.ActorId == fact.ActorId && pending.SourceContextSequence == prior.CurrentContext!.ContextSequence &&
             pending.ToolCallId == fact.ToolCallId && pending.OperationRecordId == fact.OperationRecordId && pending.AcceptedAt == fact.At &&
@@ -133,6 +133,9 @@ internal static class CycleInteractionValidation {
             Require(pending.Command == CycleCommand.Wait(pending.Command.Hours) &&
                 after.GetCharacter(prior.ActorId).Activity?.DurationTicks == pending.Command.Hours * CycleTime.Hour,
                 "The recorded wait duration does not match its activity.");
+        } else if (pending.Command.Kind == CycleCommandKind.Produce) {
+            Require(after.GetCharacter(prior.ActorId).Activity?.Production is { } order &&
+                pending.Command == CycleCommand.Produce(order.RecipeId, order.Batches), "Production release must match its recorded escrow.");
         } else if (pending.Command.Kind == CycleCommandKind.Follow) {
             Require(pending.Command == CycleCommand.Follow(after.GetCharacter(prior.ActorId).FollowingLeaderId!) &&
                 pending.ActivityId is null && pending.MovementGeneration is null && entity?.Location is AtPlaceLocation,
@@ -182,7 +185,7 @@ internal static class CycleInteractionValidation {
             Require(experience.ExperienceSequence == checked(nextSequence + i) && delivered.EventOrdinal == i &&
                 delivered.ObserverId == source.ObserverId && delivered.Kind == source.Kind && delivered.From == source.From && delivered.At == source.At &&
                 delivered.SubjectId == source.SubjectId && delivered.SubjectName == source.SubjectName && delivered.Detail == source.Detail &&
-                delivered.Communication == source.Communication &&
+                delivered.Communication == source.Communication && delivered.Production == source.Production &&
                 delivered.Effects.Count == source.Effects.Count && delivered.Effects.Zip(source.Effects).All(pair =>
                     pair.First.Key == pair.Second.Key && pair.First.Before == pair.Second.Before && pair.First.After == pair.Second.After),
                 "Delivered experience must match its observer's recorded event with a local identity.");
@@ -210,7 +213,7 @@ internal static class CycleInteractionValidation {
             "Recorded observation does not match its actor and publication boundary.");
         // These are recorded endpoint checks, not a call to the perception builder or its command queries.
         Require(observation.Actor.SkillLevel == actor.SkillLevel && observation.Actor.LastResult == actor.LastResult &&
-            observation.Actor.NextActivityId == actor.NextActivityId &&
+            observation.Actor.NextActivityId == actor.NextActivityId && observation.Actor.Money == actor.Money &&
             CycleObservationEquality.SameInventory(observation.Actor.Backpack, actor.Backpack) &&
             CycleObservationEquality.SameActivity(observation.Actor.Activity, actor.Activity) &&
             observation.Actor.Notices.Count == actor.Notices.Count && observation.Actor.Notices.Zip(actor.Notices).All(pair =>
@@ -234,14 +237,23 @@ internal static class CycleInteractionValidation {
             pair.First.Id == pair.Second.Id && pair.First.Name == pair.Second.Name &&
             pair.First.GatheringResourceId == (pair.Second.Activity is { Kind: CycleActivityKind.Gather } gathering ? gathering.ResourceId : null) &&
             pair.First.Waiting == (pair.Second.Activity?.Kind == CycleActivityKind.Wait) &&
-            pair.First.FollowingLeaderId == pair.Second.FollowingLeaderId),
+            pair.First.FollowingLeaderId == pair.Second.FollowingLeaderId &&
+            pair.First.ProducingRecipeId == pair.Second.Activity?.Production?.RecipeId),
             "Recorded public activities must match the visible actors without exposing private fields.");
+        IReadOnlyList<CycleMarketQuote> quotes = CycleEconomyObservation.Quotes(state, place);
+        Require(observation.MarketQuotes.SequenceEqual(quotes) &&
+            observation.Recipes.SequenceEqual(CycleEconomyObservation.Recipes(state, place)) &&
+            observation.MarketRefreshAt == (quotes.Count == 0 ? null : state.Economy!.Market.NextRefresh),
+            "Recorded market and recipes must exactly match the local endpoint.");
         ValidateBodyAndWeather(state, actor, observation);
         ValidateKnownGeography(state, actorId, place, observation);
         Require(observation.HarvestDurations.Count == visible.Length && visible.All(resource =>
             observation.HarvestDurations.TryGetValue(resource.Id, out long duration) && duration == CycleActions.HarvestDuration(resource, actor)),
             "Recorded gathering durations must match the actor and visible resource definitions.");
         Require(observation.Commands.All(entry => entry.Command.Kind switch {
+            CycleCommandKind.Buy => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.BuyPrice > 0),
+            CycleCommandKind.Sell => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.SellPrice > 0),
+            CycleCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),
             CycleCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.PassageId),
             CycleCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
             CycleCommandKind.Use => actor.Survival is not null && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),

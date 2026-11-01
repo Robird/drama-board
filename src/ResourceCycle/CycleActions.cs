@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.CommandKind", 5)]
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout }
+[DurableType("DramaBoard.ResourceCycle.CommandKind", 6)]
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout, Buy, Sell, Produce, GiveMoney }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.ResourceCycle.Command", 6)]
+[DurableType("DramaBoard.ResourceCycle.Command", 7)]
 public sealed partial record CycleCommand(
     [field: DurableField(1)] CycleCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
@@ -21,7 +21,13 @@ public sealed partial record CycleCommand(
     [field: DurableField(8)] string? HandoffText = null,
     [field: DurableField(9)] string? TargetActorId = null,
     [field: DurableField(10)] string? SpeechText = null,
-    [field: DurableField(11)] GoalCommand? Goal = null) : IDurableObject {
+    [field: DurableField(11)] GoalCommand? Goal = null,
+    [field: DurableField(12)] string? RecipeId = null,
+    [field: DurableField(13)] long MoneyAmount = 0) : IDurableObject {
+    public static CycleCommand Buy(string itemId, int count = 1) => new(CycleCommandKind.Buy, ItemId: itemId, Count: count);
+    public static CycleCommand Sell(string itemId, int count = 1) => new(CycleCommandKind.Sell, ItemId: itemId, Count: count);
+    public static CycleCommand Produce(string recipeId, int batches = 1) => new(CycleCommandKind.Produce, RecipeId: recipeId, Count: batches);
+    public static CycleCommand GiveMoney(string targetActorId, long amount) => new(CycleCommandKind.GiveMoney, TargetActorId: targetActorId, MoneyAmount: amount);
     public static CycleCommand ManageGoal(GoalCommand goal) => new(CycleCommandKind.Goal, Goal: goal);
     public static CycleCommand Shout(string text) => new(CycleCommandKind.Shout, SpeechText: text);
     public static CycleCommand Say(string targetActorId, string text) => new(CycleCommandKind.Say, TargetActorId: targetActorId, SpeechText: text);
@@ -92,17 +98,20 @@ public static class CycleActions {
         if (command.Kind != CycleCommandKind.Goal && command.Goal is not null) { return "这个行动不接受目标操作。"; }
         if (command.Kind != CycleCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
-        if (command.Kind is not (CycleCommandKind.Use or CycleCommandKind.Give) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
-        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.Follow) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
+        if (command.Kind is not (CycleCommandKind.Use or CycleCommandKind.Give or CycleCommandKind.Buy or CycleCommandKind.Sell) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
+        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.GiveMoney or CycleCommandKind.Follow) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
+        if (command.Kind != CycleCommandKind.Produce && command.RecipeId is not null || command.Kind != CycleCommandKind.GiveMoney && command.MoneyAmount != 0) { return "这个行动不接受生产或资金参数。"; }
         if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Shout) && command.SpeechText is not null) { return "这个行动不接受话语参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
         if ((contextSequence ?? world.Business.InteractionStates[actorId].CurrentContext?.ContextSequence) == long.MaxValue &&
-            (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Follow ||
+            (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Follow or CycleCommandKind.Produce ||
                 command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling || actor.FollowingLeaderId is not null))) { return "决策回合编号已达到支持上限。"; }
-        if (actor.FollowingLeaderId is not null && command.Kind is CycleCommandKind.Go or CycleCommandKind.Gather or CycleCommandKind.Wait) {
+        if (actor.FollowingLeaderId is not null && command.Kind is CycleCommandKind.Go or CycleCommandKind.Gather or CycleCommandKind.Wait or CycleCommandKind.Produce) {
             return "正在跟随领队，请先 unfollow 再开始独立耗时行动。";
         }
         switch (command.Kind) {
+            case CycleCommandKind.Buy or CycleCommandKind.Sell or CycleCommandKind.Produce or CycleCommandKind.GiveMoney:
+                return CycleEconomyRules.Check(world, actorId, command);
             case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:
                 if (!SupportsFollowing(world)) { return "此场景未启用跟随。"; }
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "跟随操作只接受声明的角色参数。"; }
@@ -175,7 +184,7 @@ public static class CycleActions {
                 if (actor.Backpack.Count(command.ItemId) == 0) { return "背包中没有这个物品。"; }
                 CycleSurvival projected = actor.Survival.Project(world.Time);
                 if (projected.IsFatal) { return "身体已耗尽，无法通过此时补给挽回。"; }
-                return (command.ItemId == "item.food" ? projected.FoodUnits : projected.WaterUnits) == CycleSurvival.MaximumUnits
+                return (LivingWorldEconomyContent.SupplyFood(command.ItemId) > 0 ? projected.FoodUnits : projected.WaterUnits) == CycleSurvival.MaximumUnits
                     ? "这项身体需求已经充足，使用补给不会产生收益。" : null;
             default: return "未知行动。";
         }

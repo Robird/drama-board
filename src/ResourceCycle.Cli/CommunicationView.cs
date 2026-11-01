@@ -15,6 +15,7 @@ internal static class CommunicationView {
         text.AppendLine($"- `shout <text>`：在地点内的决策窗口大喊，署名原文传到本地点及声音连接的一跳地点，不继续传播；途中角色不能发声或接收。text 为非空文字，最多 {communication.MaximumSpeechScalars} 个 Unicode 字符。一次只扣一份额度，不耗时间；无人听见也成功，不报告听众或接收确认。");
         if (observation.PlaceId is null) { text.AppendLine("当前 shout 受阻：正在途中，抵达地点后才可大喊。"); }
         text.AppendLine("- `give <actor-id> <item-id> <count>`：不耗时间；count 为正整数且不超过自己持有量。接收方容量与数量上限在提交时检查；拒绝不扣物、不转移、不扣发送额度。");
+        text.AppendLine($"- `give <actor-id> money <amount>`：赠送正整数金额；自己当前余额 {observation.Actor.Money} 钱。与物品赠与一样共用通信额度，不取消双方活动，不公布对方余额。");
         text.AppendLine(observation.OtherCharacters.Count == 0
             ? "actor-id：空域；当前没有可 say / give 的同地角色。远处或已结束角色不可作为目标；这不限制地点内的大喊。"
             : "actor-id（仅 say / give）：" + string.Join("、", observation.OtherCharacters.Select(other => $"`{other.Id}`（{other.Name}）")) + "；仅当前同地活跃角色，不是大喊的听众名单。");

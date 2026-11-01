@@ -60,7 +60,9 @@ internal static class PlayView {
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
         text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
-        if (ended) {
+        if (EconomyView.RenderProduction(text, observation, ended)) {
+            // Production details above use the frozen reserved order.
+        } else if (ended) {
             if (observation.ArrivalDue is { } unfinishedArrival) {
                 text.AppendLine($"- 移动未完成；原计划到达时刻：{FormatTime(unfinishedArrival)}。此记录已冻结。");
             } else if (character.Activity is { } unfinished) {
@@ -125,6 +127,7 @@ internal static class PlayView {
             }
         }
         text.AppendLine();
+        EconomyView.RenderStatus(text, observation);
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) {
             text.AppendLine("## 结局");
             text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "获救。" : "这位居民的生命已结束。其他居民仍可继续生活。");
@@ -188,7 +191,7 @@ internal static class PlayView {
         foreach (CycleOtherCharacterObservation other in observation.OtherCharacters) {
             string status = other.GatheringResourceId is { } resourceId
                 ? $"正在采集 {observation.Resources.FirstOrDefault(resource => resource.Id == resourceId)?.Name ?? resourceId}"
-                : other.Waiting ? "正在等待" : other.FollowingLeaderId is { } leader ? $"正在跟随 `{leader}`" : "空闲";
+                : other.ProducingRecipeId is { } recipe ? $"正在生产 `{recipe}`" : other.Waiting ? "正在等待" : other.FollowingLeaderId is { } leader ? $"正在跟随 `{leader}`" : "空闲";
             text.AppendLine($"- {other.Name}（`{other.Id}`）：{status}。");
         }
         text.AppendLine();
@@ -207,6 +210,7 @@ internal static class PlayView {
         }
         CommunicationView.Render(text, observation);
         FollowingView.RenderCommands(text, observation);
+        EconomyView.RenderCommands(text, observation);
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (CyclePassageObservation passage in observation.Passages) {
@@ -218,7 +222,7 @@ internal static class PlayView {
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间");
         if (observation.ArrivalDue is null) {
             AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), observation.IsExpedition
-                ? "取消采集或等待，保留已经获得的物品；随后选择新活动，移动不能取消"
+                ? "取消当前活动：采集保留已获物品，生产退回预留投入，等待直接结束；移动不能取消"
                 : "取消当前活动，保留已经获得的物品；随后按轮转选择新活动");
         }
         if (observation.Survival is not null) {

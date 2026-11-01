@@ -48,7 +48,7 @@ internal sealed class CycleViewUpdate {
             }
         }
         string actor = current.Observation.Actor.Id;
-        if (keys.Any(key => key.Category is "body" or "inventory")) {
+        if (keys.Any(key => key.Category is "body" or "inventory" or "money")) {
             var warnings = new CycleStateKey("body", actor, "warnings");
             if (current.Resolve(warnings).Kind != CycleVisibleValueKind.KnownAbsent) { keys.Add(warnings); }
             if (current.Observation.Actor.Activity is not null) { keys.Add(new("activity", actor, "due")); }

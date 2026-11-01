@@ -26,6 +26,6 @@ public static class LivingWorldContent {
         return Enumerable.Range(0, count).Select(index => new CycleCharacter(ids[index], names[index],
             backpack: new ItemInventory(new Dictionary<string, int> { ["item.food"] = 3, ["item.water"] = 3 }),
             survival: enableNeeds ? CycleSurvival.Create(at, food: 80, water: 80, warmth: 80,
-                warmthRate: CycleSurvivalRules.WarmthRate(true, CycleTime.IsDay(at))) : null)).ToArray();
+                warmthRate: CycleSurvivalRules.WarmthRate(true, CycleTime.IsDay(at))) : null, money: 12)).ToArray();
     }
 }

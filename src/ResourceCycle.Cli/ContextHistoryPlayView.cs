@@ -84,6 +84,7 @@ internal static class ContextHistoryPlayView {
         var reasons = new List<string>();
         if (kinds.Contains(CycleObservedEventKind.MoveArrived)) { reasons.Add("抵达"); }
         if (kinds.Contains(CycleObservedEventKind.WaitCompleted)) { reasons.Add("活动完成"); }
+        if (kinds.Contains(CycleObservedEventKind.ProductionCompleted)) { reasons.Add("生产完成"); }
         if (kinds.Contains(CycleObservedEventKind.GatherFinished)) { reasons.Add("采集停止"); }
         if (opening.Observation.FollowingLeaderId is null && kinds.Any(kind =>
             kind is CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed)) { reasons.Add("跟随结束"); }

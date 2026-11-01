@@ -12,7 +12,10 @@ public sealed class FollowingViewTests {
         CycleObservation follower = CycleDecisionContext.Observe(world, "b");
         string rendered = layout.Render(follower);
         Assert.Contains("正在跟随 阿青（`a`）", rendered);
-        Assert.Contains("不能独立 go / gather / wait", rendered);
+        string restrictions = Assert.Single(rendered.Split('。'), part => part.Contains("不能独立", StringComparison.Ordinal));
+        foreach (string command in new[] { "go", "gather", "produce", "wait" }) {
+            Assert.Contains(command, restrictions);
+        }
         foreach (string text in new[] { rendered, layout.RenderActionHelp(follower) }) {
             Assert.Contains("follow <actor-id>", text);
             Assert.Contains("unfollow", text);

@@ -52,6 +52,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         FollowingView.RenderStatus(text, observation);
         PlayView.RenderOtherCharacters(text, observation);
         RenderSupplies(text, observation, ended: false);
+        EconomyView.RenderStatus(text, observation);
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         RenderResources(text, observation);
@@ -59,9 +60,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderHelp(observation)); }
         CommunicationView.Render(text, observation);
         FollowingView.RenderCommands(text, observation);
+        EconomyView.RenderCommands(text, observation);
         AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；跟随时确认后继续同行，闲置时确认不推进时间");
         if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
-            AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), "取消采集或等待，保留已获得物品，放弃未完成的一份");
+            AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), "取消当前活动：采集保留已获物品，生产退回预留投入，等待直接结束");
         }
         foreach (CycleCommandCheck supply in observation.Commands.Where(entry => entry.Command.Kind == CycleCommandKind.Use)) {
             AppendCommand(text, observation, $"use {supply.Command.ItemId}", supply.Command,
@@ -130,6 +132,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
 
     private static void RenderActivity(StringBuilder text, CycleObservation observation, bool ended) {
         if (observation.ArrivalDue is not null) { return; }
+        if (EconomyView.RenderProduction(text, observation, ended)) { return; }
         if (observation.Actor.Activity is not { } activity) {
             text.AppendLine(ended ? "此角色已停止安排活动；原推进及中断情况见终局记录。"
                 : observation.FollowingLeaderId is not null ? "正在跟随，等候领队安排行程；处理提醒后 continue 可继续同行。"
@@ -191,6 +194,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         text.AppendLine();
         RenderSupplies(text, observation, ended: true);
+        EconomyView.RenderStatus(text, observation);
         text.AppendLine();
         text.AppendLine("## 结束时可见资源");
         if (observation.Resources.Count == 0) { text.AppendLine("结束时没有可见的可采资源。"); }

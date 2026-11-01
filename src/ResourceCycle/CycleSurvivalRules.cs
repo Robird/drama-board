@@ -61,6 +61,7 @@ public sealed partial record CycleSurvivalObservation(
 public static class CycleSurvivalRules {
     public static string? UseDescription(string itemId) => itemId switch {
         "item.food" => "消耗 1 份食物，饱食 +35（最高 100）；不耗时。",
+        "item.ration" => "消耗 1 份口粮，饱食 +55（最高 100）；不耗时。",
         "item.water" => "消耗 1 份饮水，水分 +45（最高 100）；不耗时。",
         _ => null
     };
@@ -176,13 +177,13 @@ public static class CycleSurvivalRules {
             if (!actor.IsActive) { continue; }
             // Communication changes neither exposure nor physiology rules. Preserve the current causes,
             // including valid scenario-specific rate decompositions, while reanchoring elapsed values.
-            CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted or
+            CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted or CycleEventKind.MoneyGiven or CycleEventKind.MarketBought or CycleEventKind.MarketSold or
                 CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed
                 ? actor.Survival!.Project(fact.At)
                 : actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
                     WarmthRate(IsSheltered(spatial, actor.Id), light));
             if (fact.LastServedActorId == actor.Id && fact.Kind is CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or
-                CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted) { body = body.Acknowledge(fact.At); }
+                CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ProductionStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted) { body = body.Acknowledge(fact.At); }
             changes[actor.Id] = changes.ContainsKey(actor.Id) ? actor.WithSurvival(body) : actor.Change(actor.Activity, survival: body);
         }
         return changes.Count == 0 ? fact : fact.WithCharacters(world.Characters.Where(c => changes.ContainsKey(c.Id)).Select(c => changes[c.Id]));

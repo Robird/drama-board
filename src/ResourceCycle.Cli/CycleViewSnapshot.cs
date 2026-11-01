@@ -45,7 +45,7 @@ internal sealed class CycleViewSnapshot {
             "following" when key.Field.StartsWith("follower:", StringComparison.Ordinal) => CycleVisibleValue.Flag(false),
             "inventory" when key.Field == "count" => CycleVisibleValue.Numeric(Observation.Actor.Backpack.Count(key.ObjectId), "份"),
             "command" when key.Field == "warning" && _values.ContainsKey(new("command", key.ObjectId, "rejection")) => CycleVisibleValue.KnownAbsent,
-            "resource" or "passage" or "other" or "command" => CycleVisibleValue.Unobserved,
+            "resource" or "passage" or "other" or "command" or "market" or "recipe" => CycleVisibleValue.Unobserved,
             _ => CycleVisibleValue.KnownAbsent
         };
     }
@@ -55,6 +55,9 @@ internal sealed class CycleViewSnapshot {
         "following" when key.Field.StartsWith("follower:", StringComparison.Ordinal) => "直属队员 " + key.Field[9..],
         "inventory" => $"{Observation.ItemNames.GetValueOrDefault(key.ObjectId, key.ObjectId)}库存",
         "resource" => $"{key.ObjectId} · {FieldLabel(key.Field)}",
+        "money" => "自己的资金余额",
+        "market" => $"市场 {Observation.ItemNames.GetValueOrDefault(key.ObjectId, key.ObjectId)} · {FieldLabel(key.Field)}",
+        "recipe" => $"配方 {key.ObjectId} · {FieldLabel(key.Field)}",
         "command" => $"{key.ObjectId} · {FieldLabel(key.Field)}",
         "notice-detail" => $"历史通知 · {NoticeFieldLabel(key.Field)}",
         "passage" => $"通路 {key.ObjectId} · {FieldLabel(key.Field)}",
@@ -86,6 +89,22 @@ internal sealed class CycleViewSnapshot {
         Add("location", actor, "arrival", At(o.ArrivalDue));
         Add("location", actor, "journey", Text(o.Journey is { } journey ? JourneyView.Route(journey) : null), "行程");
         Add("actor", actor, "skill", CycleVisibleValue.Numeric(o.Actor.SkillLevel), "采药等级");
+        if (o.IsExpedition) { Add("money", actor, "balance", CycleVisibleValue.Numeric(o.Actor.Money, "钱"), "自己的资金余额"); }
+        if (o.MarketRefreshAt is { } refresh) { Add("market", "market", "refresh", At(refresh), "市场下次补充"); }
+        foreach (CycleMarketQuote quote in o.MarketQuotes) {
+            string name = o.ItemNames.GetValueOrDefault(quote.ItemId, quote.ItemId);
+            Add("market", quote.ItemId, "buy-price", quote.BuyPrice > 0 ? CycleVisibleValue.Numeric(quote.BuyPrice, "钱") : Text("不出售"), name + "买入单价");
+            Add("market", quote.ItemId, "sell-price", quote.SellPrice > 0 ? CycleVisibleValue.Numeric(quote.SellPrice, "钱") : Text("不收购"), name + "卖出单价");
+            Add("market", quote.ItemId, "stock", CycleVisibleValue.Numeric(quote.Stock, "份"), name + "市场可买库存");
+            Add("market", quote.ItemId, "demand", CycleVisibleValue.Numeric(quote.Demand, "份"), name + "剩余收购额度");
+        }
+        foreach (CycleRecipe recipe in o.Recipes) {
+            Add("recipe", recipe.Id, "input", Text(recipe.InputItem), recipe.Id + "每批投入物品");
+            Add("recipe", recipe.Id, "input-count", CycleVisibleValue.Numeric(recipe.InputCount, "份"), recipe.Id + "每批投入数量");
+            Add("recipe", recipe.Id, "output", Text(recipe.OutputItem), recipe.Id + "每批产物");
+            Add("recipe", recipe.Id, "output-count", CycleVisibleValue.Numeric(recipe.OutputCount, "份"), recipe.Id + "每批产出数量");
+            Add("recipe", recipe.Id, "duration", CycleVisibleValue.Numeric(recipe.DurationTicks, "duration"), recipe.Id + "每批生产耗时");
+        }
         Add("backpack", actor, "total", CycleVisibleValue.Numeric(o.Actor.Backpack.TotalCount, "件"), "背包总量");
         Add("backpack", actor, "capacity", o.Actor.Backpack.UnitCapacity is { } cap ? CycleVisibleValue.Numeric(cap, "件") : Text("不限"), "背包容量");
         foreach (var item in o.Actor.Backpack.Items) {
@@ -120,6 +139,14 @@ internal sealed class CycleViewSnapshot {
         Add("activity", actor, "target", activity?.Kind != CycleActivityKind.Gather ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Numeric(activity.TargetCount, "份"));
         Add("activity", actor, "resource", Text(activity?.ResourceId));
         Add("activity", actor, "started", At(activity?.StartedAt));
+        if (activity?.Production is { } production) {
+            Add("activity", actor, "recipe", Text(production.RecipeId), "生产配方");
+            Add("activity", actor, "batches", CycleVisibleValue.Numeric(production.Batches, "批"), "生产批数");
+            Add("activity", actor, "input", Text(production.InputItem), "生产预留物品");
+            Add("activity", actor, "input-count", CycleVisibleValue.Numeric(production.InputCount, "份"), "生产预留总量");
+            Add("activity", actor, "output", Text(production.OutputItem), "生产目标物品");
+            Add("activity", actor, "output-count", CycleVisibleValue.Numeric(production.OutputCount, "份"), "生产目标总量");
+        }
         Add("activity", actor, "selected-all", activity is null ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Flag(activity.SelectedAll));
         Add("notice", actor, "count", CycleVisibleValue.Numeric(o.Notices.Count, "条"));
         if (o.Communication is { } communication) {
@@ -166,6 +193,7 @@ internal sealed class CycleViewSnapshot {
             Add("other", other.Id, "gathering", Text(other.GatheringResourceId), other.Name + "采集");
             Add("other", other.Id, "following-leader", Text(other.FollowingLeaderId), other.Name + "跟随领队");
             Add("other", other.Id, "waiting", CycleVisibleValue.Flag(other.Waiting), other.Name + "等待");
+            Add("other", other.Id, "producing", Text(other.ProducingRecipeId), other.Name + "正在生产");
         }
         foreach (var memory in o.Memories) {
             string memoryId = memory.PlaceId ?? throw new InvalidOperationException("Visible place memory requires a stable place identity.");
@@ -193,14 +221,19 @@ internal sealed class CycleViewSnapshot {
     }
 
     internal static string CommandId(CycleCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
-        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "");
+        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture));
     internal static string CommandSyntax(CycleCommand c) => c.Kind switch {
         CycleCommandKind.Wait => $"wait {c.Hours}", CycleCommandKind.Gather => $"gather {c.ResourceId} {(c.All ? "all" : c.Count.ToString(CultureInfo.InvariantCulture))}",
+        CycleCommandKind.Buy => $"buy {c.ItemId} {c.Count}", CycleCommandKind.Sell => $"sell {c.ItemId} {c.Count}",
+        CycleCommandKind.Produce => $"produce {c.RecipeId} {c.Count}", CycleCommandKind.GiveMoney => $"give {c.TargetActorId} money {c.MoneyAmount}",
+        CycleCommandKind.Give => $"give {c.TargetActorId} {c.ItemId} {c.Count}",
         CycleCommandKind.Follow => $"follow {c.TargetActorId}", CycleCommandKind.DismissFollowers => "dismiss-followers",
         CycleCommandKind.Go => $"go {c.PassageId}", CycleCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
     };
 
     private static string FieldLabel(string field) => field switch {
+        "balance" => "资金余额", "buy-price" => "买入单价", "sell-price" => "卖出单价", "demand" => "剩余收购额度", "recipe" => "生产配方", "batches" => "生产批数",
+        "input" => "预留投入物品", "input-count" => "预留投入数量", "output" => "计划产物", "output-count" => "计划产物数量",
         "food" => "食物", "water" => "饮水", "warmth" => "温暖", "food-rate" => "食物变化速率", "water-rate" => "饮水变化速率", "warmth-rate" => "温暖变化速率",
         "sheltered" => "有庇护", "warning-food" => "食物历史警告待确认", "warning-water" => "饮水历史警告待确认", "warning-warmth" => "温暖历史警告待确认",
         "kind" => "活动", "due" => "活动期限", "completed" => "已采集", "target" => "采集目标", "resource" => "采集资源",

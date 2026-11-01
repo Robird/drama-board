@@ -81,6 +81,7 @@ internal static class CycleObservedEventValidation {
                 CycleObservedEvents.MovedSelf(fact, actorId) ||
                 CycleObservedEvents.IsFollowingEvent(fact.Kind) && FollowingChanged(before, after, actorId) ||
                 CycleObservedEvents.ReceivesCommunication(fact, actorId) ||
+                fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.Location(before, actorId) is AtPlaceLocation market && market.PlaceId.Value == "market" ||
                 fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved ||
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed &&
                 fact.ResourceId is { } resourceId && previousByObserver[actorId].ContainsKey(new("resource", resourceId, "stock"));
@@ -126,6 +127,7 @@ internal static class CycleObservedEventValidation {
     private static void ValidateParameters(CycleBusinessState before, CycleBusinessState after, CycleFact fact, CycleObservedEvent entry) {
         string? id = null, name = null, detail = null;
         CycleObservedCommunication? communication = null;
+        CycleProductionOrder? production = null;
         if (entry.Kind == CycleObservedEventKind.CommunicationBudgetRenewed) {
             if (before.Expedition is null || entry.Effects.Count != 1) {
                 throw new InvalidOperationException("Budget renewal requires one visible elapsed-budget effect.");
@@ -136,10 +138,15 @@ internal static class CycleObservedEventValidation {
             id = fact.ActorId;
             name = before.GetCharacter(fact.ActorId!).Name;
             detail = fact.SpeechText;
-        } else if (entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven) {
+        } else if (entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven or CycleObservedEventKind.MoneyGiven) {
             communication = new(fact.ActorId!, before.GetCharacter(fact.ActorId!).Name,
-                fact.TargetActorId!, before.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount);
+                fact.TargetActorId!, before.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount, fact.MoneyAmount);
             communication.Validate(entry.ObserverId, entry.Kind);
+        } else if (entry.Kind is CycleObservedEventKind.ProductionStarted or CycleObservedEventKind.ProductionCompleted) {
+            production = (entry.Kind == CycleObservedEventKind.ProductionStarted
+                ? after.GetCharacter(entry.ObserverId) : before.GetCharacter(entry.ObserverId)).Activity!.Production;
+        } else if (entry.Kind is CycleObservedEventKind.MarketBought or CycleObservedEventKind.MarketSold) {
+            id = fact.ItemId; name = CycleEconomyObservation.ItemName(id!);
         } else if (entry.Kind == CycleObservedEventKind.BodyChanged) {
             if (before.GetCharacter(entry.ObserverId).Survival is null || entry.Effects.Count == 0) { throw new InvalidOperationException("An elapsed physiological interval requires a body and an actual change."); }
         } else if (entry.Kind == CycleObservedEventKind.ExpeditionEnded) {
@@ -150,7 +157,7 @@ internal static class CycleObservedEventValidation {
             if (entry.Kind == CycleObservedEventKind.ItemUsed) {
                 CycleCharacter actor = before.GetCharacter(entry.ObserverId), next = after.GetCharacter(entry.ObserverId);
                 id = actor.Backpack.Items.Keys.SingleOrDefault(item => actor.Backpack.Count(item) > next.Backpack.Count(item));
-                name = id switch { "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => id };
+                name = id is null ? null : CycleEconomyObservation.ItemName(id);
             } else if (entry.Kind is CycleObservedEventKind.MoveStarted or CycleObservedEventKind.MoveArrived) {
                 SpatialLocation location = CycleActions.Location(after, entry.ObserverId)!;
                 id = location is AtPlaceLocation place ? place.PlaceId.Value : null;
@@ -163,7 +170,7 @@ internal static class CycleObservedEventValidation {
                 detail = environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
         }
-        if (entry.SubjectId != id || entry.SubjectName != name || entry.Detail != detail || entry.Communication != communication) {
+        if (entry.SubjectId != id || entry.SubjectName != name || entry.Detail != detail || entry.Communication != communication || entry.Production != production) {
             throw new InvalidOperationException("Observed event parameters must match its recorded business cause.");
         }
     }
@@ -173,6 +180,12 @@ internal static class CycleObservedEventValidation {
         CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed => key.Category == "following",
         CycleObservedEventKind.CommunicationBudgetRenewed => key.Category == "communication" && key.Field == "remaining",
         CycleObservedEventKind.SpeechSent or CycleObservedEventKind.SpeechShouted => key.Category == "communication" && key.Field is "remaining" or "pending",
+        CycleObservedEventKind.MarketBought or CycleObservedEventKind.MarketSold => key.Category is "inventory" or "money",
+        CycleObservedEventKind.MoneyGiven => key.Category == "money" || key.Category == "communication" && key.Field is "remaining" or "pending",
+        CycleObservedEventKind.ProductionStarted => key.Category is "activity" or "inventory" or "notice" or "continuity" ||
+            key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
+        CycleObservedEventKind.ProductionCompleted => key.Category is "inventory" or "activity",
+        CycleObservedEventKind.MarketRefreshed => false,
         CycleObservedEventKind.ItemGiven => key.Category == "inventory" || key.Category == "communication" && key.Field is "remaining" or "pending",
         CycleObservedEventKind.BodyChanged => key.Category == "body" && key.Field is "food" or "water" or "warmth",
         CycleObservedEventKind.ExpeditionEnded => key == new CycleStateKey("world", "world", "outcome") ||
@@ -184,11 +197,11 @@ internal static class CycleObservedEventValidation {
         CycleObservedEventKind.LightChanged => key.Category == "world" && key.Field == "light" || key.Category == "body" && key.Field.EndsWith("-rate", StringComparison.Ordinal),
         CycleObservedEventKind.WeatherResolved => key.Category == "body" && key.Field is "warmth" or "warning-warmth",
         CycleObservedEventKind.SurvivalWarning => key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
-        CycleObservedEventKind.SurvivalFailed => false,
+        CycleObservedEventKind.SurvivalFailed => key.Category == "inventory",
         CycleObservedEventKind.AttentionAcknowledged => key.Category is "notice" or "continuity" || key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
         CycleObservedEventKind.GatherYielded => key.Category is "inventory" or "resource" or "notice" || key.Category == "activity" && key.Field is "completed" or "due",
         CycleObservedEventKind.GatherFinished or CycleObservedEventKind.WaitCompleted => key.Category == "activity",
-        CycleObservedEventKind.WaitStarted or CycleObservedEventKind.GatherStarted or CycleObservedEventKind.ActivityCancelled => key.Category is "activity" or "notice" or "continuity" || key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
+        CycleObservedEventKind.WaitStarted or CycleObservedEventKind.GatherStarted or CycleObservedEventKind.ActivityCancelled => key.Category is "activity" or "inventory" or "notice" or "continuity" || key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
         CycleObservedEventKind.MoveStarted or CycleObservedEventKind.MoveArrived => key.Category is "location" or "activity" or "notice" or "continuity" || key.Category == "communication" && key.Field == "pending" || key.Category == "body" && (key.Field is "sheltered" or "warmth-rate" || key.Field.StartsWith("warning-", StringComparison.Ordinal)),
         _ => false
     };
@@ -214,6 +227,7 @@ internal static class CycleObservedEventValidation {
             }
         }
         if (subjectSelf || received) {
+            yield return new("money", actor.Id, "balance");
             foreach (string item in actor.Backpack.Items.Keys.Concat(next.Backpack.Items.Keys).Distinct(StringComparer.Ordinal)) { yield return new("inventory", item, "count"); }
         }
         // Draft consumption belongs to a captured character operation, never an indirect group movement.
@@ -244,7 +258,7 @@ internal static class CycleObservedEventValidation {
         CycleSurvival? body = actor.Survival?.Project(state.Time);
         CycleActivity? activity = actor.Activity;
         SpatialLocation? location = CycleActions.Location(state, observer);
-        if (key.Category is "body" or "activity" or "location" or "notice" or "continuity" or "communication" or "following" && key.ObjectId != observer) {
+        if (key.Category is "body" or "activity" or "location" or "notice" or "continuity" or "communication" or "following" or "money" && key.ObjectId != observer) {
             throw new InvalidOperationException("Private effects belong to their observer.");
         }
         return (key.Category, key.Field) switch {
@@ -256,6 +270,7 @@ internal static class CycleObservedEventValidation {
             ("body", "warning-food") => CycleVisibleValue.Flag((body!.PendingMask & 1) != 0),
             ("body", "warning-water") => CycleVisibleValue.Flag((body!.PendingMask & 2) != 0),
             ("body", "warning-warmth") => CycleVisibleValue.Flag((body!.PendingMask & 4) != 0),
+            ("money", "balance") => CycleVisibleValue.Numeric(actor.Money, "钱"),
             ("inventory", "count") => CycleVisibleValue.Numeric(actor.Backpack.Count(key.ObjectId), "份"),
             ("activity", "kind") => Text(activity?.Kind.ToString()),
             ("activity", "due") => activity is null ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Numeric(activity.Due.Ticks, "ticks"),

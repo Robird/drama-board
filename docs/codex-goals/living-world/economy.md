@@ -1,6 +1,6 @@
 # 经济融合编码起点
 
-2026-11-01。面向下一实施切片 C2／C4 的源码调查结论。本文不是完成记录；生产、市场和居民报价尚未迁入融合世界。当前施工状态只维护在 [work-plan](work-plan.md)。
+2026-11-01。C2／C4 的生产、市场与现金纵切已经编码，正在验收；居民报价仍待实施。当前施工状态只维护在 [work-plan](work-plan.md)，本文件保留实施合同及后续交易候选。
 
 ## 保持的合同
 
@@ -57,20 +57,22 @@
 | [CycleObservation](../../../src/ResourceCycle/CycleObservation.cs) | 自己的钱、当地市场／配方、本人报价；同步材料类型、相等性、投递校验、OperationResults、Console 与 Completion。 |
 | [CycleActions](../../../src/ResourceCycle/CycleActions.cs)、[CycleSurvival](../../../src/ResourceCycle/CycleSurvival.cs) | 当前 Use 将 item.food 以外的物品按水需求判断；新增口粮须同步供应效果、满值拒绝、名称和说明。 |
 
-## 候选形状与数值，尚待集成裁决
+## 当前实现与后续交易候选
 
-候选状态为 `CycleBusinessState.Economy` 聚合 Market／Totals／Trades，角色新增 Money；LivingWorld 必须启用，基础采集夹具可暂不启用。未启用时拒绝经济命令且资金为零。这不是新增第二产品模式。
+`CycleBusinessState.Economy` 当前聚合 Market／Totals，角色新增 Money；LivingWorld 启用，基础采集夹具可不启用。未启用时拒绝经济命令且资金为零。这不是新增第二产品模式。Trades 在紧接的报价切片加入。
 
-候选命令：`buy`、`sell`、`produce`、`offer`、`accept`、`reject`、`withdraw`；支持金钱与物品交易。复用既有 Give，金钱赠与可独立 kind 避免修改采集 Count 的类型。具体参数与 parser/formatter 形状由集成裁决。
+已接线 `buy <item> <count>`、`sell <item> <count>`、`produce <recipe> <batches>`、`give <actor> money <amount>`。前三种数量为 1–1000；金钱赠与使用独立 GiveMoney kind 与 long 金额，不改变采集 Count 的类型。`offer`、`accept`、`reject`、`withdraw` 尚待实施，届时支持金钱与物品交换。
 
 候选规则：买卖仅市场、生产仅工坊；报价与接受须同地，拒绝／撤回可在自己的地点决策窗口执行；途中保留现有限制。报价发送可共用通信额度，关闭已有报价不消耗发送额度，避免无额度可退出。忙碌／跟随只在已有决策窗口操作，不新增主动插话调度。
 
-| 候选配方 | 输入→输出 | 耗时／用途 |
+| 当前配方 | 输入→输出 | 耗时／用途 |
 | --- | --- | --- |
 | ration | 2 食物→2 口粮 | 工坊 1h／批，口粮恢复 55 食物，普通食物仍为 35。 |
 | woodware | 2 干木→1 木器 | 工坊 2h／批，换取下次出行补给。 |
 
-候选市场每日刷新有限额度：卖食物 3 钱×36 份、饮水 1 钱×60 份；收口粮 5 钱×18 份、木器 14 钱×12 份，可选收原木 3 钱×12 份。每人初始 12 钱。加工收益对应真实耗时，库存不无限累积；这些数值须由实际循环和三日运行校验，不是稳定性结论。
+当前市场每日刷新有限额度：卖食物 3 钱×36 份、饮水 1 钱×60 份；收口粮 5 钱×18 份、木器 14 钱×12 份、原木 3 钱×12 份。每人初始 12 钱。加工收益对应真实耗时，库存不无限累积；这些数值须由实际循环和三日运行校验，不是稳定性结论。
+
+当前实现见 [CycleEconomyRules](../../../src/ResourceCycle/CycleEconomyRules.cs)、[CycleEconomyValidation](../../../src/ResourceCycle/CycleEconomyValidation.cs) 和 [LivingWorldEconomyContent](../../../src/ResourceCycle/LivingWorldEconomyContent.cs)。生产订单记录原料、产出和批次快照。Fold 对精确资产变更、现金、累计账、订单和活动保留作独立校验；总账守恒本身不授权动作。地点记忆也必须来自本次真实位置与当地资源；消费必须产生所声明物品的准确身体增益。
 
 ## 实施顺序与文件分工
 

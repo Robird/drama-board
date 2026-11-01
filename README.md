@@ -2,7 +2,7 @@
 
 DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定性事件，**Spatial** 表达地点、通路、移动实体与相遇，**Host** 驱动 Kernel。核心不依赖 Player 或应用服务器。
 
-当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动；抵达原来的出口不再结束角色生活。生产、资金、市场与居民交易仍待从 Microtown 融合，当前首片不等于完整生活经济循环已经完成。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
+当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民报价交易仍待从 Microtown 融合。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
 
 跨会话状态见 [PROJECT-STATE](PROJECT-STATE.md)，文档导航见 [docs/README](docs/README.md)，协作约定见 [AGENTS](AGENTS.md)。
 
@@ -32,7 +32,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --characters 1 --store 
 dotnet run --project src/ResourceCycle.Cli -c Release -- --help
 ```
 
-新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物与三份水；这些是有限初始资产，回镇不会自动补满。
+新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、现金、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物、三份水和 12 钱；这些是有限初始资产，回镇不会自动补满。
 
 每个需要决策的角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。无 `--store` 时只在内存中运行；指定存档后每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
 
@@ -67,10 +67,13 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 | 移动 | `go <passage-id>` |
 | 采集 | `gather <resource-id> <count\|all>` |
 | 等待 | `wait <1–24 小时>` |
-| 使用补给 | `use item.food`、`use item.water` |
+| 使用补给 | `use item.food`、`use item.water`、`use item.ration` |
+| 市场买卖 | `buy <item-id> <count>`、`sell <item-id> <count>` |
+| 工坊加工 | `produce <recipe-id> <batches>` |
 | 确认提醒并保留活动 | `continue` |
-| 取消采集/等待 | `cancel` |
+| 取消采集/等待/生产 | `cancel` |
 | 定向说话、赠与 | `say <actor-id> <text>`、`give <actor-id> <item-id> <count>` |
+| 赠钱 | `give <actor-id> money <amount>` |
 | 大喊 | `shout <text>` |
 | 跟随/解散 | `follow <actor-id>`、`unfollow`、`dismiss-followers` |
 
@@ -78,9 +81,11 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 
 采集每份单独结算，`all` 冻结接受时库存作为有限目标，不预留库存，也不跟随再生增长。资源耗尽或其他采集者加入会请求响应；`continue` 保留原活动期限，`cancel` 保留已取得物品而放弃未完成的一份。无效命令与查询不会消耗世界时间或确认提醒。
 
-移动有真实模拟耗时，途中不能取消。身体随时间消耗，低值提醒可能在途中要求回应；使用补给后 `continue` 可继续原行程。温暖在庇护或白天野外恢复，夜间野外下降；天气每两小时可能带来最多 10 点额外降温，庇护可防止该损失。预测包含已知昼夜变化，不包含未来寒风。干木当前还不能生火；加工用途属于后续经济融合。角色探索知识来自亲历，旧观察标注时间，其他角色的陈述不会自动成为世界确认事实。
+移动有真实模拟耗时，途中不能取消。身体随时间消耗，低值提醒可能在途中要求回应；使用补给后 `continue` 可继续原行程。温暖在庇护或白天野外恢复，夜间野外下降；天气每两小时可能带来最多 10 点额外降温，庇护可防止该损失。预测包含已知昼夜变化，不包含未来寒风。干木可以加工木器出售，当前还不能生火。角色探索知识来自亲历，旧观察标注时间，其他角色的陈述不会自动成为世界确认事实。
 
-跟随需要同地且没有耗时活动；领队普通 `go` 带所有实际跟随者一起出发，到达仍保持关系。跟随者不能自行开始移动、采集或等待，个人身体提醒仍需自己处理。到工作地点后可以解散，结束工作再集合；没有自动等待未加入同伴的机制。见[跟随设计](docs/design/character-following.md)。
+市场每日补充有限供应与收购额度，价格、剩余额度和下次补充时间在当地显示。买卖数量与生产批次为 1–1000。工坊每批用两份食物制作两份口粮（1 小时），或两份干木制作一件木器（2 小时）；口粮恢复 55 饱食。开工先托管原料，完成交付产物；取消或死亡退回未完成活动的原料。生产中处理通信、补给或赠与不改变原期限，接收物品还须为完成产物和取消退料分别留足空间。赠钱和物品赠与都使用通信额度。实际两次往返与账目见[经济验收](docs/experiments/living-world-economy-acceptance.md)；构建 CLI 后可运行 `pwsh -NoProfile -File scripts/Smoke-Hillside.ps1` 复验。
+
+跟随需要同地且没有耗时活动；领队普通 `go` 带所有实际跟随者一起出发，到达仍保持关系。跟随者不能自行开始移动、采集、生产或等待，个人身体提醒仍需自己处理。到工作地点后可以解散，结束工作再集合；没有自动等待未加入同伴的机制。见[跟随设计](docs/design/character-following.md)。
 
 说话、赠与限同地活跃角色；大喊送达本地与一跳声音连接地点的活跃角色，途中角色听不到。声音连接独立于移动通路，目前为 camp ↔ stream、ridge ↔ cabin。三种操作共用每角色每模拟时刻四次成功发送额度；无人听见的大喊也成功，不返回听众名单。通信唤醒不取消活动、不改变期限或跟随关系。独立闲置角色须安排耗时行动或加入跟随才能放行时间。见[大喊设计](docs/design/spatial-relations-and-shout.md)。
 
@@ -96,7 +101,7 @@ Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令�
 
 ## 原型与历史证据
 
-Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。这些能力仍需进入新世界才能满足 C2/C4，旧证据不能替代融合验收。
+Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场与赠钱，居民报价仍需迁入才能完成 C2/C4；旧证据不能替代融合验收。
 
 ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。原 Smoke 脚本包含旧参数，目前不作为推荐新世界运行方式。历史实现与验证仍可查阅：
 

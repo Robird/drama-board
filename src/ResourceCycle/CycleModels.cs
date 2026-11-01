@@ -5,14 +5,15 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 12)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 13)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected, SpeechSent, ItemGiven, GoalOperation,
-    FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted
+    FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted,
+    MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven
 }
-public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, SurvivalWarning, RequestDecision }
+public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, MarketRefresh, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
 public static class CycleTime {
@@ -57,7 +58,7 @@ public sealed partial class CycleScript : IDurableObject {
 }
 
 /// <summary>Persistent world truth; caches and member lists are rebuilt after loading.</summary>
-[DurableType("DramaBoard.ResourceCycle.BusinessState", 4)]
+[DurableType("DramaBoard.ResourceCycle.BusinessState", 5)]
 public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     [DurableField(2)] private CycleLight _light;
@@ -67,6 +68,8 @@ public sealed partial class CycleBusinessState : IDurableObject {
     [DurableField(6)] private string? _lastServedActorId;
     [DurableField(7)] private CycleExpedition? _expedition;
     [DurableField(8)] private Dictionary<string, CharacterInteractionState> _interactionStates;
+    [DurableField(9)] private CycleEconomyState? _economy;
+    public CycleEconomyState? Economy => _economy;
     public IReadOnlyDictionary<string, CharacterInteractionState> InteractionStates => new ReadOnlyDictionary<string, CharacterInteractionState>(_interactionStates);
     public ModelTime Time => _time;
     public CycleLight Light => _light;
@@ -77,10 +80,11 @@ public sealed partial class CycleBusinessState : IDurableObject {
     public CycleExpedition? Expedition => _expedition;
     public CycleBusinessState(ModelTime time, CycleLight light, IEnumerable<CycleResource> resources,
         CycleScript script, IEnumerable<CycleCharacter>? characters = null, string? lastServedActorId = null,
-        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionStates = null) {
+        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionStates = null, CycleEconomyState? economy = null) {
         _time = time; _light = light; _resources = [.. resources]; _script = script;
         _characters = characters?.ToList() ?? []; _lastServedActorId = lastServedActorId;
         _expedition = expedition;
+        _economy = economy;
         CharacterInteractionState[] states = (interactionStates ?? _characters.Select(c => new CharacterInteractionState(c.Id))).ToArray();
         if (states.Select(state => state.ActorId).Distinct(StringComparer.Ordinal).Count() != states.Length) {
             throw new InvalidOperationException("Interaction states must have unique actor identities.");
@@ -91,10 +95,10 @@ public sealed partial class CycleBusinessState : IDurableObject {
     public CycleCharacter GetCharacter(string id) => _characters.Single(c => c.Id == id);
     public CycleBusinessState Replace(ModelTime time, CycleLight? light = null, IEnumerable<CycleResource>? changedResources = null,
         CycleScript? script = null, IEnumerable<CycleCharacter>? changedCharacters = null, string? lastServedActorId = null,
-        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionChanges = null) {
+        CycleExpedition? expedition = null, IEnumerable<CharacterInteractionState>? interactionChanges = null, CycleEconomyState? economy = null) {
         return new(time, light ?? Light, ReplaceChildren(_resources, changedResources, r => r.Id), script ?? Script,
             ReplaceChildren(_characters, changedCharacters, c => c.Id), lastServedActorId ?? LastServedActorId, expedition ?? Expedition,
-            ReplaceChildren(_interactionStates.Values.ToArray(), interactionChanges, state => state.ActorId));
+            ReplaceChildren(_interactionStates.Values.ToArray(), interactionChanges, state => state.ActorId), economy ?? Economy);
     }
     private static IEnumerable<T> ReplaceChildren<T>(IReadOnlyList<T> previous, IEnumerable<T>? changes, Func<T, string> id) {
         if (changes is null) { return previous; }
@@ -144,6 +148,17 @@ public sealed partial class CycleBusinessState : IDurableObject {
         Expedition?.Validate(this);
         CycleFollowingRules.Validate(this);
         CycleSurvivalRules.Validate(this);
+        if (Economy is null) {
+            if (Characters.Any(actor => actor.Money != 0 || actor.Activity?.Production is not null)) { throw new InvalidOperationException("Economic assets require an economic state."); }
+        } else {
+            if (Expedition is null) { throw new InvalidOperationException("Economy requires the continuous world."); }
+            Economy.Validate(this);
+            foreach (CycleCharacter actor in Characters.Where(actor => actor.Activity?.Production is not null)) {
+                if (CycleActions.Location(this, actor.Id) is not AtPlaceLocation place || place.PlaceId.Value != "workshop") {
+                    throw new InvalidOperationException("Production requires the workshop.");
+                }
+            }
+        }
     }
 }
 
@@ -180,5 +195,5 @@ public sealed class CycleWorld {
     public static CycleWorld CreatePlayable(ModelTime? start = null, IEnumerable<CycleCharacter>? characters = null,
         IEnumerable<CycleResource>? resources = null) => CycleGameFactory.CreatePlayable(start, characters, resources).World;
     public void Validate() => CycleEngine.Validate(this, Time);
-    public string DescribeState() => $"time={Time.Ticks};light={Light};resources=[{string.Join(';', Resources)}];script={Script};characters=[{string.Join(';', Characters)}];lastServed={Business.LastServedActorId};{(Expedition is null ? "" : $"expedition={Expedition};")}{Forecasts}";
+    public string DescribeState() => $"time={Time.Ticks};light={Light};resources=[{string.Join(';', Resources)}];script={Script};characters=[{string.Join(';', Characters)}];lastServed={Business.LastServedActorId};economy={Business.Economy};{(Expedition is null ? "" : $"expedition={Expedition};")}{Forecasts}";
 }

@@ -23,7 +23,10 @@ public static class CycleGameFactory {
             environment: enableNeeds && enableWeather ? new(weatherSeed, 0,
                 time.Ticks > long.MaxValue - CycleEnvironmentRules.IntervalTicks ? null : new(time.Ticks + CycleEnvironmentRules.IntervalTicks)) : null);
         return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
-            new([]), characters, expedition: expedition));
+            new([]), characters, expedition: expedition, economy: new(
+                CycleMarket.Fresh(new(checked(time.Ticks / CycleTime.Day * CycleTime.Day + CycleTime.Day))),
+                new CycleEconomicTotals(characters.Sum(actor => actor.Money), LivingWorldEconomyContent.Items.Keys.ToDictionary(
+                    item => item, item => characters.Sum(actor => (long)actor.Backpack.Count(item)), StringComparer.Ordinal)))));
     }
 
     /// <summary>Legacy test setup with scarce supplies on the same Hillside map; reaching a former exit does not retire a character.</summary>

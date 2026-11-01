@@ -97,7 +97,7 @@ internal static class CycleInteractionRules {
     }
 
     internal static bool ReleasesSimulation(CycleBusinessState candidate, string actorId, CycleCommand command) =>
-        command.Kind is CycleCommandKind.Go or CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Follow ||
+        command.Kind is CycleCommandKind.Go or CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Follow or CycleCommandKind.Produce ||
         command.Kind == CycleCommandKind.Continue && !CycleActions.NeedsDecision(candidate, actorId);
 
     internal static IEnumerable<CharacterContextItem> RetainItems(IReadOnlyList<CharacterContextItem> items, long operationSequence) =>
@@ -138,6 +138,7 @@ internal static class CycleInteractionRules {
             CycleCommandKind.Go => known.Passages.Single(p => p.Id == command.PassageId).Description,
             CycleCommandKind.Gather => $"采集{known.Resources.Single(r => r.Id == command.ResourceId).Name}",
             CycleCommandKind.Wait => $"在原地等待 {command.Hours} 小时",
+            CycleCommandKind.Produce => $"在工坊生产 {command.RecipeId} ×{command.Count} 批",
             CycleCommandKind.Follow => $"跟随 {known.OtherCharacters.Single(actor => actor.Id == command.TargetActorId).Name}（{command.TargetActorId}）",
             CycleCommandKind.Continue when !travelling && known.FollowingLeaderId is not null =>
                 $"确认提醒并继续跟随 {known.FollowingLeaderName}（{known.FollowingLeaderId}）",
@@ -145,6 +146,6 @@ internal static class CycleInteractionRules {
         };
 
     internal static CycleObservedEvent LocalEvent(CycleObservedEvent entry, int ordinal) => new(ordinal, entry.ObserverId,
-        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects, entry.Communication);
+        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects, entry.Communication, entry.Production);
 
 }
