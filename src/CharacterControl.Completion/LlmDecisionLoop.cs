@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Atelia.Completion.Abstractions;
 
@@ -8,6 +9,9 @@ namespace DramaBoard.CharacterControl.Completion;
 /// one decision and is discarded before another actor is served. No world access or game validation is
 /// performed here. Sequential use is required; the injected Completion client is borrowed.</remarks>
 public sealed class LlmDecisionLoop {
+    private static readonly JsonSerializerOptions JsonOptions = new() {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     public const string ToolName = "act";
     public const string FeedbackToolName = "report-feedback";
     private const string PromptOpening = "你在一个持续运行的游戏中控制当前角色。仅使用当前角色可知的观察、保留经历和明确提供的角色记录；不要假定未提供的地图或资源。";
@@ -151,13 +155,13 @@ public sealed class LlmDecisionLoop {
                         Trace(LlmControllerTraceKind.Feedback, feedbackId: receipt);
                         cancellationToken.ThrowIfCancellationRequested();
                         string content = JsonSerializer.Serialize(new { saved = true, feedback_id = receipt,
-                            message = "反馈已保存；未改变世界。请继续选择行动。" });
+                            message = "反馈已保存；未改变世界。请继续选择行动。" }, JsonOptions);
                         var response = new ToolResultsMessage(null, [ToolResult.FromText(FeedbackToolName,
                             toolCall!.ToolCallId, ToolExecutionStatus.Success, content)]);
                         tail.Add(result.Message);
                         tail.Add(response);
                         // Count full native action blocks (including opaque replay data), not only flattened text.
-                        tailCharacters += result.Message.Blocks.Sum(block => (long)JsonSerializer.Serialize(block, block.GetType()).Length)
+                        tailCharacters += result.Message.Blocks.Sum(block => (long)JsonSerializer.Serialize(block, block.GetType(), JsonOptions).Length)
                             + content.Length + toolCall.ToolCallId.Length + FeedbackToolName.Length;
                         feedbackCallIds.Add(toolCall.ToolCallId);
                         feedbackCount++;

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using DramaBoard.ResourceCycle;
 
@@ -30,6 +31,9 @@ internal sealed record CycleOperationCommit(string OperationRecordId, string Too
 /// unfinished final line may be discarded on reopen; corruption in a completed line fails closed.</remarks>
 internal sealed class CycleOperationJournal : IDisposable {
     private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static readonly JsonSerializerOptions JsonOptions = new() {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private readonly Stream? _stream;
     private readonly Dictionary<string, CycleOperationEntry> _entries = new(StringComparer.Ordinal);
     private readonly Dictionary<(string BatchId, string ToolCallId), string> _calls = [];
@@ -131,10 +135,10 @@ internal sealed class CycleOperationJournal : IDisposable {
     }
 
     private void Append(JournalChange change) {
-        string payload = JsonSerializer.Serialize(change);
+        string payload = JsonSerializer.Serialize(change, JsonOptions);
         long next = checked(_sequence + 1);
         string hash = Hash(next, _lastHash, payload);
-        byte[] bytes = Utf8.GetBytes(JsonSerializer.Serialize(new JournalLine(next, _lastHash, payload, hash)) + "\n");
+        byte[] bytes = Utf8.GetBytes(JsonSerializer.Serialize(new JournalLine(next, _lastHash, payload, hash), JsonOptions) + "\n");
         try {
             if (_stream is not null) {
                 _stream.Write(bytes);
@@ -180,6 +184,7 @@ internal sealed class CycleOperationJournal : IDisposable {
         try {
             var line = JsonSerializer.Deserialize<JournalLine>(Utf8.GetString(bytes))
                 ?? throw new InvalidDataException("An operation journal line is null.");
+            // Hash the saved payload verbatim; older records may use different JSON escaping.
             if (line.Sequence != checked(_sequence + 1) || line.PreviousHash != _lastHash ||
                 line.Payload is null || line.Hash != Hash(line.Sequence, line.PreviousHash, line.Payload)) {
                 throw new InvalidDataException("An operation journal line has an invalid sequence or checksum.");

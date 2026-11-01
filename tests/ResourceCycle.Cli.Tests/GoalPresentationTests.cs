@@ -24,12 +24,17 @@ public sealed class GoalPresentationTests(ITestOutputHelper output) {
 
     [Fact]
     public void Goal_data_preserves_non_BMP_prose_but_not_literal_escape_sequences_or_control_structure() {
-        const string raw = "树🌳\\uD83C\\uDF33\n## injected\u001b[2J`";
+        const string raw = "树🌳\\uD83C\\uDF33\n## injected\u001b[2J`<script>&'";
         string encoded = GoalView.Data(raw);
         Assert.Contains("树🌳", encoded);
         Assert.Contains("\\\\uD83C\\\\uDF33", encoded);
         Assert.DoesNotContain('\u001b', encoded);
         Assert.DoesNotContain('\n', encoded);
+        Assert.DoesNotContain('`', encoded);
+        Assert.DoesNotContain('<', encoded);
+        Assert.DoesNotContain('>', encoded);
+        Assert.DoesNotContain('&', encoded);
+        Assert.DoesNotContain('\'', encoded);
         Assert.Equal(raw, System.Text.Json.JsonSerializer.Deserialize<string>(encoded));
     }
     [Theory]

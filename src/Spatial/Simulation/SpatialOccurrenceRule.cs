@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -9,6 +10,8 @@ namespace DramaBoard.Spatial;
 public sealed class SpatialOccurrenceRule :
     IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
     private readonly GraphDefinition _definition;
+    // These bytes define persisted candidate identity and tie-breaking order, not display JSON.
+    private static readonly JsonWriterOptions KeyJsonOptions = new() { Encoder = JavaScriptEncoder.Default };
 
     public SpatialOccurrenceRule(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
@@ -117,7 +120,7 @@ public sealed class SpatialOccurrenceRule :
 
     private static CandidateKey CreateEntryChangeKey(ScheduledPassageEntryChange change) {
         var buffer = new ArrayBufferWriter<byte>();
-        using var writer = new Utf8JsonWriter(buffer);
+        using var writer = new Utf8JsonWriter(buffer, KeyJsonOptions);
         writer.WriteStartArray();
         writer.WriteStringValue("graph-spatial/entry-change");
         writer.WriteStringValue(change.PassageId.Value);
@@ -132,7 +135,7 @@ public sealed class SpatialOccurrenceRule :
     private static CandidateKey CreateArrivalKey(TraversalArrivalOccurrenceData data) {
         TraversingLocation traversal = data.Traversal;
         var buffer = new ArrayBufferWriter<byte>();
-        using var writer = new Utf8JsonWriter(buffer);
+        using var writer = new Utf8JsonWriter(buffer, KeyJsonOptions);
         writer.WriteStartArray();
         writer.WriteStringValue("graph-spatial/arrival");
         writer.WriteStringValue(data.EntityId.Value);

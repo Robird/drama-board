@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace DramaBoard.CharacterGym;
@@ -18,6 +19,9 @@ public sealed class GymJournal : IDisposable {
     public const int CurrentFormatVersion = 1;
     private const string MetadataKind = "metadata";
     private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static readonly JsonSerializerOptions JsonOptions = new() {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private readonly Stream _stream;
     private readonly List<GymRecord> _records = [];
     private readonly IReadOnlyList<GymRecord> _view;
@@ -79,11 +83,11 @@ public sealed class GymJournal : IDisposable {
         ArgumentNullException.ThrowIfNull(payload);
         long sequence = checked((long)_records.Count + 1);
         var record = new GymRecord(CurrentFormatVersion, sequence, kind, runId, branchId, actorId,
-            JsonSerializer.SerializeToElement(payload, payload.GetType()));
+            JsonSerializer.SerializeToElement(payload, payload.GetType(), JsonOptions));
         Validate(record);
-        string serialized = JsonSerializer.Serialize(record);
+        string serialized = JsonSerializer.Serialize(record, JsonOptions);
         string hash = Hash(sequence, _lastHash, serialized);
-        byte[] bytes = Utf8.GetBytes(JsonSerializer.Serialize(new JournalLine(sequence, _lastHash, serialized, hash)) + "\n");
+        byte[] bytes = Utf8.GetBytes(JsonSerializer.Serialize(new JournalLine(sequence, _lastHash, serialized, hash), JsonOptions) + "\n");
         try {
             _stream.Write(bytes);
             FlushDurable(_stream);
@@ -137,6 +141,7 @@ public sealed class GymJournal : IDisposable {
             try {
                 var line = JsonSerializer.Deserialize<JournalLine>(Utf8.GetString(bytes))
                     ?? throw new InvalidDataException("A Gym journal line is null.");
+                // Hash the saved payload verbatim; older records may use different JSON escaping.
                 if (line.Sequence != (long)Records.Count + 1 || line.PreviousHash != LastHash ||
                     line.Payload is null || line.Hash != Hash(line.Sequence, LastHash, line.Payload)) {
                     throw new InvalidDataException("A Gym journal line has an invalid sequence or checksum.");

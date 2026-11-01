@@ -8,6 +8,7 @@ using DramaBoard.ResourceCycle;
 /// <summary>Pure character material. Console append delivery and complete previews read the same saved Model.</summary>
 internal static class CharacterContextRenderer {
     private static readonly JsonSerializerOptions DataOptions = new() {
+        // Embedded in Markdown: preserve readable Unicode while escaping HTML and backticks.
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
     };
 

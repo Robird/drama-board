@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Atelia-org/atelia-storage
-          ref: 70b406cd8d1117733eee81a33e7f978399aa98b2
+          ref: 9ad39fc51a420e8302468533b82d8bc3a91a403e
           path: atelia-storage
       - name: Check out current DurableGraph source
         uses: actions/checkout@v4

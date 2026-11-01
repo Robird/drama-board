@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Atelia.Completion.Abstractions;
@@ -10,6 +11,7 @@ namespace DramaBoard.CharacterGym;
 /// evidence; consumers must not render them as dialogue. Do not pass clients or credential configuration.</remarks>
 public static class GymMessageProjection {
     private static readonly JsonSerializerOptions JsonOptions = new() {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters = { new JsonStringEnumConverter() }
     };
 

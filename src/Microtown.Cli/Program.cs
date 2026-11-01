@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using DramaBoard.Microtown;
 using DramaBoard.Microtown.Cli;
@@ -60,6 +61,7 @@ try {
         if (options.Store is null || !Directory.Exists(options.Store)) { throw new ArgumentException("Management requires an existing --store."); }
         switch (management) {
             case "branches":
+                var jsonOptions = new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
                 foreach (TownBranchInfo branch in TownDurableHistory.ListBranches(options.Store)) {
                     Console.WriteLine(JsonSerializer.Serialize(new {
                         BranchId = TownDurableHistory.FormatBranchId(branch.Id), branch.DisplayLabel,
@@ -67,7 +69,7 @@ try {
                         CompletedStateCommitId = TownDurableHistory.FormatCommitId(branch.CompletedStateCommitId),
                         ForkedFromCommitId = branch.ForkedFromCommitId is { } origin ? TownDurableHistory.FormatCommitId(origin) : null,
                         branch.HasPendingEvent
-                    }));
+                    }, jsonOptions));
                 }
                 break;
             case "feedbacks": TownGymCommands.ListFeedbacks(options.Store, options.Branch, actor, Console.Out); break;

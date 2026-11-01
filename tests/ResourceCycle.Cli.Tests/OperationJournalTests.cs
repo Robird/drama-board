@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using DramaBoard.ResourceCycle;
 
 public sealed class OperationJournalTests : IDisposable {
@@ -7,6 +10,41 @@ public sealed class OperationJournalTests : IDisposable {
 
     public OperationJournalTests() => Directory.CreateDirectory(_directory);
     public void Dispose() => Directory.Delete(_directory, recursive: true);
+
+    [Fact]
+    public void LegacyEscapedReceiptCanBeCompletedAndAppendedWithReadableJsonl() {
+        const string input = "旧输入 <标签> & '引用'\n🌳";
+        const string result = "原回答 <标签 属性=\"值\"> & '引用'\r\n第二行\t\\path 🌳";
+        // Reproduce the old writer to prove that changing the encoder preserves its checksum chain.
+        var legacyJson = new JsonSerializerOptions { Encoder = JavaScriptEncoder.Default };
+        var received = new CycleOperationReceipt("legacy", "batch", "call", "actor", 1, "console", input);
+        string payload = JsonSerializer.Serialize(new {
+            Received = received, OperationRecordId = (string?)null, Completed = (CycleOperationResult?)null
+        }, legacyJson);
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("1\n\n" + payload)));
+        string legacyLine = JsonSerializer.Serialize(new { Sequence = 1L, PreviousHash = "", Payload = payload, Hash = hash }, legacyJson);
+        File.WriteAllText(JournalPath, legacyLine + "\n", new UTF8Encoding(false));
+        byte[] legacyBytes = File.ReadAllBytes(JournalPath);
+        Assert.Contains("\\u65E7", legacyLine);
+
+        using (var journal = CycleOperationJournal.Open(JournalPath)) {
+            Assert.Equal(received, Assert.Single(journal.Entries).Received);
+            journal.Complete("legacy", CycleOperationStatus.Succeeded, result);
+            journal.Receive("batch", "call-2", "actor", 2, "console", "新输入 <标签> &\n下一行", "new");
+        }
+
+        Assert.Equal(legacyBytes, File.ReadAllBytes(JournalPath)[..legacyBytes.Length]);
+        string[] lines = File.ReadAllLines(JournalPath);
+        Assert.Equal(3, lines.Length);
+        Assert.Contains("原回答 <标签", lines[1]);
+        Assert.Contains("新输入 <标签> &", lines[2]);
+        using var reopened = CycleOperationJournal.Open(JournalPath);
+        var entry = Assert.Single(reopened.Entries, entry => entry.Received.OperationRecordId == "legacy");
+        Assert.Equal(received, entry.Received);
+        Assert.Equal(result, entry.Completed!.Result);
+        Assert.Equal(["new"], reopened.PendingOperationRecordIds);
+        Assert.Equal("新输入 <标签> &\n下一行", reopened.Entries.Single(entry => entry.Received.OperationRecordId == "new").Received.RawInput);
+    }
 
     [Fact]
     public void ReceiptsPreserveProviderIdsAndSeparateBatches() {

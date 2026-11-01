@@ -27,8 +27,13 @@ public sealed class LlmDecisionLoopTests {
         Assert.Equal("town-call", town.ToolCallId);
         Assert.NotEqual(town.OperationRecordId, forest.OperationRecordId);
         Assert.Same(feedback.Message, client.Requests[1].TailMessages[0]);
-        Assert.Contains("saved-feedback", Assert.Single(Assert.IsType<ToolResultsMessage>(
-            client.Requests[1].TailMessages[1]).Results).GetFlattenedText());
+        string feedbackReceipt = Assert.Single(Assert.IsType<ToolResultsMessage>(
+            client.Requests[1].TailMessages[1]).Results).GetFlattenedText();
+        Assert.Contains("saved-feedback", feedbackReceipt);
+        Assert.Contains("反馈已保存", feedbackReceipt);
+        using (JsonDocument receipt = JsonDocument.Parse(feedbackReceipt)) {
+            Assert.True(receipt.RootElement.GetProperty("saved").GetBoolean());
+        }
         Assert.Empty(client.Requests[2].TailMessages);
         Assert.Contains("forest survival policy", client.Requests[2].PromptPrefix.SystemPrompt);
         Assert.DoesNotContain("town production policy", client.Requests[2].PromptPrefix.SystemPrompt);

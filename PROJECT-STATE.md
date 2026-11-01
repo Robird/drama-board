@@ -15,6 +15,7 @@
 - **Inventory**：[ItemInventory](src/Inventory/ItemInventory.cs) 提供不可变物品数量与可选总件数上限，只依赖 DG；局部接纳/增加/校验由模块负责，跨模块采集效果及单根发布仍由游戏编排。
 - **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 编排独立事实应用与[预测维护](src/ResourceCycle/CyclePredictionMaintenance.cs)。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 三角色有限采集。见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
 - **构建依赖**：Kernel/Spatial/Inventory/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
+- **JSON 文本**：文件、日志、Console JSON 与 Completion 请求使用 `UnsafeRelaxedJsonEscaping`；[角色 Markdown 数据字面量](src/ResourceCycle.Cli/CharacterContextRenderer.cs)保留安全转义，[空间候选键](src/Spatial/Simulation/SpatialOccurrenceRule.cs)及 Completion dispatch 指纹保留原编码以稳定身份与排序。日志校验按保存的原始 Payload 计算，旧行可与新编码追加行共存。
 
 ## 当前焦点与下一步
 

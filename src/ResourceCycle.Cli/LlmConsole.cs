@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Atelia.Completion;
@@ -173,7 +174,10 @@ internal static class LlmConsole {
 
 /// <summary>One fresh file per host run. Not a replay log, game authority, or credential dump.</summary>
 internal sealed class LlmRunAudit : IDisposable {
-    private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
+    private static readonly JsonSerializerOptions JsonOptions = new() {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() }
+    };
     private readonly StreamWriter _file;
     public TextWriter Output { get; }
     public GymSession? Gym { get; set; }
@@ -185,7 +189,7 @@ internal sealed class LlmRunAudit : IDisposable {
     }
     public void Write(string kind, object payload, string? summary = null) {
         if (kind == "host-stop" || kind == "summary") {
-            JsonElement details = JsonSerializer.SerializeToElement(payload);
+            JsonElement details = JsonSerializer.SerializeToElement(payload, JsonOptions);
             Gym?.Stop(details.TryGetProperty("Reason", out var reason) ? reason.GetString() ?? kind : kind);
         }
         string json = JsonSerializer.Serialize(new { Kind = kind, Payload = payload }, JsonOptions);

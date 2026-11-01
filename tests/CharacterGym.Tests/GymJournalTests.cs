@@ -1,12 +1,57 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Xunit;
 
 namespace DramaBoard.CharacterGym.Tests;
 
 public sealed class GymJournalTests {
+    [Fact]
+    public void Legacy_escaped_records_remain_verifiable_when_readable_jsonl_is_appended() {
+        using var files = new Files();
+        const string original = "旧材料 <标签> & '引用'\n🌳";
+        const string appended = "新材料 <标签 属性=\"值\"> & '引用'\r\n第二行\t\\path 🌳";
+        // Reproduce the old writer to prove that changing the encoder preserves its checksum chain.
+        var legacyJson = new JsonSerializerOptions { Encoder = JavaScriptEncoder.Default };
+        string previous = "";
+        var metadata = new GymRecord(1, 1, "metadata", null, null, null,
+            JsonSerializer.SerializeToElement(new { StoreId = Guid.NewGuid().ToString("N") }, legacyJson));
+        var request = new GymRecord(1, 2, "request", "run", "branch", "a",
+            JsonSerializer.SerializeToElement(new { Text = original }, legacyJson));
+        File.WriteAllText(files.Path, LegacyLine(metadata) + "\n" + LegacyLine(request) + "\n", new UTF8Encoding(false));
+        byte[] legacyBytes = File.ReadAllBytes(files.Path);
+        Assert.Contains("\\u65E7", Encoding.UTF8.GetString(legacyBytes));
+
+        using (var journal = GymJournal.Open(files.Path)) {
+            Assert.Equal(original, journal.Records[1].Payload.GetProperty("Text").GetString());
+            journal.Append("request", "run", "branch", "a", new { Text = appended, 嵌套 = new { 说明 = "中文" } });
+        }
+
+        byte[] bytes = File.ReadAllBytes(files.Path);
+        Assert.Equal(legacyBytes, bytes[..legacyBytes.Length]);
+        string[] lines = File.ReadAllLines(files.Path);
+        Assert.Equal(3, lines.Length);
+        Assert.Contains("新材料 <标签", lines[2]);
+        Assert.Contains("嵌套", lines[2]);
+        Assert.Contains("中文", lines[2]);
+        var snapshot = GymJournal.Read(files.Path);
+        Assert.Equal(appended, snapshot.Records[2].Payload.GetProperty("Text").GetString());
+        Assert.Equal(bytes, File.ReadAllBytes(files.Path));
+        using var reopened = GymJournal.Open(files.Path);
+        Assert.Equal(3, reopened.Records.Count);
+        Assert.Equal(appended, reopened.Records[2].Payload.GetProperty("Text").GetString());
+
+        string LegacyLine(GymRecord record) {
+            string payload = JsonSerializer.Serialize(record, legacyJson);
+            string hash = Hash(record.Sequence, previous, payload);
+            string line = JsonSerializer.Serialize(new { record.Sequence, PreviousHash = previous, Payload = payload, Hash = hash }, legacyJson);
+            previous = hash;
+            return line;
+        }
+    }
+
     [Fact]
     public void Runs_and_branches_share_stable_identity_and_global_sequence_across_reopen() {
         using var files = new Files();

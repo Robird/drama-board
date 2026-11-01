@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -12,6 +13,8 @@ namespace DramaBoard.Spatial;
 public sealed class SpatialContactOccurrenceRule :
     IOccurrenceRule<SpatialSimulationState, SpatialOccurrenceData, GraphSpatialFact> {
     private readonly GraphDefinition _definition;
+    // Keep canonical identity and scheduling order independent of display escaping preferences.
+    private static readonly JsonWriterOptions KeyJsonOptions = new() { Encoder = JavaScriptEncoder.Default };
 
     public SpatialContactOccurrenceRule(GraphDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
@@ -64,7 +67,7 @@ public sealed class SpatialContactOccurrenceRule :
 
     internal static CandidateKey CreateCandidateKey(PassageContactKey key) {
         var buffer = new ArrayBufferWriter<byte>();
-        using var writer = new Utf8JsonWriter(buffer);
+        using var writer = new Utf8JsonWriter(buffer, KeyJsonOptions);
         writer.WriteStartArray();
         writer.WriteStringValue("graph-spatial/contact");
         writer.WriteStringValue(key.PassageId.Value);

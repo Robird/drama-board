@@ -37,8 +37,10 @@ public sealed class LlmHostTests {
         Assert.Equal(2, await LlmConsole.RunAsync(files.Store, firstOptions, default, output, first));
         Assert.Single(first.Requests);
         Assert.Contains("call-budget-exhausted", output.ToString());
-        using (JsonDocument input = JsonDocument.Parse(File.ReadLines(firstOptions.LogPath!)
-            .First(line => JsonSerializer.Deserialize<JsonElement>(line).GetProperty("Kind").GetString() == "model-input"))) {
+        string inputLine = File.ReadLines(firstOptions.LogPath!)
+            .First(line => JsonSerializer.Deserialize<JsonElement>(line).GetProperty("Kind").GetString() == "model-input");
+        Assert.Contains("你在一个持续运行的游戏中", inputLine);
+        using (JsonDocument input = JsonDocument.Parse(inputLine)) {
             JsonElement schema = input.RootElement.GetProperty("Payload").GetProperty("OutputContract").GetProperty("Tools")[0].GetProperty("InputSchema");
             Assert.Equal("object", schema.GetProperty("Type").GetString());
             Assert.False(schema.GetProperty("AdditionalProperties").GetBoolean());
