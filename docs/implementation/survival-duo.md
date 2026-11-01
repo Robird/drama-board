@@ -2,6 +2,8 @@
 
 状态：2026-10-29 已实施并通过[规则、恢复、宿主与真实模型接线验收](../experiments/survival-duo-acceptance.md)。承接[二期里程碑 §3.3](../design/survival-demo-milestone.md#33-2b双角色生存与控制器路由)；交流、赠与与真实合作仍属于 2C。
 
+2026-11-01：人数和路由已随[角色跟随](../design/character-following.md)扩展至 1–3 人。当前入口为 `--survival --characters 1|2|3`，`--duo` 仅是显式二人快捷参数；续局省略人数时读取存档，显式人数必须匹配。多人 LLM 模式中 a 为 Human，其余角色共享同一模型调用预算。下文保留最初双角色切片的领域合同，当前启动方式以[README](../../README.md#two-or-three-explorers-in-one-survival-world)为准。
+
 ## 一个世界，两个独立角色
 
 复用 ResourceCycle 应用和一套 Kernel、模型时间、E/S 发布根。双角色工厂组装 `a`（阿青）、`b`（阿白），各自拥有身体、背包、活动、Context 和地点观察。地图、资源余量、昼夜和天气是共享世界状态。规则无需知道角色由 Human 还是 LLM 控制。

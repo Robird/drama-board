@@ -19,7 +19,7 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 角色（Character） | 世界内承受规则效果的对象，拥有技能、背包和活动。不能用 Player 指代角色状态。 | [CycleCharacter](../src/ResourceCycle/CycleCharacter.cs) |
-| 跟随（Following） | 队员主动授权领队带自己移动的持续关系；期间禁止自己的移动与其他耗时活动，到点可显式解除；不等于采集/等待 Activity。领队和队员由关系派生。 | [跟随设计](design/character-following.md)已审阅、待实施；拟增加 `FollowingLeaderId`，当前尚无此字段或命令。 |
+| 跟随（Following） | 队员主动授权领队带自己移动的持续关系；期间禁止自己的移动与其他耗时活动，到点可显式解除；不等于采集/等待 Activity。领队和队员由关系派生。 | `CycleCharacter.FollowingLeaderId`；`follow` / `unfollow` / `dismiss-followers`；游戏内 `CycleFollowingRules` 与唯一 `CycleActions.NeedsDecision`。见[跟随合同](design/character-following.md)。 |
 | 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前应用接口为 [ICycleCharacterController](../src/ResourceCycle/CycleActions.cs)，尚未提取通用引擎接口。 |
 | 人类控制器（HumanPlayer） | 通过交互界面向人类取得角色决策。人类使用者、控制器和被控角色是三个不同概念。 | [PlayConsole](../src/ResourceCycle.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；采集场景同一 Console 服务三个角色，探索场景服务一个角色。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |

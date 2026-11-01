@@ -1,8 +1,8 @@
 # ResourceCycle 角色跟随设计
 
-状态：已完成辩证审阅，待实施。2026-11-01。
+状态：已实施；工程验证与试玩证据见[实施验收](../experiments/character-following-acceptance.md)。2026-11-01。
 
-本轮交付功能与软件实现设计，不修改玩法代码。用户已认可“主动集合—持续同行—到点解散—分头工作—重新集合”的方向，并明确没有旧存档或 API 兼容负担。本文中的新增命令、字段和行为均为拟实施合同，不是当前能力。
+本文保留经辩证审阅收敛的功能与实现合同。用户认可“主动集合—持续同行—到点解散—分头工作—重新集合”的方向，并明确没有旧存档或 API 兼容负担；当前 ResourceCycle 已按此合同接通领域、Context、持久化与 Console/LLM 入口，GameRevision 为 17。
 
 ## 1. 需求账本与证据边界
 
@@ -22,12 +22,12 @@
 当前证据入口（代码优先于既有设计）：
 
 - [CycleActions](../../src/ResourceCycle/CycleActions.cs)：动作校验、`NeedsDecision`、途中限制。
-- [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs)：单人出发、逐实体到达与观察记录。
+- [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs)、[CycleFollowingRules](../../src/ResourceCycle/CycleFollowingRules.cs)：全员原子出发、逐实体到达、关系校验与终局清理。
 - [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)、[预测类别](../../src/ResourceCycle/CycleModels.cs)：同刻死亡优先，全部空间到达先于天气、活动完成、警告和输入；不改变现有顺序。
 - [CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)：动作身份和事实形状验证。
 - [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs)、[验证](../../src/ResourceCycle/CycleInteractionValidation.cs)、[CharacterContext](../../src/ResourceCycle/CharacterContext.cs)：关闭 Context、PendingAdvance 与重新唤醒。
-- [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs)、[CycleExpedition](../../src/ResourceCycle/CycleExpedition.cs)：生存角色数当前限制为 1–2；三角色采集 demo 没有空间移动，不能替代本需求。
-- [DuoSurvivalRulesTests](../../tests/ResourceCycle.Tests/DuoSurvivalRulesTests.cs)、[DuoRecoveryTests](../../tests/ResourceCycle.Tests/DuoRecoveryTests.cs)、[CharacterContextLifecycleTests](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs)：实现时应扩展的测试边界。本次读源码不代表重新执行测试。
+- [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs)、[CycleExpedition](../../src/ResourceCycle/CycleExpedition.cs)：支持 1–3 个生存角色；三角色采集 demo 仍是独立的无空间场景。
+- [FollowingRulesTests](../../tests/ResourceCycle.Tests/FollowingRulesTests.cs)、[FollowingMovementTests](../../tests/ResourceCycle.Tests/FollowingMovementTests.cs)、[FollowingContextTests](../../tests/ResourceCycle.Tests/FollowingContextTests.cs)、[FollowingRecoveryTests](../../tests/ResourceCycle.Tests/FollowingRecoveryTests.cs)：规则、同行、决策和真实磁盘恢复边界。实际执行结果集中在实施验收。
 
 邻接设计仅用于理解既有合同：[角色 Context](character-context-model.md)、[控制器边界](stateless-character-controller.md)、[E/S](durablegraph-occurrence-persistence.md)、[分层与组合](layering-and-composition.md)。它们不是本需求的独立证明。
 
@@ -120,7 +120,7 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 
 世界验证：有关系者活跃、无 Activity；目标存在且活跃、不是自己、目标无上级；自己不得同时拥有队员。平常双方同地，途中双方同路线、同起止时刻与速度。各实体 MovementGeneration 是各自的历史身份，不要求它们数值相等。逐实体到达引起的短暂混合状态见 3.3，不能简单要求所有发布边界都具有完全相等的位置类型。
 
-可用小范围 `CycleFollowingRules`（游戏内 helper，名称可随实现调整）共享成员枚举和纯关系谓词。`CycleActions.Check` 仍为公开合法性入口，`CyclePlanning` 仍为事实规划入口，验证器检查记录的转换，不增加第二套状态机、执行器或队伍服务。
+游戏内 `CycleFollowingRules` 共享成员枚举和纯关系谓词。`CycleActions.Check` 仍为公开合法性入口，`CyclePlanning` 仍为事实规划入口，验证器检查记录的转换，不增加第二套状态机、执行器或队伍服务。
 
 ### 3.2 出发：一个决定、多人的事实
 
@@ -132,7 +132,7 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 4. 每个实际移动者记录自己的出发经历、环境/需求速率变化和可见材料。队员原来 PendingAdvance 不被改写成领队的 go；其待确认事项保持不变。
 5. Fold 只应用已记录的多角色变化，不能扫描“当前队员”重新扩展动作。验证记录中的参与者恰好匹配 before 的领队关系，不允许漏带或夹带角色。
 
-现有 `CycleFact` 已有多角色 / 多空间事实容器，但 `CycleFactApplication` 的单人匹配、`CycleObservedEvents` 的 own 判断、Observe 的出发快照和交互验证仍需逐处扩展；仅改容器是不够的。`CycleSurvivalRules.Enrich` 已枚举实际 changed characters 计算速率，可复用，但须按 2.2 明确确认白名单，防止新关系命令误清提醒。
+`CycleFact` 沿用多角色 / 多空间事实容器；`CycleFactApplication` 校验精确成员集合，`CycleObservedEvents`、Observe 的出发快照和交互验证区分个人操作与实际移动。`CycleSurvivalRules.Enrich` 枚举实际 changed characters 计算速率，并按 2.2 的确认白名单处理提醒。
 
 观察规划局部区分三个判定，不新增持久身份：`subjectSelf` 表示事实主体是本人；`ownOperation = subjectSelf && OperationRecordId != null` 表示本人的主动操作；`movedSelf` 从已记录出发/到达 SpatialFacts 的实体 ID 派生。回执、草稿消费、主动确认与 Context 闭合只属于 ownOperation；个人移动经历和出发快照属于 movedSelf；自然到达、收获和死亡仍按各自事件主体解释。不能全局替换现有 own，也不能把所有 changed characters 当发令者。
 
@@ -156,7 +156,7 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 
 ### 3.4 决策与 Context 生命周期
 
-以 `CycleActions.NeedsDecision` 为唯一决策需求谓词，删除 `CycleCharacter.NeedsDecision` 这个不含空间状态的同名局部属性；把它的局部条件并入前者，并将 [CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) 的直接读取改为统一入口。当前源码搜索仅有 Actions 与 Diagnostics 两个角色属性消费者，无需兼容转发。
+以 `CycleActions.NeedsDecision` 为唯一决策需求谓词，已删除 `CycleCharacter.NeedsDecision` 这个不含空间状态的同名局部属性；局部条件并入前者，[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) 同样使用统一入口，无兼容转发。
 
 该谓词对活跃角色的规则改为：
 
@@ -167,7 +167,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 保持原有通知对忙碌角色的唤醒。follow 成功关闭自己的 Context，消费 handoff 草稿，建立 PendingAdvance；普通随行事件只累计个人经历。关系解除使空闲队员自然重新需要决策，不增加 FollowAttentionPending。
 
-`PendingAdvance` 当前要求 ActivityId 与 MovementGeneration 恰有一个非空，这与“站在地点持续跟随”冲突。保留两字段已有的历史活动/行程因果，限定合法形状：
+`PendingAdvance` 保留 ActivityId 与 MovementGeneration 的历史活动/行程因果；原有二者恰有一个非空的条件扩展为以下有限形状：
 
 | 原命令 | ActivityId | MovementGeneration | 接受事实的额外条件 |
 | --- | --- | --- | --- |
@@ -251,7 +251,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 | 裁决 | 议题与最小结论 | 决定性证据 / 删除失败 |
 | --- | --- | --- |
-| merge / delete | 决策需求统一到 CycleActions，计划移除角色同名局部属性 | 当前诊断读局部属性，不知道空间/跟随；直接消费者只有 Actions、Diagnostics |
+| merge / delete | 决策需求统一到 CycleActions，移除角色同名局部属性 | 原诊断读局部属性，不知道空间/跟随；直接消费者只有 Actions、Diagnostics |
 | simplify | 关系只做 Business 形状验证，arrival 仍由 Spatial 派生 | Rebuild 先验证 Business；读取运行时预测将倒置依赖；窄混合边界仍须保留 |
 | simplify | 明确操作拥有者、实际移动者及关系接收者，无新持久名单 | 队员不能获得领队 ToolCallId，领队死亡不能记成队员死亡；自然事件也不能因无操作 ID 被漏掉 |
 | simplify | Follow 确认本人；unfollow/dismiss 保留所有提醒 | 最小架构师最初类比 Cancel，交叉质询后撤回：忙碌领队 dismiss 清唯一警告会留下无法继续服务的 Open Context |
@@ -260,6 +260,6 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 | keep | 三人生存入口和完整路由 | 工厂现有二元 ID 生成会重复 b；现有 a/b 路由无法服务 c |
 | defer | Party / Ready / FollowId / 额外到达阶段 / 通用模块 | 当前无消费者；具体重开条件见第 5 节 |
 
-最终模型保留 **1 个新增权威关系字段、3 个新增命令**；计划合并 **2 个同名决策谓词为 1 个入口**，不新增关系身份、持久队员表或到达调度器。审阅没有删除个人移动、操作身份和恢复因果，具体失败轨迹保留在功能合同和验收表中。
+最终模型保留 **1 个新增权威关系字段、3 个新增命令**；合并 **2 个同名决策谓词为 1 个入口**，不新增关系身份、持久队员表或到达调度器。审阅没有删除个人移动、操作身份和恢复因果，具体失败轨迹保留在功能合同和验收表中。
 
-没有剩余必须由用户裁决的产品分歧。退出受决策窗口限制、有提醒仍可被领队带走、未加入者不会被强制等待，均已在本文明示；如果后续体验改变这些要求，应重新设计对应产品合同，而不是在实现中偷偷加入屏障或自动操作。下一步按第 4 节实施完整纵向闭环；设计完成不等于功能已上线。
+没有剩余必须由用户裁决的产品分歧。退出受决策窗口限制、有提醒仍可被领队带走、未加入者不会被强制等待，均已在本文明示；如果后续体验改变这些要求，应重新设计对应产品合同。第 4 节保留实施顺序与验收要求，当前完成证据及体验边界见实施验收。
