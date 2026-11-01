@@ -1,5 +1,7 @@
 # Microtown
 
+> 当前状态（2026-11-01）：Microtown 历史原型已停止独立产品演进；当前推荐入口为[山野镇 / Hillside](../../README.md)。保留源码、测试及下方历史正文，供玩法与共享模块参照；正文中的施工状态和启动示例属于原型阶段。
+
 这是独立小镇游戏的领域实现，完整里程碑仍在施工。`TownGameFactory.Create()` 创建三居民、市场/工坊/住区与 48 游戏小时的有限实验。引用共享 Kernel、Spatial、Inventory、Goals，不引用 ResourceCycle。Human Console 入口见 [Microtown.Cli](../Microtown.Cli/README.md)。
 
 当前支持 `buy <item> <count>`、`sell <item> <count>`、`produce <recipe> <batches>`、`eat`、`wait <hours>`、`go <passage>`、`say <resident> <text>`、`give <resident> <item|money> <count>`、`offer <resident> <give-asset> <give-count> <want-asset> <want-count> <hours>`、`accept/reject/withdraw <offer-id>`、`continue`、`cancel` 和共享 Goals 命令。外界交易需在市场，生产需在工坊，移动复用 Spatial。默认库存无玩法容量上限；每居民只能一个耗时活动。

@@ -2,7 +2,7 @@
 
 DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定性事件，**Spatial** 表达地点、通路、移动实体与相遇，**Host** 驱动 Kernel。核心不依赖 Player 或应用服务器。
 
-当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民之间也可报价交换资金和物品。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
+当前推荐游戏入口是 **山野镇 / Hillside**，使用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民之间也可报价交换资金和物品。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，本阶段已通过[逐项验收](docs/codex-goals/living-world/acceptance.md)，包含同一三模型历史 72h 与两次独立自由游玩；专题状态只在[工作计划](docs/codex-goals/living-world/work-plan.md)维护。
 
 跨会话状态见 [PROJECT-STATE](PROJECT-STATE.md)，文档导航见 [docs/README](docs/README.md)，协作约定见 [AGENTS](AGENTS.md)。
 
@@ -15,7 +15,7 @@ dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaH
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、新世界采用的 ResourceCycle 项目、作为迁移参照的 Microtown 及相应测试，也列入相邻源码项目供 IDE/LSP 导航。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
+源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、新世界采用的 ResourceCycle 项目、保留为历史及共享模块回归参照的 Microtown 及相应测试，也列入相邻源码项目供 IDE/LSP 导航。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
 
 ## 启动山野镇
 
@@ -105,13 +105,15 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 
 每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 
-Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。旧原型的 Gym 验收不自动证明融合世界的 C5，当前覆盖以专题工作计划中的新证据为准。
+Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
 
 ## 原型与历史证据
 
-Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场、赠钱与居民报价；旧证据不能替代融合验收。
+Microtown 已停止独立产品演进；源码和测试继续保留，作为历史玩法与共享模块的行为、回归参照。新增世界玩法与玩家入口统一在山野镇推进，不要求同步维护另一款 Microtown 产品。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场、赠钱与居民报价；旧证据不能替代融合验收。
 
-ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。原 Smoke 脚本包含旧参数，目前不作为推荐新世界运行方式。历史实现与验证仍可查阅：
+山野镇继续使用 `ResourceCycle.*` 项目、namespace 与 `Cycle*` 类型名。这些是实现身份，保留它们不代表存在另一款并行产品；不为产品收敛机械重命名持久类型或 Schema。
+
+ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。历史 Smoke 脚本若包含旧参数，不作为当前启动入口；复验使用上文 `Smoke-Hillside.ps1` 和 `Smoke-HillsideContent.ps1`。历史实现与验证仍可查阅：
 
 - [昼夜资源设计](docs/design/resource-cycle-demo.md)、[原始验收](docs/experiments/resource-cycle-acceptance.md)、[运行时缓存验收](docs/experiments/resource-cycle-runtime-cache-acceptance.md)。
 - [多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)、[多人采集验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。

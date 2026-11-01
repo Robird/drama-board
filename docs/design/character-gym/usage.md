@@ -1,14 +1,18 @@
-# Character Gym 一期使用说明
+# 山野镇 Character Gym 使用说明
 
-状态：2026-10-31，一期已完成。本文按当前 [CLI 参数](../../../src/ResourceCycle.Cli/Program.cs)、[管理命令](../../../src/ResourceCycle.Cli/Gym/GymCommands.cs)与 [LLM 宿主](../../../src/ResourceCycle.Cli/LlmConsole.cs)编写；验证范围见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)。
+更新：2026-11-01。本文说明山野镇当前入口，按 [CLI 参数](../../../src/ResourceCycle.Cli/Program.cs)、[管理命令](../../../src/ResourceCycle.Cli/Gym/GymCommands.cs)与 [LLM 宿主](../../../src/ResourceCycle.Cli/LlmConsole.cs)编写。Gym 一期的[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)属于原型阶段证据；山野镇的完成条件与新证据以[专题工作计划](../../codex-goals/living-world/work-plan.md)为准。命令可用性不等于所有融合体验已验收。
 
-## 1. 创建或继续双角色实验
+## 1. 创建或继续山野镇实验
 
 在仓库根目录的 PowerShell 中运行。第一次选一个**尚不存在**的存档目录；同一路径再次启动即为续局，不会重新初始化世界。
 
 ```powershell
-$gymStore = "artifacts/gym-first-run"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm --feedback --store $gymStore --max-calls 16
+$gymStore = "artifacts/hillside-gym-first-run"
+# 新建两角色世界，Console 控制 a，模型控制 b：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --characters 2 --llm --human a --feedback --store $gymStore --max-calls 16
+
+# 恢复同一世界，人数与内容沿用保存定义：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --feedback --store $gymStore --max-calls 16
 ```
 
 角色 `a` 由当前 Console 的人类操控，`b` 由模型操控；轮到哪个角色决定就暂停世界等其操作。人类输入以当前画面列出的合法行动为准；`Ctrl+C` 可暂停，已提交的游戏进度保留。调用预算耗尽也会暂停，不会替模型选择行动。此例的 `16` 是本次宿主运行预算，续局重新计算。
@@ -17,7 +21,9 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm --feedback 
 - 只想记录而不提供反馈工具时，把 `--feedback` 换成 `--gym`。两者都必须与 `--llm --store` 配合。
 - 默认使用内置 Codex 连接。若确需选择另一份认证文件，可另加 `--auth-file PATH`；这里的 `PATH` 是你本机已有文件路径，不把认证内容写进命令、文档或反馈。使用 `--catalog PATH --connection ID` 时沿用 Completion 的目录配置，不能再混用 `--auth-file`。
 - 可另加 `--model ID`、`--max-calls N`、`--max-failures N`、`--max-context-chars N`；续局需重新指定所需模式、模型配置、预算和记录/反馈开关，它们不是存档中自动恢复的宿主设置。
-- 单角色旁观实验把 `--duo` 换成 `--survival`，此时模型控制 `a`。已有双角色存档仍须用 `--duo` 打开。
+- 新局用 `--characters 1|2|3` 选择人数，省略为三人；续局省略人数则沿用存档，显式人数必须一致。`--llm` 控制全体，`--human ID` 将任意一个现存角色交给 Console；省略 `--human` 即全模型观战。单模型新局可用 `--characters 1 --llm`，无需另一种游戏模式。
+- 新局可用 `--content hillside|gentle` 选择内容。续局省略则使用保存定义；显式选择须与保存内容身份一致。修改控制绑定不更换角色、内容或既有状态。
+- `--steps N` 与 `--until-hour N` 限制本次宿主运行，分别为提交转换数与绝对模拟小时上界；不会结束世界。时间停在最后完成事件，不保证恰好到达上界。
 
 存档只有一个分支时，可原样重跑上述命令续局。注册过 fork 后，连原分支也应明确选择，见第 3、5 节。
 
@@ -29,7 +35,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm --feedback 
 
 ## 3. 查看分支和反馈
 
-以下是独立管理命令，不运行游戏，也不需要模型配置。一次只选一种管理操作，不与 `--duo --llm --feedback` 混用。
+以下是独立管理命令，不运行游戏，也不需要模型配置。一次只选一种管理操作，不与 `--llm`、`--human`、`--feedback`、`--characters`、`--content` 等游戏配置混用。
 
 ```powershell
 dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --branches
@@ -81,19 +87,19 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym
 
 ```powershell
 $forkBranch = "替换为刚注册的新 BranchId"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --duo --llm --feedback --store $gymStore --branch $forkBranch --max-calls 16
+dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --feedback --store $gymStore --branch $forkBranch --max-calls 16
 ```
 
 回到源分支时改用 `--branch $sourceBranch`。新分支与来源共享已有历史，后续各自推进；不要把新分支的 ID 当成新的 `--store` 路径。模型会基于该分支重新构造输入、重新作答，不承诺复现原输出。新分支的反馈与导出仍按第 3、4 节查询，只需改选分支 ID。
 
 ## 6. 保存材料与处理失败
 
-先保留整个 `--store`，再考虑清理。游戏 E/S 和分支元数据决定可恢复的世界；`gym/events.jsonl` 保存实验记录，根分支的 `operations.jsonl` 与子分支的 `branch-operations/` 保存操作关联，默认的 `duo-llm-runs/`（单角色为 `llm-runs/`）保存每次宿主运行的独立审计。若使用 `--llm-log PATH` 把审计放在存档外，也应一并保留；该文件同样不能覆盖已有文件。
+先保留整个 `--store`，再考虑清理。游戏 E/S 和分支元数据决定可恢复的世界；`gym/events.jsonl` 保存实验记录，根分支的 `operations.jsonl` 与子分支的 `branch-operations/` 保存操作关联，存档下默认的 `llm-runs/` 保存每次宿主运行的独立审计。若使用 `--llm-log PATH` 把审计放在存档外，也应一并保留；该文件同样不能覆盖已有文件。
 
 当前按同版程序、同版游戏修订与 Schema 使用，不承诺旧开发存档跨版本升级。保存可复现现场时同时保留对应代码/构建版本与所用非敏感配置；记录或分支不是独立于存档即可运行的便携包。实验数据不是角色私有记忆的新增来源。
 
 若 fork 报告“分支已注册，但来源日志未能确认保存”，分支注册与日志保存已经产生不同结果：**先用 `--branches` 核查返回或异常中给出的分支 ID，不要盲目重试 fork**，否则可能再创建一条分支。注册本身报告结果不确定时也先核查。命令没有替你打开或运行新分支；缺失来源日志时，导出可能无法拼接祖先轨迹，应保留错误信息与现有文件供排查。
 
-普通暂停后重新运行会先恢复已发布的 pending 工作，再进入控制器；不会把审计响应当成游戏事实。模型调用尚未形成已发布游戏事件便中断时，重开可能重新调用模型。调用预算暂停返回码为 `2`，取消为 `130`；这些都应结合停止原因与存档判断，不能仅凭没有新的响应就认定世界没有执行。
+普通暂停后重新运行会先验证存档及显式内容身份，再恢复已发布的 pending 工作，最后进入控制器；不会把审计响应当成游戏事实。模型调用尚未形成已发布游戏事件便中断时，重开可能重新调用模型。模型调用预算暂停返回码为 `2`，宿主模拟预算暂停为 `0`，取消为 `130`；这些都应结合停止原因与存档判断，不能仅凭没有新的响应就认定世界没有执行。
 
 实现边界与一期验收要求见[设计](design.md)、[里程碑](milestone.md)和[实施入口](../../implementation/character-gym-plan.md)。

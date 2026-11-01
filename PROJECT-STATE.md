@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-01；[小镇与山野的融合愿景](docs/codex-goals/living-world/README.md)的 Goal 已启动，连续世界、生产市场、居民报价及内容定义已验收，接着完成新世界 Gym 实际运行与产品入口收敛；大喊、跟随、微型小镇与 Character Gym 一期已完成，Gym 二期继续延期。
+> 最近整理：2026-11-01；山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -27,15 +27,15 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户已选择将 Microtown 与 ResourceCycle 融合为“小镇与山野”的连续生活世界，支持 Human Console（真人或 Coding Agent 操作）与多个 LLM 角色，无强制主线。新[愿景与完成条件](docs/codex-goals/living-world/README.md)、[实现思路](docs/codex-goals/living-world/approach.md)和[Goal 启动文本](docs/codex-goals/living-world/goal.md)已建立，首片已通过[验收](docs/experiments/living-world-foundation-acceptance.md)；后续从[专题工作计划](docs/codex-goals/living-world/work-plan.md)接续，按完成条件自主选片、实现、验证与自由游玩，少量重大取舍再交用户。专题施工状态只在该计划维护。
+**当前焦点**：Microtown 与 ResourceCycle 已融合为山野镇连续生活世界，支持 Human Console（真人或 Coding Agent 操作）与多个 LLM 角色，无强制主线。原定[愿景与完成条件](docs/codex-goals/living-world/README.md)已通过[逐项验收与交接](docs/codex-goals/living-world/acceptance.md)；专题状态只在[工作计划](docs/codex-goals/living-world/work-plan.md)维护。两场自由游玩共同指出重复帮助的阅读负担，属于后续可选体验改进，不自动启动新目标或无限扩充本阶段。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
 [角色跟随](docs/design/character-following.md)已贯通主动集合、普通 go 全员出发、到点解散工作与重新集合，见[实现与验收](docs/experiments/character-following-acceptance.md)。实际人类参与的合作试玩与集合体验反馈仍独立保留，代理操作 Human 入口不能替代。不自动等待未加入者，不添加 Party/Ready 屏障；途中退出、异步插话或通用队伍模块仍按实际需求裁决。
 
-[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。Microtown 暂留作经济迁移参照；新生活世界只使用 Cycle 发布根，生产、现金、市场与赠钱已通过[经济验收](docs/experiments/living-world-economy-acceptance.md)，居民报价见[交易验收](docs/experiments/living-world-trades-acceptance.md)。两原型共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 的经济、交易、owner 预测和恢复/分叉是融合起点；融合方向以上述新专题为准，旧里程碑不再要求未来继续维持两个独立产品。其他体验建议与 Gym 二期的历史重开条件见[原工作计划](docs/codex-goals/microtown/work-plan.md)。
+[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。Microtown 已停止独立产品演进，保留源码、测试和历史证据作参照；新生活世界只使用 Cycle 发布根，生产、现金、市场与赠钱已通过[经济验收](docs/experiments/living-world-economy-acceptance.md)，居民报价见[交易验收](docs/experiments/living-world-trades-acceptance.md)。两原型共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 的经济、交易、owner 预测和恢复/分叉是融合起点；融合方向以上述新专题为准，旧里程碑不再要求未来继续维持两个独立产品。其他体验建议与 Gym 二期的历史重开条件见[原工作计划](docs/codex-goals/microtown/work-plan.md)。
 
-[角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
+[角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；山野镇已有[实际请求、导出与管理分叉验收](docs/experiments/living-world-gym-acceptance.md)，小镇历史实现复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
 **独立保留的验收项**：[生存二期](docs/design/survival-demo-milestone.md) 2A–2C 已完成工程接线与模型预演，见[交流验收](docs/experiments/survival-communication-acceptance.md)。仍需实际人类控制 a、真实模型控制 b 的合作通关及体验反馈；代理操作 Human 入口不能替代。该验收不被新里程碑抹去，也不阻止目标管理设计；实现和证据不在此重复维护。
 
