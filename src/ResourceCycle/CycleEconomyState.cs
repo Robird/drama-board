@@ -24,7 +24,7 @@ public sealed partial class CycleEconomyState : IDurableObject {
         if (Market is null || Totals is null || Market.NextRefresh < business.Time) {
             throw new InvalidOperationException("Invalid economy boundary.");
         }
-        Market.Validate();
+        Market.Validate(business.Definition);
         Totals.Verify(business);
         Trades.Validate(business);
     }
@@ -48,8 +48,8 @@ public sealed partial class CycleMarket : IDurableObject {
         _nextRefresh = nextRefresh; _cycle = cycle;
         Validate();
     }
-    public static CycleMarket Fresh(ModelTime nextRefresh, long cycle = 0) =>
-        new(LivingWorldEconomyContent.MarketStock, LivingWorldEconomyContent.MarketDemand, nextRefresh, cycle);
+    public static CycleMarket Fresh(CycleWorldDefinition definition, ModelTime nextRefresh, long cycle = 0) =>
+        new(definition.MarketStock, definition.MarketDemand, nextRefresh, cycle);
     public CycleMarket Buy(string item, int quantity) {
         if (quantity <= 0 || !Stock.TryGetValue(item, out int available) || quantity > available) {
             throw new InvalidOperationException("Purchase exceeds the market supply.");
@@ -66,8 +66,15 @@ public sealed partial class CycleMarket : IDurableObject {
     }
     public void Validate() {
         if (NextRefresh < ModelTime.Zero || Cycle < 0 ||
-            !ValidQuotas(Stock, LivingWorldEconomyContent.MarketStock) || !ValidQuotas(Demand, LivingWorldEconomyContent.MarketDemand)) {
+            Stock.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value < 0) ||
+            Demand.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value < 0)) {
             throw new InvalidOperationException("Invalid market quotas or refresh boundary.");
+        }
+    }
+    public void Validate(CycleWorldDefinition definition) {
+        Validate();
+        if (!ValidQuotas(Stock, definition.MarketStock) || !ValidQuotas(Demand, definition.MarketDemand)) {
+            throw new InvalidOperationException("Market quotas do not match the world's content definition.");
         }
     }
     private static bool ValidQuotas(IReadOnlyDictionary<string, int> actual, IReadOnlyDictionary<string, int> limits) =>
@@ -114,8 +121,8 @@ public sealed partial class CycleEconomicTotals : IDurableObject {
     private static Dictionary<string, long> Copy(IReadOnlyDictionary<string, long>? source) =>
         source is null ? new(StringComparer.Ordinal) : new(source, StringComparer.Ordinal);
     private static IReadOnlyDictionary<string, long> Add(IReadOnlyDictionary<string, long> source, string item, int count) {
-        if (count <= 0 || !LivingWorldEconomyContent.Items.ContainsKey(item)) {
-            throw new ArgumentOutOfRangeException(nameof(count), "An economic flow requires a known item and positive count.");
+        if (count <= 0 || string.IsNullOrWhiteSpace(item)) {
+            throw new ArgumentOutOfRangeException(nameof(count), "An economic flow requires an item identity and positive count.");
         }
         return new Dictionary<string, long>(source, StringComparer.Ordinal) { [item] = checked(source.GetValueOrDefault(item) + count) };
     }
@@ -137,8 +144,9 @@ public sealed partial class CycleEconomicTotals : IDurableObject {
         Imported, Exported, Produced, Add(Consumed, item, count), RecipeInputs, Harvested);
     public CycleEconomicTotals Produce(CycleRecipe recipe, int batches) {
         ArgumentNullException.ThrowIfNull(recipe);
-        if (batches <= 0 || recipe != LivingWorldEconomyContent.Recipe(recipe.Id)) {
-            throw new ArgumentOutOfRangeException(nameof(batches), "Production requires a known recipe and positive batches.");
+        if (batches <= 0 || string.IsNullOrWhiteSpace(recipe.Id) || string.IsNullOrWhiteSpace(recipe.InputItem) ||
+            string.IsNullOrWhiteSpace(recipe.OutputItem) || recipe.InputCount <= 0 || recipe.OutputCount <= 0 || recipe.DurationTicks <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(batches), "Production requires a structurally valid recipe and positive batches.");
         }
         return new(InitialMoney, InitialItems, ImportExpense, ExportIncome, Imported, Exported,
             Add(Produced, recipe.OutputItem, checked(recipe.OutputCount * batches)), Consumed,
@@ -146,17 +154,23 @@ public sealed partial class CycleEconomicTotals : IDurableObject {
     }
     public void Validate() {
         if (InitialMoney < 0 || ImportExpense < 0 || ExportIncome < 0 ||
-            Tables().Any(table => table.Any(pair => pair.Value < 0 || !LivingWorldEconomyContent.Items.ContainsKey(pair.Key)))) {
+            Tables().Any(table => table.Any(pair => pair.Value < 0 || string.IsNullOrWhiteSpace(pair.Key)))) {
             throw new InvalidOperationException("Invalid economy counters.");
         }
     }
-    public void Verify(CycleBusinessState business) {
+    public void Validate(CycleWorldDefinition definition) {
         Validate();
-        if (business.Characters.Any(actor => actor.Money < 0 || actor.Backpack.Items.Keys.Any(item => !LivingWorldEconomyContent.Items.ContainsKey(item))) ||
+        if (Tables().Any(table => table.Keys.Any(item => !definition.Items.ContainsKey(item)))) {
+            throw new InvalidOperationException("Economy counters reference an item outside the world's definition.");
+        }
+    }
+    public void Verify(CycleBusinessState business) {
+        Validate(business.Definition);
+        if (business.Characters.Any(actor => actor.Money < 0 || actor.Backpack.Items.Keys.Any(item => !business.Definition.Items.ContainsKey(item))) ||
             business.Characters.Sum(actor => actor.Money) != checked(InitialMoney + ExportIncome - ImportExpense)) {
             throw new InvalidOperationException("World money or item identities do not reconcile with economic flows.");
         }
-        foreach (string item in LivingWorldEconomyContent.Items.Keys) {
+        foreach (string item in business.Definition.Items.Keys) {
             long held = business.Characters.Sum(actor => (long)actor.Backpack.Count(item) +
                 (actor.Activity?.Production is { } order && order.InputItem == item ? order.InputCount : 0));
             long expected = checked(InitialItems.GetValueOrDefault(item) + Imported.GetValueOrDefault(item) + Harvested.GetValueOrDefault(item) + Produced.GetValueOrDefault(item)

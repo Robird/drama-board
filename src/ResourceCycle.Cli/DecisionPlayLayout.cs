@@ -69,7 +69,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         }
         foreach (CycleCommandCheck supply in observation.Commands.Where(entry => entry.Command.Kind == CycleCommandKind.Use)) {
             AppendCommand(text, observation, $"use {supply.Command.ItemId}", supply.Command,
-                $"背包 {observation.Actor.Backpack.Count(supply.Command.ItemId!)} 份；{CycleSurvivalRules.UseDescription(supply.Command.ItemId!)!}");
+                $"背包 {observation.Actor.Backpack.Count(supply.Command.ItemId!)} 份；{observation.ItemUseDescriptions[supply.Command.ItemId!]}");
         }
         if (observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff)) {
             text.AppendLine($"`handoff <文字>` 覆盖草稿 · `handoff --clear` 清空；最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符，不耗时、不确认警告。");

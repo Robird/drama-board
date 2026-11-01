@@ -62,7 +62,7 @@ public sealed class CycleInitializationTests {
     public void Factory_rejects_invalid_initial_business_before_returning_a_boundary() {
         Assert.Throws<InvalidOperationException>(() => CycleGameFactory.CreatePlayable(Hour(10),
             resources: [Sun(Hour(6))])); // Its regeneration deadline already elapsed.
-        Assert.Throws<InvalidOperationException>(() => CycleGameFactory.CreatePlayable(Hour(9),
+        Assert.Throws<InvalidDataException>(() => CycleGameFactory.CreatePlayable(Hour(9),
             characters: [new("same", "First"), new("same", "Second")]));
         Assert.Throws<InvalidOperationException>(() => CycleGameFactory.CreateBatch(Hour(9),
             [new("missing-resource", Hour(10))]));

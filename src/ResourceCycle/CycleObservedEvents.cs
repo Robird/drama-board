@@ -10,7 +10,7 @@ internal static class CycleObservedEvents {
         var events = new List<CycleObservedEvent>();
         GraphSpatialState? afterSpatial = world.Expedition?.Spatial;
         foreach (GraphSpatialFact movement in fact.SpatialFacts) {
-            afterSpatial = CycleExpeditionMap.Reducer.Apply(afterSpatial!, new(fact.At, 0), movement);
+            afterSpatial = world.Definition.Runtime.Reducer.Apply(afterSpatial!, new(fact.At, 0), movement);
         }
         CycleCharacter[] afterCharacters = world.Characters.Select(character =>
             fact.ChangedCharacters.SingleOrDefault(changed => changed.Id == character.Id) ?? character).ToArray();
@@ -51,8 +51,8 @@ internal static class CycleObservedEvents {
             }
             bool received = ReceivesCommunication(fact, before.Id);
             bool visibleResource = fact.ResourceId is { } resourceId &&
-                (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
-            bool publicEvent = fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.CurrentPlace(world, before.Id) == "market" || fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
+                (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && world.Definition.GetResourcePlace(resourceId) == place);
+            bool publicEvent = fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.CurrentPlace(world, before.Id) == world.Definition.MarketPlaceId || fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
             if (!subjectSelf && !received && !publicEvent && !movedSelf && !(relationCommand && following.Count > 0)) { continue; }
             var direct = new List<CycleObservedEffect>();
@@ -70,7 +70,7 @@ internal static class CycleObservedEvents {
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
                     if (fact.Kind == CycleEventKind.ItemUsed && before.Backpack.Count(item) != after.Backpack.Count(item)) {
-                        subjectId = item; subjectName = ItemName(item);
+                        subjectId = item; subjectName = CycleEconomyObservation.ItemName(world.Definition, item);
                     }
                 }
             }
@@ -79,8 +79,8 @@ internal static class CycleObservedEvents {
                 Add(lifecycle, new("body", before.Id, "water-rate"), Number(integrated.WaterPerHour, "点/小时"), Number(final.WaterPerHour, "点/小时"));
                 Add(lifecycle, new("body", before.Id, "warmth-rate"), Number(integrated.WarmthPerHour, "点/小时"), Number(final.WarmthPerHour, "点/小时"));
                 SpatialLocation? finalLocation = after.Ending?.Location ?? afterSpatial?.Entities.SingleOrDefault(e => e.Id.Value == before.Id)?.Location;
-                Add(direct, new("body", before.Id, "sheltered"), CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(world.Expedition!.Spatial, before.Id)),
-                    CycleVisibleValue.Flag(finalLocation is AtPlaceLocation sheltered && CycleExpeditionMap.GetPlace(sheltered.PlaceId.Value).Sheltered));
+                Add(direct, new("body", before.Id, "sheltered"), CycleVisibleValue.Flag(CycleSurvivalRules.IsSheltered(world.Definition, world.Expedition!.Spatial, before.Id)),
+                    CycleVisibleValue.Flag(finalLocation is AtPlaceLocation sheltered && world.Definition.GetPlace(sheltered.PlaceId.Value).Sheltered));
                 foreach ((int mask, string field) in new[] { (1, "warning-food"), (2, "warning-water"), (4, "warning-warmth") }) {
                     Add(lifecycle, new("body", before.Id, field), CycleVisibleValue.Flag((integrated.PendingMask & mask) != 0), CycleVisibleValue.Flag((final.PendingMask & mask) != 0));
                 }
@@ -106,7 +106,7 @@ internal static class CycleObservedEvents {
                 Add(direct, new("location", before.Id, "place"), PlaceValue(priorLocation), PlaceValue(nextLocation));
                 Add(direct, new("location", before.Id, "arrival"), ArrivalValue(priorLocation), ArrivalValue(nextLocation));
                 subjectId = nextLocation is AtPlaceLocation atPlace ? atPlace.PlaceId.Value : null;
-                subjectName = subjectId is null ? null : CycleExpeditionMap.GetPlace(subjectId).Name;
+                subjectName = subjectId is null ? null : world.Definition.GetPlace(subjectId).Name;
             }
             if (ownOperation) {
                 Add(direct, new("continuity", before.Id, "draft"), Text(world.Business.InteractionStates[before.Id].DraftHandoff),
@@ -117,7 +117,7 @@ internal static class CycleObservedEvents {
                 detail = fact.Environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
             if (fact.Kind is CycleEventKind.MarketBought or CycleEventKind.MarketSold) {
-                subjectId = fact.ItemId; subjectName = ItemName(fact.ItemId!);
+                subjectId = fact.ItemId; subjectName = CycleEconomyObservation.ItemName(world.Definition, fact.ItemId!);
             }
             if (fact.Kind == CycleEventKind.GatherFinished) { detail = fact.GatherStopReason?.ToString(); }
             if (fact.Kind == CycleEventKind.SpeechShouted) {
@@ -220,5 +220,4 @@ internal static class CycleObservedEvents {
     private static CycleVisibleValue Text(string? text) => text is null ? CycleVisibleValue.KnownAbsent : CycleVisibleValue.Literal(text);
     private static CycleVisibleValue PlaceValue(SpatialLocation location) => location is AtPlaceLocation at ? Text(at.PlaceId.Value) : CycleVisibleValue.KnownAbsent;
     private static CycleVisibleValue ArrivalValue(SpatialLocation location) => location is TraversingLocation moving ? Number(moving.ArrivalDue.Ticks, "ticks") : CycleVisibleValue.KnownAbsent;
-    private static string ItemName(string id) => CycleEconomyObservation.ItemName(id);
 }

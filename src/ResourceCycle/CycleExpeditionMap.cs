@@ -1,9 +1,23 @@
 using DramaBoard.Spatial;
+using Atelia.DurableGraph;
 
 namespace DramaBoard.ResourceCycle;
 
-public sealed record CyclePlaceDefinition(string Id, string Name, string Description, bool IsExit = false, bool Sheltered = false);
-public sealed record CyclePassageDefinition(string Id, string From, string To, string Description, long DurationTicks);
+[DurableType("DramaBoard.ResourceCycle.PlaceDefinition", 1)]
+public sealed partial record CyclePlaceDefinition(
+    [field: DurableField(1)] string Id,
+    [field: DurableField(2)] string Name,
+    [field: DurableField(3)] string Description,
+    [field: DurableField(4)] bool IsExit = false,
+    [field: DurableField(5)] bool Sheltered = false) : IDurableObject;
+[DurableType("DramaBoard.ResourceCycle.PassageDefinition", 1)]
+public sealed partial record CyclePassageDefinition(
+    [field: DurableField(1)] string Id,
+    [field: DurableField(2)] string From,
+    [field: DurableField(3)] string To,
+    [field: DurableField(4)] string Description,
+    [field: DurableField(5)] long DurationTicks,
+    [field: DurableField(6)] string ReverseDescription = "沿来路返回") : IDurableObject;
 
 /// <summary>Immutable scenario content. Its identity and game revision bind restored spatial IDs to this graph.</summary>
 /// <remarks>This is world truth, not a controller view. Unknown destination names must not be projected.</remarks>
@@ -45,6 +59,9 @@ public static class CycleExpeditionMap {
     internal static SpatialSimulation Simulation { get; } = new(Graph);
     internal static SpatialPlanner Planner { get; } = new(Graph);
     internal static GraphSpatialReducer Reducer { get; } = new(Graph);
+    internal static IReadOnlyList<CyclePlaceDefinition> DefaultPlaces => Array.AsReadOnly(Places);
+    internal static IReadOnlyList<CyclePassageDefinition> DefaultPassages => Array.AsReadOnly(Passages
+        .Select(p => p with { ReverseDescription = ReverseDescription(p.Id) }).ToArray());
 
     public static CyclePlaceDefinition GetPlace(string id) => Places.Single(p => p.Id == id);
     public static IReadOnlyList<CyclePassageDefinition> GetPassages(string placeId) => Passages

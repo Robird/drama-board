@@ -24,7 +24,6 @@ public sealed partial record CycleCommunicationState(
 
 /// <summary>Application-local directed communication and one-hop speech policy. Querying an effective budget never mutates it.</summary>
 public static class CycleCommunicationRules {
-    private static readonly SpatialQueries Spatial = new(CycleExpeditionMap.Graph);
     internal const string ShoutResult = "已大喊。";
     public const int SendLimit = 4;
     public const int MaximumSpeechScalars = 2000;
@@ -45,7 +44,7 @@ public static class CycleCommunicationRules {
             throw new InvalidOperationException("Shouting requires an active sender at an actual place.");
         }
         var characters = business.Characters.ToDictionary(actor => actor.Id, StringComparer.Ordinal);
-        return Array.AsReadOnly(Spatial.GetEntitiesInOneHop(business.Expedition.Spatial, origin.PlaceId, PlaceRelationCapabilities.Sound)
+        return Array.AsReadOnly(business.Definition.Runtime.Queries.GetEntitiesInOneHop(business.Expedition.Spatial, origin.PlaceId, PlaceRelationCapabilities.Sound)
             .Where(id => id.Value != senderId && characters.TryGetValue(id.Value, out CycleCharacter? actor) && actor.IsActive)
             .Select(id => characters[id.Value]).ToArray());
     }

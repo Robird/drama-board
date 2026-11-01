@@ -125,7 +125,7 @@ public sealed class HillsideTradeTests {
 
     [Fact]
     public async Task One_weather_occurrence_closes_both_dead_participants_offers_and_notifies_survivor_once() {
-        CycleWorld basis = CycleGameFactory.CreateLivingWorld(characterCount: 3, enableNeeds: true, enableWeather: false).World;
+        CycleWorld basis = CycleGameFactory.CreateLivingWorld(characterCount: 3, enableNeeds: true, enableWeather: true, weatherSeed: 0).World;
         CycleCharacter[] actors = basis.Characters.Select(actor => actor.WithSurvival(new(basis.Time,
             100 * CycleSurvival.Scale, 100 * CycleSurvival.Scale, (actor.Id == "c" ? 100 : 3) * CycleSurvival.Scale,
             Rate(0), Rate(0), CycleSurvivalRules.WarmthRate(false, true), warnedMask: actor.Id == "c" ? 0 : 4))).ToArray();

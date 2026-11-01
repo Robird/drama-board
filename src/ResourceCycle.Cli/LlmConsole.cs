@@ -14,7 +14,7 @@ using DramaBoard.ResourceCycle.Completion;
 internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = null, string? Catalog = null,
     string? Connection = null, int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
     string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null,
-    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000);
+    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null);
 
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
@@ -26,14 +26,15 @@ internal static class LlmConsole {
         }
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
             ? options.Branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, options.Branch)
-            : options.Branch is null ? CreateStore(store, characterCount) : throw new ArgumentException("指定分支需要已有存档。");
+            : options.Branch is null ? CreateStore(store, characterCount, options.Content) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
-            var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
+            var initial = CycleGameFactory.Create(WorldHost.Definition(options.Content, characterCount));
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
         WorldHost.RequireWorld(history.State, characterCount);
+        WorldHost.RequireContent(history.State, options.Content);
         WorldHost.RequireBudget(history.State.Time, options.Until, options.MaxSteps);
         if (options.HumanActor is { } selectedHuman && !history.State.Characters.Any(actor => actor.Id == selectedHuman)) {
             throw new ArgumentException($"Human 角色 {selectedHuman} 不在此存档中。");
@@ -62,10 +63,10 @@ internal static class LlmConsole {
         audit.Gym = gym;
         gym?.CaptureCommitted(kernel.World, operations);
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
-            Version = kernel.Version.ToString(), Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),
+            Version = kernel.Version.ToString(), Content = new { kernel.World.Definition.ContentId, kernel.World.Definition.Fingerprint }, Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),
             Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps } });
         string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == options.HumanActor ? "Human" : "LLM")}"));
-        output.WriteLine($"山野镇 / Hillside · 角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm、可选 --human 及连接配置。");
+        output.WriteLine($"山野镇 / Hillside · 内容 {kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm、可选 --human 及连接配置。");
         if (human is null) { output.WriteLine("全模型观战：以下模型材料为宿主观察证据，不是任何单个角色拥有的知识。"); }
         CompletionConnectionBinding? binding = null;
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
@@ -160,8 +161,8 @@ internal static class LlmConsole {
         }
     }
 
-    private static CycleDurableHistory CreateStore(string path, int? characterCount) {
-        var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
+    private static CycleDurableHistory CreateStore(string path, int? characterCount, string? content) {
+        var initial = CycleGameFactory.Create(WorldHost.Definition(content, characterCount));
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 

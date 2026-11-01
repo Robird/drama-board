@@ -41,6 +41,7 @@ internal sealed class GymSession : IDisposable {
                 RecoveredPending = recovered, AuditPath = Path.GetFullPath(logPath),
                 options.Model, options.Connection, options.MaxCalls, options.MaxFailures, options.MaxContextCharacters,
                 options.Until, options.MaxSteps,
+                Content = new { history.State.Definition.ContentId, history.State.Definition.Fingerprint },
                 Scenario = history.State.Expedition!.ScenarioId, CharacterCount = history.State.Characters.Count,
                 Actors = history.State.Characters.Select(character => new { ActorId = character.Id,
                     Controller = character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),

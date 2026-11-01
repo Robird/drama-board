@@ -29,7 +29,7 @@ internal static class CycleTradeValidation {
             if (fact.Kind == CycleEventKind.TradeOffered) {
                 Require(command.Kind == CycleCommandKind.Offer && command.GiveAsset is not null && command.WantAsset is not null &&
                     command.Hours is >= 1 and <= 24 && CycleCommunicationRules.CanTarget(before, actorId, command.TargetActorId), "Invalid offer participants or terms.");
-                command.GiveAsset!.Validate(); command.WantAsset!.Validate();
+                command.GiveAsset!.Validate(before.Definition); command.WantAsset!.Validate(before.Definition);
                 Require(CanPay(before.GetCharacter(actorId), command.GiveAsset!) &&
                     CycleCommunicationRules.Remaining(before.GetCharacter(actorId), fact.At) > 0, "Offer must be affordable and within the sending budget.");
                 changed = new($"trade:{actorId}:{context.ContextSequence}:{checked(context.LastOperationSequence + 1)}", actorId, command.TargetActorId!,
@@ -137,7 +137,7 @@ internal static class CycleTradeValidation {
         CycleSurvival? body = prior.Survival?.Project(at);
         if (deathBoundary is not null && body is not null) {
             body = body.WithRates(at, body.FoodRate, body.WaterRate,
-                CycleSurvivalRules.WarmthRate(CycleSurvivalRules.IsSheltered(deathBoundary.Expedition!.Spatial, prior.Id), deathBoundary.Light.IsDay));
+                CycleSurvivalRules.WarmthRate(deathBoundary.Definition, CycleSurvivalRules.IsSheltered(deathBoundary.Definition, deathBoundary.Expedition!.Spatial, prior.Id), deathBoundary.Light.IsDay));
         }
         Require(prior.Name == after.Name && prior.SkillLevel == after.SkillLevel && prior.Ending == after.Ending &&
             prior.NextActivityId == after.NextActivityId && after.DecisionGeneration == checked(prior.DecisionGeneration + 1) &&

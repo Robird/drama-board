@@ -16,7 +16,7 @@ public static class CycleTradeRules {
             command.ItemId is not null || command.HandoffText is not null || command.SpeechText is not null ||
             command.Goal is not null || command.RecipeId is not null || command.MoneyAmount != 0) { return "交易只接受声明的参数。"; }
         if (command.Kind == CycleCommandKind.Offer) {
-            if (command.TradeId is not null || !ValidAsset(command.GiveAsset) || !ValidAsset(command.WantAsset)) {
+            if (command.TradeId is not null || !ValidAsset(world.Definition, command.GiveAsset) || !ValidAsset(world.Definition, command.WantAsset)) {
                 return "报价需要双方资产；物品数量为 1 至 1000，钱为正整数。";
             }
             if (!CycleCommunicationRules.CanTarget(world, actorId, command.TargetActorId)) { return "报价需要另一名同地活跃角色。"; }
@@ -142,8 +142,8 @@ public static class CycleTradeRules {
             .WithEconomy((fact.Economy ?? economy).Change(trades: trades)).WithTradeChanges(closed);
     }
 
-    private static bool ValidAsset(CycleTradeAsset? asset) => asset is not null && !string.IsNullOrWhiteSpace(asset.AssetId) && asset.Amount > 0 &&
-        (asset.IsMoney || LivingWorldEconomyContent.Items.ContainsKey(asset.AssetId) && asset.Amount <= 1000);
+    private static bool ValidAsset(CycleWorldDefinition definition, CycleTradeAsset? asset) => asset is not null && !string.IsNullOrWhiteSpace(asset.AssetId) && asset.Amount > 0 &&
+        (asset.IsMoney || definition.Items.ContainsKey(asset.AssetId) && asset.Amount <= 1000);
     private static bool CanPay(CycleCharacter actor, CycleTradeAsset asset) => asset.IsMoney
         ? actor.Money >= asset.Amount : actor.Backpack.Count(asset.AssetId) >= asset.Amount;
     private static bool TryExchange(CycleCharacter actor, CycleTradeAsset payment, CycleTradeAsset receipt, out ItemInventory backpack, out long money) {

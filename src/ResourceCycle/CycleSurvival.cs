@@ -51,6 +51,12 @@ public sealed partial class CycleSurvival : IDurableObject {
         new(time, checked(food * Scale), checked(water * Scale), checked(warmth * Scale),
             CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate,
             warmthRate ?? CycleSurvivalRules.WarmthRate(false, CycleTime.IsDay(time)));
+    /// <summary>Creates a body using the effective world's bound physiology and initial exposure.</summary>
+    public static CycleSurvival Create(CycleWorldDefinition definition, ModelTime time, int food, int water, int warmth, bool sheltered) =>
+        new(time, checked(food * Scale), checked(water * Scale), checked(warmth * Scale),
+            new([new("metabolism", "基础代谢", definition.Body.FoodPerHour)]),
+            new([new("metabolism", "基础代谢", definition.Body.WaterPerHour)]),
+            CycleSurvivalRules.WarmthRate(definition, sheltered, CycleTime.IsDay(time)));
     public CycleSurvival Project(ModelTime at) {
         if (at < BaselineAt) { throw new ArgumentOutOfRangeException(nameof(at)); }
         long elapsed = at.Ticks - BaselineAt.Ticks;
@@ -63,12 +69,16 @@ public sealed partial class CycleSurvival : IDurableObject {
         return new(at, value.FoodUnits, value.WaterUnits, value.WarmthUnits, foodRate, waterRate, warmthRate,
             value.WarnedMask, value.PendingMask, value.PendingSince);
     }
-    public CycleSurvival Supply(ModelTime at, string itemId) {
+    /// <summary>Legacy fixture helper. Runtime callers supply their effective world definition.</summary>
+    public CycleSurvival Supply(ModelTime at, string itemId) =>
+        Supply(at, LivingWorldEconomyContent.SupplyFood(itemId), LivingWorldEconomyContent.SupplyWater(itemId));
+    public CycleSurvival Supply(ModelTime at, string itemId, CycleWorldDefinition definition) =>
+        Supply(at, definition.SupplyFood(itemId), definition.SupplyWater(itemId));
+    private CycleSurvival Supply(ModelTime at, int foodGain, int waterGain) {
         CycleSurvival value = Project(at);
         if (value.IsFatal) { throw new InvalidOperationException("A depleted vital need cannot be revived by same-boundary consumption."); }
         long food = value.FoodUnits, water = value.WaterUnits, warmth = value.WarmthUnits;
-        int foodGain = LivingWorldEconomyContent.SupplyFood(itemId), waterGain = LivingWorldEconomyContent.SupplyWater(itemId);
-        if (foodGain == 0 && waterGain == 0) { throw new ArgumentException("Unknown survival supply.", nameof(itemId)); }
+        if (foodGain == 0 && waterGain == 0) { throw new ArgumentException("Unknown survival supply."); }
         food = Math.Min(MaximumUnits, food + foodGain * Scale);
         water = Math.Min(MaximumUnits, water + waterGain * Scale);
         return new CycleSurvival(at, food, water, warmth, FoodRate, WaterRate, WarmthRate,

@@ -58,9 +58,9 @@ public sealed class CycleDecisionContext {
         SpatialLocation? location = CycleActions.Location(world, actorId);
         string? place = (location as AtPlaceLocation)?.PlaceId.Value;
         CycleResource[] resources = world.Resources.Where(resource => expedition is null ||
-            place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
+            place is not null && world.Definition.GetResourcePlace(resource.Id) == place).ToArray();
         CyclePassageDefinition[] passages = expedition is not null && place is not null
-            ? [.. CycleExpeditionMap.GetPassages(place)] : [];
+            ? [.. world.Definition.GetPassages(place)] : [];
         string? Check(CycleCommand? command) {
             if (command?.Kind == CycleCommandKind.Gather && !resources.Any(resource => resource.Id == command.ResourceId)) {
                 return "当前不可见或不可用的资源点。";
@@ -108,7 +108,7 @@ public sealed class CycleDecisionContext {
         }
         if (actor.Survival is not null) {
             commands.AddRange(actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
-                .Distinct(StringComparer.Ordinal).Where(id => CycleSurvivalRules.UseDescription(id) is not null)
+                .Distinct(StringComparer.Ordinal).Where(id => CycleSurvivalRules.UseDescription(world.Definition, id) is not null)
                 .Order(StringComparer.Ordinal).Select(CycleCommand.Use));
         }
         commands.AddRange(quotes.Where(quote => quote.BuyPrice > 0).Select(quote => CycleCommand.Buy(quote.ItemId)));
@@ -119,7 +119,7 @@ public sealed class CycleDecisionContext {
             string[] knownItems = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
                 .Concat(quotes.Select(quote => quote.ItemId)).Concat(recipes.SelectMany(recipe => new[] { recipe.InputItem, recipe.OutputItem }))
                 .Concat(trades.SelectMany(offer => new[] { offer.Give, offer.Want }).Where(asset => !asset.IsMoney).Select(asset => asset.AssetId))
-                .Where(LivingWorldEconomyContent.Items.ContainsKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+                .Where(world.Definition.Items.ContainsKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             foreach (CycleOtherCharacterObservation other in others) {
                 foreach (string item in knownItems) {
                     if (actor.Money > 0) { commands.Add(CycleCommand.Offer(other.Id, new("money", 1), new(item, 1))); }
@@ -141,10 +141,12 @@ public sealed class CycleDecisionContext {
             .Concat(trades.SelectMany(offer => new[] { offer.Give, offer.Want }).Where(asset => !asset.IsMoney).Select(asset => asset.AssetId))
             .Concat(actor.Activity?.Production is { } production ? new[] { production.InputItem, production.OutputItem } : [])
             .Distinct(StringComparer.Ordinal)
-            .ToDictionary(id => id, id => expedition is null
-                ? world.Resources.FirstOrDefault(resource => resource.ItemId == id)?.Name ?? id
-                : CycleEconomyObservation.ItemName(id), StringComparer.Ordinal);
+            .ToDictionary(id => id, id => CycleEconomyObservation.ItemName(world.Definition, id), StringComparer.Ordinal);
+        var useDescriptions = itemNames.Keys.Select(item => (Item: item, Description: CycleSurvivalRules.UseDescription(world.Definition, item)))
+            .Where(pair => pair.Description is not null).ToDictionary(pair => pair.Item, pair => pair.Description!, StringComparer.Ordinal);
         var observation = new CycleObservation {
+            WorldName = world.Definition.Name,
+            ItemUseDescriptions = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(useDescriptions),
             Time = actor.Ending?.At ?? world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
             Goals = expedition is null ? null : world.Business.InteractionStates[actorId].Goals,
             FollowingLeaderId = actor.FollowingLeaderId,
@@ -162,14 +164,14 @@ public sealed class CycleDecisionContext {
             OtherCharacters = Array.AsReadOnly(others), Notices = Array.AsReadOnly(notices),
             Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, DisplayCheck(command), CycleTradeRules.IsTradeCommand(command) ? null : Warning(command))).ToArray()),
             IsExpedition = expedition is not null, PlaceId = place,
-            PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
-            PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,
+            PlaceName = expedition is not null && place is not null ? world.Definition.GetPlace(place).Name : null,
+            PlaceDescription = expedition is not null && place is not null ? world.Definition.GetPlace(place).Description : null,
             ArrivalDue = arrival,
-            Journey = CycleJourneyObservation.Observe(expedition, actorId, location),
+            Journey = CycleJourneyObservation.Observe(world.Definition, expedition, actorId, location),
             Passages = Array.AsReadOnly(passages.Select(passage => new CyclePassageObservation(passage.Id, passage.Description,
-                passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? CycleExpeditionMap.GetPlace(passage.To).Name : null)).ToArray()),
+                passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? world.Definition.GetPlace(passage.To).Name : null)).ToArray()),
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>
-                new CyclePlaceMemory(CycleExpeditionMap.GetPlace(visit.PlaceId).Name, visit.At,
+                new CyclePlaceMemory(world.Definition.GetPlace(visit.PlaceId).Name, visit.At,
                     Array.AsReadOnly(visit.Resources.ToArray()), visit.PlaceId)).ToArray()),
             Outcome = actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring, EndingReason = actor.Ending?.Reason,
             Survival = CycleSurvivalRules.Observe(world, actorId),

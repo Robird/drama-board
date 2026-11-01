@@ -92,7 +92,7 @@ public sealed class ContextHistoryViewTests {
         var observation = new CycleObservation {
             Time = original.Time, IsDay = original.IsDay, NextLightChange = original.NextLightChange,
             Actor = original.Actor, Resources = original.Resources, HarvestDurations = original.HarvestDurations,
-            ItemNames = original.ItemNames, OtherCharacters = original.OtherCharacters, Notices = original.Notices,
+            WorldName = original.WorldName, ItemUseDescriptions = original.ItemUseDescriptions, ItemNames = original.ItemNames, OtherCharacters = original.OtherCharacters, Notices = original.Notices,
             Commands = [], IsExpedition = true, Outcome = CycleExpeditionOutcome.Dead, EndingReason = "终局原因"
         };
         var advance = new PendingAdvance("a", 1, 1, CycleCommand.Wait(1), "wait 1", "call", "record", original.Time,

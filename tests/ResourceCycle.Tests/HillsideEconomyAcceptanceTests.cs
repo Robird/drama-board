@@ -247,7 +247,7 @@ public sealed class HillsideEconomyAcceptanceTests {
             residents.Select(actor => new CycleVisit(actor.Id, place, basis.Time,
                 basis.Resources.Where(resource => CycleExpeditionMap.GetResourcePlace(resource.Id) == place))));
         return CycleEngine.Rebuild(basis.Business.Replace(basis.Time, changedCharacters: residents, expedition: expedition,
-            economy: new CycleEconomyState(market ?? CycleMarket.Fresh(Hour(24)), totals)), basis.Time);
+            economy: new CycleEconomyState(market ?? CycleMarket.Fresh(basis.Definition, Hour(24)), totals)), basis.Time);
     }
 
     private static CycleCommand Go(string from, string to) => CycleCommand.Go(CycleExpeditionMap.GetPassages(from).Single(p => p.To == to).Id);

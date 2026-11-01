@@ -46,9 +46,9 @@ internal static class CycleEconomyValidation {
                 bool buying = fact.Kind == CycleEventKind.MarketBought;
                 if (input.Kind != (buying ? CycleCommandKind.Buy : CycleCommandKind.Sell) || input.Count is < 1 or > 1000 || input.ItemId is null ||
                     input.RecipeId is not null || input.TargetActorId is not null || input.MoneyAmount != 0 ||
-                    fact.ItemId != input.ItemId || fact.ItemCount != input.Count || Place(before, actor!.Id) != "market") { Fail("Invalid market operation provenance or location."); }
+                    fact.ItemId != input.ItemId || fact.ItemCount != input.Count || Place(before, actor!.Id) != before.Definition.MarketPlaceId) { Fail("Invalid market operation provenance or location."); }
                 string item = input.ItemId!;
-                int price = buying ? LivingWorldEconomyContent.BuyPrice(item) : LivingWorldEconomyContent.SellPrice(item);
+                int price = buying ? before.Definition.BuyPrice(item) : before.Definition.SellPrice(item);
                 if (price <= 0) { Fail("This item is not traded by the market."); }
                 long total = checked((long)price * input.Count);
                 CycleMarket market = before.Economy!.Market;
@@ -67,10 +67,10 @@ internal static class CycleEconomyValidation {
             }
             case CycleEventKind.ProductionStarted: {
                 CycleCommand input = command!;
-                CycleRecipe? recipe = input.RecipeId is null ? null : LivingWorldEconomyContent.Recipe(input.RecipeId);
+                CycleRecipe? recipe = input.RecipeId is null ? null : before.Definition.Recipe(input.RecipeId);
                 if (input.Kind != CycleCommandKind.Produce || input.Count is < 1 or > 1000 || recipe is null || input.ItemId is not null ||
                     input.TargetActorId is not null || input.MoneyAmount != 0 || actor!.Activity is not null || actor.FollowingLeaderId is not null ||
-                    Place(before, actor.Id) != "workshop" || actor.NextActivityId == long.MaxValue) { Fail("Invalid production start."); }
+                    Place(before, actor.Id) != before.Definition.WorkshopPlaceId || actor.NextActivityId == long.MaxValue) { Fail("Invalid production start."); }
                 int count = checked(recipe!.InputCount * input.Count);
                 if (actor!.Backpack.Count(recipe.InputItem) < count) { Fail("Production has insufficient input."); }
                 inventories[actor.Id] = actor.Backpack.Remove(recipe.InputItem, count);
@@ -79,7 +79,7 @@ internal static class CycleEconomyValidation {
             case CycleEventKind.ProductionCompleted: {
                 if (actor?.Activity is not { Kind: CycleActivityKind.Produce, Production: { } } production || production.Due != fact.At) { Fail("Production can complete only at its recorded deadline."); }
                 CycleProductionOrder order = actor!.Activity!.Production!;
-                CycleRecipe recipe = LivingWorldEconomyContent.Recipe(order.RecipeId)!;
+                CycleRecipe recipe = before.Definition.Recipe(order.RecipeId)!;
                 if (actor.Backpack.CheckAdd(order.OutputItem, order.OutputCount) != InventoryAdmission.Allowed) { Fail("Production output cannot fit."); }
                 inventories[actor.Id] = actor.Backpack.Add(order.OutputItem, order.OutputCount);
                 expectedEconomy = before.Economy!.Change(totals: before.Economy.Totals.Produce(recipe, order.Batches));
@@ -88,7 +88,7 @@ internal static class CycleEconomyValidation {
             case CycleEventKind.MarketRefreshed: {
                 CycleMarket market = before.Economy!.Market;
                 if (fact.At != market.NextRefresh) { Fail("Market refresh must occur at its committed deadline."); }
-                expectedEconomy = before.Economy.Change(market: CycleMarket.Fresh(new(checked(fact.At.Ticks + CycleTime.Day)), checked(market.Cycle + 1)));
+                expectedEconomy = before.Economy.Change(market: CycleMarket.Fresh(before.Definition, new(checked(fact.At.Ticks + before.Definition.MarketRefreshTicks)), checked(market.Cycle + 1)));
                 break;
             }
             case CycleEventKind.MoneyGiven: {
@@ -141,11 +141,12 @@ internal static class CycleEconomyValidation {
             if (fact.Kind == CycleEventKind.ItemUsed && prior.Id == fact.ActorId) {
                 string item = command!.ItemId!;
                 if (fact.At != before.Time || !CycleActions.NeedsDecision(before, prior.Id) || prior.Survival is null ||
-                    CycleSurvivalRules.UseDescription(item) is null || prior.Survival.Project(fact.At).IsFatal) { Fail("Consumption requires an available active body and a known supply."); }
+                    CycleSurvivalRules.UseDescription(before.Definition, item) is null || prior.Survival.Project(fact.At).IsFatal) { Fail("Consumption requires an available active body and a known supply."); }
                 CycleSurvival projected = prior.Survival!.Project(fact.At);
-                if ((LivingWorldEconomyContent.SupplyFood(item) > 0 ? projected.FoodUnits : projected.WaterUnits) == CycleSurvival.MaximumUnits) { Fail("A full need cannot consume a supply without benefit."); }
-                CycleSurvival expectedBody = prior.Survival.Supply(fact.At, item).WithRates(fact.At, prior.Survival.FoodRate, prior.Survival.WaterRate,
-                    CycleSurvivalRules.WarmthRate(CycleSurvivalRules.IsSheltered(before.Expedition!.Spatial, prior.Id), before.Light.IsDay));
+                if ((before.Definition.SupplyFood(item) <= 0 || projected.FoodUnits == CycleSurvival.MaximumUnits) &&
+                    (before.Definition.SupplyWater(item) <= 0 || projected.WaterUnits == CycleSurvival.MaximumUnits)) { Fail("A full need cannot consume a supply without benefit."); }
+                CycleSurvival expectedBody = prior.Survival.Supply(fact.At, item, before.Definition).WithRates(fact.At, prior.Survival.FoodRate, prior.Survival.WaterRate,
+                    CycleSurvivalRules.WarmthRate(before.Definition, CycleSurvivalRules.IsSheltered(before.Definition, before.Expedition!.Spatial, prior.Id), before.Light.IsDay));
                 if (!SameBody(expectedBody, next.Survival) || !CycleObservationEquality.SameActivity(prior.Activity, next.Activity) ||
                     prior.NextActivityId != next.NextActivityId || prior.Name != next.Name || prior.SkillLevel != next.SkillLevel ||
                     prior.Ending != next.Ending || prior.FollowingLeaderId != next.FollowingLeaderId || prior.Communication != next.Communication ||
@@ -167,7 +168,7 @@ internal static class CycleEconomyValidation {
 
     private static void ValidateProduction(CycleBusinessState before, CycleFact fact, CycleCharacter prior, CycleCharacter next, CycleCommand? command) {
         if (fact.Kind == CycleEventKind.ProductionStarted && prior.Id == fact.ActorId) {
-            CycleRecipe recipe = LivingWorldEconomyContent.Recipe(command!.RecipeId!)!;
+            CycleRecipe recipe = before.Definition.Recipe(command!.RecipeId!)!;
             var order = new CycleProductionOrder(recipe.Id, command.Count, recipe.InputItem, checked(recipe.InputCount * command.Count), recipe.OutputItem, checked(recipe.OutputCount * command.Count));
             long duration = checked(recipe.DurationTicks * command.Count);
             var expected = new CycleActivity(CycleActivityKind.Produce, prior.NextActivityId, fact.At, duration,
@@ -193,7 +194,7 @@ internal static class CycleEconomyValidation {
         CycleSurvival? body = prior.Survival?.Project(fact.At);
         if (start || completed) {
             body = body?.WithRates(fact.At, body.FoodRate, body.WaterRate,
-                CycleSurvivalRules.WarmthRate(CycleSurvivalRules.IsSheltered(before.Expedition!.Spatial, prior.Id), before.Light.IsDay));
+                CycleSurvivalRules.WarmthRate(before.Definition, CycleSurvivalRules.IsSheltered(before.Definition, before.Expedition!.Spatial, prior.Id), before.Light.IsDay));
             if (start) { body = body?.Acknowledge(fact.At); }
         }
         if (prior.Name != next.Name || prior.SkillLevel != next.SkillLevel || prior.Ending != next.Ending || prior.FollowingLeaderId != next.FollowingLeaderId ||

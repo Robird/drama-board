@@ -10,24 +10,36 @@ namespace DramaBoard.ResourceCycle;
 /// invocation. Supplied entity instances are retained, not cloned; callers must not mutate
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
-    /// <summary>Creates Hillside residents in one continuous town-and-mountain world, without revealing distant places.</summary>
-    public static (CycleWorld World, KernelCursor Cursor) CreateLivingWorld(ModelTime? start = null, int characterCount = 3,
-        bool enableNeeds = true, bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed) {
-        ModelTime time = start ?? new ModelTime(LivingWorldContent.StartingTicks);
-        CycleCharacter[] characters = LivingWorldContent.CreateCharacters(time, characterCount, enableNeeds);
-        CycleResource[] resources = LivingWorldContent.CreateResources();
-        GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph,
-            characters.Select(c => new EntityPlacement(new(c.Id), new(LivingWorldContent.StartingPlace))));
-        var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
-            characters.Select(c => new CycleVisit(c.Id, LivingWorldContent.StartingPlace, time, [])),
-            environment: enableNeeds && enableWeather ? new(weatherSeed, 0,
-                time.Ticks > long.MaxValue - CycleEnvironmentRules.IntervalTicks ? null : new(time.Ticks + CycleEnvironmentRules.IntervalTicks)) : null);
+    /// <summary>Creates an effective authored world. All initialization overrides have already contributed to its fingerprint.</summary>
+    public static (CycleWorld World, KernelCursor Cursor) Create(CycleWorldDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+        definition.Validate();
+        if (definition.InitialCharacters.Count == 0) { throw new ArgumentException("A living world requires at least one initial character.", nameof(definition)); }
+        ModelTime time = definition.StartTime;
+        CycleCharacter[] characters = definition.InitialCharacters.Select(actor => new CycleCharacter(actor.Id, actor.Name, actor.SkillLevel,
+            new ItemInventory(actor.Backpack, actor.UnitCapacity), survival: definition.NeedsEnabled
+                ? CycleSurvival.Create(definition, time, actor.Food, actor.Water, actor.Warmth, definition.GetPlace(actor.PlaceId).Sheltered) : null,
+            money: actor.Money)).ToArray();
+        CycleResource[] resources = definition.Resources.Select(resource => resource.Create(time)).ToArray();
+        GraphSpatialState spatial = GraphSpatialState.Create(definition.Runtime.Graph,
+            definition.InitialCharacters.Select(actor => new EntityPlacement(new(actor.Id), new(actor.PlaceId))));
+        var expedition = new CycleExpedition(definition.ContentId, spatial,
+            definition.InitialCharacters.Select(actor => new CycleVisit(actor.Id, actor.PlaceId, time,
+                resources.Where(resource => definition.GetResourcePlace(resource.Id) == actor.PlaceId))),
+            environment: definition.Weather.Enabled ? new(definition.Weather.Seed, 0,
+                time.Ticks > long.MaxValue - definition.Weather.IntervalTicks ? null : new(time.Ticks + definition.Weather.IntervalTicks)) : null);
+        CycleEconomyState? economy = definition.EconomyEnabled ? new(
+            CycleMarket.Fresh(definition, new(checked(time.Ticks / definition.MarketRefreshTicks * definition.MarketRefreshTicks + definition.MarketRefreshTicks))),
+            new CycleEconomicTotals(characters.Sum(actor => actor.Money), definition.Items.Keys.ToDictionary(
+                item => item, item => characters.Sum(actor => (long)actor.Backpack.Count(item)), StringComparer.Ordinal))) : null;
         return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
-            new([]), characters, expedition: expedition, economy: new(
-                CycleMarket.Fresh(new(checked(time.Ticks / CycleTime.Day * CycleTime.Day + CycleTime.Day))),
-                new CycleEconomicTotals(characters.Sum(actor => actor.Money), LivingWorldEconomyContent.Items.Keys.ToDictionary(
-                    item => item, item => characters.Sum(actor => (long)actor.Backpack.Count(item)), StringComparer.Ordinal)))));
+            new([]), characters, expedition: expedition, economy: economy, definition: definition));
     }
+
+    /// <summary>Normalizes the default preset's initial overrides before constructing its saved identity.</summary>
+    public static (CycleWorld World, KernelCursor Cursor) CreateLivingWorld(ModelTime? start = null, int characterCount = 3,
+        bool enableNeeds = true, bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed) =>
+        Create(CycleWorldDefinitions.LivingWorld(start, characterCount, enableNeeds, enableWeather, weatherSeed));
 
     /// <summary>Legacy test setup with scarce supplies on the same Hillside map; reaching a former exit does not retire a character.</summary>
     public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true,

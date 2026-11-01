@@ -154,7 +154,7 @@ public sealed class CharacterContextRenderingTests {
         CycleObservation WithWaiting(bool waiting) => new() {
             Time = original.Time, IsDay = original.IsDay, NextLightChange = original.NextLightChange,
             Actor = original.Actor, Resources = original.Resources, HarvestDurations = original.HarvestDurations,
-            ItemNames = original.ItemNames, Notices = original.Notices, Commands = original.Commands,
+            WorldName = original.WorldName, ItemUseDescriptions = original.ItemUseDescriptions, ItemNames = original.ItemNames, Notices = original.Notices, Commands = original.Commands,
             OtherCharacters = original.OtherCharacters.Select(entry => entry.Id == other.Id ? entry with { Waiting = waiting } : entry).ToArray()
         };
         var first = ViewContextFixture.State(WithWaiting(true));

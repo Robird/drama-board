@@ -75,9 +75,7 @@ internal static class ContextHistoryPlayView {
     }
 
     internal static string ItemName(CycleObservation observation, string itemId) =>
-        observation.ItemNames.GetValueOrDefault(itemId) ?? itemId switch {
-            "item.food" => "食物", "item.water" => "饮水", "item.wood" => "干木", _ => itemId
-        };
+        observation.ItemNames.GetValueOrDefault(itemId, itemId);
 
     private static string Reasons(CharacterContextOpening opening) {
         var kinds = opening.Experiences.Select(experience => experience.Event.Kind).ToHashSet();

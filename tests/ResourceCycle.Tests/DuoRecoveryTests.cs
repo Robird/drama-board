@@ -171,7 +171,7 @@ public sealed class DuoRecoveryTests {
 
     private static CycleWorld WeatherWorld(bool fatal) {
         ModelTime at = Hour(8);
-        var initial = CycleGameFactory.CreateSurvival(at, enableNeeds: false, enableWeather: false, characterCount: 2);
+        var initial = CycleGameFactory.CreateSurvival(at, enableNeeds: true, enableWeather: true, weatherSeed: 0, characterCount: 2);
         var activity = new CycleActivity(CycleActivityKind.Wait, 1, at, 4 * CycleTime.Hour, Hour(12));
         var a = new CycleCharacter("a", "Exposed explorer", activity: activity, nextActivityId: 2,
             survival: new CycleSurvival(at, 100 * CycleSurvival.Scale, 100 * CycleSurvival.Scale,

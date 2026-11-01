@@ -8,7 +8,7 @@ namespace DramaBoard.ResourceCycle.Completion;
 public sealed class LlmCharacterController : ICycleCharacterController {
     public const string ToolName = LlmDecisionLoop.ToolName;
     public const string FeedbackToolName = LlmDecisionLoop.FeedbackToolName;
-    private const string PromptBody = "你是山野镇的一位居民，在同一个连续世界里生活、交流、进山探索并返回。没有强制逃生终点；根据自己的处境和目标行动。"
+    private const string PromptBody = "你是当前世界的一位居民，在同一个连续世界里生活、交流、进山探索并返回。没有强制逃生终点；根据自己的处境和目标行动。"
         + "即时行动或拒绝之后仍可继续决策；耗时行动会放行世界。自由文本不会成为游戏对白、事实或持久记忆。"
         + "注意当前身体危险、活动、最近结果和既有承诺，区分当前事实、历史成果、他人陈述和推测。危险需要取舍，不等于必须取消当前活动。"
         + "若界面提供同地同伴与交流行动，可用 say 沟通计划、用 give 分享补给；对方的话是署名陈述，不等于已经亲眼证实。"
@@ -18,7 +18,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
 
     private const string EconomyGuidance = "在镇里可按当前界面买卖与生产。市场的买入价是你付款，卖出价是市场向你付款；库存和收购额度有限，以提交结果为准。"
         + "生产开始时预留全部投入，完成时取得产物；cancel 退回本次未完成生产的预留材料，不产生成品。买卖、补给和通信不会重置原活动期限。"
-        + "只使用眼前提供的市场、配方和物品标识；use item.ration 可补给，具体效果以当前材料为准。"
+        + "只使用眼前提供的市场、配方和物品标识；use 可使用界面列出的补给，物品效果以当前冻结材料为准。"
         + "可用 give <actor-id> money <amount> 赠送自己的钱；接收或赠与不代表知道他人的余额或背包。";
 
     private const string TradeGuidance = "居民报价由 offer 的给予 / 索取条款组成；看清自己支付与收到什么，以及报价身份、参与者和到期时间。"
@@ -47,7 +47,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "shout 与 say / give 共用发送额度，一次大喊只扣一次，无人听见也成功；回执不提供听众名单或接收确认。"
         + "听到大喊不取消原活动，也不自动集合；完成或取消活动后再自主返回和跟随。听见远处角色不代表同地可赠与或跟随，话语不等于世界证实。";
 
-    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance + TradeGuidance : "") + (observation.Goals is not null
+    private static string GuidanceFor(CycleObservation observation) => $"当前世界：{observation.WorldName}。" + PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance + TradeGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

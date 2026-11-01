@@ -7,19 +7,20 @@ using DramaBoard.ResourceCycle;
 internal static class PlayConsole {
     public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken,
         Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null,
-        int? characterCount = null, string? branch = null, ModelTime? until = null, int maxSteps = 10_000) {
+        int? characterCount = null, string? branch = null, ModelTime? until = null, int maxSteps = 10_000, string? content = null) {
         TextWriter output = outputWriter ?? Console.Out;
         bool restoring = store is not null && Directory.Exists(store);
         using CycleDurableHistory? durable = store is null ? null : restoring
             ? branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, branch)
-            : branch is null ? CreateStore(store, characterCount) : throw new ArgumentException("指定分支需要已有存档。");
+            : branch is null ? CreateStore(store, characterCount, content) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
-            var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
+            var initial = CycleGameFactory.Create(WorldHost.Definition(content, characterCount));
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
         WorldHost.RequireWorld(history.State, characterCount);
+        WorldHost.RequireContent(history.State, content);
         WorldHost.RequireBudget(history.State.Time, until, maxSteps);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
@@ -27,7 +28,7 @@ internal static class PlayConsole {
             inputReader: inputReader, outputWriter: output, writeBoundary: outputWriter is null ? WriteBoundary : null,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
-        string startup = $"山野镇 / Hillside · {history.State.Characters.Count} 位居民 · " + (store is null
+        string startup = $"山野镇 / Hillside · {history.State.Characters.Count} 位居民 · 内容 {history.State.Definition.ContentId} / {history.State.Definition.Fingerprint} · " + (store is null
             ? "本次仅在内存中运行；退出后不保留进度。"
             : $"存档：{store} · 每次成功转换自动保存。")
             + (restoring ? " 已保存的角色上下文、活动、目标与交接已恢复。" : "")
@@ -74,8 +75,8 @@ internal static class PlayConsole {
         }
     }
 
-    private static CycleDurableHistory CreateStore(string path, int? characterCount) {
-        var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
+    private static CycleDurableHistory CreateStore(string path, int? characterCount, string? content) {
+        var initial = CycleGameFactory.Create(WorldHost.Definition(content, characterCount));
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 

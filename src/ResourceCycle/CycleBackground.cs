@@ -31,13 +31,9 @@ public sealed partial class CycleBackground : IDurableObject {
                 : "先完成先得；同刻完成按固定规则仲裁。别人只公开正在采集哪个点，不公开技能、速度或下一份完成时刻。"
         ];
         if (observation.Survival is not null) {
-            rules.Add("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则该角色死亡。镇与山之间可以往返，抵达镇口或山站不会结束生活；死亡角色不再行动，其他角色仍可继续。");
+            rules.Add("余量范围 0–100；25 触发低值提醒，任一项耗尽至 0 则该角色死亡。地点之间可以往返，抵达新地点不会结束生活；死亡角色不再行动，其他角色仍可继续。");
             rules.Add("补给不耗时，不确认历史警告；continue 确认并保留原期限，接受新的耗时行动也会确认已展示的警告。");
-            rules.Add("温暖无法靠物品补充；庇护内或白天野外可回暖，夜间野外继续降温。");
-        }
-        if (observation.IsExpedition && (observation.Actor.Backpack.Count("item.wood") > 0 ||
-            observation.Resources.Any(resource => resource.ItemId == "item.wood"))) {
-            rules.Add("干木目前不能生火或直接取暖；在庇护中停留可以回暖，仍会消耗食物和饮水。");
+            rules.Add("身体变化会受当前环境影响；请按当前显示的变化速率、阈值预测和可用补给安排行动。");
         }
         if (observation.IsExpedition) {
             rules.Add("可向同地角色 offer 报价，用物品或现金交换；报价不预留资产，accept 接受时双方必须同地且具备完整支付和容量。候选接受命令只核对你可见的信息，实际提交仍可能因对方无法结算而失败。");
@@ -62,9 +58,9 @@ public sealed partial class CycleBackground : IDurableObject {
             rules.Add("跟随期间不能自行 go、gather、produce 或 wait；身体提醒仍交给本人处理，可补给后 continue。领队到达后可 dismiss-followers 让大家分头行动；队员在地点内自己的决策窗口可 unfollow，途中不能退出。");
             rules.Add("解除跟随不确认任何人的提醒；完成或取消自己的活动后才可重新加入。跟随只授权移动，不共享私有目标、背包或地图记忆。");
         }
-        return new CycleBackground(observation.IsExpedition ? LivingWorldContent.Name : "林间苗圃",
-            observation.IsExpedition ? "你生活在山野镇附近。可以在镇中停留，也可以进山采集、探索，再返回继续生活；没有必须完成的主线或固定天数的终局。"
-                : "林间苗圃的资源由在场角色共同采集。", rules);
+        return new CycleBackground(observation.WorldName,
+            observation.IsExpedition ? $"你生活在{observation.WorldName}。可以在镇中停留，也可以进山采集、探索，再返回继续生活；没有必须完成的主线或固定天数的终局。"
+                : "这里的资源由在场角色共同采集。", rules);
     }
 
     private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);

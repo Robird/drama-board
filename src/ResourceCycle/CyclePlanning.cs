@@ -57,7 +57,7 @@ internal static class CyclePlanning {
                 string result = $"沿通路 {command.PassageId} 出发；本段移动不可取消。";
                 CycleCharacter[] members = CycleFollowingRules.MovingMembers(world.Business, actorId).ToArray();
                 GraphSpatialFact[] movements = members.SelectMany(member =>
-                    ((SpatialPlanAccepted)CycleExpeditionMap.Planner.TryStartTraversal(
+                    ((SpatialPlanAccepted)world.Definition.Runtime.Planner.TryStartTraversal(
                         world.Expedition!.Spatial, new(member.Id), new(command.PassageId!), 1, world.Time)).Facts).ToArray();
                 return new(CycleEventKind.MoveStarted, world.Time, actorId,
                     changedCharacters: members.Select(member => member.Id == actorId
@@ -66,9 +66,9 @@ internal static class CyclePlanning {
                     result: result, spatialFacts: movements);
             }
             case CycleCommandKind.Use: {
-                string result = CycleSurvivalRules.UseDescription(command.ItemId!)!;
+                string result = CycleSurvivalRules.UseDescription(world.Definition, command.ItemId!)!;
                 return new(CycleEventKind.ItemUsed, world.Time, actorId, changedCharacters: [actor.Change(actor.Activity,
-                    actor.Backpack.Remove(command.ItemId!), result: result, survival: actor.Survival!.Supply(world.Time, command.ItemId!))],
+                    actor.Backpack.Remove(command.ItemId!), result: result, survival: actor.Survival!.Supply(world.Time, command.ItemId!, world.Definition))],
                     lastServedActorId: actorId, result: result);
             }
             default: throw new InvalidOperationException("Unknown command after validation.");
@@ -81,7 +81,7 @@ internal static class CyclePlanning {
         }
         CycleCharacter actor = world.GetCharacter(arrived.EntityId.Value);
         var traversal = (TraversingLocation)world.Expedition!.Spatial.Entities.Single(e => e.Id == arrived.EntityId).Location;
-        CyclePlaceDefinition place = CycleExpeditionMap.GetPlace(traversal.TargetPlaceId.Value);
+        CyclePlaceDefinition place = world.Definition.GetPlace(traversal.TargetPlaceId.Value);
         string result = $"抵达{place.Name}。{place.Description}";
         CycleCharacter changed = actor.Change(null, result: result);
         return new(CycleEventKind.MoveArrived, at, actor.Id, changedCharacters: [changed],
@@ -93,7 +93,7 @@ internal static class CyclePlanning {
         if (world.Expedition is null || fact.Kind == CycleEventKind.SpeechShouted) { return fact; }
         GraphSpatialState spatial = world.Expedition.Spatial;
         foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
-            spatial = CycleExpeditionMap.Reducer.Apply(spatial, new(fact.At, 0), spatialFact);
+            spatial = world.Definition.Runtime.Reducer.Apply(spatial, new(fact.At, 0), spatialFact);
         }
         var resources = world.Resources.Select(r => fact.ChangedResources.SingleOrDefault(c => c.Id == r.Id) ?? r).ToArray();
         var visits = new List<CycleVisit>();
@@ -107,7 +107,7 @@ internal static class CyclePlanning {
             }
             if (location is AtPlaceLocation at) {
                 visits.Add(new(actor.Id, at.PlaceId.Value, fact.At,
-                    resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == at.PlaceId.Value)));
+                    resources.Where(r => world.Definition.GetResourcePlace(r.Id) == at.PlaceId.Value)));
             }
         }
         return fact.WithVisits(visits);

@@ -27,7 +27,7 @@ internal static class CycleVisibleEndpointChanges {
         if ((oldExpedition is null) != (newExpedition is null)) { return true; }
         string? oldPlace = Place(before, actorId), newPlace = Place(after, actorId);
         if (oldPlace != newPlace || Arrival(before, actorId) != Arrival(after, actorId)) { return true; }
-        if (oldPlace == "market" && !(before.Economy?.Market.SameState(after.Economy?.Market) ?? after.Economy is null)) { return true; }
+        if (oldPlace == before.Definition.MarketPlaceId && !(before.Economy?.Market.SameState(after.Economy?.Market) ?? after.Economy is null)) { return true; }
         if (oldExpedition is not null && newExpedition is not null &&
             (!SameWeather(oldExpedition.Environment, newExpedition.Environment, actorId) ||
             !SameList(HistoricalVisits(oldExpedition, actorId, oldPlace), HistoricalVisits(newExpedition, actorId, newPlace), SameVisit))) {
@@ -47,7 +47,7 @@ internal static class CycleVisibleEndpointChanges {
 
     private static CycleResource[] VisibleResources(CycleBusinessState state, string? place) =>
         state.Resources.Where(resource => state.Expedition is null ||
-            place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
+            place is not null && state.Definition.GetResourcePlace(resource.Id) == place).ToArray();
 
     private static CycleCharacter[] VisibleOthers(CycleBusinessState state, string actorId, string? place) =>
         state.Characters.Where(other => other.IsActive && other.Id != actorId && (state.Expedition is null ||

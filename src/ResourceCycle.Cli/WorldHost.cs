@@ -2,6 +2,21 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>Host-only scenario selection and controller bindings; never stored in the game graph.</summary>
 internal static class WorldHost {
+    public static CycleWorldDefinition Definition(string? content, int? characterCount) =>
+        CycleWorldDefinitions.Named(content ?? "hillside", characterCount: characterCount ?? 3);
+
+    public static void RequireContent(CycleWorld world, string? content) {
+        if (content is null) { return; }
+        CycleWorldDefinition saved = world.Definition;
+        CycleWorldDefinition expected = CycleWorldDefinitions.Named(content, start: saved.StartTime,
+            characterCount: saved.InitialCharacters.Count, enableNeeds: saved.NeedsEnabled,
+            enableWeather: saved.Weather.Enabled, weatherSeed: saved.Weather.Seed);
+        expected.Validate();
+        if (saved.ContentId != expected.ContentId || saved.Fingerprint != expected.Fingerprint) {
+            throw new ArgumentException($"指定 --content {content} 与存档内容身份不符；省略 --content 可使用存档保存的定义。");
+        }
+    }
+
     public static void RequireWorld(CycleWorld world, int? characterCount) {
         int actual = world.Characters.Count;
         string[] expected = ["a", "b", "c"];

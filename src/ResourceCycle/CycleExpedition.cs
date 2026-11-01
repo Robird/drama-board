@@ -50,13 +50,13 @@ public sealed partial class CycleExpedition : IDurableObject {
     internal bool SameState(CycleExpedition other) => ScenarioId == other.ScenarioId && Spatial.Equals(other.Spatial) &&
         Visits.SequenceEqual(other.Visits) && ReferenceEquals(Environment, other.Environment);
     internal void Validate(CycleBusinessState business) {
-        if (ScenarioId != CycleExpeditionMap.ScenarioId || business.Characters.Count is < 1 or > 3 ||
+        if (ScenarioId != business.Definition.ContentId || business.Characters.Count < 1 ||
             Spatial.Entities.Count != business.Characters.Count(c => c.IsActive) || Spatial.ScheduledPassageEntryChanges.Count != 0 ||
             Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != Visits.Count) {
             throw new InvalidOperationException("Invalid expedition scenario, participants, observations or ending.");
         }
-        GraphSpatialStateValidator.ValidateComplete(CycleExpeditionMap.Graph, Spatial);
-        Environment?.Validate(business.Time, business.Characters);
+        GraphSpatialStateValidator.ValidateComplete(business.Definition.Runtime.Graph, Spatial);
+        Environment?.Validate(business.Time, business.Characters, business.Definition);
         if (Environment is not null && business.Characters.Any(c => c.Survival is null)) {
             throw new InvalidOperationException("Weather requires survival needs for each participant.");
         }
@@ -65,9 +65,9 @@ public sealed partial class CycleExpedition : IDurableObject {
                 if (Spatial.TryGetEntity(new(actor.Id), out _) || ending.Outcome != CycleExpeditionOutcome.Dead) {
                     throw new InvalidOperationException("Only deceased residents may be retired from the living world.");
                 }
-                if (ending.Location is AtPlaceLocation endedPlace) { _ = CycleExpeditionMap.GetPlace(endedPlace.PlaceId.Value); }
+                if (ending.Location is AtPlaceLocation endedPlace) { _ = business.Definition.GetPlace(endedPlace.PlaceId.Value); }
                 else if (ending.Location is TraversingLocation movement) {
-                    _ = CycleExpeditionMap.Graph.GetPassage(movement.PassageId);
+                    _ = business.Definition.Runtime.Graph.GetPassage(movement.PassageId);
                     if (movement.AnchorTime > ending.At || movement.ArrivalDue < ending.At) {
                         throw new InvalidOperationException("An ended traversal is a historical snapshot at the ending instant.");
                     }
@@ -80,19 +80,19 @@ public sealed partial class CycleExpedition : IDurableObject {
             }
             if (actor.Activity is { Kind: CycleActivityKind.Gather } gathering &&
                 (entity.Location is not AtPlaceLocation gatheringPlace ||
-                    CycleExpeditionMap.GetResourcePlace(gathering.ResourceId!) != gatheringPlace.PlaceId.Value)) {
+                    business.Definition.GetResourcePlace(gathering.ResourceId!) != gatheringPlace.PlaceId.Value)) {
                 throw new InvalidOperationException("Gathering requires the resource's actual place.");
             }
 
         }
         foreach (CycleVisit visit in Visits) {
-            if (!business.Characters.Any(c => c.Id == visit.ActorId) || !CycleExpeditionMap.Graph.Contains(new PlaceId(visit.PlaceId)) ||
+            if (!business.Characters.Any(c => c.Id == visit.ActorId) || !business.Definition.Runtime.Graph.Contains(new PlaceId(visit.PlaceId)) ||
                 visit.At < new ModelTime(0) || visit.At > business.Time || visit.Resources.Any(r =>
-                    !business.Resources.Any(current => current.Id == r.Id) || CycleExpeditionMap.GetResourcePlace(r.Id) != visit.PlaceId)) {
+                    !business.Resources.Any(current => current.Id == r.Id) || business.Definition.GetResourcePlace(r.Id) != visit.PlaceId)) {
                 throw new InvalidOperationException("Invalid remembered observation.");
             }
         }
-        if (business.Resources.Any(r => CycleExpeditionMap.GetResourcePlace(r.Id) is null)) {
+        if (business.Resources.Any(r => business.Definition.GetResourcePlace(r.Id) is null)) {
             throw new InvalidOperationException("Every expedition resource must belong to a defined place.");
         }
     }

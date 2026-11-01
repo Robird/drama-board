@@ -115,7 +115,7 @@ public sealed class TradeViewTests {
     private static CycleObservation WithTrade(CycleObservation source, CycleTradeOffer trade, ModelTime at,
         IReadOnlyList<CycleOtherCharacterObservation>? others = null) => new() {
         Time = at, IsDay = source.IsDay, NextLightChange = source.NextLightChange, Actor = source.Actor,
-        Resources = source.Resources, HarvestDurations = source.HarvestDurations, ItemNames = source.ItemNames,
+        Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = others ?? source.OtherCharacters, Notices = source.Notices,
         Commands = source.Commands.Select(check => check.Command.TradeId == trade.Id
             ? check with { Rejection = "报价已经关闭。" } : check).ToArray(),

@@ -164,11 +164,10 @@ internal static class PlayView {
     }
 
     internal static void RenderWarmthAdvice(StringBuilder text, CycleObservation observation) {
-        if (observation.Survival is not { WarmthWarningPending: true } needs) { return; }
-        text.AppendLine("- 温暖警告：现有物品不能恢复温暖。" + (observation.ArrivalDue is not null
-            ? "途中没有主动保暖操作，抵达前不能安排庇护停留；请留意温暖趋势与剩余行程。"
-            : needs.Sheltered ? "当前已有庇护，停留可以回暖；食物和饮水仍会消耗。"
-            : "已知的庇护中停留可以回暖，白天野外也会回暖；夜间暴露会继续降温。"));
+        if (observation.Survival is not { WarmthWarningPending: true }) { return; }
+        text.AppendLine("- 温暖警告：请依据当前温暖趋势、阈值预测与眼前补给效果安排下一步。" + (observation.ArrivalDue is not null
+            ? "抵达前不能安排庇护停留；请留意剩余行程。"
+            : "停留不保证回暖，是否恢复取决于当前条件与变化速率。"));
     }
 
     internal static string RenderNotice(CycleNoticeObservation perceived, bool ended) {
@@ -231,7 +230,7 @@ internal static class PlayView {
             text.AppendLine("- `use <item-id>`：消耗背包内 1 份物品补给，不消耗时间，不改变活动或行程期限，也不确认历史警告。");
             foreach (CycleCommandCheck supply in observation.Commands.Where(entry => entry.Command.Kind == CycleCommandKind.Use)) {
                 AppendCommand(text, observation, $"use {supply.Command.ItemId}", supply.Command,
-                    CycleSurvivalRules.UseDescription(supply.Command.ItemId!)!);
+                    observation.ItemUseDescriptions[supply.Command.ItemId!]);
             }
         }
         text.AppendLine("- `gather <resource-id> <正整数|all>`：数量 1–2147483647；all 固定为接受命令时的库存，不随再生增加、不预留。新开时必须有货，不能同时安排另一耗时活动。");
@@ -274,7 +273,9 @@ internal static class PlayView {
             text.AppendLine();
             return;
         }
-        text.AppendLine(survival.Sheltered ? "当前有庇护，可避风回暖；食物和饮水仍会消耗。" : "当前暴露在野外，温暖会随昼夜变化。");
+        text.AppendLine(survival.Sheltered
+            ? "当前有庇护保护；" + (survival.WarmthPerHour > 0 ? "当前温暖正在恢复。" : "温暖变化以当前速率为准。")
+            : "当前暴露在野外，温暖变化以当前速率为准。");
         text.AppendLine(CycleAttributeView.ForecastAssumptions);
         text.AppendLine();
         text.AppendLine("| 指标 | 当前余量 | 范围 | 当前趋势（点 / 小时）与构成 | 阈值与耗尽预测 |");

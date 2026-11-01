@@ -67,7 +67,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 8)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 9)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -134,7 +134,17 @@ public sealed partial class CycleObservation : IDurableObject {
     [DurableField(31)] private List<CycleTradeOffer> _trades = [];
     /// <summary>Only this resident's retained terms and status; delivery cursors are removed.</summary>
     public IReadOnlyList<CycleTradeOffer> Trades { get => _trades.AsReadOnly(); init => _trades = new(value); }
+    [DurableField(32)] private string _worldName = string.Empty;
+    public string WorldName { get => _worldName; init => _worldName = value; }
+    [DurableField(33)] private Dictionary<string, string> _itemUseDescriptions = new(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, string> ItemUseDescriptions {
+        get => new ReadOnlyDictionary<string, string>(_itemUseDescriptions);
+        init => _itemUseDescriptions = new(value, StringComparer.Ordinal);
+    }
     internal void ValidateEconomy() {
+        if (string.IsNullOrWhiteSpace(WorldName) || ItemUseDescriptions.Any(pair => !ItemNames.ContainsKey(pair.Key) || string.IsNullOrWhiteSpace(pair.Value))) {
+            throw new InvalidOperationException("Frozen world and item-use descriptions require visible identities and nonempty material.");
+        }
         if (Trades.Select(offer => offer.Id).Distinct(StringComparer.Ordinal).Count() != Trades.Count) {
             throw new InvalidOperationException("A personal trade view cannot repeat an offer.");
         }
@@ -144,8 +154,8 @@ public sealed partial class CycleObservation : IDurableObject {
             MarketQuotes.Any(q => string.IsNullOrWhiteSpace(q.ItemId) || q.BuyPrice < 0 || q.SellPrice < 0 || q.Stock < 0 || q.Demand < 0) ||
             Recipes.Any(r => string.IsNullOrWhiteSpace(r.Id) || string.IsNullOrWhiteSpace(r.InputItem) || string.IsNullOrWhiteSpace(r.OutputItem) ||
                 r.InputCount <= 0 || r.OutputCount <= 0 || r.DurationTicks <= 0) ||
-            (MarketQuotes.Count != 0 || MarketRefreshAt is not null) && PlaceId != "market" ||
-            Recipes.Count != 0 && PlaceId != "workshop" || (MarketQuotes.Count != 0) != (MarketRefreshAt is not null)) {
+            (MarketQuotes.Count != 0 || MarketRefreshAt is not null) && PlaceId is null ||
+            Recipes.Count != 0 && PlaceId is null || (MarketQuotes.Count != 0) != (MarketRefreshAt is not null)) {
             throw new InvalidOperationException("Invalid frozen local economy material.");
         }
     }

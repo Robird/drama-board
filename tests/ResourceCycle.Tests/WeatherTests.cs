@@ -316,7 +316,10 @@ public sealed class WeatherTests {
         CycleActivity? activity = idle ? null : new(CycleActivityKind.Wait, 1, at, waitHours * CycleTime.Hour, new(at.Ticks + waitHours * CycleTime.Hour));
         var actor = new CycleCharacter("a", "Weather fixture", activity: activity, nextActivityId: idle ? 1 : 2,
             survival: needs ?? CycleSurvival.Create(at, 100, 100, 60, CycleSurvivalRules.WarmthRate(place == "cabin", CycleTime.IsDay(at))));
-        return CycleEngine.Rebuild(initial.World.Business.Replace(at, changedCharacters: [actor], expedition: expedition), at);
+        CycleWorldDefinition definition = CycleWorldDefinitions.FromLegacy(at, initial.World.Resources, [actor], expedition);
+        var business = new CycleBusinessState(at, initial.World.Light, initial.World.Resources, initial.World.Script,
+            [actor], expedition: expedition, definition: definition);
+        return CycleEngine.Rebuild(business, at);
     }
 
     private static async Task Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {

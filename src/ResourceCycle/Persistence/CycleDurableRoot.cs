@@ -34,7 +34,16 @@ public sealed partial class CycleDurableRoot : IDurableObject {
     /// <summary>Also validates restored objects, whose constructors were not executed.</summary>
     public void Validate() {
         ValidateStructure();
+        ValidateContent();
         _business.Validate();
+    }
+
+    internal void ValidateContent() {
+        if (_business.Definition is null) { throw new InvalidDataException("The saved world has no content definition."); }
+        try { _business.Definition.Validate(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or OverflowException) {
+            throw new InvalidDataException("The saved world content definition is invalid.", error);
+        }
     }
 
     internal void ValidateStructure() {

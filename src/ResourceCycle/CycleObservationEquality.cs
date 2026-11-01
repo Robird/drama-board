@@ -6,6 +6,7 @@ namespace DramaBoard.ResourceCycle;
 internal static class CycleObservationEquality {
     internal static bool Same(CycleObservation a, CycleObservation b) =>
         ReferenceEquals(a, b) ||
+        a.WorldName == b.WorldName && SameDictionary(a.ItemUseDescriptions, b.ItemUseDescriptions) &&
         a.Time == b.Time && a.IsDay == b.IsDay && a.NextLightChange == b.NextLightChange &&
         SameActor(a.Actor, b.Actor) && SameList(a.Resources, b.Resources, SameResource) &&
         SameList(a.MarketQuotes, b.MarketQuotes, (x, y) => x == y) &&

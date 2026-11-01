@@ -175,7 +175,7 @@ public sealed class VisibleMaterialPersistenceTests {
     }
 
     private static CycleWorld RichSurvivalWorld() {
-        CycleWorld initial = CycleGameFactory.CreateSurvival(Minute(930)).World;
+        CycleWorld initial = CycleGameFactory.CreateSurvival(Minute(930), weatherSeed: 0).World;
         var actor = new CycleCharacter("a", "阿青", skillLevel: 2,
             backpack: initial.GetCharacter("a").Backpack,
             activity: new(CycleActivityKind.Wait, 1, Minute(930), CycleTime.Hour, Minute(990)),

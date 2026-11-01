@@ -17,10 +17,10 @@ public sealed class CycleRevisionTests {
     public void Production_open_rejects_previous_development_revision_without_rewriting_disk(bool hasPending) {
         using var store = new TemporaryStore();
         CycleDurableRoot root = InitialRoot(CycleGameRevision.Current - 1);
-        WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), CycleGameRevision.Current - 1) : null);
+        WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), root.Business.Definition, CycleGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(21, CycleGameRevision.Current);
+        Assert.Equal(22, CycleGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));
@@ -32,7 +32,7 @@ public sealed class CycleRevisionTests {
     public void Production_open_rejects_unknown_state_or_event_revision_without_publication(bool eventIsUnknown) {
         using var store = new TemporaryStore();
         CycleDurableRoot root = InitialRoot(eventIsUnknown ? CycleGameRevision.Current : 42);
-        CycleDurableEvent? pending = eventIsUnknown ? new(RecordedYield(root), 42) : null;
+        CycleDurableEvent? pending = eventIsUnknown ? new(RecordedYield(root), root.Business.Definition, 42) : null;
         WriteBoundary(store.StorePath, root, pending);
         string[] before = DiskFingerprint(store.StorePath);
 
@@ -47,7 +47,7 @@ public sealed class CycleRevisionTests {
     public void Loading_upgrades_only_memory_and_repeats_stably_with_or_without_pending(bool hasPending) {
         using var store = new TemporaryStore();
         CycleDurableRoot original = InitialRoot();
-        var pending = hasPending ? new CycleDurableEvent(RecordedYield(original), 1) : null;
+        var pending = hasPending ? new CycleDurableEvent(RecordedYield(original), original.Business.Definition, 1) : null;
         WriteBoundary(store.StorePath, original, pending);
         string[] before = DiskFingerprint(store.StorePath);
         var steps = new FixtureRevisions();
@@ -80,6 +80,21 @@ public sealed class CycleRevisionTests {
         Assert.Equal(2, original.Business.GetCharacter("actor.1").Backpack.Count("item.1"));
         Assert.Equal(hasPending ? new[] { "S1", "E1", "S2", "E2", "S1", "E1", "S2", "E2" }
             : new[] { "S1", "S2", "S1", "S2" }, steps.Calls);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Mismatched_event_content_is_rejected_before_an_upgrade_can_rebind_its_identity(int eventRevision) {
+        using var store = new TemporaryStore();
+        CycleDurableRoot original = InitialRoot();
+        CycleWorldDefinition wrong = CycleGameFactory.CreateLivingWorld().World.Definition;
+        WriteBoundary(store.StorePath, original, new(RecordedYield(original), wrong, eventRevision));
+        string[] before = DiskFingerprint(store.StorePath);
+        var revisions = new FixtureRevisions();
+        Assert.Throws<InvalidDataException>(() => revisions.Open(store.StorePath, 3));
+        Assert.Equal(eventRevision == 1 ? Array.Empty<string>() : ["S1"], revisions.Calls);
+        Assert.Equal(before, DiskFingerprint(store.StorePath));
     }
 
     [Fact]
@@ -155,7 +170,7 @@ public sealed class CycleRevisionTests {
     public void Successful_state_publication_followed_by_failure_is_not_applied_again_after_reopen() {
         using var store = new TemporaryStore();
         CycleDurableRoot root = InitialRoot();
-        WriteBoundary(store.StorePath, root, new(RecordedYield(root), 1));
+        WriteBoundary(store.StorePath, root, new(RecordedYield(root), root.Business.Definition, 1));
         KernelCursor expectedCursor;
         using (var history = new FixtureRevisions().Open(store.StorePath, 3)) {
             expectedCursor = root.Cursor.Advance(history.PendingEvent!.CauseKey, history.PendingEvent.TargetInstant);
@@ -177,7 +192,7 @@ public sealed class CycleRevisionTests {
     public void Invalid_version_pair_and_missing_or_bad_upgrade_steps_leave_disk_unchanged() {
         using var inverted = new TemporaryStore();
         CycleDurableRoot root2 = new FixtureRevisions().StateStep(InitialRoot());
-        WriteBoundary(inverted.StorePath, root2, new(RecordedYield(root2), 1));
+        WriteBoundary(inverted.StorePath, root2, new(RecordedYield(root2), root2.Business.Definition, 1));
         string[] before = DiskFingerprint(inverted.StorePath);
         Assert.Throws<InvalidDataException>(() => new FixtureRevisions().Open(inverted.StorePath, 3));
         Assert.Equal(before, DiskFingerprint(inverted.StorePath));
@@ -197,7 +212,7 @@ public sealed class CycleRevisionTests {
     public void Current_revision_skips_steps_but_still_validates_business_and_unversioned_events_are_rejected() {
         using var validStore = new TemporaryStore();
         CycleDurableRoot valid = InitialRoot(CycleGameRevision.Current);
-        WriteBoundary(validStore.StorePath, valid, new(RecordedYield(valid), CycleGameRevision.Current));
+        WriteBoundary(validStore.StorePath, valid, new(RecordedYield(valid), valid.Business.Definition, CycleGameRevision.Current));
         using (var history = CycleDurableHistory.Open(validStore.StorePath, CycleGameRevision.Current,
             _ => throw new InvalidOperationException("Current State must not be converted."),
             (_, _, _) => throw new InvalidOperationException("Current Event must not be converted."))) {
@@ -261,7 +276,7 @@ public sealed class CycleRevisionTests {
     public void Upgrade_steps_cannot_rewrite_boundary_identity_or_skip_revision(string fault) {
         using var store = new TemporaryStore();
         CycleDurableRoot original = InitialRoot();
-        WriteBoundary(store.StorePath, original, new(RecordedYield(original), 1));
+        WriteBoundary(store.StorePath, original, new(RecordedYield(original), original.Business.Definition, 1));
         string[] before = DiskFingerprint(store.StorePath);
         var revisions = new FixtureRevisions();
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Open(store.StorePath, 2, source => {
@@ -278,7 +293,7 @@ public sealed class CycleRevisionTests {
             var occurrence = new OccurrenceEvent<CycleFact>(
                 fault == "event-cause" ? new CandidateKey("different-event") : next.Occurrence.CauseKey,
                 fault == "event-time" ? new(Hour(8), 0) : next.Occurrence.TargetInstant, next.Occurrence.Facts);
-            return new(occurrence, fault == "event-revision" ? 1 : 2);
+            return new(occurrence, newState.Business.Definition, fault == "event-revision" ? 1 : 2);
         }));
         Assert.Equal(before, DiskFingerprint(store.StorePath));
     }
@@ -398,7 +413,7 @@ public sealed class CycleRevisionTests {
                             nextExperienceSequence: state.NextExperienceSequence);
                     }));
             });
-            return new(new(pending.Occurrence.CauseKey, pending.Occurrence.TargetInstant, facts), after.GameRevision);
+            return new(new(pending.Occurrence.CauseKey, pending.Occurrence.TargetInstant, facts), after.Business.Definition, after.GameRevision);
         }
 
         private static CycleCharacter MapCharacter(CycleCharacter actor, int revision, int grant) => new(

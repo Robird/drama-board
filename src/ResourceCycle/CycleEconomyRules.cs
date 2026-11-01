@@ -25,10 +25,10 @@ public static class CycleEconomyRules {
                 case CycleCommandKind.Buy or CycleCommandKind.Sell: {
                     if (command.RecipeId is not null || command.TargetActorId is not null || command.MoneyAmount != 0 ||
                         command.ItemId is null || command.Count is < 1 or > 1000) { return "买卖需要物品及 1 至 1000 的数量。"; }
-                    if (CycleActions.CurrentPlace(world, actorId) != "market") { return "买卖需要身处市场。"; }
+                    if (CycleActions.CurrentPlace(world, actorId) != world.Definition.MarketPlaceId) { return "买卖需要身处市场。"; }
                     bool buy = command.Kind == CycleCommandKind.Buy;
                     string item = command.ItemId;
-                    int price = buy ? LivingWorldEconomyContent.BuyPrice(item) : LivingWorldEconomyContent.SellPrice(item);
+                    int price = buy ? world.Definition.BuyPrice(item) : world.Definition.SellPrice(item);
                     if (price <= 0) { return buy ? "市场不出售此物品。" : "市场不收购此物品。"; }
                     if ((buy ? economy.Market.Stock : economy.Market.Demand).GetValueOrDefault(item) < command.Count) {
                         return buy ? "市场今日供应额度不足。" : "市场今日收购额度不足。";
@@ -49,9 +49,9 @@ public static class CycleEconomyRules {
                 case CycleCommandKind.Produce: {
                     if (command.ItemId is not null || command.TargetActorId is not null || command.MoneyAmount != 0 ||
                         command.RecipeId is null || command.Count is < 1 or > 1000) { return "生产需要配方及 1 至 1000 的批次。"; }
-                    if (CycleActions.CurrentPlace(world, actorId) != "workshop") { return "生产需要身处工坊。"; }
+                    if (CycleActions.CurrentPlace(world, actorId) != world.Definition.WorkshopPlaceId) { return "生产需要身处工坊。"; }
                     if (actor.Activity is not null || actor.FollowingLeaderId is not null) { return "请先结束当前活动或解除跟随。"; }
-                    CycleRecipe? recipe = LivingWorldEconomyContent.Recipe(command.RecipeId);
+                    CycleRecipe? recipe = world.Definition.Recipe(command.RecipeId);
                     if (recipe is null) { return "没有这个配方。"; }
                     int inputs = checked(recipe.InputCount * command.Count);
                     if (actor.Backpack.Count(recipe.InputItem) < inputs) { return "配方原料不足。"; }
@@ -107,9 +107,9 @@ public static class CycleEconomyRules {
                 lastServedActorId: actorId, result: result, targetActorId: target.Id, moneyAmount: command.MoneyAmount);
         }
         if (command.Kind == CycleCommandKind.Produce) {
-            CycleRecipe recipe = LivingWorldEconomyContent.Recipe(command.RecipeId!)!;
+            CycleRecipe recipe = world.Definition.Recipe(command.RecipeId!)!;
             CycleActivity activity = ProductionActivity(actor, recipe, command.Count, world.Time);
-            string result = $"开始生产 {LivingWorldEconomyContent.Items[recipe.OutputItem]} ×{activity.Production!.OutputCount}，预计 {activity.Due} 完成。";
+            string result = $"开始生产 {world.Definition.Items[recipe.OutputItem]} ×{activity.Production!.OutputCount}，预计 {activity.Due} 完成。";
             return new(CycleEventKind.ProductionStarted, world.Time, actorId,
                 changedCharacters: [actor.Change(activity, actor.Backpack.Remove(recipe.InputItem, activity.Production.InputCount), notices: [],
                     result: result, nextActivityId: checked(actor.NextActivityId + 1), communication: actor.Communication.Acknowledge())],
@@ -117,9 +117,9 @@ public static class CycleEconomyRules {
         }
         string item = command.ItemId!;
         bool buy = command.Kind == CycleCommandKind.Buy;
-        long payment = checked((long)(buy ? LivingWorldEconomyContent.BuyPrice(item) : LivingWorldEconomyContent.SellPrice(item)) * command.Count);
+        long payment = checked((long)(buy ? world.Definition.BuyPrice(item) : world.Definition.SellPrice(item)) * command.Count);
         ItemInventory backpack = buy ? actor.Backpack.Add(item, command.Count) : actor.Backpack.Remove(item, command.Count);
-        string description = $"已{(buy ? "购买" : "出售")} {LivingWorldEconomyContent.Items[item]} ×{command.Count}，{(buy ? "花费" : "获得")} {payment} 钱。";
+        string description = $"已{(buy ? "购买" : "出售")} {world.Definition.Items[item]} ×{command.Count}，{(buy ? "花费" : "获得")} {payment} 钱。";
         CycleEconomyState after = buy
             ? economy.Change(economy.Market.Buy(item, command.Count), economy.Totals.Import(item, command.Count, payment))
             : economy.Change(economy.Market.Sell(item, command.Count), economy.Totals.Export(item, command.Count, payment));
@@ -134,8 +134,8 @@ public static class CycleEconomyRules {
             throw new InvalidOperationException("No production is due at this boundary.");
         }
         CycleEconomyState economy = world.Business.Economy ?? throw new InvalidOperationException("Production requires economy.");
-        CycleRecipe recipe = LivingWorldEconomyContent.Recipe(order.RecipeId)!;
-        string result = $"生产完成，取得 {LivingWorldEconomyContent.Items[order.OutputItem]} ×{order.OutputCount}。";
+        CycleRecipe recipe = world.Definition.Recipe(order.RecipeId)!;
+        string result = $"生产完成，取得 {world.Definition.Items[order.OutputItem]} ×{order.OutputCount}。";
         return new(CycleEventKind.ProductionCompleted, at, actorId,
             changedCharacters: [actor.Change(null, actor.Backpack.Add(order.OutputItem, order.OutputCount), result: result)],
             result: result, economy: economy.Change(totals: economy.Totals.Produce(recipe, order.Batches)));
@@ -144,7 +144,7 @@ public static class CycleEconomyRules {
     internal static CycleFact Refresh(CycleWorld world, ModelTime at) {
         CycleEconomyState economy = world.Business.Economy ?? throw new InvalidOperationException("Market requires economy.");
         if (at != economy.Market.NextRefresh) { throw new InvalidOperationException("Market is not due for refresh."); }
-        var market = CycleMarket.Fresh(new(checked(at.Ticks + CycleTime.Day)), checked(economy.Market.Cycle + 1));
+        var market = CycleMarket.Fresh(world.Definition, new(checked(at.Ticks + world.Definition.MarketRefreshTicks)), checked(economy.Market.Cycle + 1));
         return new(CycleEventKind.MarketRefreshed, at, result: "市场补充了今日供应和收购额度。", economy: economy.Change(market: market));
     }
 

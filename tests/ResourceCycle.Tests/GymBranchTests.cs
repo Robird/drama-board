@@ -171,7 +171,7 @@ public sealed class GymBranchTests {
         CycleBranchForkResult fork = CycleDurableHistory.Fork(store.StorePath, source.BranchId, source.StateCommitId, "a", "open separately");
         MethodInfo open = typeof(CycleDurableHistory).GetMethod("OpenCore", BindingFlags.Static | BindingFlags.NonPublic)!;
         TargetInvocationException failure = Assert.Throws<TargetInvocationException>(() => open.Invoke(null,
-            [store.StorePath, CycleGameRevision.Current - 1, null, null, CycleDurableHistory.ParseBranchId(fork.Branch.BranchId)]));
+            [store.StorePath, CycleGameRevision.Current - 1, null, null, CycleDurableHistory.ParseBranchId(fork.Branch.BranchId), null]));
         Assert.IsType<InvalidDataException>(failure.InnerException);
         Assert.Equal(2, CycleDurableHistory.ListBranches(store.StorePath).Count);
         using var child = CycleDurableHistory.Open(store.StorePath, fork.Branch.BranchId);
@@ -220,7 +220,7 @@ public sealed class GymBranchTests {
             BranchInfo created = repository.CreateRootBranchFromState("fixture", new CycleDurableRoot(initial.World.Business, initial.Cursor));
             branch = CycleDurableHistory.FormatBranchId(created.Id);
             using WorkingCopy work = repository.OpenWorkingCopy(created.Id);
-            work.CommitEvent(new CycleDurableEvent(memory.LastCompletion!.Event, CycleGameRevision.Current - 1));
+            work.CommitEvent(new CycleDurableEvent(memory.LastCompletion!.Event, initial.World.Definition, CycleGameRevision.Current - 1));
             state = CycleDurableHistory.FormatCommitId(work.CommitState(new CycleDurableRoot(memory.World.Business, memory.Cursor)).Id);
         }
         Assert.Throws<InvalidDataException>(() => CycleDurableHistory.Fork(store.StorePath, branch, state, "a", "unsupported predecessor"));

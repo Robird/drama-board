@@ -166,7 +166,7 @@ public static class CycleActions {
                 if (actor.Activity is not null) { return "已有耗时活动，请先 cancel。"; }
                 if (command.Hours != 0 || (command.All ? command.Count != 0 : command.Count <= 0)) { return "采集数量需要正整数或 all。"; }
                 CycleResource? resource = world.Resources.SingleOrDefault(r => r.Id == command.ResourceId &&
-                    (world.Expedition is null || CycleExpeditionMap.GetResourcePlace(r.Id) == CurrentPlace(world, actorId)));
+                    (world.Expedition is null || world.Definition.GetResourcePlace(r.Id) == CurrentPlace(world, actorId)));
                 if (resource is null) { return "没有这个资源点。"; }
                 if (actor.SkillLevel < resource.RequiredLevel) { return $"采药等级不足，需要 {resource.RequiredLevel} 级。"; }
                 if (resource.Stock == 0) { return "资源点当前无货，不能新开采集。"; }
@@ -180,10 +180,10 @@ public static class CycleActions {
                 if (actor.Activity is not null) { return "已有耗时活动，请先 cancel。"; }
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.PassageId)) { return "移动需要一个当前可见的通路编号。"; }
                 string? place = CurrentPlace(world, actorId);
-                if (place is null || !CycleExpeditionMap.GetPassages(place).Any(p => p.Id == command.PassageId)) { return "当前地点没有这条通路。"; }
+                if (place is null || !world.Definition.GetPassages(place).Any(p => p.Id == command.PassageId)) { return "当前地点没有这条通路。"; }
                 foreach (CycleCharacter member in CycleFollowingRules.MovingMembers(world.Business, actorId)) {
                     if (!member.IsActive || member.Activity is not null || CurrentPlace(world, member.Id) != place || member.DecisionGeneration >= long.MaxValue - 2 ||
-                        CycleExpeditionMap.Planner.TryStartTraversal(world.Expedition!.Spatial, new(member.Id), new(command.PassageId), 1, world.Time) is not SpatialPlanAccepted) {
+                        world.Definition.Runtime.Planner.TryStartTraversal(world.Expedition!.Spatial, new(member.Id), new(command.PassageId), 1, world.Time) is not SpatialPlanAccepted) {
                         return $"同行成员 {member.Name} 当前无法出发；所有人保持原状。";
                     }
                 }
@@ -191,11 +191,12 @@ public static class CycleActions {
             case CycleCommandKind.Use:
                 if (command.Hours != 0 || command.ResourceId is not null || command.PassageId is not null || command.Count != 0 || command.All ||
                     string.IsNullOrWhiteSpace(command.ItemId)) { return "使用补给需要一个物品编号。"; }
-                if (actor.Survival is null || CycleSurvivalRules.UseDescription(command.ItemId) is null) { return "这个物品不能用于补给。"; }
+                if (actor.Survival is null || CycleSurvivalRules.UseDescription(world.Definition, command.ItemId) is null) { return "这个物品不能用于补给。"; }
                 if (actor.Backpack.Count(command.ItemId) == 0) { return "背包中没有这个物品。"; }
                 CycleSurvival projected = actor.Survival.Project(world.Time);
                 if (projected.IsFatal) { return "身体已耗尽，无法通过此时补给挽回。"; }
-                return (LivingWorldEconomyContent.SupplyFood(command.ItemId) > 0 ? projected.FoodUnits : projected.WaterUnits) == CycleSurvival.MaximumUnits
+                return (world.Definition.SupplyFood(command.ItemId) == 0 || projected.FoodUnits == CycleSurvival.MaximumUnits) &&
+                    (world.Definition.SupplyWater(command.ItemId) == 0 || projected.WaterUnits == CycleSurvival.MaximumUnits)
                     ? "这项身体需求已经充足，使用补给不会产生收益。" : null;
             default: return "未知行动。";
         }

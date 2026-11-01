@@ -75,7 +75,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.DoesNotContain("维持当前趋势", text);
         Assert.DoesNotContain("干木", text);
         Assert.Contains("use item.water", text);
-        Assert.Contains(CycleSurvivalRules.UseDescription("item.water")!.TrimEnd('。'), text);
+        Assert.Contains(context.Observation.ItemUseDescriptions["item.water"].TrimEnd('。'), text);
         Assert.DoesNotContain("风险提示（不禁止）", text);
         Assert.DoesNotContain("预计最早致命时刻", text);
         Assert.Null(context.Check(CycleCommand.Wait(24)));
@@ -150,9 +150,10 @@ public sealed class SurvivalNeedsViewTests {
         CycleObservation observation = CycleDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.ArrivalDue);
         string text = PlayView.Render(observation);
-        Assert.Contains("use 只补充食物或饮水", text);
-        Assert.Contains("现有物品不能恢复温暖", text);
-        Assert.Contains("途中没有主动保暖操作，抵达前不能安排庇护停留", text);
+        Assert.Contains(observation.ItemUseDescriptions["item.water"].TrimEnd('。'), text);
+        Assert.Contains("当前温暖趋势、阈值预测与眼前补给效果", text);
+        Assert.DoesNotContain("现有物品不能恢复温暖", text);
+        Assert.Contains("抵达前不能安排庇护停留", text);
         Assert.DoesNotContain("可以先 use 补给", text);
         Assert.DoesNotContain("- `cancel`", text);
         Assert.DoesNotContain("废弃林屋", text);
@@ -184,16 +185,17 @@ public sealed class SurvivalNeedsViewTests {
         Assert.True(observation.Survival.FoodPerHour < 0);
         Assert.True(observation.Survival.WaterPerHour < 0);
         string text = PlayView.Render(observation);
-        Assert.Contains("当前有庇护，可避风回暖", text);
-        Assert.Contains("食物和饮水仍会消耗", text);
-        Assert.Contains("干木目前不能生火或直接取暖", text);
+        Assert.Contains("当前有庇护保护", text);
+        Assert.Contains("当前温暖正在恢复", text);
+        Assert.Contains("当前趋势", text);
+        Assert.False(observation.ItemUseDescriptions.ContainsKey("item.wood"));
         Assert.Contains("use item.food", text);
-        Assert.Contains(CycleSurvivalRules.UseDescription("item.food")!.TrimEnd('。'), text);
+        Assert.Contains(observation.ItemUseDescriptions["item.food"].TrimEnd('。'), text);
         Assert.DoesNotContain("- `use item.wood`", text);
     }
 
     [Fact]
-    public async Task Carried_wood_keeps_its_usage_limit_visible_after_leaving_its_resource_point() {
+    public async Task Carried_wood_has_no_unsupported_use_command_after_leaving_its_resource_point() {
         var initial = PreparedNeeds();
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-2"), CycleCommand.Go("trail-5"),
@@ -203,7 +205,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.DoesNotContain(observation.Resources, resource => resource.ItemId == "item.wood");
         string text = PlayView.Render(observation);
         Assert.Contains("干木（`item.wood`）×1", text);
-        Assert.Contains("干木目前不能生火或直接取暖", text);
+        Assert.False(observation.ItemUseDescriptions.ContainsKey("item.wood"));
         Assert.DoesNotContain("- `use item.wood`", text);
     }
 

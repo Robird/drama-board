@@ -14,8 +14,14 @@ public sealed partial record CycleTradeAsset(
 
     public void Validate() {
         if (string.IsNullOrWhiteSpace(AssetId) || Amount <= 0 ||
-            !IsMoney && (!LivingWorldEconomyContent.Items.ContainsKey(AssetId) || Amount > 1000)) {
-            throw new InvalidOperationException("A trade asset requires positive money or 1–1000 units of a known item.");
+            !IsMoney && Amount > 1000) {
+            throw new InvalidOperationException("A trade asset requires positive money or 1–1000 item units.");
+        }
+    }
+    public void Validate(CycleWorldDefinition definition) {
+        Validate();
+        if (!IsMoney && !definition.Items.ContainsKey(AssetId)) {
+            throw new InvalidOperationException("A trade asset must belong to the world's item definition.");
         }
     }
 }
@@ -82,6 +88,11 @@ public sealed partial record CycleTradeOffer(
         Give.Validate();
         Want.Validate();
     }
+    public void Validate(ModelTime now, CycleWorldDefinition definition) {
+        Validate(now);
+        Give.Validate(definition);
+        Want.Validate(definition);
+    }
 }
 
 /// <summary>Immutable bounded offer ledger. Reclamation occurs only at a participant's later decision opening.</summary>
@@ -133,7 +144,7 @@ public sealed partial class CycleTradeState : IDurableObject {
         }
         var identities = new HashSet<string>(StringComparer.Ordinal);
         foreach (CycleTradeOffer offer in _offers) {
-            offer.Validate(business.Time);
+            offer.Validate(business.Time, business.Definition);
             CycleCharacter? proposer = business.Characters.FirstOrDefault(actor => actor.Id == offer.ProposerId);
             CycleCharacter? recipient = business.Characters.FirstOrDefault(actor => actor.Id == offer.RecipientId);
             if (!identities.Add(offer.Id) || proposer is null || recipient is null ||

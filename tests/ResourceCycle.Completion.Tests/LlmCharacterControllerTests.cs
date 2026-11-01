@@ -34,7 +34,8 @@ public sealed class LlmCharacterControllerTests {
         Assert.Contains("山野镇", goals);
         Assert.Contains("买入价是你付款", goals);
         Assert.Contains("预留全部投入", goals);
-        Assert.Contains("use item.ration", goals);
+        Assert.Contains("物品效果以当前冻结材料为准", goals);
+        Assert.DoesNotContain("use item.ration", goals);
         Assert.Contains("give <actor-id> money <amount>", goals);
         Assert.DoesNotContain("follow", gathering);
         Assert.DoesNotContain("shout", gathering);

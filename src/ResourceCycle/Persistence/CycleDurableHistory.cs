@@ -22,7 +22,8 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
 
     private CycleDurableHistory(Repository repository, WorkingCopy work, int targetRevision,
         Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
-        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null,
+        CycleWorldDefinition? expectedDefinition = null) {
         _repository = repository;
         _work = work;
         _gameRevision = targetRevision;
@@ -33,6 +34,10 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
         CycleDurableEvent? pending = ReadPending(restored.Cursor);
         (_readyRoot, _pending) = CycleGameRevision.UpgradeLoadedBoundary(
             restored, pending, targetRevision, upgradeState, upgradeEvent);
+        if (expectedDefinition is not null) {
+            expectedDefinition.Validate();
+            RequireSameContent(_readyRoot.Business.Definition, expectedDefinition);
+        }
         _readyRoot.Validate();
         if (_pending is not null) {
             ValidateContinuation(_pending.Occurrence, _readyRoot.Cursor);
@@ -73,6 +78,7 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
                 var entry = _repository.LoadEvent(commit.Id) as CycleDurableEvent
                     ?? throw new InvalidDataException("The historical Event is not a ResourceCycle occurrence.");
                 entry.ValidateStructure();
+                entry.ValidateContent(_readyRoot.Business.Definition);
                 foreach (CycleFact fact in entry.Occurrence.Facts) {
                     if (fact.OperationRecordId is not { } recordId || !remaining.Remove(recordId)) { continue; }
                     if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId) || fact.OperationDisposition is null) {
@@ -90,6 +96,8 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
         // is the beginning of this repository, not necessarily the beginning of that simulation.
         var genesis = _repository.LoadState(oldestState) as CycleDurableRoot
             ?? throw new InvalidDataException("The initial State is not a ResourceCycle root.");
+        genesis.ValidateContent();
+        RequireSameContent(_readyRoot.Business.Definition, genesis.Business.Definition);
         if (!expectEvent || genesis.Cursor.Version.TransitionCount != transitionCount ||
             genesis.Cursor.Version.LineageId != Cursor.Version.LineageId) {
             throw new InvalidDataException("Incomplete ResourceCycle history prefix.");
@@ -116,10 +124,21 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
     /// Loading neither publishes nor executes pending work. Unsupported revisions are rejected.</remarks>
     public static CycleDurableHistory Open(string path) => OpenCore(path, CycleGameRevision.Current);
 
+    /// <summary>Requires the exact effective content identity before rebuilding or executing the saved world.</summary>
+    public static CycleDurableHistory Open(string path, CycleWorldDefinition expectedDefinition) =>
+        OpenCore(path, CycleGameRevision.Current, expectedDefinition: expectedDefinition ?? throw new ArgumentNullException(nameof(expectedDefinition)));
+
     /// <summary>Opens the selected branch, preserving any pending Event for normal Kernel recovery.</summary>
     public static CycleDurableHistory Open(string path, BranchId branch) => OpenCore(path, CycleGameRevision.Current, branch: branch);
 
     public static CycleDurableHistory Open(string path, string branchId) => Open(path, ParseBranchId(branchId));
+
+    public static CycleDurableHistory Open(string path, BranchId branch, CycleWorldDefinition expectedDefinition) =>
+        OpenCore(path, CycleGameRevision.Current, branch: branch,
+            expectedDefinition: expectedDefinition ?? throw new ArgumentNullException(nameof(expectedDefinition)));
+
+    public static CycleDurableHistory Open(string path, string branchId, CycleWorldDefinition expectedDefinition) =>
+        Open(path, ParseBranchId(branchId), expectedDefinition);
 
     // Fixture seam for historical semantics; it uses the same adapter, version checks and publication path.
     internal static CycleDurableHistory Open(string path, int targetRevision,
@@ -130,7 +149,7 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
     private static CycleDurableHistory OpenCore(string path, int targetRevision,
         Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
         Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null,
-        BranchId? branch = null) {
+        BranchId? branch = null, CycleWorldDefinition? expectedDefinition = null) {
         Repository repository = Repository.OpenExisting(path, CreateModels());
         try {
             if (branch is not { } selected) {
@@ -140,7 +159,7 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
                 }
                 selected = branches[0].Id;
             }
-            return Attach(repository, selected, targetRevision, upgradeState, upgradeEvent);
+            return Attach(repository, selected, targetRevision, upgradeState, upgradeEvent, expectedDefinition);
         } catch {
             repository.Dispose();
             throw;
@@ -155,7 +174,7 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
             }
             ArgumentNullException.ThrowIfNull(occurrence);
             ValidateContinuation(occurrence, _readyRoot.Cursor);
-            var pending = new CycleDurableEvent(occurrence, _gameRevision);
+            var pending = new CycleDurableEvent(occurrence, _readyRoot.Business.Definition, _gameRevision);
             _work.CommitEvent(pending);
             _pending = pending;
         } catch {
@@ -175,6 +194,9 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
             if (nextCursor != expected) {
                 throw new ArgumentException("The State cursor must complete exactly the pending occurrence.", nameof(nextCursor));
             }
+            ArgumentNullException.ThrowIfNull(nextState);
+            _pending!.ValidateContent(_readyRoot.Business.Definition);
+            RequireSameContent(_readyRoot.Business.Definition, nextState.Definition);
             CycleEngine.Validate(nextState, nextCursor.CurrentModelTime);
             CycleDurableRoot nextRoot = CycleDurableRoot.CreateRevisionCandidate(nextState.Business, nextCursor, _gameRevision);
             nextRoot.Validate();
@@ -197,9 +219,10 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
 
     private static CycleDurableHistory Attach(Repository repository, BranchId branch, int targetRevision,
         Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
-        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null) {
+        Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null,
+        CycleWorldDefinition? expectedDefinition = null) {
         WorkingCopy work = repository.OpenWorkingCopy(branch);
-        try { return new CycleDurableHistory(repository, work, targetRevision, upgradeState, upgradeEvent); }
+        try { return new CycleDurableHistory(repository, work, targetRevision, upgradeState, upgradeEvent, expectedDefinition); }
         catch {
             work.Dispose();
             throw;
@@ -252,6 +275,12 @@ public sealed partial class CycleDurableHistory : IOccurrenceHistory<CycleWorld,
             : 0;
         if (occurrence.TargetInstant.CausalOrdinal != expectedOrdinal) {
             throw new InvalidDataException("The occurrence causal ordinal does not continue the completed cursor.");
+        }
+    }
+
+    private static void RequireSameContent(CycleWorldDefinition actual, CycleWorldDefinition expected) {
+        if (actual.ContentId != expected.ContentId || actual.Fingerprint != expected.Fingerprint) {
+            throw new InvalidDataException("The world content identity differs from the required effective definition.");
         }
     }
 

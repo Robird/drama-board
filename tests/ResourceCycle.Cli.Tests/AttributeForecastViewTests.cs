@@ -118,7 +118,7 @@ public sealed class AttributeForecastViewTests {
     private static CycleObservation WithSurvival(CycleObservation source, CycleSurvivalObservation survival,
         CycleExpeditionOutcome? outcome = null, IReadOnlyList<CycleCommandCheck>? commands = null) => new() {
         Time = source.Time, IsDay = source.IsDay, NextLightChange = source.NextLightChange, Actor = source.Actor,
-        Resources = source.Resources, HarvestDurations = source.HarvestDurations, ItemNames = source.ItemNames,
+        Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = commands ?? source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
         PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages,

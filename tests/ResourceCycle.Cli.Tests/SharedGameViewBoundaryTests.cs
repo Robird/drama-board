@@ -103,7 +103,7 @@ public sealed class SharedGameViewBoundaryTests {
         return new CycleObservation {
             Time = initial.Time, IsDay = initial.IsDay, NextLightChange = initial.NextLightChange,
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,
-            ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
+            WorldName = initial.WorldName, ItemUseDescriptions = initial.ItemUseDescriptions, ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
             Commands = initial.Commands, IsExpedition = true, PlaceId = initial.PlaceId, PlaceName = initial.PlaceName,
             PlaceDescription = initial.PlaceDescription, Passages = initial.Passages,
             Survival = initial.Survival, Weather = initial.Weather,

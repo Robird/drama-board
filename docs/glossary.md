@@ -146,7 +146,9 @@
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图及起始游标；可以组合程序化生成器，不负责升级旧世界。 | `CycleGameFactory.CreateBatch` / `CreatePlayable`；发布由 `CycleDurableHistory.Create` 负责。 |
+| 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图及起始游标；可以组合程序化生成器，不负责升级旧世界。 | 山野镇 `CycleGameFactory.Create(definition)` / `CreateLivingWorld`；旧领域夹具保留 `CreateBatch` / `CreatePlayable`。发布由 `CycleDurableHistory.Create` 负责。 |
+| 有效世界定义（Effective world definition） | 已归一化初始覆盖参数的不可变完整内容，包含地图、居民、资源、经济与身体/天气。随世界保存，运行中不能替换。 | `CycleWorldDefinition`；`CycleWorldDefinitions.Named` 提供预设，`Change` 建立新定义；派生图缓存不持久化。 |
+| 内容身份（Content identity） | ContentId 与规范 SHA-256 指纹共同标识有效内容；同名内容字段变化也改变身份。独立于模拟位置与算法修订。 | S 保存定义与指纹，`CycleDurableEvent` 保存规划前态身份；冷开、发布和分叉核验，见[内容合同](codex-goals/living-world/content.md)。 |
 | 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 山林由 `CycleGameRevision.Current` 定义；小镇 `TownGameRevision.Current = 3`，S/E 均携带修订，Business/EventKind/Fact/Experience Schema 为 2，数值不要求相同。旧小镇开发档不迁移，可能先在 DG 还原阶段拒绝；不还原业务图的分支/日志管理仍可读。 |
 | 游戏状态修订（Game revision） | 加载时协调升级 State 与可选 pending E 的内存表示；不执行事件、不推进游标、不写盘，pending 工作留给正常流程。 | `CycleGameRevision.UpgradeLoadedBoundary`；[实施合同](design/game-initialization-and-revision.md)，生产只接受当前版本，跨版本政策由夹具验证。 |
 | 模拟世界版本（WorldVersion） | 模拟谱系及已完成转换次数，标识模拟位置；不表示游戏内容或规则修订。 | [WorldVersion](../src/Kernel/Simulation/WorldVersion.cs) |

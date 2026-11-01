@@ -139,7 +139,7 @@ public sealed class AttributeRateViewTests {
 
     private static CycleObservation WithSurvival(CycleObservation source, CycleSurvivalObservation survival) => new() {
         Time = source.Time, IsDay = source.IsDay, NextLightChange = source.NextLightChange, Actor = source.Actor,
-        Resources = source.Resources, HarvestDurations = source.HarvestDurations, ItemNames = source.ItemNames,
+        Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
         PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages,

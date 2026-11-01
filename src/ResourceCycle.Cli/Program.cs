@@ -16,6 +16,7 @@ try {
             dotnet run --project src/ResourceCycle.Cli -- [options]
               --store PATH          创建或恢复存档；省略则仅内存运行
               --branch ID           打开已有分支；多分支时必须指定
+              --content hillside|gentle 新局内容；省略新局为 hillside，续局使用存档定义
               --characters 1|2|3    新局人数，默认 3；恢复时省略则沿用存档
               --llm                 所有角色由模型控制；省略时共用 Human Console
               --human ID            配合 --llm，将指定角色交给 Human Console
@@ -60,7 +61,7 @@ try {
         return options.Llm is { } llm
             ? await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, characterCount: options.CharacterCount)
             : await PlayConsole.RunAsync(options.Store, cancellation.Token, characterCount: options.CharacterCount,
-                branch: options.Branch, until: options.Until, maxSteps: options.Steps);
+                branch: options.Branch, until: options.Until, maxSteps: options.Steps, content: options.Content);
     } finally { Console.CancelKeyPress -= handler; }
 } catch (OperationCanceledException) {
     Console.Error.WriteLine(hasStore ? "已暂停。已提交进度已保存，使用同一 --store 续局。" : "已暂停；内存进度未保存。");
@@ -71,9 +72,9 @@ try {
 }
 
 internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool Help, LlmHostOptions? Llm = null, int? CharacterCount = null,
-    string? Branch = null, GymManagementOptions? Management = null) {
+    string? Branch = null, GymManagementOptions? Management = null, string? Content = null) {
     public static Options Parse(string[] args) {
-        string? store = null;
+        string? store = null, content = null;
         long? hour = null;
         int steps = 10_000;
         bool help = false, llm = false;
@@ -90,6 +91,10 @@ internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool 
             string Value() => ++index < args.Length && !string.IsNullOrWhiteSpace(args[index])
                 ? args[index] : throw new ArgumentException($"参数缺少值：{option}");
             switch (option) {
+                case "--content":
+                    content = Value();
+                    if (content is not ("hillside" or "gentle")) { throw new ArgumentException("--content 必须为 hillside 或 gentle。"); }
+                    break;
                 case "--store": store = Path.GetFullPath(Value()); break;
                 case "--until-hour":
                     if (!long.TryParse(Value(), NumberStyles.None, CultureInfo.InvariantCulture, out long parsedHour)) {
@@ -166,7 +171,7 @@ internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool 
         ModelTime? until = hour is { } selectedHour ? new ModelTime(checked(selectedHour * 3_600_000)) : null;
         return new(store, until, steps, help,
             llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog,
-                gym || feedback, feedback, branch, human, until, steps) : null, characterCount, branch, management);
+                gym || feedback, feedback, branch, human, until, steps, content) : null, characterCount, branch, management, content);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

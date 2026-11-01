@@ -396,7 +396,10 @@ public sealed class ObservedEventTests {
             [new("a", place, time, initial.World.Resources.Where(r => CycleExpeditionMap.GetResourcePlace(r.Id) == place))], environment: environment);
         var actor = new CycleCharacter("a", "Observed event fixture", backpack: new ItemInventory(items), activity: activity,
             nextActivityId: activity is null ? 1 : 2, survival: needs);
-        return CycleEngine.Rebuild(initial.World.Business.Replace(time, changedCharacters: [actor], expedition: expedition), time);
+        CycleWorldDefinition definition = CycleWorldDefinitions.FromLegacy(time, initial.World.Resources, [actor], expedition);
+        var business = new CycleBusinessState(time, initial.World.Light, initial.World.Resources, initial.World.Script,
+            [actor], expedition: expedition, definition: definition);
+        return CycleEngine.Rebuild(business, time);
     }
     private static async Task<CycleFact> Advance(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) {
         await StepWorldEvent(kernel);

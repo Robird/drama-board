@@ -34,6 +34,8 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --help
 
 新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、现金、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物、三份水和 12 钱；这些是有限初始资产，回镇不会自动补满。
 
+新局可选 `--content hillside|gentle`，默认 hillside。gentle 减缓消耗、缩短镇营通路及口粮制作时间，并调整资源、市场和天气。续局省略 `--content` 会读取保存定义；显式选择不符则拒绝，不改写旧局。普通 C# 内容入口、指纹与支持范围见[内容定义](docs/codex-goals/living-world/content.md)。下文具体数值描述默认 hillside。构建后可用 `pwsh -NoProfile -File scripts/Smoke-HillsideContent.ps1` 验证命名变体与冷开。
+
 每个需要决策的角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。无 `--store` 时只在内存中运行；指定存档后每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
 
 `:quit`、`:exit`、EOF 或 Ctrl+C 暂停当前宿主。`--steps` 默认 10000，是本次运行提交转换数的上限；`--until-hour` 是从 D0 00:00 起的**绝对模拟小时**，省略则没有该时限。预算结束不会宣告世界终局，继续运行可设置更大的时间上限。世界只跳到实际事件，若上界没有事件，时间保留在最后完成事件的位置。所有居民死亡后宿主停止；一名居民死亡不会结束其他人的生活。
@@ -98,6 +100,8 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 ## 持久化与观察
 
 一个 DurableGraph 根保存业务子图与 Kernel 游标。派生预测在冷开时重建，在业务事实提交后增量维护。E 已提交、S 尚未完成的中断恢复只应用保存的事实及纯派生完成，不重新询问控制器或重新执行规划。机制见[运行时预测与恢复](docs/design/runtime-derived-predictions.md)。
+
+当前游戏修订为 22，不兼容旧开发档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
 
 每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 

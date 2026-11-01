@@ -1,58 +1,64 @@
 # 世界内容定义与存档绑定
 
-2026-11-01。**尚未实施**；这是 C6 下一片的设计起点，源码现状仍以实际文件为准。完成条件见 [README](README.md)，施工状态只在 [work-plan](work-plan.md) 维护。
+2026-11-01。游戏修订 22 实施 C6：不可变内容随世界保存，运行规则与恢复读取保存定义。完成条件见 [README](README.md)，施工状态只在 [work-plan](work-plan.md) 维护，工程与实际 Console 证据见[内容验收](../../experiments/living-world-content-acceptance.md)。
 
-## 当前缺口
+## 内容入口
 
-已有普通 C# 内容入口，但运行规则依赖全局静态内容；仅凭 `ScenarioId` 与 `GameRevision` 不能防止同修订下修改内容后悄悄改变旧档语义。
+[CycleWorldDefinitions](../../../src/ResourceCycle/CycleWorldDefinitions.cs) 是普通 C# 创作入口，`LivingWorld(...)` 建立默认内容，`Named("hillside" | "gentle", ...)` 提供 CLI 预设。[CycleWorldDefinition](../../../src/ResourceCycle/CycleWorldDefinition.cs) 保存完整有效定义；`Change(...)` 返回新定义。人数、开始时刻、需求/天气开关和种子在指纹计算前归一化。`CycleGameFactory.Create(definition)` 校验后建立初始图，不改变 Kernel。
 
-| 范围 | 当前落点与缺口 |
-| --- | --- |
-| 地图、描述、庇护、路程、声音边、资源归属 | [CycleExpeditionMap](../../../src/ResourceCycle/CycleExpeditionMap.cs) 是全局静态图，身份固定为 `hillside-v1`。 |
-| 初始角色、身体、背包、现金、资源模板 | [LivingWorldContent](../../../src/ResourceCycle/LivingWorldContent.cs) 与 [CycleGameFactory](../../../src/ResourceCycle/CycleGameFactory.cs)；人数、开始时刻和天气种子也可由 factory 参数改变。 |
-| 物品、配方、供需、价格、补给效果 | [LivingWorldEconomyContent](../../../src/ResourceCycle/LivingWorldEconomyContent.cs)；经济规划、校验和观察直接读取静态定义。 |
-| 市场与工坊绑定、市场刷新 | [CycleEconomyRules](../../../src/ResourceCycle/CycleEconomyRules.cs)、[CycleEconomyValidation](../../../src/ResourceCycle/CycleEconomyValidation.cs)、[CycleEconomyObservation](../../../src/ResourceCycle/CycleEconomyObservation.cs) 写死地点 ID；[CycleEconomyState](../../../src/ResourceCycle/CycleEconomyState.cs) 中 `CycleMarket.Fresh/Validate` 读取静态配额。 |
-| 身体与天气 | [CycleSurvivalRules](../../../src/ResourceCycle/CycleSurvivalRules.cs) 固定代谢/温暖速率；[CycleSurvival](../../../src/ResourceCycle/CycleSurvival.cs) 固定范围/警戒线；[CycleEnvironment](../../../src/ResourceCycle/CycleEnvironment.cs) 内 `CycleEnvironmentRules` 固定间隔、损失与概率。 |
-| 存档绑定 | [CycleDurableRoot](../../../src/ResourceCycle/Persistence/CycleDurableRoot.cs) 与 [CycleDurableEvent](../../../src/ResourceCycle/Persistence/CycleDurableEvent.cs) 保存游戏修订；尚无内容指纹。 |
+定义包括地点名称、描述与庇护，通路耗时及双向描述，独立的 64-bit 语义关系；资源位置、初始库存、容量、产物、再生/采集周期与技能要求；按服务顺序保留的初始居民、位置、技能、现金、身体、背包与容量；物品名称、配方、市场供需/价格/刷新周期及市场/工坊地点；补给效果、五种身体速率和天气参数。
 
-## 最小合同
+集合复制后只读公开，子条目只含值字段或复制后的只读集合。构造和恢复均检查重复 ID、引用、图结构、正数周期、库存/容量、配方和供需/价格对应关系。地点不能声明出口退休。保存定义恢复时重算指纹，不依赖构造器已经执行。
 
-采用一份深度不可变的 `CycleWorldDefinition`（拟议类型），由普通 C# 工厂建立默认内容与具名变体。暂不引入外部配置语言、编辑器、热加载或内容注册平台。
+身体范围 0–100、警戒线 25、定点单位、昼夜分段和事件优先级属于算法修订。当前支持食物/水分速率 -100..0，庇护/白天回暖 0..100，夜间温暖 -100..0；天气额外失温 0..100，概率为合法整数分子/正分母。零消耗或稳定昼夜循环可以永不耗尽，预测返回空期限；缓慢负漂移按昼夜循环预测，不再假设三个分段内耗尽。物品可同时补充饱食和水分。
 
-- 定义包含地点/通路/语义连接、资源模板及位置、初始居民、物品/配方/市场、身体与天气参数。市场和工坊由定义中的地点 ID 绑定。
-- 集合必须复制并只读，子对象不得暴露可变字段。构建时校验重复 ID、引用、范围、正数周期、库存/配额、配方输入输出及初始位置。运行时不能更换定义。
-- 算法、固定计量单位和仲裁语义属于 `GameRevision`，不必把每个实现常量都变成配置。可调参数的支持范围须明确校验。
-- 在 `CycleBusinessState` 中持久化定义子对象及其内容身份；每次业务 `Replace` 保留它。初始参数若允许覆盖，须在计算身份前形成完整的有效定义，不能存在未绑定的隐式默认值。
-- 规则、Fold 校验、观察均读取当前世界定义；不允许恢复或执行时悄悄回退到编译时默认内容。
-- `GraphDefinition`、空间模拟器/规划器/Reducer、索引等由定义构造，是运行缓存；冷开按保存定义重建，**不持久化派生缓存**。同一进程必须能运行两种定义而不串用全局静态图。
+`FromLegacy(...)` 只把旧领域夹具的初始输入一次性转换为定义，不是任意运行快照迁移器。默认静态内容及旧辅助重载不参与生产世界的执行、Fold 或恢复。不引入配置语言、编辑器、热加载或内容注册平台。
 
-## 规范指纹与恢复
+## 运行权威与缓存
 
-有效内容身份为 `(ContentId, Fingerprint)`；指纹使用确定的规范编码与 SHA-256，不使用 `GetHashCode` 或任意对象 `ToString`。
+`CycleBusinessState.Definition` 持久化定义，每次 `Replace` 保留同一对象，`CycleWorld.Definition` 暴露它。空间、经济、交易、身体、天气、规划、Fold 验证与观察读取当前定义。资源和身体仍保存各自运行锚点，运行中不能更换定义。
 
-1. 编码固定字段顺序、整数表示、UTF-8 和显式 null。字典及无序集合按 Ordinal ID 排序，声音边规范端点；角色服务顺序等有语义的序列必须保留顺序。
-2. 纳入所有定义字段，包括会影响角色材料的名称、描述和反向通路描述。编码格式本身有明确版本。
-3. 每个 S 保存定义与身份；独立 E 包装器保存前态内容身份。加载先检查支持的游戏修订与定义结构，再重算 S 指纹、核对 pending E，之后执行业务校验与 Rebuild。
-4. 冷开直接使用存档定义。当前默认内容改变只影响新局；不得用新默认值覆盖旧档。若宿主显式要求某定义，身份不匹配则拒绝。
-5. `CommitState` 拒绝一次运行中改变内容身份；pending 恢复只消费保存事实，不重新规划或询问控制器。分叉继承原定义，源分支不变。
-6. 内容错误或身份不匹配应在执行 pending、调用模型或发布新 E/S 之前拒绝。仍无旧开发修订兼容承诺。
+Graph、空间模拟器、Planner、Reducer、查询与 OccurrenceRule 是按定义实例隔离的派生缓存，不进入持久图；冷开从保存定义重建。默认与变体可同进程交错执行。`Expedition.ScenarioId` 必须等于定义 `ContentId`，不再与全局默认字符串比较。
 
-## 实施落点与注意事项
+冻结观察新增 `WorldName` 与 `ItemUseDescriptions`，Console/Completion 从同一材料读取名称、补给效果与当前速率。指纹仅在宿主管理输出和 Gym run-start 出现，不向角色泄露完整定义、远处地图或他人初始资产。
 
-创建由 `CycleGameFactory` 接收/规范化定义，再建立初始业务图；`CycleModels.cs` 中的业务状态持有定义。现有内容静态类可转为默认定义工厂，不应保留另一份运行时权威。
+## 规范指纹
 
-加载/发布落点为 [CycleDurableHistory](../../../src/ResourceCycle/Persistence/CycleDurableHistory.cs)；Schema 和算法修订由 [CycleGameRevision](../../../src/ResourceCycle/Persistence/CycleGameRevision.cs) 管理。[CycleBranchBoundary](../../../src/ResourceCycle/Persistence/CycleBranchBoundary.cs) 检查历史 S/E 及分叉边界时也必须核对内容身份，不能只保护常规 Open。
+有效内容身份为 `(ContentId, Fingerprint)`，指纹为 SHA-256 十六进制文本。同一 ContentId 的有效字段改变也会改变指纹。
 
-现有经济/生产对象可在自身检查结构；依赖物品目录、配方和地点的引用校验必须在持有定义的世界边界完成。不得为避开校验而重复保存一份可漂移的默认配额。
+编码 v1 使用 `BinaryWriter` 固定字段次序、小端整数和带长度前缀的严格 UTF-8 字符串，开头为 `Hillside.WorldDefinition/v1`。集合写数量，可空背包容量写存在标记和值，其余必需字段不允许 null。
 
-`CycleSurvivalRules.ForecastWarmth` 当前假设三个昼夜分段内一定耗尽。支持更温和参数时，须改为可证明终止、能表达永不耗尽的预测，或明确拒绝不支持参数；不能把合法内容变体变成运行时异常。天气参数与市场配额同时用于规划、事实校验、观察校验，必须成套替换。交易施工中的状态接口不由本设计预先重定。
+无序定义和字典按 Ordinal ID 排序，语义关系先规范两个端点再排序；居民顺序有服务语义，保留输入顺序。全部定义字段均参与编码，包括名字、描述、反向提示、容量、随机种子和开关；不使用 `GetHashCode` 或任意 `ToString`，派生缓存不参与编码。
 
-## C6 验收
+## 发布与恢复
 
-- 建立一个普通 C# 合法变体，修改一条路程、初始资产、资源周期、配方/价格、身体速率及天气间隔；不修改 Kernel。
-- 用普通命令完成移动、采集、生产、买卖与消费，证明变体参数真正生效；冷开继续仍使用保存值。演示至少一种当前支持范围内的身体参数变体。
-- 默认与变体同进程交错运行，空间、经济与预测不串用；新建世界修改默认内容不影响已保存世界。
-- 无序输入的不同排列产生相同指纹；有效字段改变产生不同指纹；有语义的角色顺序变化不能被排序抹去。
-- 重复 ID、坏引用、非法周期/参数在创建前拒绝；S 定义/指纹不一致、E/S 身份不匹配在恢复前拒绝，源档不变。
-- 正常冷开、E-only 恢复及完成 S 分叉行动通过；pending 不重问控制器、不重复经济结算，分叉不修改源世界。
-- 受影响测试、Schema Verify 通过，记录可复现的变体创建/运行入口与证据。静态内容文件存在或单次构建成功不等于 C6 已完成。
+每个 S 的 Business 保存完整定义及身份；独立 `CycleDurableEvent` 保存规划前态的 ContentId/Fingerprint。`CommitEvent` 从 ready S 取得身份，`CommitState` 在写盘前拒绝不同身份，并保持既有故障退出合同。
+
+恢复先检查结构与支持的修订、重算保存定义、核对 pending E 身份，再业务验证和 Rebuild。生产只接受当前修订。人工迁移夹具保留 S1/E2 中断合同：先验证原 S，再将 S 转到 E 修订后比对；每步事件转换后重新比对，错误 E 不能靠转换器重新贴身份蒙混过关。加载不执行 pending、不询问控制器、不发布 E/S。
+
+普通 `Open(path)` 使用保存定义。`Open(path, expectedDefinition)` 及带 branch 的重载在业务校验与 Rebuild 前核对完整期望身份。分叉注册前检查所选 S、前态 S 自身和 S—E—S 三端身份；子分支继承原定义，源分支不变。
+
+CLI 省略 `--content` 时新局用 hillside，续局读取保存定义。显式指定时先只读 Open，再用保存的初始人数、起始时间和需求/天气参数构造命名期望并比较；在 pending 恢复、宿主日志/操作写入与模型连接前拒绝不符。CLI 的比较在只读 Rebuild 后，直接传完整 expectedDefinition 的 API 则在 Rebuild 前；两者都不在拒绝前执行游戏操作或写源档。
+
+## 默认与舒缓预设
+
+| 参数 | hillside | gentle |
+| --- | --- | --- |
+| 镇口—营地通路 | 1 小时 | 半小时 |
+| 浆果再生 | 1 小时 | 半小时 |
+| 每人初始现金 | 12 | 20 |
+| 口粮制作 / 售价 | 1 小时 / 5 钱 | 半小时 / 6 钱 |
+| 每小时饱食 / 水分 / 夜间温暖 | -5 / -8 / -12 | -3 / -5 / -6 |
+| 天气窗口 / 暴露损失 / 寒风概率 | 2 小时 / 10 / 1/2 | 4 小时 / 5 / 1/4 |
+
+两预设默认都开启需求和天气，初始资产有限；gentle 是调整内容的演示。
+
+```powershell
+dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/gentle-world --content gentle --characters 1
+# 续局直接使用创建时保存的定义
+dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/gentle-world
+# 构建后，四进程工程脚本验证生产、续局与不符拒绝
+pwsh -NoProfile -File scripts/Smoke-HillsideContent.ps1
+```
+
+独立验收还用普通 C# 建立另一个变体，改变路线、初始资产、资源周期、配方产出/耗时、价格、补给、身体和天气，通过普通命令及真实磁盘 E/S 验证效果。具体证据和限制见[验收记录](../../experiments/living-world-content-acceptance.md)；脚本不是自由游玩或真实模型运行。

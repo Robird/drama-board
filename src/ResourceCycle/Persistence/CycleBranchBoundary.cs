@@ -126,6 +126,9 @@ public sealed partial class CycleDurableHistory {
             if (previous.GameRevision != CycleGameRevision.Current || occurrence.GameRevision != CycleGameRevision.Current) {
                 throw new InvalidDataException("This decision fork requires current-revision predecessor State and Event representations.");
             }
+            previous.ValidateContent();
+            occurrence.ValidateContent(previous.Business.Definition);
+            RequireSameContent(root.Business.Definition, previous.Business.Definition);
             ValidateContinuation(occurrence.Occurrence, previous.Cursor);
             if (previous.Cursor.Advance(occurrence.Occurrence.CauseKey, occurrence.Occurrence.TargetInstant) != root.Cursor) {
                 throw new InvalidDataException("The selected State cursor does not complete its predecessor Event.");

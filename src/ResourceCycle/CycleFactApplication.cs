@@ -38,7 +38,7 @@ internal static class CycleFactApplication {
             throw new InvalidOperationException("Visits must record exactly the active observers' actual places.");
         }
         foreach (CycleVisit visit in fact.Visits) {
-            CycleResource[] visible = after.Resources.Where(resource => CycleExpeditionMap.GetResourcePlace(resource.Id) == visit.PlaceId).ToArray();
+            CycleResource[] visible = after.Resources.Where(resource => after.Definition.GetResourcePlace(resource.Id) == visit.PlaceId).ToArray();
             if (visit.At != fact.At || visit.Resources.Count != visible.Length ||
                 !visit.Resources.Zip(visible).All(pair => CycleObservationEquality.SameResource(pair.First, pair.Second))) {
                 throw new InvalidOperationException("Visit time and resource snapshots must match the recorded boundary.");
@@ -51,7 +51,7 @@ internal static class CycleFactApplication {
         if (expedition is not null) {
             GraphSpatialState spatial = expedition.Spatial;
             foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
-                spatial = CycleExpeditionMap.Reducer.Apply(spatial, instant, spatialFact);
+                spatial = business.Definition.Runtime.Reducer.Apply(spatial, instant, spatialFact);
             }
             expedition = expedition.Change(spatial, fact.Visits, fact.Environment);
         }
@@ -60,7 +60,7 @@ internal static class CycleFactApplication {
     }
     internal static bool SameFoldedBusiness(CycleBusinessState expected, CycleBusinessState actual) =>
         expected.Time == actual.Time && ReferenceEquals(expected.Light, actual.Light) && ReferenceEquals(expected.Script, actual.Script) &&
-        ReferenceEquals(expected.Economy, actual.Economy) &&
+        ReferenceEquals(expected.Economy, actual.Economy) && ReferenceEquals(expected.Definition, actual.Definition) &&
         expected.LastServedActorId == actual.LastServedActorId && expected.Resources.Count == actual.Resources.Count &&
         expected.Resources.Zip(actual.Resources).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
         expected.Characters.Count == actual.Characters.Count && expected.Characters.Zip(actual.Characters).All(pair => ReferenceEquals(pair.First, pair.Second)) &&
@@ -251,7 +251,7 @@ internal static class CycleFactApplication {
             foreach (CycleCharacter changed in fact.ChangedCharacters.Where(c => c.Id != fact.ActorId)) {
                 CycleCharacter before = business.GetCharacter(changed.Id);
                 CycleSurvival? expectedBody = before.Survival?.WithRates(fact.At, before.Survival.FoodRate, before.Survival.WaterRate,
-                    CycleSurvivalRules.WarmthRate(CycleSurvivalRules.IsSheltered(business.Expedition!.Spatial, before.Id), business.Light.IsDay));
+                    CycleSurvivalRules.WarmthRate(business.Definition, CycleSurvivalRules.IsSheltered(business.Definition, business.Expedition!.Spatial, before.Id), business.Light.IsDay));
                 ValidatePreservedCharacter(before, changed, expectedBody, false, before.LastResult);
             }
         }
@@ -352,8 +352,8 @@ internal static class CycleFactApplication {
             CycleCharacter prior = business.GetCharacter(effect.ActorId);
             CycleCharacter changed = fact.ChangedCharacters.Single(c => c.Id == effect.ActorId);
             CycleSurvival body = prior.Survival!.Project(fact.At);
-            bool sheltered = CycleSurvivalRules.IsSheltered(business.Expedition!.Spatial, prior.Id);
-            long loss = next.LastCold && !sheltered ? Math.Min(body.WarmthUnits, CycleEnvironmentRules.ExposureLoss * CycleSurvival.Scale) : 0;
+            bool sheltered = CycleSurvivalRules.IsSheltered(business.Definition, business.Expedition!.Spatial, prior.Id);
+            long loss = next.LastCold && !sheltered ? Math.Min(body.WarmthUnits, business.Definition.Weather.ExposureLoss * CycleSurvival.Scale) : 0;
             CycleSurvival result = changed.Survival!;
             if (body.IsFatal || effect.Sheltered != sheltered || effect.WarmthLossUnits != loss ||
                 result.FoodUnits != body.FoodUnits || result.WaterUnits != body.WaterUnits || result.WarmthUnits != body.WarmthUnits - loss ||
@@ -397,7 +397,7 @@ internal static class CycleFactApplication {
                 }
                 bool own = prior.Id == fact.ActorId;
                 CycleSurvival? expectedBody = prior.Survival?.WithRates(fact.At, prior.Survival.FoodRate, prior.Survival.WaterRate,
-                    CycleSurvivalRules.WarmthRate(false, business.Light.IsDay));
+                    CycleSurvivalRules.WarmthRate(business.Definition, false, business.Light.IsDay));
                 if (own) { expectedBody = expectedBody?.Acknowledge(fact.At); }
                 ValidatePreservedCharacter(prior, changed, expectedBody, own, own ? fact.Result : prior.LastResult);
             }

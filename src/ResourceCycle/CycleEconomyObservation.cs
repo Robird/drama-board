@@ -13,15 +13,15 @@ public sealed partial record CycleMarketQuote(
 /// <summary>Local public market data; no remote state or other character's purse is exposed.</summary>
 internal static class CycleEconomyObservation {
     internal static IReadOnlyList<CycleMarketQuote> Quotes(CycleBusinessState state, string? place) {
-        if (state.Economy is not { } economy || place != "market") { return []; }
+        if (state.Economy is not { } economy || place != state.Definition.MarketPlaceId) { return []; }
         return Array.AsReadOnly(economy.Market.Stock.Keys.Concat(economy.Market.Demand.Keys)
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
-            .Select(item => new CycleMarketQuote(item, LivingWorldEconomyContent.BuyPrice(item),
-                LivingWorldEconomyContent.SellPrice(item), economy.Market.Stock.GetValueOrDefault(item),
+            .Select(item => new CycleMarketQuote(item, state.Definition.BuyPrice(item),
+                state.Definition.SellPrice(item), economy.Market.Stock.GetValueOrDefault(item),
                 economy.Market.Demand.GetValueOrDefault(item))).ToArray());
     }
     internal static IReadOnlyList<CycleRecipe> Recipes(CycleBusinessState state, string? place) =>
-        state.Economy is not null && place == "workshop" ? LivingWorldEconomyContent.Recipes : [];
+        state.Economy is not null && place == state.Definition.WorkshopPlaceId ? state.Definition.Recipes : [];
     // Delivery cursors belong to the host ledger, not either character's knowledge.
     internal static CycleTradeOffer VisibleTrade(CycleTradeOffer offer) => offer with {
         ProposerDeliveredVersion = 0, RecipientDeliveredVersion = 0,
@@ -36,5 +36,5 @@ internal static class CycleEconomyObservation {
             throw new InvalidOperationException("A personal trade view must exclude unrelated offers and internal delivery cursors.");
         }
     }
-    internal static string ItemName(string item) => LivingWorldEconomyContent.Items.GetValueOrDefault(item, item);
+    internal static string ItemName(CycleWorldDefinition definition, string item) => definition.Items.GetValueOrDefault(item, item);
 }

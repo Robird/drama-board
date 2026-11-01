@@ -2,7 +2,7 @@ namespace DramaBoard.ResourceCycle;
 
 /// <summary>Application semantics version, independent of durable schema and simulation WorldVersion.</summary>
 public static class CycleGameRevision {
-    public const int Current = 21;
+    public const int Current = 22;
 
     /// <summary>Upgrades restored representations without executing or publishing pending work.</summary>
     /// <remarks>
@@ -25,11 +25,13 @@ public static class CycleGameRevision {
             pending is not null && pending.GameRevision < targetRevision && upgradeEvent is null) {
             throw new InvalidDataException("No upgrade path supports this ResourceCycle GameRevision.");
         }
+        state.ValidateContent();
 
         // Reproduce the exact prestate used to plan a newer persisted Event before transforming it.
         while (pending is not null && state.GameRevision < pending.GameRevision) {
             state = AdvanceState(state, upgradeState!);
         }
+        pending?.ValidateContent(state.Business.Definition);
         while (state.GameRevision < targetRevision) {
             CycleDurableRoot previous = state;
             state = AdvanceState(previous, upgradeState!);
@@ -43,6 +45,7 @@ public static class CycleGameRevision {
                     pending.Occurrence.TargetInstant != previousEvent.Occurrence.TargetInstant) {
                     throw new InvalidDataException("An Event upgrade must advance one revision and preserve occurrence identity.");
                 }
+                pending.ValidateContent(state.Business.Definition);
             }
         }
         return (state, pending);
@@ -53,6 +56,7 @@ public static class CycleGameRevision {
         CycleDurableRoot next = upgradeState(previous)
             ?? throw new InvalidDataException("A State upgrade returned no representation.");
         next.ValidateStructure();
+        next.ValidateContent();
         if (next.GameRevision != checked(previous.GameRevision + 1) || next.Cursor != previous.Cursor) {
             throw new InvalidDataException("A State upgrade must advance one revision and preserve the completed cursor.");
         }

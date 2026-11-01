@@ -83,7 +83,7 @@ internal static class CycleObservedEventValidation {
                 CycleObservedEvents.MovedSelf(fact, actorId) ||
                 CycleObservedEvents.IsFollowingEvent(fact.Kind) && FollowingChanged(before, after, actorId) ||
                 CycleObservedEvents.ReceivesCommunication(fact, actorId) ||
-                fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.Location(before, actorId) is AtPlaceLocation market && market.PlaceId.Value == "market" ||
+                fact.Kind == CycleEventKind.MarketRefreshed && CycleActions.Location(before, actorId) is AtPlaceLocation market && market.PlaceId.Value == before.Definition.MarketPlaceId ||
                 fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved ||
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed &&
                 fact.ResourceId is { } resourceId && previousByObserver[actorId].ContainsKey(new("resource", resourceId, "stock"));
@@ -155,7 +155,7 @@ internal static class CycleObservedEventValidation {
             production = (entry.Kind == CycleObservedEventKind.ProductionStarted
                 ? after.GetCharacter(entry.ObserverId) : before.GetCharacter(entry.ObserverId)).Activity!.Production;
         } else if (entry.Kind is CycleObservedEventKind.MarketBought or CycleObservedEventKind.MarketSold) {
-            id = fact.ItemId; name = CycleEconomyObservation.ItemName(id!);
+            id = fact.ItemId; name = CycleEconomyObservation.ItemName(before.Definition, id!);
         } else if (CycleObservedEvents.IsTradeEvent(entry.Kind)) {
             // The typed participant-scoped payload owns all terms; no location or free-text cause is inferred.
         } else if (entry.Kind == CycleObservedEventKind.BodyChanged) {
@@ -168,11 +168,11 @@ internal static class CycleObservedEventValidation {
             if (entry.Kind == CycleObservedEventKind.ItemUsed) {
                 CycleCharacter actor = before.GetCharacter(entry.ObserverId), next = after.GetCharacter(entry.ObserverId);
                 id = actor.Backpack.Items.Keys.SingleOrDefault(item => actor.Backpack.Count(item) > next.Backpack.Count(item));
-                name = id is null ? null : CycleEconomyObservation.ItemName(id);
+                name = id is null ? null : CycleEconomyObservation.ItemName(before.Definition, id);
             } else if (entry.Kind is CycleObservedEventKind.MoveStarted or CycleObservedEventKind.MoveArrived) {
                 SpatialLocation location = CycleActions.Location(after, entry.ObserverId)!;
                 id = location is AtPlaceLocation place ? place.PlaceId.Value : null;
-                name = id is null ? null : CycleExpeditionMap.GetPlace(id).Name;
+                name = id is null ? null : before.Definition.GetPlace(id).Name;
             } else if (entry.Kind == CycleObservedEventKind.GatherFinished) {
                 detail = fact.GatherStopReason?.ToString();
             } else if (entry.Kind == CycleObservedEventKind.WeatherResolved) {
@@ -262,7 +262,7 @@ internal static class CycleObservedEventValidation {
         if (subjectSelf || resourceCause) {
             SpatialLocation? location = CycleActions.Location(before, actor.Id);
             foreach (CycleResource resource in before.Resources.Where(r => before.Expedition is null ||
-                location is AtPlaceLocation place && CycleExpeditionMap.GetResourcePlace(r.Id) == place.PlaceId.Value)) {
+                location is AtPlaceLocation place && before.Definition.GetResourcePlace(r.Id) == place.PlaceId.Value)) {
                 yield return new("resource", resource.Id, "stock");
             }
         }
@@ -281,7 +281,7 @@ internal static class CycleObservedEventValidation {
             ("body", "food-rate") => CycleVisibleValue.Numeric(body!.FoodPerHour, "点/小时"),
             ("body", "water-rate") => CycleVisibleValue.Numeric(body!.WaterPerHour, "点/小时"),
             ("body", "warmth-rate") => CycleVisibleValue.Numeric(body!.WarmthPerHour, "点/小时"),
-            ("body", "sheltered") => CycleVisibleValue.Flag(location is AtPlaceLocation shelter && CycleExpeditionMap.GetPlace(shelter.PlaceId.Value).Sheltered),
+            ("body", "sheltered") => CycleVisibleValue.Flag(location is AtPlaceLocation shelter && state.Definition.GetPlace(shelter.PlaceId.Value).Sheltered),
             ("body", "warning-food") => CycleVisibleValue.Flag((body!.PendingMask & 1) != 0),
             ("body", "warning-water") => CycleVisibleValue.Flag((body!.PendingMask & 2) != 0),
             ("body", "warning-warmth") => CycleVisibleValue.Flag((body!.PendingMask & 4) != 0),

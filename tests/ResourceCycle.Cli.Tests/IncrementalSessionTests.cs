@@ -16,7 +16,7 @@ public sealed class IncrementalSessionTests {
         var terminal = new CycleObservation {
             Time = initial.Time, IsDay = initial.IsDay, NextLightChange = initial.NextLightChange,
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,
-            ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
+            WorldName = initial.WorldName, ItemUseDescriptions = initial.ItemUseDescriptions, ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
             Commands = [], IsExpedition = true,
             Outcome = CycleExpeditionOutcome.Dead, EndingReason = "已耗尽"
         };
@@ -86,7 +86,7 @@ public sealed class IncrementalSessionTests {
         var observation = new CycleObservation {
             Time = original.Time, IsDay = original.IsDay, NextLightChange = original.NextLightChange,
             Actor = original.Actor, Resources = original.Resources, HarvestDurations = original.HarvestDurations,
-            ItemNames = original.ItemNames, OtherCharacters = original.OtherCharacters, Notices = original.Notices,
+            WorldName = original.WorldName, ItemUseDescriptions = original.ItemUseDescriptions, ItemNames = original.ItemNames, OtherCharacters = original.OtherCharacters, Notices = original.Notices,
             Commands = original.Commands.Select(entry => entry.Command == CycleCommand.Wait(24)
                 ? entry with { Warning = "长等待专属风险" } : entry).ToArray(),
             IsExpedition = true, PlaceId = original.PlaceId, PlaceName = original.PlaceName, PlaceDescription = original.PlaceDescription,

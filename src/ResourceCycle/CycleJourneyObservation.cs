@@ -10,17 +10,17 @@ public sealed partial record CycleJourneyObservation(
     [field: DurableField(2)] string PassageId,
     [field: DurableField(3)] string PassageDescription,
     [field: DurableField(4)] string? KnownDestinationName) : IDurableObject {
-    internal static CycleJourneyObservation? Observe(CycleExpedition? expedition, string actorId, SpatialLocation? location = null) {
+    internal static CycleJourneyObservation? Observe(CycleWorldDefinition definition, CycleExpedition? expedition, string actorId, SpatialLocation? location = null) {
         location ??= expedition?.Spatial.Entities.SingleOrDefault(e => e.Id.Value == actorId)?.Location;
         if (expedition is null || location is not TraversingLocation moving) {
             return null;
         }
-        var passage = CycleExpeditionMap.Graph.GetPassage(moving.PassageId);
+        var passage = definition.Runtime.Graph.GetPassage(moving.PassageId);
         string origin = (passage.EndpointA == moving.TargetPlaceId ? passage.EndpointB : passage.EndpointA).Value;
-        var directed = CycleExpeditionMap.GetPassages(origin).Single(p => p.Id == moving.PassageId.Value);
-        return new(CycleExpeditionMap.GetPlace(origin).Name, directed.Id, directed.Description,
+        var directed = definition.GetPassages(origin).Single(p => p.Id == moving.PassageId.Value);
+        return new(definition.GetPlace(origin).Name, directed.Id, directed.Description,
             expedition.Visits.Any(v => v.ActorId == actorId && v.PlaceId == moving.TargetPlaceId.Value)
-                ? CycleExpeditionMap.GetPlace(moving.TargetPlaceId.Value).Name : null);
+                ? definition.GetPlace(moving.TargetPlaceId.Value).Name : null);
     }
 
     internal void Validate() {

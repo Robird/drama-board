@@ -207,7 +207,7 @@ internal static class CycleInteractionValidation {
             CycleCommunicationRules.Remaining(actor, state.Time), CycleCommunicationRules.SendLimit,
             actor.Communication.AttentionPending, CycleCommunicationRules.MaximumSpeechScalars)),
             "Recorded communication must match the observer's own budget and attention state.");
-        Require(observation.Time == state.Time && observation.Actor.Id == actorId && observation.Actor.Name == actor.Name &&
+        Require(observation.WorldName == state.Definition.Name && observation.Time == state.Time && observation.Actor.Id == actorId && observation.Actor.Name == actor.Name &&
             observation.IsDay == state.Light.IsDay && observation.NextLightChange == state.Light.NextChange &&
             observation.Outcome == (actor.Ending?.Outcome ?? CycleExpeditionOutcome.Exploring) &&
             observation.EndingReason == actor.Ending?.Reason && observation.IsExpedition == (state.Expedition is not null),
@@ -222,14 +222,14 @@ internal static class CycleInteractionValidation {
         SpatialLocation? location = CycleActions.Location(state, actorId);
         string? place = (location as AtPlaceLocation)?.PlaceId.Value;
         CycleResource[] visible = state.Resources.Where(resource => state.Expedition is null ||
-            place is not null && CycleExpeditionMap.GetResourcePlace(resource.Id) == place).ToArray();
+            place is not null && state.Definition.GetResourcePlace(resource.Id) == place).ToArray();
         Require(observation.Resources.Count == visible.Length && observation.Resources.Zip(visible).All(pair =>
             CycleObservationEquality.SameResource(pair.First, pair.Second)), "Recorded resources must match the visible endpoint.");
-        Require(observation.PlaceId == place && observation.PlaceName == (place is null ? null : CycleExpeditionMap.GetPlace(place).Name) &&
-            observation.PlaceDescription == (place is null ? null : CycleExpeditionMap.GetPlace(place).Description) &&
+        Require(observation.PlaceId == place && observation.PlaceName == (place is null ? null : state.Definition.GetPlace(place).Name) &&
+            observation.PlaceDescription == (place is null ? null : state.Definition.GetPlace(place).Description) &&
             observation.ArrivalDue == (location is TraversingLocation moving ? moving.ArrivalDue : null),
             "Recorded location must match the visible spatial endpoint.");
-        Require(observation.Journey == CycleJourneyObservation.Observe(state.Expedition, actorId, location),
+        Require(observation.Journey == CycleJourneyObservation.Observe(state.Definition, state.Expedition, actorId, location),
             "Recorded journey must retain the traveller's route without revealing unknown destinations.");
         CycleCharacter[] others = state.Characters.Where(other => other.IsActive && other.Id != actorId && (state.Expedition is null ||
             place is not null && CycleActions.Location(state, other.Id) is AtPlaceLocation otherPlace &&
@@ -248,6 +248,20 @@ internal static class CycleInteractionValidation {
             "Recorded market and recipes must exactly match the local endpoint.");
         Require(observation.Trades.SequenceEqual(CycleEconomyObservation.Trades(state, actorId)),
             "Recorded trades must contain exactly this participant's retained public terms, without delivery cursors.");
+        string[] visibleItems = actor.Backpack.Items.Keys.Concat(visible.Select(resource => resource.ItemId))
+            .Concat(quotes.Select(quote => quote.ItemId))
+            .Concat(observation.Recipes.SelectMany(recipe => new[] { recipe.InputItem, recipe.OutputItem }))
+            .Concat(observation.Trades.SelectMany(offer => new[] { offer.Give, offer.Want }).Where(asset => !asset.IsMoney).Select(asset => asset.AssetId))
+            .Concat(actor.Activity?.Production is { } production ? new[] { production.InputItem, production.OutputItem } : [])
+            .Distinct(StringComparer.Ordinal).ToArray();
+        Require(observation.ItemNames.Count == visibleItems.Length && visibleItems.All(item =>
+            observation.ItemNames.TryGetValue(item, out string? name) && name == CycleEconomyObservation.ItemName(state.Definition, item)),
+            "Recorded item names must be the bound definition's names for exactly the known item identities.");
+        var uses = visibleItems.Select(item => (Item: item, Description: CycleSurvivalRules.UseDescription(state.Definition, item)))
+            .Where(pair => pair.Description is not null).ToArray();
+        Require(observation.ItemUseDescriptions.Count == uses.Length && uses.All(pair =>
+            observation.ItemUseDescriptions.TryGetValue(pair.Item, out string? description) && description == pair.Description),
+            "Recorded item use descriptions must retain the bound definition's effects without exposing unseen items.");
         ValidateBodyAndWeather(state, actor, observation);
         ValidateKnownGeography(state, actorId, place, observation);
         Require(observation.HarvestDurations.Count == visible.Length && visible.All(resource =>
@@ -261,7 +275,7 @@ internal static class CycleInteractionValidation {
             CycleCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),
             CycleCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.PassageId),
             CycleCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
-            CycleCommandKind.Use => actor.Survival is not null && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
+            CycleCommandKind.Use => actor.Survival is not null && observation.ItemUseDescriptions.ContainsKey(entry.Command.ItemId!) && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
             CycleCommandKind.Follow => state.Expedition is not null && others.Any(other => other.Id == entry.Command.TargetActorId),
             CycleCommandKind.Handoff or CycleCommandKind.Goal or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers => state.Expedition is not null,
             _ => true
@@ -272,7 +286,7 @@ internal static class CycleInteractionValidation {
         CycleSurvival? body = actor.Survival?.Project(state.Time);
         CycleSurvivalObservation? visible = observation.Survival;
         Require((body is null) == (visible is null), "The recorded body must agree with the character's capabilities.");
-        bool sheltered = CycleActions.Location(state, actor.Id) is AtPlaceLocation at && CycleExpeditionMap.GetPlace(at.PlaceId.Value).Sheltered;
+        bool sheltered = CycleActions.Location(state, actor.Id) is AtPlaceLocation at && state.Definition.GetPlace(at.PlaceId.Value).Sheltered;
         if (body is not null && visible is not null) {
             visible.Validate(observation.Time);
             Require(visible.Food == (decimal)body.FoodUnits / CycleSurvival.Scale && visible.Water == (decimal)body.WaterUnits / CycleSurvival.Scale &&
@@ -290,8 +304,8 @@ internal static class CycleInteractionValidation {
         Require((environment is null) == (weather is null), "The recorded weather must agree with scenario capabilities.");
         if (environment is not null && weather is not null) {
             CycleWeatherEffect? effect = environment.LastEffects.SingleOrDefault(entry => entry.ActorId == actor.Id);
-            Require(weather.NextWindow == (actor.IsActive ? environment.NextDue : null) && weather.IntervalTicks == CycleEnvironmentRules.IntervalTicks &&
-                weather.ExposedWarmthLoss == CycleEnvironmentRules.ExposureLoss && weather.Sheltered == sheltered &&
+            Require(weather.NextWindow == (actor.IsActive ? environment.NextDue : null) && weather.IntervalTicks == state.Definition.Weather.IntervalTicks &&
+                weather.ExposedWarmthLoss == state.Definition.Weather.ExposureLoss && weather.Sheltered == sheltered &&
                 weather.LastAt == (effect is null ? null : environment.LastAt) && weather.LastKind == (effect is null ? null :
                     environment.LastCold ? CycleWeatherKind.ColdWind : CycleWeatherKind.Calm) &&
                 weather.LastActualWarmthLoss == (decimal)(effect?.WarmthLossUnits ?? 0) / CycleSurvival.Scale &&
@@ -301,14 +315,14 @@ internal static class CycleInteractionValidation {
 
     private static void ValidateKnownGeography(CycleBusinessState state, string actorId, string? place, CycleObservation observation) {
         CycleVisit[] visits = state.Expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
-        CyclePassageDefinition[] passages = place is null ? [] : CycleExpeditionMap.GetPassages(place).ToArray();
+        CyclePassageDefinition[] passages = place is null ? [] : state.Definition.GetPassages(place).ToArray();
         Require(observation.Passages.Count == passages.Length && observation.Passages.Zip(passages).All(pair =>
             pair.First.Id == pair.Second.Id && pair.First.Description == pair.Second.Description && pair.First.DurationTicks == pair.Second.DurationTicks &&
-            pair.First.KnownDestinationName == (visits.Any(visit => visit.PlaceId == pair.Second.To) ? CycleExpeditionMap.GetPlace(pair.Second.To).Name : null)),
+            pair.First.KnownDestinationName == (visits.Any(visit => visit.PlaceId == pair.Second.To) ? state.Definition.GetPlace(pair.Second.To).Name : null)),
             "Recorded passages must expose only currently visible clues and previously learned destinations.");
         CycleVisit[] memories = visits.Where(visit => visit.PlaceId != place).ToArray();
         Require(observation.Memories.Count == memories.Length && observation.Memories.Zip(memories).All(pair =>
-            pair.First.PlaceId == pair.Second.PlaceId && pair.First.At == pair.Second.At && pair.First.Name == CycleExpeditionMap.GetPlace(pair.Second.PlaceId).Name &&
+            pair.First.PlaceId == pair.Second.PlaceId && pair.First.At == pair.Second.At && pair.First.Name == state.Definition.GetPlace(pair.Second.PlaceId).Name &&
             pair.First.Resources.Count == pair.Second.Resources.Count && pair.First.Resources.Zip(pair.Second.Resources).All(resources =>
                 CycleObservationEquality.SameResource(resources.First, resources.Second))),
             "Recorded memories must retain the actor's historical observations rather than distant current truth.");

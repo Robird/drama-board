@@ -59,10 +59,19 @@ public sealed partial class CycleActivity : IDurableObject {
         }
         if ((Kind == CycleActivityKind.Produce) != (Production is not null)) { throw new InvalidOperationException("Production requires its escrow record."); }
         if (Production is { } order) {
-            CycleRecipe? recipe = LivingWorldEconomyContent.Recipe(order.RecipeId);
-            if (recipe is null || order.Batches is < 1 or > 1000 || order.InputItem != recipe.InputItem || order.OutputItem != recipe.OutputItem ||
+            if (string.IsNullOrWhiteSpace(order.RecipeId) || string.IsNullOrWhiteSpace(order.InputItem) || string.IsNullOrWhiteSpace(order.OutputItem) ||
+                order.Batches is < 1 or > 1000 || order.InputCount <= 0 || order.OutputCount <= 0) {
+                throw new InvalidOperationException("Invalid production escrow structure.");
+            }
+        }
+    }
+    internal void Validate(ModelTime time, CycleWorldDefinition definition) {
+        Validate(time);
+        if (Production is { } order) {
+            CycleRecipe? recipe = definition.Recipe(order.RecipeId);
+            if (recipe is null || order.InputItem != recipe.InputItem || order.OutputItem != recipe.OutputItem ||
                 order.InputCount != (long)recipe.InputCount * order.Batches || order.OutputCount != (long)recipe.OutputCount * order.Batches ||
-                DurationTicks != recipe.DurationTicks * order.Batches) { throw new InvalidOperationException("Invalid production escrow or duration."); }
+                DurationTicks != checked(recipe.DurationTicks * order.Batches)) { throw new InvalidOperationException("Production escrow does not match the world's recipe."); }
         }
     }
     public override string ToString() => $"{Kind}:{Id}:{StartedAt.Ticks}:{DurationTicks}:{Due.Ticks}:{ResourceId}:{TargetCount}:{CompletedCount}:{SelectedAll}:{CycleIndex}:{Production}";
@@ -185,6 +194,10 @@ public sealed partial class CycleCharacter : IDurableObject {
         if (!CycleEconomyRules.CanSettleActivity(this, Backpack)) { throw new InvalidOperationException("Production completion and cancellation must both remain possible."); }
         Survival?.Validate();
         if (Survival?.BaselineAt > time) { throw new InvalidOperationException("Survival anchor cannot be in the future."); }
+    }
+    internal void Validate(ModelTime time, CycleWorldDefinition definition) {
+        Validate(time);
+        Activity?.Validate(time, definition);
     }
     public override string ToString() => $"{Id}:{Name}:{SkillLevel};backpack={Backpack};activity={Activity};decision={DecisionGeneration};next={NextActivityId};notices=[{string.Join(';', _notices)}];result={LastResult}" +
         (Survival is null ? "" : $";survival={Survival}") + $";ending={Ending};communication={Communication};following={FollowingLeaderId};money={Money}";

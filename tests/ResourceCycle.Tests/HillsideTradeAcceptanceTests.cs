@@ -223,7 +223,7 @@ public sealed class HillsideTradeAcceptanceTests {
         var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
             residents.Select(actor => new CycleVisit(actor.Id, place, basis.Time, [])));
         return CycleEngine.Rebuild(basis.Business.Replace(basis.Time, changedCharacters: residents, expedition: expedition,
-            economy: new CycleEconomyState(CycleMarket.Fresh(Hour(24)), totals)), basis.Time);
+            economy: new CycleEconomyState(CycleMarket.Fresh(basis.Definition, Hour(24)), totals)), basis.Time);
     }
 
     private static async Task Act(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel, Driver driver,

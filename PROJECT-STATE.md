@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-01；[小镇与山野的融合愿景](docs/codex-goals/living-world/README.md)的 Goal 已启动，山野镇连续世界与生产市场已验收，居民报价已接通，接着完善内容定义与存档绑定；大喊、跟随、微型小镇与 Character Gym 一期已完成，Gym 二期继续延期。
+> 最近整理：2026-11-01；[小镇与山野的融合愿景](docs/codex-goals/living-world/README.md)的 Goal 已启动，连续世界、生产市场、居民报价及内容定义已验收，接着完成新世界 Gym 实际运行与产品入口收敛；大喊、跟随、微型小镇与 Character Gym 一期已完成，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -21,7 +21,7 @@
 
 用户已确定围绕现有时空模型在本仓库建设下一代引擎与一组实例游戏；Mud 保留为可玩参照，选择性借鉴其动作、观察、事件与状态关联经验，不进行原地迁移或兼容适配。新业务逻辑先写应用层，经实例验证后再提取共性。
 
-山野镇以 ResourceCycle 为唯一运行时：默认三居民，可用 `--characters 1|2|3` 选择新局人数；续局省略人数则读取存档。默认共用 Human Console；`--llm` 控制全体，`--human ID` 选择一个 Console 角色。`--steps` / `--until-hour` 仅暂停宿主，所有角色/空间/资源仍组成同一发布根；没有 GUI。旧 `--play` / `--survival` / `--duo` 及批处理入口已撤下，历史采集语义保留在领域测试。
+山野镇以 ResourceCycle 为唯一运行时：默认三居民，可用 `--characters 1|2|3` 选择新局人数；续局省略人数则读取存档。默认共用 Human Console；`--llm` 控制全体，`--human ID` 选择一个 Console 角色。`--steps` / `--until-hour` 仅暂停宿主，所有角色/空间/资源仍组成同一发布根；没有 GUI。`--content hillside|gentle` 选择新局内容，省略时续局使用保存定义；内容身份与恢复见[内容验收](docs/experiments/living-world-content-acceptance.md)。旧 `--play` / `--survival` / `--duo` 及批处理入口已撤下，历史采集语义保留在领域测试。
 
 用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现；运行中增量维护和冷开重建是独立选择。纯派生预测不应强制落盘；原持久方案仅作为[历史验收记录](docs/experiments/local-prediction-acceptance.md)保留。
 
@@ -59,7 +59,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 21](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 22](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Microtown 领域/Completion 适配/Console、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
