@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-10-31；[微型小镇与多游戏共享代码库](docs/codex-goals/microtown/README.md)已通过[总验收](docs/experiments/microtown-acceptance.md)，后续方向待选定；Character Gym 一期已完成，二期闭环改进继续延期。
+> 最近整理：2026-11-01；[ResourceCycle 角色跟随设计](docs/design/character-following.md)已完成辩证审阅，待实施；微型小镇与 Character Gym 一期已完成，Gym 二期闭环改进继续延期。
 
 ## 最终目标
 
@@ -27,7 +27,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。两游戏实际共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存，保留各自强类型观察、规则和独立发布根；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 已验证经济、社交/交易、owner 预测与真实恢复/分叉；有界交互和报价交付仍不等于完整 Context 历史。后续可依据试玩中的一次性意图遗忘、批量生存预览与等待表达性选择体验切片，或另定第三游戏/Gym 二期目标；尚未裁决，不自动扩展当前 Goal。具体重开条件只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。
+**当前焦点**：[角色跟随设计](docs/design/character-following.md)已完成独立审阅与交叉质询，尚未修改功能代码。用户已认可两/三角色主动集合、持续同行、到点解散工作与重新集合；没有兼容包袱。下一步按文档实施 ResourceCycle 的领域、Context、持久化、Console/LLM 与三人入口闭环，以同步移动、提醒唤醒、逐实体到达中间恢复和真实试玩验收；不先提取通用队伍模块。
+
+[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。两游戏实际共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存，保留各自强类型观察、规则和独立发布根；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 已验证经济、社交/交易、owner 预测与真实恢复/分叉；有界交互和报价交付仍不等于完整 Context 历史。试玩后的其他体验切片、第三游戏与 Gym 二期尚未裁决；具体重开条件只在[工作计划](docs/codex-goals/microtown/work-plan.md)维护。
 
 [角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
