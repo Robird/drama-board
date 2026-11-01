@@ -24,7 +24,7 @@ public sealed class ExpeditionTests {
             Assert.Equal(CycleActions.Check(initial.World, "a", CycleCommand.Gather("does-not-exist")),
                 CycleActions.Check(initial.World, "a", CycleCommand.Gather(remote.Id)));
         }
-        Assert.DoesNotContain("山脚公路", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(CycleExpeditionMap.GetPlace("road").Name, serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("巡山信号站", serialized, StringComparison.Ordinal);
         Assert.NotNull(CycleActions.Check(initial.World, "a", CycleCommand.Go(Passage("ravine", "road"))));
         Assert.Null(CycleActions.Check(initial.World, "a", CycleCommand.Go(Passage("camp", "stream"))));
@@ -72,7 +72,7 @@ public sealed class ExpeditionTests {
         await Advance(kernel);
         await StepWorldEvent(kernel);
         CycleObservation observation = CycleDecisionContext.Observe(kernel.World, "a");
-        Assert.Equal(new CycleJourneyObservation("溪流湾", "trail-1", "沿林间缓坡向上", "迷途营地"), observation.Journey);
+        Assert.Equal(new CycleJourneyObservation("溪流湾", "trail-1", "沿林间缓坡向上", CycleExpeditionMap.GetPlace("camp").Name), observation.Journey);
         Assert.Equal(Hour(12), observation.ArrivalDue);
     }
 
@@ -101,25 +101,22 @@ public sealed class ExpeditionTests {
     [Theory]
     [InlineData("camp,stream,ravine,road", "road")]
     [InlineData("camp,ridge,cabin,signal", "signal")]
-    public async Task Both_routes_reach_an_exit_and_terminal_world_stops_without_more_input(string passages, string destination) {
+    public async Task Former_exit_routes_remain_active_and_allow_return_travel(string passages, string destination) {
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
         string[] places = passages.Split(',');
-        var source = Commands(places.Zip(places.Skip(1), (from, to) => CycleCommand.Go(Passage(from, to))).ToArray());
+        var source = Commands(places.Zip(places.Skip(1), (from, to) => CycleCommand.Go(Passage(from, to)))
+            .Append(CycleCommand.Go(Passage(places[^1], places[^2]))).ToArray());
         var history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var kernel = CycleEngine.CreateKernel(history, characterController: source);
-        await AdvanceUntil(kernel, world => !world.GetCharacter("a").IsActive);
-        Assert.Equal(CycleExpeditionOutcome.Escaped, kernel.World.GetCharacter("a").Ending!.Outcome);
-        Assert.Equal(destination, Assert.IsType<AtPlaceLocation>(kernel.World.GetCharacter("a").Ending!.Location).PlaceId.Value);
-        Assert.Empty(kernel.World.Expedition!.Spatial.Entities);
-        Assert.Equal(CycleExpeditionSummary.AllEscaped, kernel.World.ExpeditionSummary);
-        Assert.False(string.IsNullOrWhiteSpace(kernel.World.GetCharacter("a").Ending!.Reason));
+        await AdvanceUntil(kernel, world => CycleActions.CurrentPlace(world, "a") == destination);
+        Assert.Null(kernel.World.GetCharacter("a").Ending);
+        Assert.Single(kernel.World.Expedition!.Spatial.Entities);
+        Assert.Equal(CycleExpeditionSummary.Exploring, kernel.World.ExpeditionSummary);
         Assert.Equal(3, source.Calls);
-        string terminal = kernel.World.DescribeState();
-        KernelCursor cursor = kernel.Cursor;
-        Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Hour(240)));
-        Assert.Equal(terminal, kernel.World.DescribeState());
-        Assert.Equal(cursor, kernel.Cursor);
-        Assert.Equal(3, source.Calls);
+        await AdvanceUntil(kernel, world => CycleActions.CurrentPlace(world, "a") == places[^2]);
+        Assert.True(kernel.World.GetCharacter("a").IsActive);
+        Assert.Equal(4, source.Calls);
+        Assert.Contains(kernel.World.Expedition.Visits, visit => visit.PlaceId == destination);
     }
 
     [Fact]
@@ -187,7 +184,7 @@ public sealed class ExpeditionTests {
     }
 
     [Fact]
-    public async Task Incremental_and_full_expedition_traces_agree_through_gathering_night_and_escape() {
+    public async Task Incremental_and_full_expedition_traces_agree_through_gathering_night_and_road_arrival() {
         static StubCharacterController Driver() => Commands(CycleCommand.Go(Passage("camp", "stream")),
             CycleCommand.Gather("berries", 2), CycleCommand.Wait(1), CycleCommand.Go(Passage("stream", "ravine")),
             CycleCommand.Go(Passage("ravine", "road")));
@@ -197,7 +194,7 @@ public sealed class ExpeditionTests {
             PredictionMode.Incremental, characterController: Driver());
         var full = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(second.World, second.Cursor),
             PredictionMode.Full, characterController: Driver());
-        for (int steps = 0; incremental.World.GetCharacter("a").IsActive; steps++) {
+        for (int steps = 0; CycleActions.CurrentPlace(incremental.World, "a") != "road"; steps++) {
             Assert.True(steps < 100);
             await Advance(incremental);
             await Advance(full);
@@ -208,7 +205,8 @@ public sealed class ExpeditionTests {
             Assert.Equal(Describe(full.LastCompletion!.Event), Describe(incremental.LastCompletion!.Event));
             AssertSpatialFacts(full.LastCompletion.Event, incremental.LastCompletion.Event);
         }
-        Assert.Equal(CycleExpeditionOutcome.Escaped, full.World.GetCharacter("a").Ending!.Outcome);
+        Assert.Null(full.World.GetCharacter("a").Ending);
+        Assert.Equal("road", CycleActions.CurrentPlace(full.World, "a"));
         Assert.Equal(2, full.World.GetCharacter("a").Backpack.Count("item.food"));
     }
 
@@ -225,7 +223,7 @@ public sealed class ExpeditionTests {
             characterController: Driver());
         do { await Advance(baseline); }
         while (Assert.Single(baseline.LastCompletion!.Event.Facts).Kind != stopAt ||
-            exitArrival && baseline.World.GetCharacter("a").Ending?.Outcome != CycleExpeditionOutcome.Escaped);
+            exitArrival && CycleActions.CurrentPlace(baseline.World, "a") != "road");
         string beforeCrash;
         KernelCursor cursorBeforeCrash;
         int callsBeforeCrash;
@@ -267,7 +265,8 @@ public sealed class ExpeditionTests {
             Assert.Same(reopened.State, recovered.World);
             Assert.Same(recovered.World.Expedition!.Spatial, recovered.World.Spatial!.Business);
             Assert.Equal(exitArrival ? 4 : stopAt == CycleEventKind.MoveStarted ? 1 : 2, recovered.World.Expedition.Visits.Count);
-            Assert.Equal(exitArrival ? CycleExpeditionOutcome.Escaped : (CycleExpeditionOutcome?)null, recovered.World.GetCharacter("a").Ending?.Outcome);
+            Assert.Null(recovered.World.GetCharacter("a").Ending);
+            if (exitArrival) { Assert.Equal("road", CycleActions.CurrentPlace(recovered.World, "a")); }
             finalText = recovered.World.DescribeState();
             finalCursor = recovered.Cursor;
         }
@@ -325,7 +324,7 @@ public sealed class ExpeditionTests {
         public void CommitEvent(OccurrenceEvent<CycleFact> occurrence) {
             inner.CommitEvent(occurrence);
             if (occurrence.Facts.Any(fact => fact.Kind == stopAt &&
-                (!exitArrival || fact.ChangedCharacters.Any(actor => actor.Ending?.Outcome == CycleExpeditionOutcome.Escaped)))) { throw new InjectedCrash(); }
+                (!exitArrival || fact.Visits.Any(visit => visit.ActorId == "a" && visit.PlaceId == "road")))) { throw new InjectedCrash(); }
         }
         public void CommitState(CycleWorld state, KernelCursor cursor) => inner.CommitState(state, cursor);
     }

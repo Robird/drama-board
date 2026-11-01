@@ -319,14 +319,11 @@ internal static class CycleFactApplication {
             if (!prior.IsActive) { throw new InvalidOperationException("A retired character cannot be changed by later gameplay."); }
             if (changed.Ending is not { } ending) { continue; }
             if (business.Expedition is null || ending.At != fact.At || fact.Kind != CycleEventKind.WeatherResolved && changed.Id != fact.ActorId ||
-                (ending.Outcome == CycleExpeditionOutcome.Escaped ? fact.Kind != CycleEventKind.MoveArrived :
-                    ending.Outcome != CycleExpeditionOutcome.Dead || fact.Kind is not (CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved))) {
+                ending.Outcome != CycleExpeditionOutcome.Dead || fact.Kind is not (CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved)) {
                 throw new InvalidOperationException("A personal ending must match its cause and boundary.");
             }
             SpatialLocation beforeLocation = business.Expedition.Spatial.Entities.Single(e => e.Id.Value == changed.Id).Location;
-            SpatialLocation expected = ending.Outcome == CycleExpeditionOutcome.Escaped && beforeLocation is TraversingLocation traversal
-                ? new AtPlaceLocation(traversal.TargetPlaceId) : beforeLocation;
-            if (!expected.Equals(ending.Location)) { throw new InvalidOperationException("The ending must retain the exact historical endpoint."); }
+            if (!beforeLocation.Equals(ending.Location)) { throw new InvalidOperationException("The ending must retain the exact historical endpoint."); }
             endingIds.Add(changed.Id);
         }
         int index = 0;

@@ -7,10 +7,14 @@ namespace DramaBoard.ResourceCycle.Tests;
 
 public sealed class MulticharacterContextTests {
     [Fact]
-    public async Task Personal_escape_freezes_its_observation_while_distant_partner_keeps_living() {
+    public async Task Personal_death_freezes_its_observation_while_distant_partner_keeps_living() {
         CycleWorld initial = World("ravine", "stream");
+        CycleCharacter mortal = initial.GetCharacter("a").WithSurvival(new(Hour(8), 100 * CycleSurvival.Scale,
+            24 * CycleSurvival.Scale, 100 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate,
+            CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2));
+        initial = CycleEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [mortal]), initial.Time);
         var source = new Controller(context => context.Observation.Actor.Id == "a"
-            ? CycleCommand.Go("trail-4") : CycleCommand.Wait(4));
+            ? CycleCommand.Wait(3) : CycleCommand.Wait(4));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
         await Reach(kernel, world => !world.GetCharacter("a").IsActive);
         Assert.Equal(Hour(11), kernel.World.Time);
@@ -19,8 +23,8 @@ public sealed class MulticharacterContextTests {
         CycleObservation frozen = ended.LatestObservation;
         string fingerprint = MaterialSnapshot(frozen);
         Assert.Equal(CharacterContextStatus.Terminal, ended.Status);
-        Assert.Equal(CycleExpeditionOutcome.Escaped, frozen.Outcome);
-        Assert.Equal("road", frozen.PlaceId);
+        Assert.Equal(CycleExpeditionOutcome.Dead, frozen.Outcome);
+        Assert.Equal("ravine", frozen.PlaceId);
         Assert.Equal(Hour(11), frozen.Time);
         Assert.Equal(0, frozen.Survival!.FoodPerHour);
         Assert.Null(CycleActions.CurrentPlace(kernel.World, "a"));

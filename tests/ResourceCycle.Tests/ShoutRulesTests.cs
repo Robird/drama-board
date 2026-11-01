@@ -95,8 +95,10 @@ public sealed class ShoutRulesTests {
 
     [Fact]
     public async Task Retired_character_is_not_a_listener() {
-        CycleWorld initial = FollowingRulesTests.World(places: ["camp", "ravine", "ridge"], waiting: [3, 0, 4]);
-        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Go("trail-4"), CycleCommand.Shout("有人吗")));
+        var fatal = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 0, 100 * CycleSurvival.Scale,
+            Rate(0), CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
+        CycleWorld initial = FollowingRulesTests.World(places: ["camp", "camp", "ridge"], waiting: [3, 4, 4], bodies: [null, fatal, null]);
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Shout("有人吗")));
         for (int step = 0; step < 20; step++) {
             await StepWorldEvent(kernel);
             if (kernel.LastCompletion!.Event.Facts.Any(fact => fact.Kind == CycleEventKind.SpeechShouted)) { break; }
@@ -104,7 +106,7 @@ public sealed class ShoutRulesTests {
         CycleFact shout = Assert.Single(kernel.LastCompletion!.Event.Facts);
         Assert.Equal(CycleEventKind.SpeechShouted, shout.Kind);
         Assert.Single(shout.ChangedCharacters);
-        Assert.Equal(CycleExpeditionOutcome.Escaped, kernel.World.GetCharacter("b").Ending!.Outcome);
+        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("b").Ending!.Outcome);
         Assert.Equal(CharacterContextStatus.Terminal, kernel.World.Business.InteractionStates["b"].CurrentContext!.Status);
         Assert.False(kernel.World.GetCharacter("b").Communication.AttentionPending);
         Assert.DoesNotContain(shout.ObservedEvents, entry => entry.ObserverId == "b");

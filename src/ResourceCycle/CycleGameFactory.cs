@@ -10,7 +10,23 @@ namespace DramaBoard.ResourceCycle;
 /// invocation. Supplied entity instances are retained, not cloned; callers must not mutate
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
-    /// <summary>Creates a fixed, revision-bound mountain scenario with one to three explorers and no revealed distant truth.</summary>
+    /// <summary>Creates Hillside residents in one continuous town-and-mountain world, without revealing distant places.</summary>
+    public static (CycleWorld World, KernelCursor Cursor) CreateLivingWorld(ModelTime? start = null, int characterCount = 3,
+        bool enableNeeds = true, bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed) {
+        ModelTime time = start ?? new ModelTime(LivingWorldContent.StartingTicks);
+        CycleCharacter[] characters = LivingWorldContent.CreateCharacters(time, characterCount, enableNeeds);
+        CycleResource[] resources = LivingWorldContent.CreateResources();
+        GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph,
+            characters.Select(c => new EntityPlacement(new(c.Id), new(LivingWorldContent.StartingPlace))));
+        var expedition = new CycleExpedition(CycleExpeditionMap.ScenarioId, spatial,
+            characters.Select(c => new CycleVisit(c.Id, LivingWorldContent.StartingPlace, time, [])),
+            environment: enableNeeds && enableWeather ? new(weatherSeed, 0,
+                time.Ticks > long.MaxValue - CycleEnvironmentRules.IntervalTicks ? null : new(time.Ticks + CycleEnvironmentRules.IntervalTicks)) : null);
+        return Prepare(new(time, new(CycleTime.IsDay(time), CycleTime.NextLightChange(time)), resources,
+            new([]), characters, expedition: expedition));
+    }
+
+    /// <summary>Legacy test setup with scarce supplies on the same Hillside map; reaching a former exit does not retire a character.</summary>
     public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true,
         bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed, int characterCount = 1) {
         if (characterCount is < 1 or > 3) { throw new ArgumentOutOfRangeException(nameof(characterCount)); }

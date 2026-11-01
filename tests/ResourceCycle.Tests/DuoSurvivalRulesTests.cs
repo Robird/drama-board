@@ -7,27 +7,30 @@ namespace DramaBoard.ResourceCycle.Tests;
 
 public sealed class DuoSurvivalRulesTests {
     [Fact]
-    public async Task Escaped_character_is_frozen_while_partner_continues_and_escapes_through_another_exit() {
-        CycleWorld initial = World("ravine", "cabin", waitingB: 12);
-        var controller = new StubCharacterController((_, actor) => CycleCommand.Go(actor == "a" ? "trail-4" : "trail-6"));
+    public async Task Dead_character_is_frozen_while_partner_continues_until_its_own_death() {
+        CycleSurvival Needs(int water, bool sheltered) => new(Hour(8), 100 * CycleSurvival.Scale,
+            water * CycleSurvival.Scale, 60 * CycleSurvival.Scale, Rate(0), CycleSurvivalRules.WaterRate,
+            CycleSurvivalRules.WarmthRate(sheltered, true), warnedMask: 2);
+        CycleWorld initial = World("ravine", "cabin", waitingB: 12, aNeeds: Needs(8, false), bNeeds: Needs(24, true));
+        var controller = Commands(CycleCommand.Go("trail-4"));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: controller);
         await UntilState(kernel, world => !world.GetCharacter("a").IsActive);
         CycleCharacter escaped = kernel.World.GetCharacter("a");
         CharacterContext terminal = kernel.World.Business.InteractionStates["a"].CurrentContext!;
-        Assert.Equal(CycleExpeditionOutcome.Escaped, escaped.Ending!.Outcome);
-        Assert.Equal(Hour(11), escaped.Ending.At);
+        Assert.Equal(CycleExpeditionOutcome.Dead, escaped.Ending!.Outcome);
+        Assert.Equal(Hour(9), escaped.Ending.At);
         Assert.Equal(CycleExpeditionSummary.Exploring, kernel.World.ExpeditionSummary);
         Assert.False(kernel.World.Expedition!.Spatial.TryGetEntity(new("a"), out _));
         Assert.DoesNotContain(kernel.World.Forecasts.Predictions, p => p.OwnerId.StartsWith("actor:a:", StringComparison.Ordinal));
 
         await UntilState(kernel, world => world.ExpeditionSummary != CycleExpeditionSummary.Exploring);
-        Assert.Equal(CycleExpeditionSummary.AllEscaped, kernel.World.ExpeditionSummary);
-        Assert.Equal(Hour(23), kernel.World.Time);
-        Assert.Equal("signal", Assert.IsType<AtPlaceLocation>(kernel.World.GetCharacter("b").Ending!.Location).PlaceId.Value);
+        Assert.Equal(CycleExpeditionSummary.NoneEscaped, kernel.World.ExpeditionSummary);
+        Assert.Equal(Hour(11), kernel.World.Time);
+        Assert.Equal("cabin", Assert.IsType<AtPlaceLocation>(kernel.World.GetCharacter("b").Ending!.Location).PlaceId.Value);
         Assert.Same(escaped, kernel.World.GetCharacter("a"));
         Assert.Same(terminal, kernel.World.Business.InteractionStates["a"].CurrentContext);
         Assert.Equal(escaped.Survival!.WaterUnits, escaped.Survival.Project(Hour(100)).WaterUnits);
-        Assert.Equal(2, controller.Calls);
+        Assert.Equal(1, controller.Calls);
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Hour(24)));
     }
 
@@ -123,15 +126,18 @@ public sealed class DuoSurvivalRulesTests {
     }
 
     [Fact]
-    public async Task Escaped_and_dead_characters_produce_partial_joint_outcome() {
+    public async Task Road_arrival_keeps_character_active_when_distant_partner_dies() {
         CycleWorld initial = World("ravine", "cabin", waitingB: 12,
             bNeeds: new(Hour(8), 100 * CycleSurvival.Scale, 32 * CycleSurvival.Scale, 60 * CycleSurvival.Scale,
                 Rate(0), CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(true, true)));
-        var controller = new StubCharacterController((_, actor) => actor == "a" ? CycleCommand.Go("trail-4") : CycleCommand.Continue());
+        var controller = new StubCharacterController((observation, actor) => actor == "a"
+            ? observation.PlaceId == "ravine" ? CycleCommand.Go("trail-4") : CycleCommand.Wait(4)
+            : CycleCommand.Continue());
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: controller);
-        await UntilState(kernel, world => world.ExpeditionSummary != CycleExpeditionSummary.Exploring);
-        Assert.Equal(CycleExpeditionSummary.PartiallyEscaped, kernel.World.ExpeditionSummary);
-        Assert.Equal(CycleExpeditionOutcome.Escaped, kernel.World.GetCharacter("a").Ending!.Outcome);
+        await UntilState(kernel, world => !world.GetCharacter("b").IsActive);
+        Assert.Equal(CycleExpeditionSummary.Exploring, kernel.World.ExpeditionSummary);
+        Assert.Null(kernel.World.GetCharacter("a").Ending);
+        Assert.Equal("road", CycleActions.CurrentPlace(kernel.World, "a"));
         Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("b").Ending!.Outcome);
         Assert.Equal(Hour(12), kernel.World.Time);
     }

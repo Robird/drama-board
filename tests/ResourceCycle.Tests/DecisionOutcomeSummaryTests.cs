@@ -108,7 +108,7 @@ public sealed class DecisionOutcomeSummaryTests {
         Assert.Null(opening.Observation.PlaceId);
         Assert.Equal(Assert.Single(knownAtAcceptance.Passages, p => p.Id == route).Description, opening.PreviousAdvance!.Description);
         Assert.Equal(knownAtAcceptance.PlaceName, opening.PreviousAdvance.OriginPlaceName);
-        Assert.DoesNotContain("山脚公路", opening.PreviousAdvance.Description);
+        Assert.DoesNotContain(CycleExpeditionMap.GetPlace("road").Name, opening.PreviousAdvance.Description);
         Assert.Contains(opening.Experiences, e => e.Event.Kind == CycleObservedEventKind.SurvivalWarning);
         Assert.Equal("call_fixture_1", opening.PreviousAdvance.ToolCallId);
         Assert.Equal(Hour(8), opening.PreviousAdvance.AcceptedAt);

@@ -40,21 +40,19 @@ public sealed class DuoHostTests {
     }
 
     [Fact]
-    public void Duo_has_explicit_human_and_mixed_modes() {
-        Assert.Equal(2, Options.Parse(["--duo"]).CharacterCount);
-        Assert.True(Options.Parse(["--duo"]).Survival);
-        Assert.Null(Options.Parse(["--duo"]).Llm);
-        Assert.NotNull(Options.Parse(["--duo", "--llm"]).Llm);
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--play"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--survival"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--trace"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--characters", "2"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--characters", "3"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--survival", "--characters", "4"]));
-        Assert.Throws<ArgumentException>(() => Options.Parse(["--play", "--characters", "3"]));
-        Assert.Null(Options.Parse(["--survival"]).CharacterCount);
-        Assert.Equal(3, Options.Parse(["--survival", "--characters", "3"]).CharacterCount);
-        Assert.Equal(1, Options.Parse(["--survival", "--characters", "1"]).CharacterCount);
+    public void Living_world_has_one_entry_with_explicit_optional_human_binding() {
+        Assert.Null(Options.Parse([]).Llm);
+        Assert.Null(Options.Parse([]).CharacterCount);
+        Assert.Equal(2, Options.Parse(["--characters", "2"]).CharacterCount);
+        Assert.Equal(3, Options.Parse(["--characters", "3"]).CharacterCount);
+        Assert.Equal(1, Options.Parse(["--characters", "1"]).CharacterCount);
+        Assert.Null(Options.Parse(["--llm"]).Llm!.HumanActor);
+        Assert.Equal("b", Options.Parse(["--llm", "--human", "b"]).Llm!.HumanActor);
+        foreach (string oldMode in new[] { "--play", "--survival", "--duo", "--trace", "--full-recompute" }) {
+            Assert.Throws<ArgumentException>(() => Options.Parse([oldMode]));
+        }
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--characters", "4"]));
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--human", "a"]));
     }
 
     [Fact]
@@ -63,7 +61,7 @@ public sealed class DuoHostTests {
         var client = new Client("handoff model-private");
         using var output = new StringWriter();
         using var input = new StringReader("wait 10\n");
-        LlmHostOptions options = files.Options() with { MaxCalls = 2, Gym = true };
+        LlmHostOptions options = files.Options() with { MaxCalls = 2, Gym = true, HumanActor = "a" };
         Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client,
             characterCount: 3, inputReader: input));
         Assert.Equal(2, client.Requests.Count);
@@ -89,12 +87,16 @@ public sealed class DuoHostTests {
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 3);
         using (var save = CycleDurableHistory.Create(files.Store, initial.World, initial.Cursor)) { }
         using var output = new StringWriter();
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true,
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default,
             inputReader: new StringReader(""), outputWriter: output));
-        Assert.Contains("3 人山林求生", output.ToString());
+        Assert.Contains("山野镇", output.ToString());
+        using (var restored = CycleDurableHistory.Open(files.Store)) {
+            Assert.Equal(3, restored.State.Characters.Count);
+            Assert.Equal(CycleExpeditionMap.ScenarioId, restored.State.Expedition!.ScenarioId);
+        }
         using var mixedOutput = new StringWriter();
         Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with {
-            AuthFile = Path.Combine(files.Root, "missing-auth.json")
+            HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json")
         }, default, mixedOutput, inputReader: new StringReader("")));
         Assert.Contains("a = Human，b = LLM，c = LLM", mixedOutput.ToString());
         Assert.DoesNotContain("credential/", mixedOutput.ToString());
@@ -106,14 +108,15 @@ public sealed class DuoHostTests {
         var client = new Client("handoff model-private");
         using var output = new StringWriter();
         using var input = new StringReader("handoff human-private\nwait 1\n");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, client, characterCount: 2, inputReader: input));
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a" }, default, output, client, characterCount: 2, inputReader: input));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(client.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.DoesNotContain("human-private", material);
         Assert.DoesNotContain("Console 输入", material);
+        Assert.DoesNotContain("model-private", output.ToString());
         using var saved = CycleDurableHistory.Open(files.Store);
         Assert.Equal("human-private", saved.State.Business.InteractionStates["a"].PendingAdvance!.Handoff);
         Assert.Equal("model-private", saved.State.Business.InteractionStates["b"].DraftHandoff);
-        Assert.Equal(15 * CycleTime.Hour, saved.State.Time.Ticks);
+        Assert.Equal(8 * CycleTime.Hour, saved.State.Time.Ticks);
         using var journal = CycleOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
         Assert.Equal(2, journal.Entries.Count(entry => entry.Received.ActorId == "a"));
         Assert.Single(journal.Entries, entry => entry.Received.ActorId == "b");
@@ -126,7 +129,7 @@ public sealed class DuoHostTests {
         using var files = new Files();
         using var input = new StringReader("");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { AuthFile = Path.Combine(files.Root, "missing-auth.json") },
+        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json") },
             default, output, characterCount: 2, inputReader: input));
         Assert.Contains("human-session-ended", output.ToString());
         Assert.DoesNotContain("credential/", output.ToString());
@@ -145,7 +148,7 @@ public sealed class DuoHostTests {
         using (var save = CycleDurableHistory.Create(files.Store, opened, cursor)) { save.CommitEvent(kernel.LastCompletion!.Event); }
         Dictionary<string, byte[]> before = Directory.GetFiles(files.Store, "*", SearchOption.AllDirectories)
             .ToDictionary(path => path, File.ReadAllBytes);
-        await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: new StringWriter(), characterCount: 1));
+        await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default, inputReader: new StringReader(""), outputWriter: new StringWriter(), characterCount: 1));
         await Assert.ThrowsAsync<ArgumentException>(() => LlmConsole.RunAsync(files.Store, files.Options(), default, new StringWriter(), new Client("wait 1"), characterCount: 1));
         Assert.Equal(before.Keys.Order(), Directory.GetFiles(files.Store, "*", SearchOption.AllDirectories).Order());
         foreach (var pair in before) { Assert.Equal(pair.Value, File.ReadAllBytes(pair.Key)); }
@@ -155,42 +158,71 @@ public sealed class DuoHostTests {
     }
 
     [Fact]
-    public async Task Shared_human_console_continues_after_a_escapes_and_prints_one_global_summary_only_at_all_ended() {
+    public async Task Shared_human_console_reaches_town_and_can_continue_after_cold_open() {
         using var files = new Files();
-        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 2);
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 1);
         using (var save = CycleDurableHistory.Create(files.Store, initial.World, initial.Cursor)) { }
         using var output = new StringWriter();
-        using var input = new StringReader("go trail-1\nwait 10\ngo trail-3\ngo trail-4\ngo trail-1\ngo trail-3\ngo trail-4\n");
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: input, outputWriter: output, characterCount: 2));
+        using var input = new StringReader("go trail-1\ngo trail-3\ngo trail-4\n");
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, inputReader: input, outputWriter: output));
+        ModelTime arrival;
         using (var final = CycleDurableHistory.Open(files.Store)) {
-            Assert.All(final.State.Characters, actor => Assert.Equal(CycleExpeditionOutcome.Escaped, actor.Ending?.Outcome));
-            Assert.True(final.State.GetCharacter("a").Ending!.At < final.State.GetCharacter("b").Ending!.At);
+            Assert.Equal("road", CycleActions.CurrentPlace(final.State, "a"));
+            Assert.True(final.State.GetCharacter("a").IsActive);
+            Assert.Null(final.State.GetCharacter("a").Ending);
+            arrival = final.State.Time;
         }
-        string text = output.ToString();
-        Assert.Equal(1, text.Split("宿主全局总结").Length - 1);
-        Assert.Contains("全部获救", text);
+        Assert.DoesNotContain("宿主全局总结", output.ToString());
         using var reopenedOutput = new StringWriter();
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: reopenedOutput, characterCount: 2));
-        Assert.DoesNotContain("[Console 输入]", reopenedOutput.ToString());
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, inputReader: new StringReader("wait 1\n"), outputWriter: reopenedOutput));
+        Assert.Contains("[Console 输入] a>", reopenedOutput.ToString());
+        using var reopened = CycleDurableHistory.Open(files.Store);
+        Assert.True(reopened.State.Time > arrival);
+        Assert.True(reopened.State.GetCharacter("a").IsActive);
+        Assert.DoesNotContain("宿主全局总结", reopenedOutput.ToString());
     }
 
     [Fact]
-    public async Task Ended_llm_character_is_not_bound_and_human_continues_after_cold_open() {
+    public async Task Dead_llm_character_is_not_called_and_human_continues_after_cold_open() {
         using var files = new Files();
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 2);
-        var route = new Queue<string>(["go trail-1", "go trail-3", "go trail-4"]);
-        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
-            characterController: new Commands(actor => actor == "a" ? "wait 10" : route.Dequeue()));
+        var dying = new CycleCharacter("b", "阿白", survival: CycleSurvival.Create(initial.World.Time, food: 1));
+        var business = initial.World.Business.Replace(initial.World.Time, changedCharacters: [dying]);
+        var world = CycleEngine.Rebuild(business, business.Time);
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(world, initial.Cursor),
+            characterController: new Commands(_ => "wait 10"));
         for (int index = 0; kernel.World.GetCharacter("b").IsActive && index < 100; index++) { await Step(kernel); }
-        Assert.False(kernel.World.GetCharacter("b").IsActive);
+        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("b").Ending?.Outcome);
+        Assert.True(kernel.World.GetCharacter("a").IsActive);
         using (var save = CycleDurableHistory.Create(files.Store, kernel.World, kernel.Cursor)) { }
-        using var input = new StringReader("");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { AuthFile = Path.Combine(files.Root, "missing-auth.json") },
-            default, output, characterCount: 2, inputReader: input));
+        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json") },
+            default, output, characterCount: 2, inputReader: new StringReader("")));
         Assert.Contains("[Console 输入] a>", output.ToString());
         Assert.DoesNotContain("宿主全局总结", output.ToString());
         Assert.DoesNotContain("credential/", output.ToString());
+    }
+
+    [Fact]
+    public async Task All_dead_residents_produce_one_host_summary_without_prompting_after_cold_open() {
+        using var files = new Files();
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 2);
+        var dying = initial.World.Characters.Select(actor => new CycleCharacter(actor.Id, actor.Name,
+            survival: CycleSurvival.Create(initial.World.Time, food: 1))).ToArray();
+        var business = initial.World.Business.Replace(initial.World.Time, changedCharacters: dying);
+        var world = CycleEngine.Rebuild(business, business.Time);
+        var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(world, initial.Cursor),
+            characterController: new Commands(_ => "wait 10"));
+        for (int index = 0; kernel.World.Characters.Any(actor => actor.IsActive) && index < 100; index++) { await Step(kernel); }
+        Assert.All(kernel.World.Characters, actor => Assert.Equal(CycleExpeditionOutcome.Dead, actor.Ending?.Outcome));
+        using (var save = CycleDurableHistory.Create(files.Store, kernel.World, kernel.Cursor)) { }
+        for (int run = 0; run < 2; run++) {
+            using var output = new StringWriter();
+            Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default,
+                inputReader: new StringReader(""), outputWriter: output));
+            Assert.Equal(1, output.ToString().Split("宿主全局总结").Length - 1);
+            Assert.DoesNotContain("[Console 输入]", output.ToString());
+        }
     }
 
     private static async Task Step(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) =>

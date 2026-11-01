@@ -62,9 +62,8 @@ public sealed partial class CycleExpedition : IDurableObject {
         }
         foreach (CycleCharacter actor in business.Characters) {
             if (actor.Ending is { } ending) {
-                if (Spatial.TryGetEntity(new(actor.Id), out _) ||
-                    ending.Outcome == CycleExpeditionOutcome.Escaped && (ending.Location is not AtPlaceLocation exit || !CycleExpeditionMap.GetPlace(exit.PlaceId.Value).IsExit)) {
-                    throw new InvalidOperationException("Ended participants must be retired; escape requires an exit.");
+                if (Spatial.TryGetEntity(new(actor.Id), out _) || ending.Outcome != CycleExpeditionOutcome.Dead) {
+                    throw new InvalidOperationException("Only deceased residents may be retired from the living world.");
                 }
                 if (ending.Location is AtPlaceLocation endedPlace) { _ = CycleExpeditionMap.GetPlace(endedPlace.PlaceId.Value); }
                 else if (ending.Location is TraversingLocation movement) {

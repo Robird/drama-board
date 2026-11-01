@@ -10,25 +10,25 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 public sealed class GymCommandsTests {
     [Theory]
     [InlineData("--gym")]
-    [InlineData("--survival", "--llm", "--feedback")]
-    [InlineData("--survival", "--store", "somewhere", "--gym")]
+    [InlineData("--llm", "--feedback")]
+    [InlineData("--store", "somewhere", "--gym")]
     [InlineData("--branch", "01000000")]
     [InlineData("--store", "somewhere", "--branch", "not-an-id")]
     [InlineData("--branches")]
-    [InlineData("--store", "somewhere", "--branches", "--survival")]
+    [InlineData("--store", "somewhere", "--branches", "--llm")]
     [InlineData("--store", "somewhere", "--branches", "--gym-feedbacks")]
     [InlineData("--store", "somewhere", "--gym-export", "out.md")]
     [InlineData("--store", "somewhere", "--gym-feedbacks", "--model", "anything")]
     [InlineData("--store", "somewhere", "--gym-fork", "feedback")]
     [InlineData("--store", "somewhere", "--gym-fork-request", "request", "--fork-label", "label", "--actor", "a")]
-    [InlineData("--survival", "--actor", "a")]
+    [InlineData("--actor", "a")]
     [InlineData("--store", "somewhere", "--fork-label", "orphan")]
     public void Options_reject_ambiguous_or_unbacked_modes(params string[] args) =>
         Assert.Throws<ArgumentException>(() => Options.Parse(args));
 
     [Fact]
     public void Feedback_implies_recording_and_branch_passes_to_model_host() {
-        Options options = Options.Parse(["--duo", "--llm", "--store", "game", "--feedback", "--branch", "01000000"]);
+        Options options = Options.Parse(["--characters", "2", "--llm", "--store", "game", "--feedback", "--branch", "01000000"]);
         Assert.True(options.Llm!.Gym);
         Assert.True(options.Llm.Feedback);
         Assert.Equal(options.Branch, options.Llm.Branch);

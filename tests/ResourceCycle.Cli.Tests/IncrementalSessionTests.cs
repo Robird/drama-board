@@ -178,7 +178,7 @@ public sealed class IncrementalSessionTests {
             controller.RenderCommitted(kernel.World);
         }
         string beforeLook = output.ToString();
-        Assert.Equal(1, Count(beforeLook, "# 山林求生"));
+        Assert.Equal(1, Count(beforeLook, "# 山野镇"));
         Assert.Contains("+45", beforeLook); // Initial water 45 becomes 90.
         Assert.Contains("-1", beforeLook);
         Assert.Contains("明天再走", beforeLook);
@@ -186,7 +186,7 @@ public sealed class IncrementalSessionTests {
         Assert.Contains("45", operations.Entries[0].Completed!.Result);
 
         await Assert.ThrowsAsync<PlayConsole.PlayEndedException>(() => kernel.StepAsync(new ModelTime(long.MaxValue)).AsTask());
-        Assert.Equal(2, Count(output.ToString(), "# 山林求生"));
+        Assert.Equal(2, Count(output.ToString(), "# 山野镇"));
         Assert.Equal(initial.World.Time, kernel.World.Time);
         Assert.Equal(1L, kernel.World.Business.InteractionStates["a"].CurrentContext!.ContextSequence);
     }

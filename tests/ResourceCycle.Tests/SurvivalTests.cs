@@ -188,20 +188,21 @@ public sealed class SurvivalTests {
     [InlineData(-1, false)]
     [InlineData(0, false)]
     [InlineData(1, true)]
-    public async Task Exit_is_safe_only_when_it_precedes_water_depletion_by_at_least_one_tick(long deathOffset, bool escaped) {
+    public async Task Former_exit_arrival_does_not_prevent_death_and_same_tick_depletion_still_wins(long deathOffset, bool arrived) {
         long duration = 3 * CycleTime.Hour;
         // Water changes by 8 fixed units per tick: death is exactly arrival + deathOffset.
         var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 8 * (duration + deathOffset),
             100 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
         CycleWorld initial = World(Hour(8), needs, place: "ravine");
-        var source = Commands(CycleCommand.Go(Passage("ravine", "road")));
+        var source = Commands(CycleCommand.Go(Passage("ravine", "road")), CycleCommand.Wait(1));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
         await AdvanceUntil(kernel, world => !world.GetCharacter("a").IsActive);
-        Assert.Equal(escaped ? CycleExpeditionOutcome.Escaped : CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("a").Ending!.Outcome);
-        Assert.Equal(new ModelTime(Hour(11).Ticks + (escaped ? 0 : deathOffset)), kernel.World.Time);
-        Assert.Equal(escaped ? 8 : 0, Body(kernel.World).WaterUnits);
-        Assert.Equal(escaped ? CycleEventKind.MoveArrived : CycleEventKind.SurvivalFailed, LastKind(kernel));
-        Assert.Equal(1, source.Calls);
+        Assert.Equal(CycleExpeditionOutcome.Dead, kernel.World.GetCharacter("a").Ending!.Outcome);
+        Assert.Equal(new ModelTime(Hour(11).Ticks + deathOffset), kernel.World.Time);
+        Assert.Equal(0, Body(kernel.World).WaterUnits);
+        Assert.Equal(CycleEventKind.SurvivalFailed, LastKind(kernel));
+        Assert.Equal(arrived, kernel.World.GetCharacter("a").Ending!.Location is AtPlaceLocation);
+        Assert.Equal(arrived ? 2 : 1, source.Calls);
         Assert.Equal(StepStatus.Exhausted, await kernel.StepAsync(Hour(24)));
     }
 

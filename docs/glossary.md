@@ -6,10 +6,11 @@
 
 ## 游戏与共享代码
 
-见[分层与组合](design/layering-and-composition.md)及实施中的[微型小镇里程碑](codex-goals/microtown/README.md)。以下是职责用语，不表示已有统一框架类型。
+见[分层与组合](design/layering-and-composition.md)及实施中的[连续生活世界](codex-goals/living-world/README.md)。以下是职责用语，不表示已有统一框架类型。
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
+| 山野镇（Hillside） | 正在融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 当前沿用 ResourceCycle 项目和 Cycle 类型；生产经济尚待从 Microtown 迁入，完成状态见专题工作计划。 |
 | 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | ResourceCycle 与 Microtown 各自拥有领域根和存档适配，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `CycleGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
 | 共享领域模块（Shared domain module） | 一项可复用能力的状态与局部规则；游戏组合协调跨模块变化并统一发布。 | Inventory 为现有实例；Goals 等后续提取按实际消费者验证，不把模块等同 ECS 组件。 |
@@ -167,7 +168,7 @@
 | 已消费交会（Consumed contact） | 指定当前运动段组合的交会已经处理，用来避免重复触发；这是发生过的历史，不能仅靠几何重建。 | `GraphSpatialState.ConsumedContacts`，与运行时 Contacts 预测缓存区分。 |
 | 到达（Arrival） | 结束通道运动段、进入目标地点的空间转换。与通道内交会不同。 | `TraversingLocation.ArrivalDue`、空间事实与规则；到达向上取整，交会采用现有 floor 语义，详见[交会时刻说明](worksets/passage-contact-floor.md)。 |
 
-ResourceCycle 的原 `--play` 采集场景保持单地点；`--survival` 探索场景使用 Spatial 的地点/通路/移动，并校验采集目标实际位于角色地点。移动中没有第二份游戏位置或到达期限。
+山野镇默认场景使用 Spatial 的地点/通路/移动，并校验采集目标实际位于角色地点。移动中没有第二份游戏位置或到达期限。原采集与逃生 CLI 模式已撤下；旧初始化工厂暂作为领域测试夹具保留。
 
 探索子图 `CycleExpedition` 保存场景身份、Spatial 业务状态、结局和按角色/地点的最近观察 `CycleVisit`。历史观察附时间，不等于远处资源的实时真相；观察记忆属于游戏状态，运行时 `CycleObservation` 是其投影。
 

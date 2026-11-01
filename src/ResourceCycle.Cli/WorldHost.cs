@@ -1,28 +1,28 @@
 using DramaBoard.ResourceCycle;
 
 /// <summary>Host-only scenario selection and controller bindings; never stored in the game graph.</summary>
-internal static class SurvivalHost {
-    public static void RequireMode(CycleWorld world, int? characterCount) {
+internal static class WorldHost {
+    public static void RequireWorld(CycleWorld world, int? characterCount) {
         int actual = world.Characters.Count;
         string[] expected = ["a", "b", "c"];
         if (world.Expedition is null || actual is < 1 or > 3 ||
             !world.Characters.Select(character => character.Id).Order(StringComparer.Ordinal).SequenceEqual(expected.Take(actual))) {
-            throw new ArgumentException("--survival 需要含 a / a、b / a、b、c 的生存存档。");
+            throw new ArgumentException("山野镇需要含 a / a、b / a、b、c 的连续世界存档。");
         }
         if (characterCount is { } selected && selected != actual) {
             throw new ArgumentException($"指定 --characters {selected} 与存档人数 {actual} 不符；省略人数可直接沿用存档。");
         }
     }
 
-    public static string Summary(CycleWorld world) => "宿主全局总结（角色材料之外）：" + (world.ExpeditionSummary switch {
-        CycleExpeditionSummary.AllEscaped => "全部获救",
-        CycleExpeditionSummary.PartiallyEscaped => "部分获救",
-        CycleExpeditionSummary.NoneEscaped => "无人获救",
-        _ => "仍在探索"
-    }) + "\n" + string.Join("\n", world.Characters.Select(character =>
-        $"{character.Id} · {character.Name}：" + (character.Ending is { } ending
-            ? $"{(ending.Outcome == CycleExpeditionOutcome.Escaped ? "已获救" : "已死亡")}（{ending.At}）"
-            : "仍在探索")));
+    public static void RequireBudget(DramaBoard.Kernel.Time.ModelTime current, DramaBoard.Kernel.Time.ModelTime? until, int maxSteps) {
+        if (maxSteps < 1) { throw new ArgumentOutOfRangeException(nameof(maxSteps)); }
+        if (until is { } limit && limit < current) { throw new ArgumentException("--until-hour 不能早于存档当前模拟时刻。"); }
+    }
+
+    public static string Summary(CycleWorld world) => "宿主全局总结（角色材料之外）：当前已无可行动居民，模拟停止。\n"
+        + string.Join("\n", world.Characters.Select(character => $"{character.Id} · {character.Name}："
+            + (character.Ending is { } ending ? $"已结束（{ending.At}）" : "仍在生活")));
+
 }
 
 internal sealed class CharacterControllerRouter(IReadOnlyDictionary<string, ICycleCharacterController> bindings) : ICycleCharacterController {

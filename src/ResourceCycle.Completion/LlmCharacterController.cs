@@ -3,12 +3,13 @@ using DramaBoard.CharacterControl.Completion;
 
 namespace DramaBoard.ResourceCycle.Completion;
 
-/// <summary>Supplies ResourceCycle policies and frozen materials to the shared model tool loop.</summary>
+/// <summary>Supplies Hillside policies and frozen materials to the shared model tool loop.</summary>
 /// <remarks>The game remains responsible for parsing, validation, effects and persistence.</remarks>
 public sealed class LlmCharacterController : ICycleCharacterController {
     public const string ToolName = LlmDecisionLoop.ToolName;
     public const string FeedbackToolName = LlmDecisionLoop.FeedbackToolName;
-    private const string PromptBody = "即时行动或拒绝之后仍可继续决策；耗时行动会放行世界。自由文本不会成为游戏对白、事实或持久记忆。"
+    private const string PromptBody = "你是山野镇的一位居民，在同一个连续世界里生活、交流、进山探索并返回。没有强制逃生终点；根据自己的处境和目标行动。"
+        + "即时行动或拒绝之后仍可继续决策；耗时行动会放行世界。自由文本不会成为游戏对白、事实或持久记忆。"
         + "注意当前身体危险、活动、最近结果和既有承诺，区分当前事实、历史成果、他人陈述和推测。危险需要取舍，不等于必须取消当前活动。"
         + "若界面提供同地同伴与交流行动，可用 say 沟通计划、用 give 分享补给；对方的话是署名陈述，不等于已经亲眼证实。"
         + "交流次数有限，收到交流无需取消原活动；按界面说明用 continue 确认后继续。"
@@ -27,7 +28,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "新通信改变你采纳的分工或承诺时，若草稿尚未覆盖，先更新一次 handoff：记明谁承诺何物、自己的下一步及待核实事项。"
         + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。";
 
-    private const string FollowingGuidance = "生存探索可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather 或 wait。"
+    private const string FollowingGuidance = "结伴出行可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather 或 wait。"
         + "领队普通 go 带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
         + "跟随者收到提醒仍需处理，可 use 补给后 continue 继续跟随；say / give 仍仅限同地，途中不能改变跟随关系。";
 

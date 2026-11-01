@@ -9,20 +9,20 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 
 public sealed class LlmHostTests {
     [Theory]
-    [InlineData("--llm")]
-    [InlineData("--survival", "--model", "x")]
-    [InlineData("--survival", "--llm", "--catalog", "x")]
-    [InlineData("--survival", "--llm", "--connection", "x")]
-    [InlineData("--survival", "--llm", "--max-calls", "0")]
-    [InlineData("--survival", "--llm", "--catalog", "x", "--connection", "a", "--auth-file", "y")]
-    public void Llm_options_require_explicit_mode_and_exact_catalog_selection(params string[] args) =>
+    [InlineData("--model", "x")]
+    [InlineData("--llm", "--catalog", "x")]
+    [InlineData("--llm", "--connection", "x")]
+    [InlineData("--llm", "--max-calls", "0")]
+    [InlineData("--llm", "--catalog", "x", "--connection", "a", "--auth-file", "y")]
+    [InlineData("--human", "a")]
+    public void Llm_options_require_model_mode_and_exact_catalog_selection(params string[] args) =>
         Assert.Throws<ArgumentException>(() => Options.Parse(args));
 
     [Fact]
     public void Default_codex_and_human_modes_remain_separate() {
-        Assert.Null(Options.Parse(["--survival"]).Llm);
-        Assert.Null(Options.Parse(["--play"]).Llm);
-        var llm = Options.Parse(["--survival", "--llm", "--model", "gpt-6.1-sol", "--max-calls", "7"]).Llm!;
+        Assert.Null(Options.Parse([]).Llm);
+        Assert.Null(Options.Parse(["--llm"]).Llm!.HumanActor);
+        var llm = Options.Parse(["--llm", "--model", "gpt-6.1-sol", "--max-calls", "7"]).Llm!;
         Assert.Equal("gpt-6.1-sol", llm.Model);
         Assert.Equal(7, llm.MaxCalls);
         Assert.Null(llm.Catalog);
@@ -123,7 +123,7 @@ public sealed class LlmHostTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task Pending_E_or_saved_S_is_recovered_and_receipt_repaired_before_next_model_input(bool saveState) {
-        using var files = new Files();
+        using var files = new Files(createStore: false);
         var initial = CycleGameFactory.CreateSurvival();
         var operation = new CycleControllerOperation("persisted-provider-id", "use item.water", "persisted-record-id");
         var memory = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
@@ -198,6 +198,14 @@ public sealed class LlmHostTests {
     private sealed class Files : IDisposable {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "drama-llm-host-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(_root, "game");
+        // These recovery contracts intentionally use a known single-actor needs boundary.
+        // Default living-world creation and multi-actor routing are tested in DuoHostTests.
+        public Files(bool createStore = true) {
+            if (createStore) {
+                var initial = CycleGameFactory.CreateSurvival();
+                using var saved = CycleDurableHistory.Create(Store, initial.World, initial.Cursor);
+            }
+        }
         public LlmHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }

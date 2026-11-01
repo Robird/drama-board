@@ -12,14 +12,14 @@ public sealed class DuoRecoveryTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Personal_ending_event_only_recovery_retires_only_its_actor_and_other_actor_continues(bool escape) {
+    public async Task Personal_death_event_only_recovery_retires_only_its_actor_and_other_actor_continues(bool longRoute) {
         using var store = new TemporaryStore();
-        CycleWorld initial = EndingWorld(escape);
-        var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: new DepartureScript(escape));
+        CycleWorld initial = EndingWorld(longRoute);
+        var baseline = CycleEngine.CreateKernel(Memory(initial), characterController: new DepartureScript(longRoute));
         await UntilState(baseline, world => !world.GetCharacter("a").IsActive);
         CycleFact endingFact = Assert.Single(baseline.LastCompletion!.Event.Facts);
-        Assert.Equal(escape ? CycleEventKind.MoveArrived : CycleEventKind.SurvivalFailed, endingFact.Kind);
-        Assert.Equal(escape ? Hour(19) : Hour(17), baseline.World.Time);
+        Assert.Equal(CycleEventKind.SurvivalFailed, endingFact.Kind);
+        Assert.Equal(longRoute ? Hour(19) : Hour(17), baseline.World.Time);
         string terminal = MaterialSnapshot(baseline.World.Business.InteractionStates["a"]);
         string frozenBody = MaterialSnapshot(baseline.World.GetCharacter("a").Survival);
 
@@ -29,7 +29,7 @@ public sealed class DuoRecoveryTests {
         using (var history = CycleDurableHistory.Create(store.StorePath, initial, InitialCursor(initial))) {
             var interrupted = CycleEngine.CreateKernel(new StopAfterEvent(history,
                 fact => fact.ChangedCharacters.Any(actor => actor.Id == "a" && !actor.IsActive)),
-                characterController: new DepartureScript(escape));
+                characterController: new DepartureScript(longRoute));
             for (int index = 0; index < 50 && !interrupted.IsFaulted; index++) {
                 beforeCursor = history.Cursor;
                 beforeState = MaterialSnapshot(history.State.Business.InteractionStates);
@@ -44,7 +44,7 @@ public sealed class DuoRecoveryTests {
             Assert.NotNull(history.PendingEvent);
             Assert.Equal(Describe(baseline.LastCompletion.Event), Describe(history.PendingEvent));
         }
-        Assert.Equal(escape ? Hour(19) : Hour(18), originalArrival);
+        Assert.Equal(longRoute ? Hour(19) : Hour(18), originalArrival);
 
         using (var history = CycleDurableHistory.Open(store.StorePath)) {
             Assert.Equal(beforeCursor, history.Cursor);
@@ -54,8 +54,7 @@ public sealed class DuoRecoveryTests {
             Assert.False(recovery.RecoverPending());
             Assert.Null(history.PendingEvent);
             AssertWorldEqual(baseline, recovery);
-            Assert.Equal(escape ? CycleExpeditionOutcome.Escaped : CycleExpeditionOutcome.Dead,
-                recovery.World.GetCharacter("a").Ending!.Outcome);
+            Assert.Equal(CycleExpeditionOutcome.Dead, recovery.World.GetCharacter("a").Ending!.Outcome);
             Assert.Equal("b", Assert.Single(recovery.World.Expedition!.Spatial.Entities).Id.Value);
             Assert.Equal(CycleExpeditionSummary.Exploring, recovery.World.ExpeditionSummary);
             Assert.Null(recovery.World.GetCharacter("a").Activity);
@@ -78,7 +77,7 @@ public sealed class DuoRecoveryTests {
             Assert.True(resumed.World.Time > originalArrival!.Value);
             Assert.Equal(terminal, MaterialSnapshot(resumed.World.Business.InteractionStates["a"]));
             Assert.Equal(frozenBody, MaterialSnapshot(resumed.World.GetCharacter("a").Survival));
-            Assert.Equal(escape ? Hour(19) : Hour(17), CycleDecisionContext.Observe(resumed.World, "a").Time);
+            Assert.Equal(longRoute ? Hour(19) : Hour(17), CycleDecisionContext.Observe(resumed.World, "a").Time);
             CharacterContext other = resumed.World.Business.InteractionStates["b"].CurrentContext!;
             Assert.Equal("b", other.LatestObservation.Actor.Id);
             Assert.Equal(CycleExpeditionOutcome.Exploring, other.LatestObservation.Outcome);
@@ -159,15 +158,15 @@ public sealed class DuoRecoveryTests {
         }
     }
 
-    private static CycleWorld EndingWorld(bool escape) {
+    private static CycleWorld EndingWorld(bool longRoute) {
         ModelTime at = Hour(16);
         var initial = CycleGameFactory.CreateSurvival(at, enableNeeds: false, enableWeather: false, characterCount: 2);
         var a = new CycleCharacter("a", "Distant explorer", survival: new CycleSurvival(at, 100 * CycleSurvival.Scale,
-            (escape ? 100 : 8) * CycleSurvival.Scale, 100 * CycleSurvival.Scale,
-            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: escape ? 0 : 2));
+            (longRoute ? 24 : 8) * CycleSurvival.Scale, 100 * CycleSurvival.Scale,
+            CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate, CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2));
         var b = new CycleCharacter("b", "Sheltered explorer", survival: CycleSurvival.Create(at, 100, 100, 100,
             CycleSurvivalRules.WarmthRate(true, true)));
-        return Place(initial.World, a, b, escape ? "ravine" : "camp", "cabin");
+        return Place(initial.World, a, b, longRoute ? "ravine" : "camp", "cabin");
     }
 
     private static CycleWorld WeatherWorld(bool fatal) {
@@ -223,14 +222,14 @@ public sealed class DuoRecoveryTests {
         Assert.Fail("The expected two-character boundary was not reached within 100 commits.");
     }
 
-    private sealed class DepartureScript(bool escape) : ICycleCharacterController {
+    private sealed class DepartureScript(bool longRoute) : ICycleCharacterController {
         private readonly Dictionary<string, int> _calls = new(StringComparer.Ordinal);
         public ValueTask<CycleControllerOperation> ChooseCommandAsync(CycleDecisionContext context, CancellationToken cancellationToken) {
             string actor = context.Observation.Actor.Id;
             int call = _calls.GetValueOrDefault(actor) + 1;
             _calls[actor] = call;
             CycleCommand command = call == 1 ? CycleCommand.Handoff("private-" + actor) : call == 2
-                ? actor == "a" ? CycleCommand.Go(escape ? "trail-4" : "trail-2") : CycleCommand.Wait(8)
+                ? actor == "a" ? CycleCommand.Go(longRoute ? "trail-4" : "trail-2") : CycleCommand.Wait(8)
                 : throw new InvalidOperationException("The fixture must stop before requesting another decision.");
             Assert.Null(context.Check(command));
             return ValueTask.FromResult(new CycleControllerOperation($"call/{actor}/{call}", CycleCommandParser.Format(command), $"duo/{actor}/{call}"));

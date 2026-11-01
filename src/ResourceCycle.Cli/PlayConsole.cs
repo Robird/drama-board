@@ -5,50 +5,38 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>One asynchronous owner drives the Kernel; input and rendering never mutate the world.</summary>
 internal static class PlayConsole {
-    public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken, bool survival = false,
+    public static async Task<int> RunAsync(string? store, CancellationToken cancellationToken,
         Action<CycleDiagnosticRecord>? diagnosticSink = null, TextReader? inputReader = null, TextWriter? outputWriter = null,
-        int? characterCount = null, string? branch = null) {
+        int? characterCount = null, string? branch = null, ModelTime? until = null, int maxSteps = 10_000) {
         TextWriter output = outputWriter ?? Console.Out;
         bool restoring = store is not null && Directory.Exists(store);
-        using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
+        using CycleDurableHistory? durable = store is null ? null : restoring
             ? branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, branch)
-            : branch is null ? CreateStore(store, survival, characterCount) : throw new ArgumentException("指定分支需要已有存档。");
+            : branch is null ? CreateStore(store, characterCount) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
-        if (durable is not null) {
-            history = durable;
-        } else {
-            var initial = survival ? CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1) : CycleGameFactory.CreatePlayable();
+        if (durable is not null) { history = durable; }
+        else {
+            var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
-        if (history.State.Characters.Count == 0) {
-            throw new ArgumentException("这是批处理实验存档，不能用 --play 打开。请省略 --play 续跑，或选择新目录开始采集。");
-        }
-        if ((history.State.Expedition is not null) != survival) {
-            throw new ArgumentException(survival ? "这是原采集场景存档，请使用 --play。" : "这是生存场景存档，请使用 --survival。");
-        }
-        if (survival) { SurvivalHost.RequireMode(history.State, characterCount); }
-
+        WorldHost.RequireWorld(history.State, characterCount);
+        WorldHost.RequireBudget(history.State.Time, until, maxSteps);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
-        var presentation = PlayPresentation.ForMode(survival);
-        var controller = new ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, inputReader: inputReader, outputWriter: output,
-            writeBoundary: outputWriter is null ? WriteBoundary : null,
+        var controller = new ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            inputReader: inputReader, outputWriter: output, writeBoundary: outputWriter is null ? WriteBoundary : null,
             operations: operations, worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}");
         var kernel = CycleEngine.CreateKernel(history, characterController: controller);
-        string title = survival ? $"{history.State.Characters.Count} 人山林求生" : "多人采集";
-        string startup = (store is null
-            ? $"{title} · 本次仅在内存中运行；退出后不保留进度。"
-            : $"{title} · 存档：{store} · 每次成功转换自动保存。" +
-                (restoring ? survival
-                    ? "将从保存的角色上下文重绘；已保存的行动结果、交接文字与草稿已恢复。"
-                    : "将从保存的角色上下文重绘；已提交的游戏状态已恢复。" : "")) + "\n" + (survival
-            ? "眼前事实与旧观察分开显示；等待输入期间世界暂停。"
-            : "共用控制台轮流扮演角色；画面只显示当前角色的技能、活动细节和背包。等待输入期间世界暂停。");
+        string startup = $"山野镇 / Hillside · {history.State.Characters.Count} 位居民 · " + (store is null
+            ? "本次仅在内存中运行；退出后不保留进度。"
+            : $"存档：{store} · 每次成功转换自动保存。")
+            + (restoring ? " 已保存的角色上下文、活动、目标与交接已恢复。" : "")
+            + "\n共用 Human Console 轮流操作角色；等待输入期间世界暂停。眼前事实与旧观察分开显示。";
         if (operations.DiscardedTailBytes > 0) {
-            startup += $"\n操作记录末尾有 {operations.DiscardedTailBytes} 字节未完整写入，已丢弃；游戏进度仍按已提交 E/S 恢复。";
+            startup += $"\n操作记录末尾 {operations.DiscardedTailBytes} 字节未完整写入；游戏进度按已提交 E/S 恢复。";
         }
         if (kernel.RecoverPending(cancellationToken)) {
-            startup += "\n已完成上次中断时保存的行动；接下来按已保存的活动与请求继续。";
+            startup += "\n已完成上次中断时保存的行动；没有重新询问控制器。";
         }
         if (durable is not null) {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
@@ -56,40 +44,38 @@ internal static class PlayConsole {
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
         controller.StartupText = startup;
-        if (survival) { SurvivalHost.RequireMode(kernel.World, characterCount); }
-
+        WorldHost.RequireWorld(kernel.World, characterCount);
+        int completed = 0;
         try {
             while (true) {
+                cancellationToken.ThrowIfCancellationRequested();
                 controller.RenderCommitted(kernel.World);
-                if (survival && !kernel.World.Characters.Any(character => character.IsActive)) {
-                    controller.HostReply(SurvivalHost.Summary(kernel.World));
+                if (!kernel.World.Characters.Any(character => character.IsActive)) {
+                    controller.HostReply(WorldHost.Summary(kernel.World));
                     return 0;
                 }
-                StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
-                if (status != StepStatus.Committed) {
-                    throw new InvalidOperationException($"采集世界未能产生下一步行动：{status}。");
+                if (completed >= maxSteps || until is { } limit && kernel.CurrentModelTime >= limit) {
+                    controller.HostReply("本次宿主预算已到，世界暂停；已提交状态保留。使用相同存档继续。");
+                    return 0;
                 }
+                StepStatus status = await kernel.StepAsync(until ?? new ModelTime(long.MaxValue), cancellationToken);
+                if (status != StepStatus.Committed) {
+                    controller.HostReply($"世界暂停：{status}。当前时间为最后完成事件的时刻；可用相同存档继续。");
+                    return 0;
+                }
+                completed++;
                 CycleContextDiagnostics.Publish(kernel.LastCompletion!, diagnosticSink);
                 CompleteOperations(operations, kernel.LastCompletion!);
                 controller.RenderCommitted(kernel.World);
             }
         } catch (PlayEndedException) {
-            controller.HostReply(store is null ? $"已退出。内存中的{(survival ? "生存" : "采集")}进度未保存。" :
-                $"已退出。已完成的行动均已保存，可使用同一 {(survival ? "--survival" : "--play")} --store 路径继续。");
+            controller.HostReply(store is null ? "已暂停；内存进度未保存。" : "已暂停。已提交行动已保存，可使用同一 --store 继续并重新选择控制绑定。");
             return 0;
         }
     }
 
-    public static void RequireBatchWorld(CycleWorld world) {
-        if (world.Characters.Count != 0) {
-            throw new ArgumentException(world.Expedition is not null
-                ? "这是生存场景存档；请使用 --survival --store 打开。批处理不会推进此存档。"
-                : "这是交互采集存档；请使用 --play --store 打开。批处理不会推进此存档。");
-        }
-    }
-
-    private static CycleDurableHistory CreateStore(string path, bool survival, int? characterCount) {
-        var initial = survival ? CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1) : CycleGameFactory.CreatePlayable();
+    private static CycleDurableHistory CreateStore(string path, int? characterCount) {
+        var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 

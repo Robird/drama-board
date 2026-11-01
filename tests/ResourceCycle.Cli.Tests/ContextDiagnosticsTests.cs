@@ -24,9 +24,11 @@ public sealed class ContextDiagnosticsTests {
 
             async Task<string> RunHost(string name, Action<CycleDiagnosticRecord>? sink) {
                 string store = Path.Combine(directory, name);
+                var initial = CycleGameFactory.CreateSurvival();
+                using (var saved = CycleDurableHistory.Create(store, initial.World, initial.Cursor)) { }
                 using var input = new StringReader("use item.water\ninvalid\nhandoff 等待查看溪谷\ngo trail-1\n:exit\n");
                 using var output = new StringWriter();
-                Assert.Equal(0, await PlayConsole.RunAsync(store, default, survival: true, diagnosticSink: sink,
+                Assert.Equal(0, await PlayConsole.RunAsync(store, default, diagnosticSink: sink,
                     inputReader: input, outputWriter: output));
                 using var history = CycleDurableHistory.Open(store);
                 JsonNode material = JsonSerializer.SerializeToNode(new { history.State.Business, history.Cursor }, MaterialJson)!;
@@ -75,12 +77,14 @@ public sealed class ContextDiagnosticsTests {
     public async Task Diagnostic_failure_stops_the_actual_host_after_commit_and_cold_open_does_not_repeat_delivery() {
         string store = Path.Combine(Path.GetTempPath(), "drama-context-diagnostic-" + Guid.NewGuid().ToString("N"));
         try {
+            var initial = CycleGameFactory.CreateSurvival();
+            using (var saved = CycleDurableHistory.Create(store, initial.World, initial.Cursor)) { }
             using var input = new StringReader("use item.water\nhandoff should-not-run\n:exit\n");
             using var output = new StringWriter();
             CycleDiagnosticRecord? failed = null;
             var sinkError = new IOException("diagnostic-only-failure");
             IOException error = await Assert.ThrowsAsync<IOException>(() => PlayConsole.RunAsync(store, default,
-                survival: true, diagnosticSink: record => {
+                diagnosticSink: record => {
                     if (!record.Completion.Event.Facts.Any(fact => fact.Kind == CycleEventKind.ItemUsed)) { return; }
                     failed = record;
                     throw sinkError;
@@ -108,7 +112,7 @@ public sealed class ContextDiagnosticsTests {
             var recoveredRecords = new List<CycleDiagnosticRecord>();
             using var reopenedInput = new StringReader(":exit\n");
             using var reopenedOutput = new StringWriter();
-            Assert.Equal(0, await PlayConsole.RunAsync(store, default, survival: true,
+            Assert.Equal(0, await PlayConsole.RunAsync(store, default,
                 diagnosticSink: recoveredRecords.Add, inputReader: reopenedInput, outputWriter: reopenedOutput));
             Assert.Empty(recoveredRecords);
             using var reopened = CycleDurableHistory.Open(store);
@@ -140,7 +144,7 @@ public sealed class ContextDiagnosticsTests {
             var records = new List<CycleDiagnosticRecord>();
             using var input = new StringReader(":exit\n");
             using var output = new StringWriter();
-            Assert.Equal(0, await PlayConsole.RunAsync(store, default, survival: true,
+            Assert.Equal(0, await PlayConsole.RunAsync(store, default,
                 diagnosticSink: records.Add, inputReader: input, outputWriter: output));
             Assert.Empty(records);
             using var restored = CycleDurableHistory.Open(store);

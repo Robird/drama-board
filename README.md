@@ -1,140 +1,110 @@
 # DramaBoard
 
-DramaBoard is an experimental spacetime engine composed of three libraries: **Kernel** arbitrates and commits deterministic occurrences, **Spatial** models places, passages, moving entities and contacts, and **Host** drives Kernel steps. The core does not require a Player or an application server.
+DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定性事件，**Spatial** 表达地点、通路、移动实体与相遇，**Host** 驱动 Kernel。核心不依赖 Player 或应用服务器。
 
-Read [PROJECT-STATE.md](PROJECT-STATE.md) for the active boundary and deferred decisions, and [docs/README.md](docs/README.md) for design and evidence. [AGENTS.md](AGENTS.md) defines repository collaboration rules. The application-layer ResourceCycle example explores persistent business state and dependency-driven runtime predictions, with a multiplayer gathering Console mode, without changing the spacetime core.
+当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动；抵达原来的出口不再结束角色生活。生产、资金、市场与居民交易仍待从 Microtown 融合，当前首片不等于完整生活经济循环已经完成。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
 
-## Build and test
+跨会话状态见 [PROJECT-STATE](PROJECT-STATE.md)，文档导航见 [docs/README](docs/README.md)，协作约定见 [AGENTS](AGENTS.md)。
 
-Requires .NET SDK **10.0.201** and sibling `durable-graph` / `atelia-storage` / `atelia-completion` source checkouts. Use the single solution entry point:
+## 构建与测试
+
+需要 .NET SDK **10.0.201**，以及相邻的 `durable-graph`、`atelia-storage`、`atelia-completion` 源码目录。使用唯一 solution 入口，同一可写构建图的 dotnet 操作串行运行：
 
 ```powershell
 dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-Source roots, generator/schema wiring and validation boundaries are documented in [DurableGraph source dependencies](docs/source-dependencies.md). `DramaBoard.slnx` contains the core libraries, shared Inventory/Goals/controller/Gym modules, ResourceCycle and Microtown with their Console entrypoints and tests, plus the sibling source projects needed for IDE/LSP navigation. The redundant `DramaBoard.Local.slnx` has been removed. The default workflow needs no package preparation, Node, browser, Player, or Server.
+源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、新世界采用的 ResourceCycle 项目、作为迁移参照的 Microtown 及相应测试，也列入相邻源码项目供 IDE/LSP 导航。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
 
-[Inventory](src/Inventory/ItemInventory.cs) is a small domain module for immutable item counts and optional total-unit capacity. It depends on DurableGraph, independently of the spacetime core and the game. ResourceCycle composes it with gathering rules and registers its models under the same game root; see [layering and composition](docs/design/layering-and-composition.md).
-
-## Microtown economy prototype
-
-[Microtown](src/Microtown/README.md) is a second independent game: three residents buy raw materials, produce meals and woodware, eat, travel and sell to a finite external market. A single Console serves Human or LLM residents in turn, with independent saves, character-visible material and Gym feedback/trajectory/fork tools. Residents can exchange speech and gifts, including during notified production/waiting responses. Addressed offers support atomic item/money exchange, rejection, withdrawal and expiry. Owner prediction maintenance, a real three-resident 30-hour economic day, feedback fork and guided resident trade are verified; see [milestone acceptance](docs/experiments/microtown-acceptance.md) and [playtest limits](docs/experiments/microtown-playtest.md).
+## 启动山野镇
 
 ```powershell
-dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town --hours 48
-dotnet run --project src/Microtown.Cli -c Release -- --store artifacts/my-town
-dotnet run --project src/Microtown.Cli -c Release -- --llm --feedback --store artifacts/my-llm-town --max-calls 32
-pwsh -NoProfile -File scripts/Smoke-Microtown.ps1
+# 默认三名居民 a、b、c，共用 Human Console 轮流行动：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-hillside
+
+# 恢复同一存档；省略人数则沿用存档：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-hillside
+
+# 单人新局，最多提交 200 个转换、模拟不超过绝对小时 32：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --characters 1 --store artifacts/my-solo-hillside --steps 200 --until-hour 32
+
+dotnet run --project src/ResourceCycle.Cli -c Release -- --help
 ```
 
-Use `:quit` or EOF to pause, `:look` to redisplay, and `--max-operations` to bound the current run. See [Console usage](src/Microtown.Cli/README.md) and [persistence/interaction evidence](docs/experiments/microtown-persistence-acceptance.md).
+新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物与三份水；这些是有限初始资产，回镇不会自动补满。
 
-## Day/night resource cycle experiment
+每个需要决策的角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。无 `--store` 时只在内存中运行；指定存档后每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
 
-Two resource patches regenerate in their preferred light: sunflower adds one unit every three daylight hours, moongrass every four night hours, until storage is full. Regeneration pauses across light changes and preserves progress; a fixed batch-only destruction script clears stock and resets progress. Runtime predictors declare event dependencies and recompute affected predictions. The diagnostic view shows conditions, stock, predictions, subscriptions and process-local counters.
+`:quit`、`:exit`、EOF 或 Ctrl+C 暂停当前宿主。`--steps` 默认 10000，是本次运行提交转换数的上限；`--until-hour` 是从 D0 00:00 起的**绝对模拟小时**，省略则没有该时限。预算结束不会宣告世界终局，继续运行可设置更大的时间上限。世界只跳到实际事件，若上界没有事件，时间保留在最后完成事件的位置。所有居民死亡后宿主停止；一名居民死亡不会结束其他人的生活。
+
+## 让模型参与
 
 ```powershell
-# In-memory demonstration, including every intermediate diagnostic frame:
-dotnet run --project src/ResourceCycle.Cli -c Release -- --trace
+# 三名居民全由模型控制，所有角色共用本次调用预算：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --model gpt-6.1-sol --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
 
-# Save after five transitions, then resume the same world in another process:
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-cycle --steps 5
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-cycle --until-hour 88
+# Human Console 控制 b，模型控制 a 与 c；a/b/c 均可被选择：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human b --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
 
-# Full recomputation baseline, and the multi-process comparison smoke:
-dotnet run --project src/ResourceCycle.Cli -c Release -- --full-recompute
-pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1
+# 恢复同一存档时改变绑定：
+dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
 ```
 
-The default world starts at D0 16:00 and runs through events up to absolute hour 88 (D3 16:00), without wall-clock delays. If no event lands on that boundary, the clock stays at the last committed event. Use `--help` for options, or `--snapshot PATH` for a final Markdown diagnostic. An existing store is resumed, never reset; use a new path to start again.
+`--llm` 默认控制所有角色；`--human ID` 必须与 `--llm` 同用，且 ID 必须属于当前存档。不带 `--llm` 时所有角色交给共享 Human Console。绑定在启动/恢复边界选择，保留原角色身份、背包、目标和个人材料；没有运行中热切换。模型控制器与 Human 使用同一领域行动及冻结角色材料。全模型观战输出属于宿主观察证据，不是任一角色的额外知识。
 
-This example has one DurableGraph root for business world subgraphs and the Kernel cursor. Predictions and fixed bindings are runtime caches, rebuilt on cold open and maintained after business facts are folded. Pending recovery repeats pure cache completion, never player input or business planning. See [runtime cache acceptance](docs/experiments/resource-cycle-runtime-cache-acceptance.md). The batch experiment has no character or inventory; its original scope is recorded in [the design](docs/design/resource-cycle-demo.md) and [original acceptance](docs/experiments/resource-cycle-acceptance.md).
+默认连接使用 Completion 的 Codex Responses 客户端及标准认证文件发现；`--auth-file PATH` 可指定文件。V3 连接目录需同时提供 `--catalog PATH --connection ID`，并使用目录内的认证配置。模型配置与凭据均在宿主边界读取，不保存在游戏状态中。
 
-## Play the gathering scene
+每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行有独立 JSONL 审计，`--llm-log PATH` 可指定位置；恢复时重新提供模型/连接与控制绑定参数。连接机制的历史说明见[LLM 接线文档](docs/implementation/survival-llm-controller.md)，启动参数以当前 `--help` 为准。
 
-```powershell
-dotnet run --project src/ResourceCycle.Cli -c Release -- --play
-dotnet run --project src/ResourceCycle.Cli -c Release -- --play --store artifacts/my-garden
-pwsh -NoProfile -File scripts/Smoke-ResourceCyclePlay.ps1
-```
+## 操作与个人材料
 
-Three characters share two resource patches and take turns using the same Console. Each has a separate inventory, skill level and timed activity. The full Markdown view identifies the active character, their current batch and pending perceptions, resource stock and other collectors; it hides other characters' skill levels and future completion times.
+使用界面显示的当前地点通路、资源和角色编号行动：
 
-Commands: `:look`, `:help`, `wait <1–24 hours>`, `gather sunflower <count|all>`, `gather moongrass <count|all>`, `continue`, `cancel`, and `:exit`. `all` freezes the current stock as a finite target; it does not reserve stock. Each cycle consumes one available unit and grants one item. A cycle that finishes without stock ends the batch. Faster collectors can finish first; simultaneous completions use deterministic arbitration.
+| 意图 | 命令 |
+| --- | --- |
+| 重新查看、帮助、退出 | `:look`、`:help`、`:quit` |
+| 移动 | `go <passage-id>` |
+| 采集 | `gather <resource-id> <count\|all>` |
+| 等待 | `wait <1–24 小时>` |
+| 使用补给 | `use item.food`、`use item.water` |
+| 确认提醒并保留活动 | `continue` |
+| 取消采集/等待 | `cancel` |
+| 定向说话、赠与 | `say <actor-id> <text>`、`give <actor-id> <item-id> <count>` |
+| 大喊 | `shout <text>` |
+| 跟随/解散 | `follow <actor-id>`、`unfollow`、`dismiss-followers` |
 
-Logical time pauses for each requested decision. A new collector or a stock transition to zero wakes affected collectors without resetting their activity. `continue` acknowledges perceptions and preserves the original deadline; `cancel` keeps collected items but abandons the unfinished cycle. Ordinary intermediate harvests continue automatically. Queries and invalid commands do not change the world or acknowledge perceptions. For a first outing, assign `gather sunflower all` to two characters, let the third `wait 1`, and respond to the joining/depletion notices.
+元命令使用冒号前缀，领域动作不使用冒号。默认 decision 布局把可用行动与相关资源、路线和风险放在一起。`:layout` 列出布局，`:layout classic` / `:layout decision` 切换；`:layout classic once` 临时查看另一种排版。`:mode full|delta` 控制完整或增量输出。查看和切换布局不推进时间，不确认提醒，也不修改世界。见[布局合同](docs/design/console-layouts.md)。
 
-With `--store`, completed changes are saved automatically and the same command resumes the scene. Without it, progress exists only in memory. Play and batch stores are deliberately distinct; neither mode silently advances the other's store. This mode has no scripted destruction, movement, NPCs, LLM calls or GUI. Older ResourceCycle saves are not a compatibility target; use a fresh directory.
+采集每份单独结算，`all` 冻结接受时库存作为有限目标，不预留库存，也不跟随再生增长。资源耗尽或其他采集者加入会请求响应；`continue` 保留原活动期限，`cancel` 保留已取得物品而放弃未完成的一份。无效命令与查询不会消耗世界时间或确认提醒。
 
-See [the multiplayer gathering rules](docs/design/resource-cycle-multiplayer-gathering.md) and [acceptance evidence](docs/experiments/resource-cycle-multiplayer-acceptance.md). The earlier [single-character slice](docs/design/resource-cycle-play.md) and [its acceptance evidence](docs/experiments/resource-cycle-play-acceptance.md) describe the preceding experiment, not the current timed gathering rules. The current prediction/storage contract is [runtime-derived predictions](docs/design/runtime-derived-predictions.md).
+移动有真实模拟耗时，途中不能取消。身体随时间消耗，低值提醒可能在途中要求回应；使用补给后 `continue` 可继续原行程。温暖在庇护或白天野外恢复，夜间野外下降；天气每两小时可能带来最多 10 点额外降温，庇护可防止该损失。预测包含已知昼夜变化，不包含未来寒风。干木当前还不能生火；加工用途属于后续经济融合。角色探索知识来自亲历，旧观察标注时间，其他角色的陈述不会自动成为世界确认事实。
 
-## Play the survival prototype
+跟随需要同地且没有耗时活动；领队普通 `go` 带所有实际跟随者一起出发，到达仍保持关系。跟随者不能自行开始移动、采集或等待，个人身体提醒仍需自己处理。到工作地点后可以解散，结束工作再集合；没有自动等待未加入同伴的机制。见[跟随设计](docs/design/character-following.md)。
 
-Phase one of the [survival milestone](docs/design/survival-demo-milestone.md) is complete: a single-character Console escape with exploration, supplies, shelter and weather risks.
+说话、赠与限同地活跃角色；大喊送达本地与一跳声音连接地点的活跃角色，途中角色听不到。声音连接独立于移动通路，目前为 camp ↔ stream、ridge ↔ cabin。三种操作共用每角色每模拟时刻四次成功发送额度；无人听见的大喊也成功，不返回听众名单。通信唤醒不取消活动、不改变期限或跟随关系。独立闲置角色须安排耗时行动或加入跟随才能放行时间。见[大喊设计](docs/design/spatial-relations-and-shout.md)。
 
-```powershell
-dotnet run --project src/ResourceCycle.Cli -c Release -- --survival
-dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --store artifacts/my-expedition
-pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
-```
+每名角色拥有独立的[目标记录](docs/design/goal-management/README.md)。例如 `create-goal {"title":"准备饮水","criteria":"出发前携带两份饮水","focus":true}`，`show-goal {}` 列出保留目标；界面列出其余编辑、关联、聚焦与结束命令。目标不会代执行活动，也不伪造完成事实。`handoff <text>` 为下一个 Context 留一次性便条，`handoff --clear` 清除；长期意图适合记录为目标。
 
-Explore a small mountain map and find either exit. Use `go <trail-id>` from the displayed local choices, `gather <resource-id> <count|all>`, `wait <hours>`, `:look`, `:help`, and `:exit`. Locations and resource memories become known through visits; old observations are labelled with their time. Travel takes model time and cannot yet be cancelled midway. Completed changes save automatically when a store is supplied; use the same command to resume. A completed ending does not advance further.
+## 持久化与观察
 
-Survival defaults to the decision layout, grouping supplies, routes and resources with their relevant actions and risks, with warmth/exposure visible at the input prompt. Use `:layout` to list layouts, `:layout classic` for the original full view, or `:layout decision` to switch back immediately. `:look` redraws the latest observation without changing your layout; `:help` and `:exit` are also available. Meta commands require the colon prefix; game actions such as `go`, `use` and `continue` do not. Layout selection lasts for this Console session, including across characters in `--play`; it does not advance time or alter game state. See [Console layouts](docs/design/console-layouts.md).
+一个 DurableGraph 根保存业务子图与 Kernel 游标。派生预测在冷开时重建，在业务事实提交后增量维护。E 已提交、S 尚未完成的中断恢复只应用保存的事实及纯派生完成，不重新询问控制器或重新执行规划。机制见[运行时预测与恢复](docs/design/runtime-derived-predictions.md)。
 
-Food and water decline with model time; exposure cools you at night, while shelter restores warmth. Use `use item.food` or `use item.water` to consume one supply without advancing time. A low-body warning pauses the world even during travel: replenish if possible, then `continue` to acknowledge it without restarting the original journey or activity. At a location, `cancel` can end gathering or waiting. Any need reaching zero ends the journey; reaching a safe exit first wins. Wood currently has no fuel use.
+每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 
-Every two model hours a weather window can be calm or bring a cold wind. An exposed character loses up to 10 warmth; shelter prevents this loss. The UI shows the next opportunity and the latest actual result, without revealing future random outcomes. Body/action time estimates include known day/night changes, assume no replenishment and unchanged exposure or shelter, and exclude future cold winds; travel estimates assume exposure. Weather uses a fixed default seed for reproducible experiments; the game factory accepts a different seed, and saved games retain their own stream state.
+Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。旧原型的 Gym 验收不自动证明融合世界的 C5，当前覆盖以专题工作计划中的新证据为准。
 
-Survival decisions now use explicit context identities. A timed action ends the current context; the next wake displays its frozen action outcome, body/inventory changes and wake reasons. `handoff <text>` edits a note for the next context, and `handoff --clear` clears it; notes are passed once and never automatically forwarded. Supplies, notes and queries stay in the same context. Interactive terminals clear on first delivery and a new context, while redirected output remains a transcript. See [the handoff contract](docs/design/decision-context-handoff.md).
+## 原型与历史证据
 
-Survival characters also own persistent [goal records](docs/design/goal-management/README.md). For example, `create-goal {"title":"Prepare water","criteria":"Carry two portions before leaving","focus":true}` records an intention; `show-goal {}` lists retained goals. The UI provides all twelve commands for editing, linking, focusing, pausing, finishing and cleaning up records. Unfinished goals automatically appear in later contexts; focus and goal status never cancel an activity or fabricate a world result. These commands use strict JSON, take no model time, and still record an interaction and rotate service. Long-term intentions belong in goals rather than repeated handoff notes. See [engineering evidence](docs/experiments/goal-management-acceptance.md) and run `pwsh -NoProfile -File scripts/Smoke-ResourceCycleGoals.ps1` after building for the Console smoke.
+Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。这些能力仍需进入新世界才能满足 C2/C4，旧证据不能替代融合验收。
 
-Every nonempty Console submission receives an implicit ToolCallId. With `--store`, `operations.jsonl` retains received operations and paired results, including queries and rejected commands. These host records do not advance game E/S; recovery uses committed game facts to repair missing results without repeating actions. Full LLM conversations and endpoint ID mapping are outside this slice.
+ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。原 Smoke 脚本包含旧参数，目前不作为推荐新世界运行方式。历史实现与验证仍可查阅：
 
-Two independent Console playtesters reached different exits with different supply strategies; natural hypothermia and deliberate dehydration failures were also recorded. These were agent playtests, not external human user research. The classic full view remains verbose, wood has no fuel use, and travel cannot be cancelled. The current revision is recorded in [PROJECT-STATE](PROJECT-STATE.md); older development saves are unsupported, so use a fresh directory. Batch, gathering and survival modes reject each other's stores. See [survival acceptance](docs/experiments/survival-demo-acceptance.md) for the earlier milestone's tests, transcripts and limits. Single-character LLM control and multiplayer survival, communication and following are implemented; see [the milestone](docs/design/survival-demo-milestone.md) and the current entry points below.
+- [昼夜资源设计](docs/design/resource-cycle-demo.md)、[原始验收](docs/experiments/resource-cycle-acceptance.md)、[运行时缓存验收](docs/experiments/resource-cycle-runtime-cache-acceptance.md)。
+- [多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)、[多人采集验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
+- [生存里程碑](docs/design/survival-demo-milestone.md)、[逃生试玩验收](docs/experiments/survival-demo-acceptance.md)、[真实模型旅程](docs/experiments/survival-llm-acceptance.md)。旧文档中的出口退休与启动指令属于当时版本。
+- [目标管理验收](docs/experiments/goal-management-acceptance.md)、[通信验收](docs/experiments/survival-communication-acceptance.md)、[跟随验收](docs/experiments/character-following-acceptance.md)、[大喊验收](docs/experiments/spatial-shout-acceptance.md)。旧项目另行保留的真人合作体验项不被 Agent 操作 Console 冒充完成。
 
-## Let a model play survival
+[Inventory](src/Inventory/ItemInventory.cs) 提供独立于时空核心的不可变物品数量和可选容量；游戏负责将跨模块效果一次提交，见[分层与组合](docs/design/layering-and-composition.md)。[SpacetimeHostScenarioTests](tests/Spatial.Tests/Acceptance/SpacetimeHostScenarioTests.cs) 独立验证两实体相遇、掉头、到达、确定性仲裁与重放；游戏磁盘 adapter 并非任意 Spatial 游戏的通用存档宿主。
 
-```powershell
-dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
-  --model gpt-6.1-sol --store artifacts/my-llm-game --max-calls 128
-```
-
-This uses Completion's Codex Responses client and standard Codex auth-file discovery; `--auth-file PATH` selects an explicit file. The same command resumes the store. Each model call receives the character's full retained Context and submits one `act` tool call; the game validates and commits it. Spectator output separates generated operations from committed results, and each host run saves a separate JSONL audit. Credentials never enter the game graph or audit.
-
-Call limits, cancellation and failed responses stop without choosing a substitute action. Custom V3 connection catalogs require both `--catalog PATH` and `--connection ID`. See [configuration and recovery](docs/implementation/survival-llm-controller.md) and [two real model journeys](docs/experiments/survival-llm-acceptance.md).
-
-## Two or three explorers in one survival world
-
-```powershell
-# One Human Console takes turns controlling a, b and c:
-dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --characters 3 --store artifacts/my-group
-
-# Human controls a; the model controls b:
-dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --characters 2 --llm `
-  --model gpt-6.1-sol --store artifacts/my-mixed-duo --max-calls 128
-```
-
-Characters share time, resources and weather, with separate positions, needs, inventories, contexts and map knowledge. Escape or death freezes only that character; the others continue. When all finish, the host reports all escaped, partial escape or no escape. Different exits are allowed. Global results stay outside character knowledge; distant endings are not broadcast to other explorers.
-
-Resume with `--survival --store PATH`; omitting `--characters` uses the saved count, while an explicit mismatch is rejected. New games default to one character. `--duo` remains a parser shortcut for `--survival --characters 2` and cannot be combined with either flag. In multiplayer `--llm` mode, a is Human and every other character uses the shared model controller and call budget; Human `:exit`/EOF pauses the world.
-
-At the same place, `follow <actor-id>` joins a leader and closes your decision context. The leader's normal `go` moves all current followers atomically, and arrival preserves the relationship. Followers cannot start their own `go`, `gather` or `wait`; at a work site, the leader uses `dismiss-followers` or a follower uses `unfollow` when they next have a decision opportunity. Finish or cancel activities before following again. There is no automatic waiting for absent teammates, and relationships cannot be changed during travel. Personal warnings still wake followers; handle supplies and use `continue` to resume following. See [the following contract](docs/design/character-following.md) and [implementation evidence](docs/experiments/character-following-acceptance.md).
-
-At the same place, use `say <actor-id> <text>` to speak and `give <actor-id> <item-id> <count>` to transfer supplies atomically. Use `shout <text>` at a place to reach other active characters there and at directly sound-connected places; travellers do not hear it. The current map connects camp ↔ stream and ridge ↔ cabin for sound, independently of travel paths. All three commands share four successful sends per character per model instant; a shout costs one send even with no listeners and does not reveal the audience. See [the shout contract](docs/design/spatial-relations-and-shout.md) and [acceptance evidence](docs/experiments/spatial-shout-acceptance.md). Received communication requests a decision without cancelling the current activity; `continue` acknowledges it and keeps the original deadline. An idle independent character must arrange a timed action or follow someone to let time advance. Long-term agreements belong in goals; `handoff` passes a short note to the next context. See [the communication contract](docs/implementation/survival-communication-plan.md) and [engineering/preflight evidence](docs/experiments/survival-communication-acceptance.md); genuine Human/LLM cooperation acceptance remains pending.
-
-## Small world scenario
-
-[SpacetimeHostScenarioTests](tests/Spatial.Tests/Acceptance/SpacetimeHostScenarioTests.cs) directly composes all three libraries. Two entities travel toward each other, meet at the floored contact time, one reverses strictly inside the passage, and both arrive at the same model time. It checks contact consumption, invalidation of the old arrival, deterministic arbitration under reordered inputs, and replay. Run it separately with:
-
-```powershell
-dotnet test tests/Spatial.Tests/Spatial.Tests.csproj --filter FullyQualifiedName~SpacetimeHostScenarioTests
-```
-
-The spatial scenario uses the in-memory E/S contract. ResourceCycle separately provides an application-specific disk adapter; it is not a generic persistence host for Spatial or arbitrary games.
-
-## Technical reserve
-
-The Player/Protocol, role planning, free-play Server, WebUI, presentation caches, and dedicated tests and documents are frozen in the [Player runtime archive](docs/archive/player-runtime.md). The earlier [FirstBoard and LLM archive](docs/archive/firstboard-llm.md) remains available. Restore the documented baseline in a separate worktree to run an old application; archived projects are outside the active solutions and need not compile against the current core.
+旧 Player/Protocol、角色规划、Server/WebUI 与专用测试已冻结于 [Player 归档](docs/archive/player-runtime.md)，FirstBoard 见[独立归档](docs/archive/firstboard-llm.md)。如需重现旧应用，使用归档记录的基线和独立 worktree。

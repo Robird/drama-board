@@ -1,12 +1,9 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
-using DramaBoard.Kernel.Journal;
-using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.ResourceCycle;
 
-Console.OutputEncoding = Encoding.UTF8;
+Console.OutputEncoding = new UTF8Encoding(false);
 Console.InputEncoding = Encoding.UTF8;
 bool hasStore = false;
 try {
@@ -14,43 +11,38 @@ try {
     hasStore = options.Store is not null;
     if (options.Help) {
         Console.WriteLine("""
-            ResourceCycle — 昼夜、资源再生与多人采集实验
+            山野镇 / Hillside — 小镇与山林中的持续生活
 
             dotnet run --project src/ResourceCycle.Cli -- [options]
-              --store PATH          创建或恢复单根存档；省略则仅内存运行
-              --branch ID           打开已有存档的指定分支；多分支时不能省略
-              --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
-              --survival            山林探索；新局默认单角色；可配合 --store 续玩，不接受批处理选项
-              --characters 1|2|3    生存新局人数；恢复时省略则沿用存档人数
-              --duo                 --survival --characters 2 的快捷入口，不能与二者混用
-              --llm                 单人控制 a；多人 a 为 Human、其余为 LLM；默认 Codex Responses / gpt-6.1-sol
-              --model ID            模型 ID；自定义目录默认沿用所选连接的模型
-              --auth-file PATH      内置 Codex 连接的认证文件；默认使用 Codex 的标准路径
-              --catalog PATH        Completion V3 连接目录；必须配合 --connection ID 精确选择
-              --connection ID       自定义目录中的连接 ID，不使用回退连接
-              --max-calls N         本次宿主运行最多模型调用次数（默认 128）
-              --max-failures N      连续完整响应协议错误上限（默认 3）
-              --max-context-chars N 完整 Context 的 UTF-16 长度上限（默认 200000）
-              --llm-log PATH        本次独立 JSONL 证据文件；默认在存档或 artifacts 下新建
-              --gym                 配合 --llm --store 记录角色实验轨迹
-              --feedback            配合 --llm --store 启用反馈工具，同时启用 --gym
-              --branches            仅列出 --store 中的分支，不运行游戏
-              --gym-feedbacks       仅列出反馈；可按 --branch ID / --actor ID 筛选
-              --gym-export FILE     导出角色轨迹到新文件；需 --store、--actor，可选 --branch
-              --gym-fork ID         从反馈 ID 的决定前 S 注册分支，需 --store、--fork-label
-              --gym-fork-request ID 从已记录请求的决定前 S 注册分支，需 --store、--fork-label
-              --fork-label LABEL    新分支显示名称；注册后须另用 --branch 续跑
-              --actor ID            管理查询的角色 ID，不改变游戏角色绑定
-              --until-hour N        运行到绝对逻辑小时上界（默认 88，即 D3 16:00）
-              --steps N             本次最多推进 N 次转换（默认 10000）
-              --full-recompute      每次重算全部预测者，用于对照
-              --trace               每次转换后显示完整诊断
-              --snapshot PATH       写入最终状态诊断（不含运行期计数）
+              --store PATH          创建或恢复存档；省略则仅内存运行
+              --branch ID           打开已有分支；多分支时必须指定
+              --characters 1|2|3    新局人数，默认 3；恢复时省略则沿用存档
+              --llm                 所有角色由模型控制；省略时共用 Human Console
+              --human ID            配合 --llm，将指定角色交给 Human Console
+              --model ID            模型 ID；默认 Codex Responses / gpt-6.1-sol
+              --auth-file PATH      内置 Codex 认证文件；默认使用标准路径
+              --catalog PATH        Completion V3 连接目录，配合 --connection ID
+              --connection ID       精确选择目录连接，不使用回退连接
+              --max-calls N         本次共享模型调用预算（默认 128）
+              --max-failures N      连续协议错误上限（默认 3）
+              --max-context-chars N Context 字符长度上限（默认 200000）
+              --llm-log PATH        本次独立模型证据文件
+              --until-hour N        本次绝对模拟小时上界；达到上界暂停，不结束世界
+              --steps N             本次已提交转换上限（默认 10000）
+              --gym                 配合 --llm --store 记录角色轨迹
+              --feedback            同时启用 --gym 与模型反馈工具
+              --branches            列出 --store 分支，不运行游戏
+              --gym-feedbacks       列出反馈；可选 --branch / --actor
+              --gym-export FILE     导出轨迹到新文件；需 --actor，可选 --branch
+              --gym-fork ID         从反馈的决定前 S 注册分支
+              --gym-fork-request ID 从请求的决定前 S 注册分支
+              --fork-label LABEL    新分支名称；注册后另用 --branch 续跑
+              --actor ID            管理查询角色，不改变控制绑定
               --help                显示帮助
 
-            默认从 D0 16:00 开始。时间跳到事件，不按墙钟等待。
-            上界之间若没有事件，保持最后完成事件的逻辑时刻。
-            Ctrl+C 停止；已有 pending 事件将在下次打开时完成。
+            新局从 D0 08:00 开始。时间跳到事件，等待输入时世界暂停。
+            模拟上界不保证有事件恰好落在该时刻；保留最后完成事件的时间。
+            :quit、EOF 或 Ctrl+C 暂停。以同一 --store 续局，可重新选择控制绑定。
             """);
         return 0;
     }
@@ -61,96 +53,31 @@ try {
     if (options.Branch is not null && !Directory.Exists(options.Store)) {
         throw new ArgumentException("指定分支需要已有存档。");
     }
-
     using var cancellation = new CancellationTokenSource();
-    ConsoleCancelEventHandler cancelHandler = (_, eventArgs) => {
-        eventArgs.Cancel = true;
-        cancellation.Cancel();
-    };
-    Console.CancelKeyPress += cancelHandler;
+    ConsoleCancelEventHandler handler = (_, signal) => { signal.Cancel = true; cancellation.Cancel(); };
+    Console.CancelKeyPress += handler;
     try {
-        if (options.Play || options.Survival) {
-            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, characterCount: options.CharacterCount); }
-            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival, characterCount: options.CharacterCount, branch: options.Branch);
-        }
-        using CycleDurableHistory? durable = options.Store is { } store
-            ? Directory.Exists(store)
-                ? options.Branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, options.Branch)
-                : CreateStore(store)
-            : null;
-        IOccurrenceHistory<CycleWorld, CycleFact> history;
-        if (durable is not null) {
-            history = durable;
-        } else {
-            var initial = CycleGameFactory.CreateBatch();
-            history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
-        }
-
-        PlayConsole.RequireBatchWorld(history.State);
-        var metrics = new CycleMetrics();
-        var kernel = CycleEngine.CreateKernel(history,
-            options.FullRecompute ? PredictionMode.Full : PredictionMode.Incremental, metrics);
-        if (kernel.RecoverPending(cancellation.Token)) {
-            Console.WriteLine($"已完成 pending 事件，恢复至 {kernel.CurrentModelTime}。");
-        }
-        if (options.Until < kernel.CurrentModelTime) {
-            throw new ArgumentException("--until-hour 不能早于存档当前逻辑时刻。");
-        }
-        Console.WriteLine(options.FullRecompute ? "模式：全量重算对照" : "模式：依赖驱动增量重算");
-        Console.WriteLine(CycleDiagnostics.Render(kernel.World));
-
-        int completed = 0;
-        StepStatus status = StepStatus.Committed;
-        while (completed < options.Steps) {
-            status = await kernel.StepAsync(options.Until, cancellation.Token);
-            if (status != StepStatus.Committed) { break; }
-            completed++;
-            var occurrence = kernel.LastCompletion!;
-            foreach (CycleFact fact in occurrence.Event.Facts) {
-                Console.WriteLine($"{fact.At} | {fact.Kind} | {fact.ResourceId ?? fact.ActorId ?? "world"}");
-            }
-            if (options.Trace) { Console.WriteLine(CycleDiagnostics.Render(kernel.World, metrics)); }
-        }
-
-        string snapshot = CycleDiagnostics.Render(kernel.World);
-        Console.WriteLine();
-        Console.WriteLine(CycleDiagnostics.Render(kernel.World, metrics));
-        Console.WriteLine($"本次转换：{completed}；停止原因：{(completed == options.Steps ? "步数上限" : status.ToString())}；累计转换：{kernel.Version.TransitionCount}");
-        Console.WriteLine($"状态摘要 SHA256：{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot)))}");
-        if (options.Snapshot is { } snapshotPath) {
-            string fullPath = Path.GetFullPath(snapshotPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            await File.WriteAllTextAsync(fullPath, snapshot, new UTF8Encoding(false), cancellation.Token);
-        }
-    } finally {
-        Console.CancelKeyPress -= cancelHandler;
-    }
-    return 0;
+        return options.Llm is { } llm
+            ? await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, characterCount: options.CharacterCount)
+            : await PlayConsole.RunAsync(options.Store, cancellation.Token, characterCount: options.CharacterCount,
+                branch: options.Branch, until: options.Until, maxSteps: options.Steps);
+    } finally { Console.CancelKeyPress -= handler; }
 } catch (OperationCanceledException) {
-    Console.Error.WriteLine(hasStore
-        ? "已停止。已完成的进度已保存，使用同一 --store 路径可继续。"
-        : "已停止。内存中的进度未保存。");
+    Console.Error.WriteLine(hasStore ? "已暂停。已提交进度已保存，使用同一 --store 续局。" : "已暂停；内存进度未保存。");
     return 130;
 } catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or OverflowException or FormatException) {
-    Console.Error.WriteLine($"ResourceCycle: {error.Message}");
+    Console.Error.WriteLine($"Hillside: {error.Message}");
     return 1;
 }
 
-static CycleDurableHistory CreateStore(string path) {
-    var initial = CycleGameFactory.CreateBatch();
-    return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
-}
-
-internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, int? CharacterCount = null,
+internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool Help, LlmHostOptions? Llm = null, int? CharacterCount = null,
     string? Branch = null, GymManagementOptions? Management = null) {
     public static Options Parse(string[] args) {
         string? store = null;
-        string? snapshot = null;
-        long hour = 88;
+        long? hour = null;
         int steps = 10_000;
-        bool full = false, trace = false, help = false, play = false, survival = false;
-        bool llm = false, duo = false;
+        bool help = false, llm = false;
+        string? human = null;
         int? characterCount = null;
         bool gym = false, feedback = false, branches = false, feedbacks = false;
         string? branch = null, actor = null, export = null, fork = null, forkRequest = null, forkLabel = null;
@@ -164,28 +91,24 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 ? args[index] : throw new ArgumentException($"参数缺少值：{option}");
             switch (option) {
                 case "--store": store = Path.GetFullPath(Value()); break;
-                case "--snapshot": snapshot = Path.GetFullPath(Value()); break;
                 case "--until-hour":
-                    if (!long.TryParse(Value(), NumberStyles.None, CultureInfo.InvariantCulture, out hour)) {
+                    if (!long.TryParse(Value(), NumberStyles.None, CultureInfo.InvariantCulture, out long parsedHour)) {
                         throw new ArgumentException("--until-hour 必须为非负整数。");
                     }
+                    hour = parsedHour;
                     break;
                 case "--steps":
                     if (!int.TryParse(Value(), NumberStyles.None, CultureInfo.InvariantCulture, out steps) || steps < 1) {
                         throw new ArgumentException("--steps 必须为正整数。");
                     }
                     break;
-                case "--full-recompute": full = true; break;
-                case "--trace": trace = true; break;
                 case "--help": help = true; break;
-                case "--play": play = true; break;
-                case "--survival": survival = true; break;
-                case "--duo": duo = true; break;
                 case "--characters":
                     characterCount = Positive(Value(), option);
                     if (characterCount > 3) { throw new ArgumentException("--characters 必须为 1、2 或 3。"); }
                     break;
                 case "--llm": llm = true; break;
+                case "--human": human = Value(); break;
                 case "--branch": branch = Value(); break;
                 case "--actor": actor = Value(); break;
                 case "--gym": gym = true; break;
@@ -234,25 +157,16 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
             try { branch = CycleDurableHistory.FormatBranchId(CycleDurableHistory.ParseBranchId(branch)); }
             catch (FormatException error) { throw new ArgumentException("--branch 必须为有效分支 ID。", error); }
         }
-        if (!help && (play && (survival || duo) || duo && (survival || characterCount is not null))) {
-            throw new ArgumentException("--play、--survival、--duo 请选择一种；--duo 不能与 --characters 混用。");
-        }
-        if (!help && characterCount is not null && !survival) { throw new ArgumentException("--characters 必须配合 --survival。"); }
-        if (duo) { survival = true; characterCount = 2; }
-        if (!help && llm && !survival && !duo) { throw new ArgumentException("--llm 必须配合 --survival 或 --duo。"); }
         if (!help && !llm && seen.Any(option => option is "--model" or "--auth-file" or "--catalog" or "--connection" or
-            "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log")) {
+            "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log" or "--human")) {
             throw new ArgumentException("模型配置和预算参数必须配合 --llm。");
         }
         if (!help && ((catalog is null) != (connection is null))) { throw new ArgumentException("--catalog 与 --connection 必须一起指定。"); }
         if (!help && catalog is not null && authFile is not null) { throw new ArgumentException("--auth-file 仅用于内置 Codex 连接；目录连接使用 Completion 的认证配置。"); }
-        if (!help && (play || survival || duo) && seen.Any(option => option is "--until-hour" or "--steps" or "--full-recompute" or "--trace" or "--snapshot")) {
-            throw new ArgumentException("批处理参数不适用于 --play / --survival / --duo 交互游戏。");
-        }
-        if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
-        return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival,
+        ModelTime? until = hour is { } selectedHour ? new ModelTime(checked(selectedHour * 3_600_000)) : null;
+        return new(store, until, steps, help,
             llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog,
-                gym || feedback, feedback, branch) : null, characterCount, branch, management);
+                gym || feedback, feedback, branch, human, until, steps) : null, characterCount, branch, management);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

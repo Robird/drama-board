@@ -127,7 +127,7 @@ internal static class PlayView {
         text.AppendLine();
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) {
             text.AppendLine("## 结局");
-            text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "获救。" : "旅程结束。只是这一次未能走出山林。");
+            text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "获救。" : "这位居民的生命已结束。其他居民仍可继续生活。");
             text.AppendLine(observation.EndingReason);
             text.AppendLine("此角色的旅程已经结束，不再安排或结算活动。");
         } else {

@@ -13,7 +13,8 @@ using DramaBoard.ResourceCycle.Completion;
 
 internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = null, string? Catalog = null,
     string? Connection = null, int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
-    string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null);
+    string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null,
+    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000);
 
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
@@ -29,25 +30,29 @@ internal static class LlmConsole {
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
-            var initial = CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1);
+            var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
-        SurvivalHost.RequireMode(history.State, characterCount);
+        WorldHost.RequireWorld(history.State, characterCount);
+        WorldHost.RequireBudget(history.State.Time, options.Until, options.MaxSteps);
+        if (options.HumanActor is { } selectedHuman && !history.State.Characters.Any(actor => actor.Id == selectedHuman)) {
+            throw new ArgumentException($"Human 角色 {selectedHuman} 不在此存档中。");
+        }
         string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
-        using var audit = new LlmRunAudit(logPath, output);
+        using var audit = new LlmRunAudit(logPath, output, showModelDetails: options.HumanActor is null);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
-        var human = history.State.Characters.Count > 1 ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+        var human = options.HumanActor is not null ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
             inputReader: inputReader, outputWriter: output, operations: operations,
             worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}") : null;
         ICycleCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
             history.State.Characters.ToDictionary(character => character.Id,
-                character => character.Id == "a" ? (ICycleCharacterController)human : forwarding, StringComparer.Ordinal));
+                character => character.Id == options.HumanActor ? (ICycleCharacterController)human : forwarding, StringComparer.Ordinal));
         var kernel = CycleEngine.CreateKernel(history, characterController: routed);
         bool recovered = kernel.RecoverPending(cancellationToken);
-        SurvivalHost.RequireMode(kernel.World, characterCount);
+        WorldHost.RequireWorld(kernel.World, characterCount);
         if (durable is not null) {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
@@ -57,16 +62,17 @@ internal static class LlmConsole {
         audit.Gym = gym;
         gym?.CaptureCommitted(kernel.World, operations);
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
-            Version = kernel.Version.ToString(), Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == "a" ? "Human" : "LLM" }).ToArray(),
-            Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
-        string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == "a" ? "Human" : "LLM")}"));
-        output.WriteLine($"角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --survival --llm 和连接配置。");
+            Version = kernel.Version.ToString(), Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),
+            Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps } });
+        string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == options.HumanActor ? "Human" : "LLM")}"));
+        output.WriteLine($"山野镇 / Hillside · 角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm、可选 --human 及连接配置。");
+        if (human is null) { output.WriteLine("全模型观战：以下模型材料为宿主观察证据，不是任何单个角色拥有的知识。"); }
         CompletionConnectionBinding? binding = null;
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
         void DeliverTerminals() {
-            human?.RenderCommitted(kernel.World, "a");
+            if (human is not null) { human.RenderCommitted(kernel.World, options.HumanActor!); }
             foreach (CycleCharacter character in kernel.World.Characters.Where(character => !character.IsActive)) {
-                if ((human is null || character.Id != "a") && deliveredTerminals.Add(character.Id)) {
+                if ((human is null || character.Id != options.HumanActor) && deliveredTerminals.Add(character.Id)) {
                     Terminal(kernel.World, character.Id, audit);
                 }
             }
@@ -85,7 +91,7 @@ internal static class LlmConsole {
                     string connectionId = binding.ConnectionId;
                     model = binding.Model;
                     client = binding.Client;
-                    audit.Write("binding", new { ActorIds = kernel.World.Characters.Where(character => human is null || character.Id != "a").Select(character => character.Id).ToArray(), ConnectionId = connectionId, ModelId = model });
+                    audit.Write("binding", new { ActorIds = kernel.World.Characters.Where(character => human is null || character.Id != options.HumanActor).Select(character => character.Id).ToArray(), ConnectionId = connectionId, ModelId = model });
                 }
                 return new LlmCharacterController(client, model,
                     context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
@@ -93,15 +99,26 @@ internal static class LlmConsole {
                         MaxContextCharacters = options.MaxContextCharacters }, audit.Trace,
                     feedbackSink: options.Feedback ? gym!.SaveFeedback : null);
             });
+            int completed = 0;
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
                 DeliverTerminals();
                 if (!kernel.World.Characters.Any(character => character.IsActive)) {
-                    audit.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, SurvivalHost.Summary(kernel.World));
+                    audit.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, WorldHost.Summary(kernel.World));
                     return 0;
                 }
-                StepStatus status = await kernel.StepAsync(new ModelTime(long.MaxValue), cancellationToken);
-                if (status != StepStatus.Committed) { throw new InvalidOperationException($"生存世界无法继续：{status}。"); }
+                if (completed >= options.MaxSteps || options.Until is { } limit && kernel.CurrentModelTime >= limit) {
+                    audit.Write("host-stop", new { Reason = completed >= options.MaxSteps ? "step-budget" : "time-budget", Saved = store is not null });
+                    output.WriteLine("本次宿主预算已到，世界暂停；可从同一存档继续。");
+                    return 0;
+                }
+                StepStatus status = await kernel.StepAsync(options.Until ?? new ModelTime(long.MaxValue), cancellationToken);
+                if (status != StepStatus.Committed) {
+                    audit.Write("host-stop", new { Reason = status.ToString(), Saved = store is not null });
+                    output.WriteLine($"世界暂停：{status}。保留最后完成事件的时刻，可从同一存档继续。");
+                    return 0;
+                }
+                completed++;
                 PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
                 gym?.CaptureCommitted(kernel.World, operations);
                 foreach (CycleFact fact in kernel.LastCompletion!.Event.Facts) {
@@ -114,7 +131,7 @@ internal static class LlmConsole {
             }
         } catch (PlayConsole.PlayEndedException) {
             audit.Write("host-stop", new { Reason = "human-session-ended", Saved = store is not null });
-            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --survival --llm 与同一存档及连接配置。");
+            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --llm、可选 --human 与同一存档及连接配置。");
             return 0;
         } catch (LlmControllerPausedException error) {
             audit.Write("host-stop", new { Reason = error.ReasonCode, error.CallsMade, Saved = store is not null });
@@ -144,14 +161,14 @@ internal static class LlmConsole {
     }
 
     private static CycleDurableHistory CreateStore(string path, int? characterCount) {
-        var initial = CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1);
+        var initial = CycleGameFactory.CreateLivingWorld(characterCount: characterCount ?? 3);
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
     private static void Terminal(CycleWorld world, string actorId, LlmRunAudit audit) {
         string text = CharacterContextRenderer.RenderFull(world.Business.InteractionStates[actorId], new DecisionPlayLayout());
         audit.Write("terminal", new { ActorId = actorId, Outcome = world.GetCharacter(actorId).Ending!.Outcome.ToString(), Context = text });
-        audit.Output.WriteLine(text);
+        if (audit.ShowModelDetails) { audit.Output.WriteLine(text); }
     }
 
     private sealed class RecordedController(CycleOperationJournal journal) : ICycleCharacterController {
@@ -183,12 +200,14 @@ internal sealed class LlmRunAudit : IDisposable {
     };
     private readonly StreamWriter _file;
     public TextWriter Output { get; }
+    public bool ShowModelDetails { get; }
     public GymSession? Gym { get; set; }
-    public LlmRunAudit(string path, TextWriter output) {
+    public LlmRunAudit(string path, TextWriter output, bool showModelDetails = true) {
         path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         _file = new(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read), new UTF8Encoding(false)) { AutoFlush = true };
         Output = output;
+        ShowModelDetails = showModelDetails;
     }
     public void Write(string kind, object payload, string? summary = null) {
         if (kind == "host-stop" || kind == "summary") {
@@ -197,6 +216,9 @@ internal sealed class LlmRunAudit : IDisposable {
         }
         string json = JsonSerializer.Serialize(new { Kind = kind, Payload = payload }, JsonOptions);
         _file.WriteLine(json);
+        // A Human Console sees only that character's committed material. Complete model/operation
+        // evidence remains available to the developer in the separate audit, never as player perception.
+        if (!ShowModelDetails && kind is "model-input" or "model-output" or "terminal" or "committed" or "feedback-receipt") { return; }
         // Full request/response evidence stays in JSONL; do not dump opaque provider replay/reasoning blobs to the terminal.
         Output.WriteLine(summary is not null ? $"[{kind}] {summary}"
             : kind is "model-input" or "model-output" or "terminal" ? $"[{kind}]" : $"[{kind}] {json}");
@@ -214,6 +236,7 @@ internal sealed class LlmRunAudit : IDisposable {
                 OutputContract = GymMessageProjection.Contract(trace.Request.PromptPrefix.OutputContract),
                 Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(GymMessageProjection.Message).ToArray(),
                 Tail = trace.Request.TailMessages.Select(GymMessageProjection.Message).ToArray() });
+            if (!ShowModelDetails) { return; }
             Output.WriteLine(trace.Request.PromptPrefix.SystemPrompt);
             foreach (ObservationMessage material in trace.Request.PromptPrefix.SharedContextMessages.Concat(trace.Request.TailMessages).OfType<ObservationMessage>()) {
                 Output.WriteLine(material.Content);
@@ -223,6 +246,7 @@ internal sealed class LlmRunAudit : IDisposable {
                 Stage = trace.Kind.ToString(), trace.ProtocolError, trace.Operation,
                 Invocation = trace.Result?.Invocation, Termination = trace.Result?.Termination, Usage = trace.Result?.Usage,
                 Blocks = trace.Result?.Message.Blocks.Select(block => GymMessageProjection.Runtime(block)).ToArray() });
+            if (!ShowModelDetails) { return; }
             Output.WriteLine($"调用 {trace.CallNumber}：{trace.Result?.Termination.Kind.ToString() ?? trace.Kind.ToString()}；"
                 + $"{trace.ProtocolError ?? (trace.Operation is null ? "未形成行动" : "待游戏校验，尚未提交")}");
             if (trace.Result is { } result) {

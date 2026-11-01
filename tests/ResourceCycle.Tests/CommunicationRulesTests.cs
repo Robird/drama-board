@@ -118,12 +118,12 @@ public sealed class CommunicationRulesTests {
         var aCommands = new List<CycleCommand>();
         var bCommands = new List<CycleCommand>();
         if (targetKind == "traversing") { aCommands.Add(CycleCommand.Wait(1)); bCommands.Add(CycleCommand.Go("trail-3")); }
-        if (targetKind == "ended") { aCommands.Add(CycleCommand.Wait(4)); bCommands.Add(CycleCommand.Go("trail-4")); }
+        if (targetKind == "ended") { aCommands.Add(CycleCommand.Wait(4)); }
         aCommands.Add(CycleCommand.Say(target, "private text"));
         aCommands.Add(CycleCommand.Give(target, "item.water", 1));
-        CycleWorld initial = World(Actor("a", waterItems: 2), Actor("b"),
+        CycleWorld initial = World(Actor("a", waterItems: 2), Actor("b", water: targetKind == "ended" ? 0 : 60),
             aPlace: targetKind == "ended" ? "road" : "stream",
-            bPlace: targetKind == "ended" ? "ravine" : targetKind == "distant" ? "cabin" : "stream");
+            bPlace: targetKind == "ended" ? "road" : targetKind == "distant" ? "cabin" : "stream");
         var history = Memory(initial);
         var kernel = CycleEngine.CreateKernel(history, characterController: new Script(aCommands, bCommands));
         await UntilFact(kernel, f => f.Kind == CycleEventKind.OperationRejected);

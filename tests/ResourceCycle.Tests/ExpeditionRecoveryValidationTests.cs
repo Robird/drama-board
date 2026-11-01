@@ -9,7 +9,7 @@ public sealed class ExpeditionRecoveryValidationTests {
     [Theory]
     [InlineData("gather-from-camp")]
     [InlineData("escape-from-camp")]
-    [InlineData("escape-while-working")]
+    [InlineData("death-while-working")]
     [InlineData("scheduled-passage-change")]
     public void Cold_open_rejects_restorable_but_unrunnable_expedition_boundaries_without_repairing_disk(string invalidBoundary) {
         var initial = CycleGameFactory.CreateSurvival(Hour(8), enableNeeds: false, enableWeather: false);
@@ -28,10 +28,12 @@ public sealed class ExpeditionRecoveryValidationTests {
                 spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, []);
                 ending = new(CycleExpeditionOutcome.Escaped, Hour(8), "Forged escape before reaching safety.", new AtPlaceLocation(new("camp")));
                 break;
-            case "escape-while-working":
+            case "death-while-working":
                 spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, []);
                 actor = actor.Change(new(CycleActivityKind.Wait, 1, Hour(8), CycleTime.Hour, Hour(9)), nextActivityId: 2);
-                ending = new(CycleExpeditionOutcome.Escaped, Hour(8), "An exit cannot leave ordinary timed work pending.", new AtPlaceLocation(new("road")));
+                actor = actor.WithSurvival(new(Hour(8), 100 * CycleSurvival.Scale, 0, 100 * CycleSurvival.Scale,
+                    Rate(0), Rate(0), Rate(0)));
+                ending = new(CycleExpeditionOutcome.Dead, Hour(8), "Death cannot leave ordinary timed work pending.", new AtPlaceLocation(new("road")));
                 break;
             case "scheduled-passage-change":
                 string passage = CycleExpeditionMap.GetPassages("camp")[0].Id;

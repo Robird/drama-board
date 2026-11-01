@@ -107,17 +107,21 @@ public sealed class FollowingMovementTests {
     }
 
     [Fact]
-    public async Task Every_member_has_an_individual_exit_even_when_the_leader_finishes_first() {
+    public async Task Former_exit_arrival_preserves_all_members_and_following_for_return_travel() {
         CycleWorld initial = FollowingRulesTests.World(leaders: [null, "a", "a"], places: ["ravine", "ravine", "ravine"]);
-        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Go("trail-4")));
+        var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: Commands(CycleCommand.Go("trail-4"), CycleCommand.Go("trail-4")));
         await UntilFact(kernel, CycleEventKind.MoveStarted);
-        while (kernel.World.Characters.Any(c => c.IsActive)) { await Commit(kernel); }
-        Assert.Equal(CycleExpeditionSummary.AllEscaped, kernel.World.ExpeditionSummary);
+        while (kernel.World.Characters.Any(c => CycleActions.CurrentPlace(kernel.World, c.Id) != "road")) { await Commit(kernel); }
+        Assert.Equal(CycleExpeditionSummary.Exploring, kernel.World.ExpeditionSummary);
         Assert.All(kernel.World.Characters, actor => {
-            Assert.Equal(CycleExpeditionOutcome.Escaped, actor.Ending!.Outcome);
-            Assert.Equal(Hour(11), actor.Ending.At);
-            Assert.Null(actor.FollowingLeaderId);
+            Assert.Null(actor.Ending);
+            Assert.Equal(actor.Id == "a" ? null : "a", actor.FollowingLeaderId);
         });
+        Assert.Equal(Hour(11), kernel.World.Time);
+        await UntilFact(kernel, CycleEventKind.MoveStarted);
+        while (kernel.World.Characters.Any(c => CycleActions.CurrentPlace(kernel.World, c.Id) != "ravine")) { await Commit(kernel); }
+        Assert.Equal(Hour(14), kernel.World.Time);
+        Assert.All(kernel.World.Characters, actor => Assert.True(actor.IsActive));
     }
 
     [Fact]

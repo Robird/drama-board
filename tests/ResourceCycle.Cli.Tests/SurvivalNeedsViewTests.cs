@@ -43,10 +43,10 @@ public sealed class SurvivalNeedsViewTests {
         for (int i = 0; i < 30; i++) {
             await Step(kernel);
             var observation = CycleDecisionContext.Observe(kernel.World, "a");
-            if (observation.Journey?.KnownDestinationName != "迷途营地") { continue; }
+            if (observation.Journey?.KnownDestinationName != "林间营地") { continue; }
             IPlayLayout layout = layoutId == "classic" ? new ClassicPlayLayout() : new DecisionPlayLayout();
             string text = layout.Render(observation);
-            Assert.Contains("从溪流湾出发 → 迷途营地", text);
+            Assert.Contains("从溪流湾出发 → 林间营地", text);
             Assert.Contains("沿林间缓坡向上", text);
             Assert.DoesNotContain("未知目的地", text);
             return;
@@ -108,7 +108,7 @@ public sealed class SurvivalNeedsViewTests {
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             string rendered = layout.Render(warned.Observation, warned.InteractionState);
             Assert.Contains("返回原因：身体警告（饮水触及警戒线）", rendered);
-            Assert.Contains("从迷途营地出发", rendered);
+            Assert.Contains("从林间营地出发", rendered);
             Assert.Contains("未知目的地（尚未探索）", rendered);
             Assert.Contains("trail-2", rendered);
             Assert.Contains("沿窄径攀上风口", rendered);
@@ -249,7 +249,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("本段行程未完成，不再推进", text);
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             string ended = layout.Render(observation);
-            Assert.Contains("从迷途营地出发 → 未知目的地（尚未探索）", ended);
+            Assert.Contains("从林间营地出发 → 未知目的地（尚未探索）", ended);
             Assert.Contains("沿窄径攀上风口", ended);
             Assert.Contains("原计划", ended);
             Assert.DoesNotContain("风口山脊", ended);

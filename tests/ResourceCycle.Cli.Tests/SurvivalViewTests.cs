@@ -11,13 +11,13 @@ public sealed class SurvivalViewTests {
         CycleWorld world = CycleGameFactory.CreateSurvival(enableNeeds: false).World;
         CycleDecisionContext context = ViewContextFixture.Create(world, "a");
         string text = PlayView.Render(context.Observation, context.InteractionState);
-        Assert.Contains("# 山林求生", text);
-        Assert.Contains("迷途营地", text);
+        Assert.Contains("# 山野镇", text);
+        Assert.Contains("林间营地", text);
         Assert.Contains("go trail-1", text);
         Assert.Contains("go trail-2", text);
         Assert.Contains("耗时 60 分钟", text);
         Assert.Contains("耗时 120 分钟", text);
-        foreach (string hidden in new[] { "山脚公路", "巡山信号站", "溪流湾", "废弃林屋", "berries", "ridge-herbs", "trail-6" }) {
+        foreach (string hidden in new[] { "山脚镇口", "巡山信号站", "溪流湾", "废弃林屋", "berries", "ridge-herbs", "trail-6" }) {
             Assert.DoesNotContain(hidden, text);
             Assert.DoesNotContain(hidden, PlayView.RenderCommands(context.Observation));
         }
@@ -66,33 +66,33 @@ public sealed class SurvivalViewTests {
     }
 
     [Fact]
-    public async Task Arrival_at_safety_renders_an_ending_without_prompting_for_more_actions() {
+    public async Task Arrival_at_town_keeps_the_resident_active_with_available_actions() {
         var initial = CycleGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = CycleEngine.CreateKernel(new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor),
             characterController: new Commands(CycleCommand.Go("trail-1"), CycleCommand.Go("trail-3"), CycleCommand.Go("trail-4")));
-        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Escaped);
+        await Until(kernel, world => CycleActions.CurrentPlace(world, "a") == "road");
         CycleDecisionContext context = CycleDecisionContext.Create(kernel.World, "a");
         string text = PlayView.Render(context.Observation, context.InteractionState);
-        Assert.Contains("山脚公路", text);
-        Assert.Contains("## 结局", text);
-        Assert.Contains("获救", text);
-        Assert.DoesNotContain("## 可用命令", text);
-        Assert.DoesNotContain("请选择下一活动", text);
-        Assert.NotNull(context.Check(CycleCommand.Wait(1)));
+        Assert.Contains("山脚镇口", text);
+        Assert.DoesNotContain("## 结局", text);
+        Assert.Contains("## 可用命令", text);
+        Assert.True(kernel.World.GetCharacter("a").IsActive);
+        Assert.Null(context.Check(CycleCommand.Wait(1)));
     }
 
     [Theory]
-    [InlineData("--survival", "--play")]
-    [InlineData("--survival", "--trace")]
-    [InlineData("--survival", "--full-recompute")]
-    public void Survival_rejects_conflicting_modes(string first, string second) =>
-        Assert.Throws<ArgumentException>(() => Options.Parse([first, second]));
+    [InlineData("--survival")]
+    [InlineData("--play")]
+    [InlineData("--duo")]
+    public void Removed_product_modes_are_rejected(string oldMode) =>
+        Assert.Throws<ArgumentException>(() => Options.Parse([oldMode]));
 
     [Fact]
-    public void Survival_is_a_distinct_interactive_mode() {
-        Options options = Options.Parse(["--survival"]);
-        Assert.True(options.Survival);
-        Assert.False(options.Play);
+    public void Default_product_entry_is_the_continuous_living_world() {
+        Options options = Options.Parse([]);
+        Assert.Null(options.Llm);
+        Assert.Null(options.CharacterCount);
+        Assert.Null(options.Until);
     }
 
     private static async Task Step(SimulationKernel<CycleWorld, CyclePrediction, CycleFact> kernel) =>

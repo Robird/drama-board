@@ -11,12 +11,12 @@ namespace DramaBoard.ResourceCycle.Cli.Tests;
 public sealed class GymIntegrationTests {
     [Fact]
     public async Task Feedback_continues_the_same_duo_service_and_audits_full_tail_without_private_leakage() {
-        using var files = new Files();
+        using var files = new Files(characterCount: 2);
         var feedback = Feedback();
         var client = new Client(feedback, Act("handoff model-private"));
         using var input = new StringReader("handoff human-private\nwait 1\n");
         using var output = new StringWriter();
-        var options = files.Options(2);
+        var options = files.Options(2) with { HumanActor = "a" };
         Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client, characterCount: 2, inputReader: input));
 
         var snapshot = files.Read();
@@ -63,9 +63,9 @@ public sealed class GymIntegrationTests {
         Assert.Equal(CycleObservedEventKind.HandoffEdited, Assert.Single(gameOperation.Experiences).Event.Kind);
         // Compare with the same game commands without feedback: natural perceptions are legitimate
         // Items, but the host-only tool must create neither extra game transitions nor experiences.
-        using var baselineFiles = new Files();
+        using var baselineFiles = new Files(characterCount: 2);
         using var baselineInput = new StringReader("handoff human-private\nwait 1\n");
-        Assert.Equal(2, await LlmConsole.RunAsync(baselineFiles.Store, baselineFiles.Options(1), default, output,
+        Assert.Equal(2, await LlmConsole.RunAsync(baselineFiles.Store, baselineFiles.Options(1) with { HumanActor = "a" }, default, output,
             new Client(Act("handoff model-private")), characterCount: 2, inputReader: baselineInput));
         using var baseline = CycleDurableHistory.Open(baselineFiles.Store);
         Assert.Equal(baseline.Cursor.Version.TransitionCount, state.Cursor.Version.TransitionCount);
@@ -184,7 +184,7 @@ public sealed class GymIntegrationTests {
 
     [Fact]
     public async Task Child_start_neither_recovers_parent_pending_event_nor_reconciles_parent_operation_journal() {
-        using var files = new Files();
+        using var files = new Files(createStore: false);
         var initial = CycleGameFactory.CreateSurvival();
         var memory = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         var operation = new CycleControllerOperation("parent-tool", "use item.water", "parent-pending");
@@ -303,6 +303,12 @@ public sealed class GymIntegrationTests {
     private sealed class Files : IDisposable {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "drama-gym-integration-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(_root, "game");
+        public Files(int characterCount = 1, bool createStore = true) {
+            if (createStore) {
+                var initial = CycleGameFactory.CreateSurvival(characterCount: characterCount);
+                using var saved = CycleDurableHistory.Create(Store, initial.World, initial.Cursor);
+            }
+        }
         public LlmHostOptions Options(int maxCalls, string? branch = null) => new(MaxCalls: maxCalls,
             LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"), Gym: true, Feedback: true, Branch: branch);
         public GymJournalSnapshot Read() => GymJournal.Read(GymSession.JournalPath(Store));

@@ -116,7 +116,7 @@ internal static class GymCommands {
             throw new IOException($"分支 {registered.Branch.BranchId} 已注册，但来源日志未能确认保存；没有打开或运行新分支。请用 --branches 核查，不要盲目重试 fork。", error);
         }
         output.WriteLine($"分支已注册：{registered.Branch.BranchId}；来源 S：{boundary.StateCommitId}；未打开或运行。");
-        output.WriteLine("后续使用相同 --store 和上述 --branch，另选 --survival（人数沿用存档） 及控制器配置续跑。");
+        output.WriteLine("后续使用相同 --store 和上述 --branch，人数沿用存档，重新指定控制器配置续跑。");
     }
 
     private static GymRecord Find(GymJournalSnapshot snapshot, string kind, string field, string id) {

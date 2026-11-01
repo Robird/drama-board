@@ -77,11 +77,9 @@ internal static class CyclePlanning {
         var traversal = (TraversingLocation)world.Expedition!.Spatial.Entities.Single(e => e.Id == arrived.EntityId).Location;
         CyclePlaceDefinition place = CycleExpeditionMap.GetPlace(traversal.TargetPlaceId.Value);
         string result = $"抵达{place.Name}。{place.Description}";
-        CycleCharacter changed = place.IsExit
-            ? actor.End(CycleExpeditionOutcome.Escaped, at, $"你抵达{place.Name}，安全回到了人类社会。", new AtPlaceLocation(new(place.Id)))
-            : actor.Change(null, result: result);
+        CycleCharacter changed = actor.Change(null, result: result);
         return new(CycleEventKind.MoveArrived, at, actor.Id, changedCharacters: [changed],
-            result: result, spatialFacts: place.IsExit ? facts.Append(new EntityRemovedFact(new(actor.Id))) : facts);
+            result: result, spatialFacts: facts);
     }
 
     /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>

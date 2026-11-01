@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-01；[小镇与山野的融合愿景](docs/codex-goals/living-world/README.md)与 Goal 推进材料已就绪，待用户启动实施；大喊、跟随、微型小镇与 Character Gym 一期已完成，Gym 二期继续延期。
+> 最近整理：2026-11-01；[小镇与山野的融合愿景](docs/codex-goals/living-world/README.md)的 Goal 已启动，山野镇首片已验收，接着迁入生产经济；大喊、跟随、微型小镇与 Character Gym 一期已完成，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -13,7 +13,7 @@
 - **Spatial**：[SpatialSimulation](src/Spatial/Simulation/SpatialSimulation.cs) 按 dirty 通道增量维护运行时 Contacts，genesis/冷开显式 Rebuild；磁盘 S 只保存 Business/cursor，E 只含 GraphSpatialFact。保留 contact floor、arrival ceil、严格内部掉头与 current-segment 消费；见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)和 [Graph 设计](docs/design/graph-spatial-world.md)。
 - **Host**：通用 [SimulationHost](src/Host/SimulationHost.cs) 循环驱动 Kernel，保留在目标核心中。
 - **Inventory**：[ItemInventory](src/Inventory/ItemInventory.cs) 提供不可变物品数量与可选总件数上限，只依赖 DG；局部接纳/增加/校验由模块负责，跨模块采集效果及单根发布仍由游戏编排。
-- **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 编排独立事实应用与[预测维护](src/ResourceCycle/CyclePredictionMaintenance.cs)。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 保留批处理及 `--play` 三角色有限采集。见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
+- **ResourceCycle 应用实例**：[CyclePlanning](src/ResourceCycle/CyclePlanning.cs) 原子记录库存、背包、活动及加入/耗尽感知；[CycleEngine](src/ResourceCycle/CycleEngine.cs) 编排独立事实应用与[预测维护](src/ResourceCycle/CyclePredictionMaintenance.cs)。[CycleDurableHistory](src/ResourceCycle/Persistence/CycleDurableHistory.cs) 单根保存业务/游标及游戏修订号，独立事件也带修订号；pending 恢复不重做控制器/Plan。[Console](src/ResourceCycle.Cli/Program.cs) 当前默认进入山野镇三居民生活世界；早期采集证据见[多人验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。
 - **构建依赖**：Kernel/Spatial/Inventory/ResourceCycle 直接引用相邻 DurableGraph 当前源码及 Generator/schema 工具；ResourceCycle 和 Spatial.Tests 的 Persistence 也来自同一源码图。Storage 沿用 DG 的 revision 校验，验收显式运行 Schema Verify。源码根与使用边界见[源码依赖说明](docs/source-dependencies.md)。
 - **JSON 文本**：文件、日志、Console JSON 与 Completion 请求使用 `UnsafeRelaxedJsonEscaping`；[角色 Markdown 数据字面量](src/ResourceCycle.Cli/CharacterContextRenderer.cs)保留安全转义，[空间候选键](src/Spatial/Simulation/SpatialOccurrenceRule.cs)及 Completion dispatch 指纹保留原编码以稳定身份与排序。日志校验按保存的原始 Payload 计算，旧行可与新编码追加行共存。
 
@@ -21,19 +21,19 @@
 
 用户已确定围绕现有时空模型在本仓库建设下一代引擎与一组实例游戏；Mud 保留为可玩参照，选择性借鉴其动作、观察、事件与状态关联经验，不进行原地迁移或兼容适配。新业务逻辑先写应用层，经实例验证后再提取共性。
 
-资源周期实例保留批处理预测对照与三角色单地点采集 Console，见[多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)；`--survival --characters 1|2|3` 提供空间探索（新局默认 1，续局省略人数则读取存档）。多人共用 Human Console，带 `--llm` 时 a 为 Human、其余角色共享 LLM 控制器与预算；单人 `--llm` 控制 a。`--duo` 仅为显式二人解析别名。所有角色/空间/资源仍组成同一发布根；没有 GUI。
+山野镇以 ResourceCycle 为唯一运行时：默认三居民，可用 `--characters 1|2|3` 选择新局人数；续局省略人数则读取存档。默认共用 Human Console；`--llm` 控制全体，`--human ID` 选择一个 Console 角色。`--steps` / `--until-hour` 仅暂停宿主，所有角色/空间/资源仍组成同一发布根；没有 GUI。旧 `--play` / `--survival` / `--duo` 及批处理入口已撤下，历史采集语义保留在领域测试。
 
 用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现；运行中增量维护和冷开重建是独立选择。纯派生预测不应强制落盘；原持久方案仅作为[历史验收记录](docs/experiments/local-prediction-acceptance.md)保留。
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：用户已选择将 Microtown 与 ResourceCycle 融合为“小镇与山野”的连续生活世界，支持 Human Console（真人或 Coding Agent 操作）与多个 LLM 角色，无强制主线。新[愿景与完成条件](docs/codex-goals/living-world/README.md)、[实现思路](docs/codex-goals/living-world/approach.md)和[Goal 启动文本](docs/codex-goals/living-world/goal.md)已建立，尚未实施融合；下一轮从[专题工作计划](docs/codex-goals/living-world/work-plan.md)接续，按完成条件自主选片、实现、验证与自由游玩，少量重大取舍再交用户。专题施工状态只在该计划维护。
+**当前焦点**：用户已选择将 Microtown 与 ResourceCycle 融合为“小镇与山野”的连续生活世界，支持 Human Console（真人或 Coding Agent 操作）与多个 LLM 角色，无强制主线。新[愿景与完成条件](docs/codex-goals/living-world/README.md)、[实现思路](docs/codex-goals/living-world/approach.md)和[Goal 启动文本](docs/codex-goals/living-world/goal.md)已建立，首片已通过[验收](docs/experiments/living-world-foundation-acceptance.md)；后续从[专题工作计划](docs/codex-goals/living-world/work-plan.md)接续，按完成条件自主选片、实现、验证与自由游玩，少量重大取舍再交用户。专题施工状态只在该计划维护。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
 [角色跟随](docs/design/character-following.md)已贯通主动集合、普通 go 全员出发、到点解散工作与重新集合，见[实现与验收](docs/experiments/character-following-acceptance.md)。实际人类参与的合作试玩与集合体验反馈仍独立保留，代理操作 Human 入口不能替代。不自动等待未加入者，不添加 Party/Ready 屏障；途中退出、异步插话或通用队伍模块仍按实际需求裁决。
 
-[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。两游戏当前仍共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存，各有观察、规则和独立发布根；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 的经济、交易、owner 预测和恢复/分叉是融合起点；融合方向以上述新专题为准，旧里程碑不再要求未来继续维持两个独立产品。其他体验建议与 Gym 二期的历史重开条件见[原工作计划](docs/codex-goals/microtown/work-plan.md)。
+[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。Microtown 暂留作经济迁移参照；新生活世界只使用 Cycle 发布根，生产与经济尚待迁入。两原型共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 的经济、交易、owner 预测和恢复/分叉是融合起点；融合方向以上述新专题为准，旧里程碑不再要求未来继续维持两个独立产品。其他体验建议与 Gym 二期的历史重开条件见[原工作计划](docs/codex-goals/microtown/work-plan.md)。
 
 [角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；小镇复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
@@ -47,7 +47,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 [增量 UI 切片 A](docs/design/incremental-ui-slice-a.md)的事件/效果与状态键继续复用；生存 Console 支持 `:mode full|delta`，默认 delta。当前 Context 已保存零耗时反馈与上次放行区间的经历，替代独立 Incoming 总计；尚无最近 n 个完整回合窗口。后续按[阶段目标](docs/design/incremental-ui-milestone.md)裁决 B 的容量和裁剪，倾向按决策回合分组。保持新回合自足，不重开动作后收尾或 `:end`；后续依真实模型体验比较决策质量与上下文成本；宿主审计不等于角色记忆，原生工具会话恢复仍延期。
 
-生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付；`--play` 仍仅支持 full。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测；返回原因按本次警告事件列出触发属性，途中路线来自共享冻结观察，未知目的地不泄露。二期双角色个人结局与同地对话/赠与已实施；移动不可取消、干木燃料用途依体验重开。
+生存一期的规则与恢复证据见[最终验收](docs/experiments/survival-demo-acceptance.md)。Console 使用 [IPlayLayout](src/ResourceCycle.Cli/IPlayLayout.cs) 切换决策/经典布局，支持 `:layout <名称> once`，元命令仅接受冒号前缀。[PlayPresentationSession](src/ResourceCycle.Cli/PlayPresentationSession.cs)以带角色/轮号的彩色上下文起止标记及带外管理块组织交互，Closed 后的结果在下一 Opening 交付。完整重放与最新状态预览分开，look/once 不推进消费游标；已打印的过期拒绝可留在滚动历史，纯输出只含保留材料。排版见[布局合同](docs/design/console-layouts.md)，不设位置快照测试；危险指标来自保存的观察，布局不重新预测；返回原因按本次警告事件列出触发属性，途中路线来自共享冻结观察，未知目的地不泄露。二期双角色个人结局与同地对话/赠与已实施；移动不可取消、干木燃料用途依体验重开。
 
 [渐进重构方案](docs/implementation/modularization-plan.md) A–D 已通过[验收](docs/experiments/modularization-acceptance.md)；继续按[分层与组合设计](docs/design/layering-and-composition.md)在游戏层组合新玩法，依真实需求提取模块。默认采集 demo 仍使用无限背包；持久身份与旧开发存档支持范围集中在重构方案。
 
@@ -59,7 +59,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 18](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 19](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Microtown 领域/Completion 适配/Console、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
@@ -78,5 +78,5 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 按需导航与验证
 
-- 唯一入口 [DramaBoard.slnx](DramaBoard.slnx) 包含核心、当前实例及测试，并显式列入相邻 DG/Storage/Completion 源码项目供 IDE/LSP 加载；重复 Local solution 已删除。[README](README.md)与 [CI](.github/workflows/ci.yml)均使用相邻仓库布局，使用精确 SDK 10.0.201；第三方包来自 nuget.org，保留仓内包缓存。旧包准备脚本仅保留历史复现用途，当前不要求发包。试玩：`dotnet run --project src/ResourceCycle.Cli -c Release -- --play`；批处理诊断使用 `--trace`。
+- 唯一入口 [DramaBoard.slnx](DramaBoard.slnx) 包含核心、当前实例及测试，并显式列入相邻 DG/Storage/Completion 源码项目供 IDE/LSP 加载；重复 Local solution 已删除。[README](README.md)与 [CI](.github/workflows/ci.yml)均使用相邻仓库布局，使用精确 SDK 10.0.201；第三方包来自 nuget.org，保留仓内包缓存。旧包准备脚本仅保留历史复现用途，当前不要求发包。试玩：`dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-hillside`；控制绑定和预算见根 README。
 - 文档入口：[docs/README](docs/README.md)；概念与当前代码命名对照见[术语表](docs/glossary.md)，区分角色、控制器、活动、决策请求与预测/事实。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

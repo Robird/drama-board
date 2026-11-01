@@ -122,11 +122,14 @@ public sealed class WeatherTests {
     [InlineData(-1, 1)]
     [InlineData(0, 0)]
     [InlineData(1, 0)]
-    public async Task Reaching_safety_at_or_before_weather_does_not_draw_that_window(long weatherOffset, long expectedSequence) {
-        CycleWorld initial = World(Hour(8), new(Hour(11).Ticks + weatherOffset), place: "ravine", idle: true);
+    public async Task Personal_death_at_or_before_weather_does_not_draw_that_window(long weatherOffset, long expectedSequence) {
+        var needs = new CycleSurvival(Hour(8), 100 * CycleSurvival.Scale, 24 * CycleSurvival.Scale,
+            100 * CycleSurvival.Scale, CycleSurvivalRules.FoodRate, CycleSurvivalRules.WaterRate,
+            CycleSurvivalRules.WarmthRate(false, true), warnedMask: 2);
+        CycleWorld initial = World(Hour(8), new(Hour(11).Ticks + weatherOffset), place: "ravine", idle: true, needs: needs);
         var source = Commands(CycleCommand.Go(Passage("ravine", "road")));
         var kernel = CycleEngine.CreateKernel(Memory(initial), characterController: source);
-        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Escaped);
+        await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == CycleExpeditionOutcome.Dead);
         Assert.Equal(Hour(11), kernel.World.Time);
         Assert.Equal(expectedSequence, Environment(kernel.World).Sequence);
         Assert.Equal(1, source.Calls);

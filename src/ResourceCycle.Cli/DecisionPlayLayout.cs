@@ -169,7 +169,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
 
     private static void RenderEnding(StringBuilder text, CycleViewSnapshot snapshot) {
         CycleObservation observation = snapshot.Observation;
-        text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**旅程结束。只是这一次未能走出山林。**");
+        text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "**获救。**" : "**这位居民的生命已结束。其他居民仍可继续生活。**");
         text.AppendLine(observation.EndingReason);
         text.AppendLine("以下为此角色结束时的冻结记录；未完成的活动不会继续结算。其他角色仍可继续探索。");
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
