@@ -77,6 +77,46 @@ public sealed class SpatialQueries {
         return Array.AsReadOnly(colocated);
     }
 
+    /// <summary>
+    /// Returns entities at the origin or a directly related place, requiring every requested capability.
+    /// Traversing entities are excluded; the materialized result contains all entity kinds in ID order.
+    /// </summary>
+    public IReadOnlyList<EntityId> GetEntitiesInOneHop(
+        GraphSpatialState state,
+        PlaceId origin,
+        ulong requiredFlags) {
+        RequireState(state);
+        if (!_definition.Contains(origin)) {
+            throw new KeyNotFoundException($"Place '{origin}' does not exist.");
+        }
+
+        if (requiredFlags == 0) {
+            throw new ArgumentOutOfRangeException(nameof(requiredFlags), "At least one connection capability is required.");
+        }
+
+        var places = new HashSet<PlaceId> { origin };
+        foreach (PlaceRelationDefinition relation in _definition.Relations) {
+            if ((relation.Flags & requiredFlags) != requiredFlags) {
+                continue;
+            }
+
+            if (relation.EndpointA == origin) {
+                places.Add(relation.EndpointB);
+            } else if (relation.EndpointB == origin) {
+                places.Add(relation.EndpointA);
+            }
+        }
+
+        var entities = new List<EntityId>();
+        foreach (SpatialEntity entity in state.Entities) {
+            if (entity.Location is AtPlaceLocation atPlace && places.Contains(atPlace.PlaceId)) {
+                entities.Add(entity.Id);
+            }
+        }
+
+        return entities.AsReadOnly();
+    }
+
     public IReadOnlyList<SamePassageRelation> GetSamePassageRelations(
         GraphSpatialState state,
         EntityId entityId,

@@ -11,6 +11,10 @@ public sealed class CommunicationViewTests {
         IPlayLayout layout = decision ? new DecisionPlayLayout() : new ClassicPlayLayout();
         foreach (string text in new[] { layout.Render(observation), layout.RenderActionHelp(observation) }) {
             Assert.Contains("say <actor-id> <text>", text);
+            Assert.Contains("shout <text>", text);
+            Assert.Contains("声音连接的一跳地点", text);
+            Assert.Contains("无人听见也成功", text);
+            Assert.Contains("say、shout 与 give 共用", text);
             Assert.Contains("give <actor-id> <item-id> <count>", text);
             Assert.Contains("4/4 次", text);
             Assert.Contains("`b`（阿白）", text);
@@ -30,7 +34,8 @@ public sealed class CommunicationViewTests {
         Assert.Contains("actor-id：空域", text);
         Assert.Contains("0/4 次", text);
         Assert.Contains("有待响应的通信", text);
-        Assert.Contains("当前 say / give 受阻", text);
+        Assert.Contains("当前 say / shout / give 受阻", text);
+        Assert.Contains("这不限制地点内的大喊", text);
         Assert.Contains("保留原活动及截止时刻", text);
         Assert.Contains("换回合、确认或冷开不返还", text);
     }
@@ -46,6 +51,24 @@ public sealed class CommunicationViewTests {
         Assert.Contains("通信待响应：是", text);
         Assert.Equal(3, update.CurrentValues[new("communication", "a", "remaining")].Number);
         Assert.True(update.CurrentValues[new("communication", "a", "pending")].Boolean);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Communication_budget_event_shows_remaining_values_in_both_layouts(bool decision) {
+        CycleObservation initial = Observe();
+        CycleObservation changed = WithCommunication(initial, new(3, 4, false, 1000));
+        var sent = new CycleObservedEvent(1, "a", CycleObservedEventKind.SpeechShouted, initial.Time, initial.Time,
+            subjectId: "a", subjectName: "阿青", detail: "集合", effects: [
+                new(new("communication", "a", "remaining"), CycleVisibleValue.Numeric(4, "次"), CycleVisibleValue.Numeric(3, "次"))
+            ]);
+        var update = CycleViewUpdate.Create(CycleViewSnapshot.Create(initial), CycleViewSnapshot.Create(changed), [sent],
+            PlayDeliveryPhase.ControllerInput);
+        IPlayLayout layout = decision ? new DecisionPlayLayout() : new ClassicPlayLayout();
+        string text = layout.RenderUpdate(update);
+        Assert.Contains("本时刻剩余通信发送额度 4次 → 3次", text);
+        Assert.DoesNotContain("本时刻剩余通信发送额度 -1次", text);
     }
 
     [Theory]

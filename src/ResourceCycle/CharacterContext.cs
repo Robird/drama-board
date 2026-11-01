@@ -221,6 +221,11 @@ public sealed partial class CharacterExperience : IDurableObject {
                 throw new InvalidOperationException("Communication experiences must retain their signed content.");
             }
             entry.Communication?.Validate(actorId, entry.Kind);
+            if (entry.Kind == CycleObservedEventKind.SpeechShouted &&
+                (string.IsNullOrWhiteSpace(entry.SubjectId) || string.IsNullOrWhiteSpace(entry.SubjectName) ||
+                    !CycleCommunicationRules.ValidSpeech(entry.Detail))) {
+                throw new InvalidOperationException("Shouted experiences must retain the signed original speech.");
+            }
             foreach (CycleObservedEffect effect in entry.Effects) {
                 if (effect is null || string.IsNullOrWhiteSpace(effect.Key.Category) ||
                     string.IsNullOrWhiteSpace(effect.Key.ObjectId) || string.IsNullOrWhiteSpace(effect.Key.Field)) {

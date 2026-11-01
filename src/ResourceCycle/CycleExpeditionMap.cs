@@ -29,7 +29,11 @@ public static class CycleExpeditionMap {
     ];
     public static GraphDefinition Graph { get; } = GraphDefinition.Create(
         Places.Select(p => new PlaceId(p.Id)), Passages.Select(p => new PassageDefinition(
-            new(p.Id), new(p.From), new(p.To), p.DurationTicks, new(true, true))));
+            new(p.Id), new(p.From), new(p.To), p.DurationTicks, new(true, true))),
+        relations: [
+            new(new("camp"), new("stream"), PlaceRelationCapabilities.Sound),
+            new(new("ridge"), new("cabin"), PlaceRelationCapabilities.Sound)
+        ]);
     internal static SpatialSimulation Simulation { get; } = new(Graph);
     internal static SpatialPlanner Planner { get; } = new(Graph);
     internal static GraphSpatialReducer Reducer { get; } = new(Graph);

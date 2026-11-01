@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-01；[语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)设计与辩证简化审查已完成，尚未实施；角色跟随已实施，微型小镇与 Character Gym 一期已完成，Gym 二期闭环改进继续延期。
+> 最近整理：2026-11-01；[语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已实施并验收，角色跟随已实施，微型小镇与 Character Gym 一期已完成，Gym 二期闭环改进继续延期。
 
 ## 最终目标
 
@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：[语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已完成设计与两轮独立审查，尚未实施。用户已选定无向地点连接携带 64-bit 能力 Flags，仅定义声音位；Spatial 查询本节点及一跳实体，首版不提供实体过滤器，游戏筛选语言接收者并统一提交。下一步实施该纵向功能并验收多人原文交付、信息边界和 E-only 恢复；共享通信交付校验缺口与必要接线见设计。事件分类、传播、筛选、订阅是长期核心方向，当前不建立空框架，重开条件集中于设计。
+**当前焦点**：[语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 Spatial 的 64-bit 能力连接、一跳实体查询和游戏内多人原文交付；见[实现验收](docs/experiments/spatial-shout-acceptance.md)与[三角色召集试玩](docs/experiments/spatial-shout-console.md)。下一步通过实际人类与模型合作体验检验召集便利性，并用新的真实玩法发现事件分类、传播、筛选与订阅需求；当前不建立空框架，重开条件集中于设计。
 
 [角色跟随](docs/design/character-following.md)已贯通主动集合、普通 go 全员出发、到点解散工作与重新集合，见[实现与验收](docs/experiments/character-following-acceptance.md)。实际人类参与的合作试玩与集合体验反馈仍独立保留，代理操作 Human 入口不能替代。不自动等待未加入者，不添加 Party/Ready 屏障；途中退出、异步插话或通用队伍模块仍按实际需求裁决。
 
@@ -57,7 +57,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[CycleOperationJournal](src/ResourceCycle.Cli/CycleOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 17](src/ResourceCycle/Persistence/CycleGameRevision.cs)，跟随相关 Schema 边界见[跟随验收](docs/experiments/character-following-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 18](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Microtown 领域/Completion 适配/Console、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
@@ -71,7 +71,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 - **Player 与玩法扩展**：长期约定由角色 Goals 承载，handoff 保持一次性交接。结构化经历召回、实体解析、完整笔记编辑器、自动规划与条件提醒按目标管理实测缺口重开；概率产出、主动后台插话、唯一目标失效和通用规则包按真实玩法需要重开。旧运行时保持归档；出现激活过多的证据后再设计通知过滤。
 - **持久化扩展**：ResourceCycle adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
 - **分支、续局与外部调用**：2A 保留未发布 E 可重新调用、已发布 E 不重问或重复效果；Gym 支持串行选择完成 S 分叉，保留源 lineage/随机坐标、独立分支操作日志与截断的证据前缀；任意位置倒带、并发分支运行、完整 Player closure、原生模型会话恢复和全面异常/retry 恢复按真实需求重开。DurableGraph 不透明恢复 Task、LLM 调用或执行栈。
-- **Spatial 扩展**：静态语义连接与一跳查询已进入上述大喊设计；动态拓扑、距离传播、运动数学和更多途中互动继续延期。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。
+- **Spatial 扩展**：静态语义连接与一跳查询已实施；动态拓扑、距离传播、运动数学和更多途中互动继续延期。现有 floor＋同 tick 仲裁仍作对照；更强索引按[综述](docs/research/prediction-discovery/README.md)的覆盖条件重开。缓存移除不会自动更新已保存的速度/周期参数，显式平衡调整见缓存方案第 6 节。
 - **持久 Script VM**：研究材料已归档；只有需要持久执行状态时才重新选择方案。
 
 ## 按需导航与验证

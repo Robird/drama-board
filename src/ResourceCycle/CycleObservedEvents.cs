@@ -39,7 +39,7 @@ internal static class CycleObservedEvents {
                 // A leader's terminal cause is not the surviving follower's own death or arrival.
                 Emit(CycleObservedEventKind.FollowEnded, following, detail: "Terminal");
             }
-            bool received = fact.TargetActorId == before.Id && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+            bool received = ReceivesCommunication(fact, before.Id);
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
             bool publicEvent = fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
@@ -104,6 +104,11 @@ internal static class CycleObservedEvents {
                 detail = fact.Environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
             if (fact.Kind == CycleEventKind.GatherFinished) { detail = fact.GatherStopReason?.ToString(); }
+            if (fact.Kind == CycleEventKind.SpeechShouted) {
+                subjectId = fact.ActorId;
+                subjectName = world.GetCharacter(fact.ActorId!).Name;
+                detail = fact.SpeechText;
+            }
             // A successful final yield owns the transfer; its separate ending owns the lifecycle removal.
             if (subjectSelf && fact.Kind == CycleEventKind.GatherYielded && after.Activity is null) {
                 if (before.Activity is { } gathering) {
@@ -137,6 +142,11 @@ internal static class CycleObservedEvents {
         }
         return fact.WithObservedEvents(events);
     }
+
+    internal static bool ReceivesCommunication(CycleFact fact, string actorId) =>
+        fact.Kind == CycleEventKind.SpeechShouted
+            ? fact.ActorId != actorId && fact.ChangedCharacters.Any(character => character.Id == actorId)
+            : fact.TargetActorId == actorId && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
 
     internal static bool MovedSelf(CycleFact fact, string actorId) => fact.SpatialFacts.Any(movement => movement switch {
         TraversalStartedFact started => started.EntityId.Value == actorId,

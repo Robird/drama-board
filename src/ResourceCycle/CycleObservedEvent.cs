@@ -47,12 +47,12 @@ public readonly partial record struct CycleVisibleValue {
     }
 }
 
-[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 3)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 4)]
 public enum CycleObservedEventKind {
     BodyChanged, ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, ExpeditionEnded, SpeechSent, ItemGiven,
-    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed
+    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted
 }
 
 /// <summary>Signed communication, not independently verified geography or another character's private state.</summary>
@@ -89,7 +89,7 @@ public sealed partial class CycleObservedEffect : IDurableObject {
 }
 
 /// <summary>Experienced facts frozen in E; effects explain, but never execute, recorded business replacements.</summary>
-[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 3)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 4)]
 public sealed partial class CycleObservedEvent : IDurableObject {
     [DurableField(1)] private int _eventOrdinal;
     [DurableField(2)] private string _observerId;

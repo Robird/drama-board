@@ -18,6 +18,9 @@ public static class CycleCommandParser {
                 return CycleCommand.Handoff(handoff == "--clear" ? null : handoff);
             }
         }
+        if (trimmed.StartsWith("shout", StringComparison.Ordinal) && trimmed.Length > 5 && char.IsWhiteSpace(trimmed[5])) {
+            return CycleCommand.Shout(trimmed[6..].Trim());
+        }
         if (trimmed.StartsWith("say", StringComparison.Ordinal) && trimmed.Length > 3 && char.IsWhiteSpace(trimmed[3])) {
             string remaining = trimmed[4..].TrimStart();
             int separator = 0;
@@ -56,6 +59,7 @@ public static class CycleCommandParser {
         CycleCommandKind.Unfollow => "unfollow",
         CycleCommandKind.DismissFollowers => "dismiss-followers",
         CycleCommandKind.Goal => GoalCommandParser.Format(command.Goal!),
+        CycleCommandKind.Shout => $"shout {command.SpeechText}",
         CycleCommandKind.Say => $"say {command.TargetActorId} {command.SpeechText}",
         CycleCommandKind.Give => $"give {command.TargetActorId} {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",

@@ -21,7 +21,7 @@ internal static class CyclePlanning {
         switch (command.Kind) {
             case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:
                 return CycleFollowingRules.Plan(world, actor, command);
-            case CycleCommandKind.Say or CycleCommandKind.Give:
+            case CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.Shout:
                 return CycleCommunicationRules.Plan(world, actorId, command);
             case CycleCommandKind.Continue: {
                 string result = "已确认感知，当前活动与截止时刻保持不变。";
@@ -86,7 +86,7 @@ internal static class CyclePlanning {
 
     /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>
     internal static CycleFact Observe(CycleWorld world, CycleFact fact) {
-        if (world.Expedition is null) { return fact; }
+        if (world.Expedition is null || fact.Kind == CycleEventKind.SpeechShouted) { return fact; }
         GraphSpatialState spatial = world.Expedition.Spatial;
         foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
             spatial = CycleExpeditionMap.Reducer.Apply(spatial, new(fact.At, 0), spatialFact);

@@ -34,6 +34,7 @@ public static class CycleOperationResults {
                 CycleObservedEventKind.FollowStarted => "已开始跟随；由领队决定移动，结束跟随后可独立行动。",
                 CycleObservedEventKind.FollowEnded => "已结束跟随。",
                 CycleObservedEventKind.FollowersDismissed => "已解散全部跟随者。",
+                CycleObservedEventKind.SpeechShouted => "已大喊。",
                 CycleObservedEventKind.SpeechSent => $"已向 {e.Communication!.RecipientName}（{e.Communication.RecipientId}）发送署名话语。",
                 CycleObservedEventKind.ItemGiven => $"已将 {e.Communication!.ItemId} ×{e.Communication.ItemCount} 赠与 {e.Communication.RecipientName}（{e.Communication.RecipientId}）。",
                 _ => e.Kind.ToString()
@@ -42,7 +43,9 @@ public static class CycleOperationResults {
                 $"  {Label(effect.Key)}：{DescribeEffect(effect)}")));
         }));
     }
-    private static string DescribeEffect(CycleObservedEffect effect) => effect.Before.Kind == CycleVisibleValueKind.Number && effect.After.Kind == CycleVisibleValueKind.Number
+    private static string DescribeEffect(CycleObservedEffect effect) =>
+        !(effect.Key.Category == "communication" && effect.Key.Field == "remaining") &&
+        effect.Before.Kind == CycleVisibleValueKind.Number && effect.After.Kind == CycleVisibleValueKind.Number
         ? (effect.After.Number - effect.Before.Number).ToString("+0.##;-0.##;0", CultureInfo.InvariantCulture) + " " + effect.After.Unit
         : $"{Value(effect.Before)} → {Value(effect.After)}";
     private static string Value(CycleVisibleValue value) => value.Kind switch {

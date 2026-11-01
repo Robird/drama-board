@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.CommandKind", 4)]
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers }
+[DurableType("DramaBoard.ResourceCycle.CommandKind", 5)]
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.ResourceCycle.Command", 5)]
+[DurableType("DramaBoard.ResourceCycle.Command", 6)]
 public sealed partial record CycleCommand(
     [field: DurableField(1)] CycleCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
@@ -23,6 +23,7 @@ public sealed partial record CycleCommand(
     [field: DurableField(10)] string? SpeechText = null,
     [field: DurableField(11)] GoalCommand? Goal = null) : IDurableObject {
     public static CycleCommand ManageGoal(GoalCommand goal) => new(CycleCommandKind.Goal, Goal: goal);
+    public static CycleCommand Shout(string text) => new(CycleCommandKind.Shout, SpeechText: text);
     public static CycleCommand Say(string targetActorId, string text) => new(CycleCommandKind.Say, TargetActorId: targetActorId, SpeechText: text);
     public static CycleCommand Give(string targetActorId, string itemId, int count) => new(CycleCommandKind.Give, TargetActorId: targetActorId, ItemId: itemId, Count: count);
     public static CycleCommand Wait(int hours) => new(CycleCommandKind.Wait, Hours: hours);
@@ -93,7 +94,7 @@ public static class CycleActions {
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
         if (command.Kind is not (CycleCommandKind.Use or CycleCommandKind.Give) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
         if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.Follow) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
-        if (command.Kind != CycleCommandKind.Say && command.SpeechText is not null) { return "这个行动不接受话语参数。"; }
+        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Shout) && command.SpeechText is not null) { return "这个行动不接受话语参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
         if ((contextSequence ?? world.Business.InteractionStates[actorId].CurrentContext?.ContextSequence) == long.MaxValue &&
             (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Follow ||
@@ -116,6 +117,9 @@ public static class CycleActions {
                 if (sequence == long.MaxValue) { return "角色操作编号已达到支持上限。"; }
                 return GoalRules.Apply(interaction.Goals, command.Goal,
                     contextSequence ?? interaction.CurrentContext?.ContextSequence ?? 1, sequence + 1).Error;
+            case CycleCommandKind.Shout:
+                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "大喊只接受话语文本。"; }
+                return CycleCommunicationRules.Check(world, actor, command);
             case CycleCommandKind.Say:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.TargetActorId)) { return "说话需要角色编号与文本。"; }
                 return CycleCommunicationRules.Check(world, actor, command);

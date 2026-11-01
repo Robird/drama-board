@@ -1,6 +1,6 @@
 # 语义空间连接与大喊
 
-> 状态：设计完成，两轮辩证简化审查已收敛，尚未实施。2026-11-01 根据用户讨论形成；本轮只设计与审查，不添加代码。本文中的新类型与 API 均为拟议名称。
+> 状态：已实施（2026-11-01）。设计经过两轮辩证简化审查；代码、自动测试与实际 Console 证据见[实现验收](../experiments/spatial-shout-acceptance.md)及[召集试玩](../experiments/spatial-shout-console.md)。游戏修订为 18，旧开发存档不兼容。
 >
 > 最小模型：Spatial 增加带 64-bit 能力标记的无向地点连接，查询本地点及匹配连接的一跳实体；ResourceCycle 在一次转换中向范围内其他活动角色交付大喊，保留每个角色的活动、信息边界和恢复合同。
 
@@ -12,17 +12,17 @@
 | U2 | 用户：新增一种节点间连接，附带 64-bit Flags，先只定义声音传播一位，其他位保留。 | Flags 表示连接能力，不表示事件类型；语言、铃声、爆炸声可共用声音位。 |
 | U3 | 用户：采用显式语义关联，不用坐标、距离推导；查询本节点及一跳的实体集合。 | 不递归传播，不根据移动通道自动生成关系。 |
 | U4 | 用户：实体枚举、实体 Flags、Delegate 过滤均是候选，允许先不提供过滤；先正确再优化。 | 本版选择不提供 Spatial 实体过滤器，接收规则留在游戏层。 |
-| U5 | 用户认可上一轮建议：无向连接、全部位匹配、零查询掩码拒绝、途中不纳入节点范围、一次确定接收者后统一提交。 | 这些是已讨论的首版规则；尚未实施。 |
-| C1 | 当前代码：[GraphDefinition](../../src/Spatial/Definitions/GraphDefinition.cs)、[SpatialQueries](../../src/Spatial/Queries/SpatialQueries.cs)。 | 只有地点、移动通道、同地/同路查询；位置严格区分 AtPlace 与 Traversing。 |
+| U5 | 用户认可上一轮建议：无向连接、全部位匹配、零查询掩码拒绝、途中不纳入节点范围、一次确定接收者后统一提交。 | 已实施为首版规则。 |
+| C1 | 设计前基线：[GraphDefinition](../../src/Spatial/Definitions/GraphDefinition.cs)、[SpatialQueries](../../src/Spatial/Queries/SpatialQueries.cs)。 | 当时只有地点、移动通道、同地/同路查询；本次加入独立关系与一跳查询，继续严格区分 AtPlace 与 Traversing。 |
 | C2 | 当前代码：[CycleCommunicationRules](../../src/ResourceCycle/CycleCommunicationRules.cs)、[交流测试](../../tests/ResourceCycle.Tests/CommunicationRulesTests.cs)。 | say/give 仅对同地单一目标；每角色每模型时刻共用 4 次发送额度；非空话语最多 2000 Unicode scalar。 |
-| C3 | 当前代码：[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)、[CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs)。 | 通信事实要求恰好两名角色变化，感知按单一 TargetActorId 路由，不能直接承载群体广播。 |
+| C3 | 设计前基线：[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)、[CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs)。 | say/give 仍要求恰好两名角色变化；本次用独立 SpeechShouted 分支承载广播。 |
 | C4 | 当前代码与测试：[交流恢复](../../tests/ResourceCycle.Tests/CommunicationRecoveryTests.cs)、[Context](../../src/ResourceCycle/CharacterContext.cs)。 | 串行模拟、单根业务状态；E 与 S 分别发布，pending E 恢复不重问控制器或重做 Plan；角色材料已冻结。 |
 | C5 | 用户前序兼容决定与[当前状态](../../PROJECT-STATE.md)：无旧开发存档兼容要求。 | 允许必要 Schema / GameRevision 变更；不建设旧数据迁移与通用消息兼容层。 |
 | C6 | 当前代码：[CycleExpedition.Validate](../../src/ResourceCycle/CycleExpedition.cs)。 | 本实例空间实体与活动角色一一对应；本次不放宽世界校验来加入非角色实体。Spatial 本身不受此限制。 |
 | D1 | 本文的设计选择：大喊沿用署名交流、全文可听清、瞬时动作与现有发送额度。 | 首版是已知同伴之间的召集；不建立陌生声音识别、语言理解、响度或衰减模型。 |
-| D2 | 本文的内容建议：为现有生存地图显式配置少量声音连接。 | 具体连接表可通过试玩调整；这属于关卡内容，不能由核心算法代替裁决。 |
+| D2 | 本文的内容选择：为现有生存地图显式配置少量声音连接。 | 已采用 §3.2 的两条连接；调整时遵守游戏修订边界。 |
 
-证据优先级：用户当前决定 > 当前源码、测试和真实消费者 > 具体失败轨迹 > 相邻设计文档 > 假设未来玩法。同一提案衍生的文档不算独立证据。本次只读核对代码与测试，未执行运行验收。
+证据优先级：用户当前决定 > 当前源码、测试和真实消费者 > 具体失败轨迹 > 相邻设计文档 > 假设未来玩法。同一提案衍生的文档不算独立证据。C1/C3 保留设计前缺口的语境，当前实现以源码及验收为准。
 
 ## 2. 首版产品行为
 
@@ -42,7 +42,7 @@
 
 ## 3. Spatial 的语义连接
 
-拟议新增 `PlaceRelationDefinition(PlaceId EndpointA, PlaceId EndpointB, ulong Flags)`，作为 `GraphDefinition` 的独立集合。
+新增 [PlaceRelationDefinition](../../src/Spatial/Definitions/PlaceRelationDefinition.cs)，构造参数为两个 `PlaceId` 与 `ulong flags`，规范化为 `EndpointA`、`EndpointB`、`Flags`，作为 `GraphDefinition.Relations` 的独立集合。
 
 ### 3.1 定义合同
 
@@ -53,11 +53,11 @@
 5. 连接允许 `Flags == 0`，其含义为没有当前可用能力，不匹配任何合法查询掩码。查询的零掩码另行拒绝，避免意外选中所有边。
 6. 图定义和关系集合不可变，构造时规范化；定义重排不改变查询结果。首版不增加动态门状态、关系 patch、事件、订阅注册或持久运行时索引。
 
-修改 `GraphDefinition.Create` 接受关系集合，旧消费者明确使用空集合或一个空集合默认值即可；不需要双实现兼容适配器。具体参数形状按源码接线选择，避免无关调用点改写。
+`GraphDefinition.Create` 的第三个参数为可选的 `IEnumerable<PlaceRelationDefinition>? relations = null`，省略表示空关系集合；没有双实现兼容适配器。声音位定义为 `PlaceRelationCapabilities.Sound`。
 
 ### 3.2 地图内容
 
-[CycleExpeditionMap](../../src/ResourceCycle/CycleExpeditionMap.cs) 单独声明声音关系，不从 Passages 或 DurationTicks 推导。建议初始内容：`camp ↔ stream`、`ridge ↔ cabin` 的 Flags 为 Sound；其他跨地点组合默认不传播。该表是可调整的关卡内容建议，不是根据物理距离作出的事实判断。
+[CycleExpeditionMap](../../src/ResourceCycle/CycleExpeditionMap.cs) 单独声明声音关系，不从 Passages 或 DurationTicks 推导。当前内容：`camp ↔ stream`、`ridge ↔ cabin` 的 Flags 为 Sound；其他跨地点组合默认不传播。该表是关卡内容选择，不是根据物理距离作出的事实判断。
 
 Spatial 测试使用专门的 A—B—C 图覆盖一跳边界，并验证无移动通道也可存在声音关系、有移动通道也可没有声音关系。生存内容测试只核对选定关系表；不为制造测试拓扑而增加关卡关系或地图注入框架。
 
@@ -65,7 +65,7 @@ Spatial 测试使用专门的 A—B—C 图覆盖一跳边界，并验证无移�
 
 ## 4. 一跳实体查询
 
-拟议在现有 `SpatialQueries` 上增加一个查询：
+绑定图定义的 `SpatialQueries` 实例新增查询：
 
 ```csharp
 IReadOnlyList<EntityId> GetEntitiesInOneHop(
@@ -96,7 +96,7 @@ IReadOnlyList<EntityId> GetEntitiesInOneHop(
 
 ### 5.1 接收规则
 
-`CycleCommunicationRules` 内部使用一个纯接收者选择函数（拟议 `GetShoutRecipients(business, senderId)`）：调用空间查询，映射到 `CycleBusinessState.Characters`，保留其他活动角色，保持 ID 顺序。Check、Plan 与事实校验共用此函数，不各写一套范围策略。这个本地步骤足够，不新增 `IEventSubscriber`、事件总线或订阅持久状态。
+`CycleCommunicationRules` 内部使用纯函数 `GetShoutRecipients(business, senderId)`：调用空间查询，映射到 `CycleBusinessState.Characters`，保留其他活动角色，保持 ID 顺序。Check、Plan 与事实校验共用此函数，不各写一套范围策略。事实的 ChangedCharacters 按既有业务角色顺序记录（该顺序不要求按 ID 排序），校验核对完整集合及记录顺序。这个本地步骤足够，不新增 `IEventSubscriber`、事件总线或订阅持久状态。
 
 “空间覆盖”“允许接收”“形成哪些个人材料”“是否请求决策”是不同职责，但首版不为每个职责建立独立接口或服务。所有活动角色都接收语言；需要耳聋、语言不通、选择性提醒等真实玩法时，再从此处分离规则。
 
@@ -114,7 +114,7 @@ IReadOnlyList<EntityId> GetEntitiesInOneHop(
 
 不在接收循环里执行控制器、产生嵌套喊话或提交子操作。只有发声者带本次 ToolCallId / OperationRecordId，接收者不产生伪造工具调用。一次行为一个额度、一个提交结果；参与者状态在同一业务根内变化。
 
-采用一个新增的业务事实种类（拟议 `SpeechShouted`）；复用 `CycleFact.ActorId`、`SpeechText`，`TargetActorId` 为 null。`ChangedCharacters` 必须包含发送者及每名接收者，即使对方已 `AttentionPending` 也保留其接收变化；每个参与者只变化一次。
+采用业务事实种类 `SpeechShouted`；复用 `CycleFact.ActorId`、`SpeechText`，`TargetActorId` 为 null。`ChangedCharacters` 必须包含发送者及每名接收者，即使对方已 `AttentionPending` 也保留其接收变化；每个参与者只变化一次。
 
 接收者身份从这条事实的 `ChangedCharacters` 去掉 ActorId 得到，不再添加一份持久 `RecipientIds` 名单。`ObservedEvents` 和 `InteractionChanges` 是个人材料与交付结果，必须与该参与者集合一致，不能成为第二个独立路由权威。
 
@@ -153,7 +153,7 @@ IReadOnlyList<EntityId> GetEntitiesInOneHop(
 
 现有[感知校验](../../src/ResourceCycle/CycleObservedEventValidation.cs)、[Context](../../src/ResourceCycle/CharacterContext.cs)与交付校验须覆盖新 Kind 的材料约束，保证每名参与者恰有一次相关经历且只有自身效果，不能只验证字段非空。
 
-审查确认 [CycleInteractionValidation.ValidateDelivery](../../src/ResourceCycle/CycleInteractionValidation.cs) 当前对比 SubjectId/SubjectName/Detail/Effects，却没有比较 `Communication`。应直接补齐 `delivered.Communication == source.Communication`，并增加 say/give 交付载荷替换的拒绝测试；现有 record 已提供值相等，不新建比较框架。这是本次使用的共享交付合同中的源码缺口，本轮尚未用可执行反例测试复现。
+审查发现 [CycleInteractionValidation.ValidateDelivery](../../src/ResourceCycle/CycleInteractionValidation.cs) 原来遗漏 `Communication` 比较，本次已补齐 `delivered.Communication == source.Communication`，使用 record 的值相等；[交付完整性测试](../../tests/ResourceCycle.Tests/CommunicationDeliveryIntegrityTests.cs)覆盖 say/give 在 Open/Closed 两种路径的合法载荷替换拒绝。
 
 E → 个人 Context 的比较须保留完整署名与原文，只允许 EventOrdinal 按个人重编号。S-only 冷开验证材料自足形状及内部一致性，不声称能在缺少历史 before/E 时重新证明历史署名真实性。
 
@@ -175,7 +175,7 @@ E → 个人 Context 的比较须保留完整署名与原文，只允许 EventOr
 
 ## 7. 实施范围与验收
 
-### 7.1 最小纵向实施顺序
+### 7.1 已实施边界
 
 1. Spatial：关系定义、GraphDefinition 组装校验、一个一跳查询及单元测试。不要改动移动、导航、交会算法。
 2. ResourceCycle：显式地图关系、shout 命令、多人事实及严格校验、冻结材料、Context 交付与预测维护；同步 Schema / GameRevision。
@@ -199,7 +199,7 @@ E → 个人 Context 的比较须保留完整署名与原文，只允许 EventOr
 | 恢复 | E-only 中断和正常 S 冷开；禁止 Plan/控制器，所有听众与正文恢复一致、额度只扣一次；增量预测等于 Rebuild；再次恢复无重复交付。 |
 | 实际入口 | 三角色分处本地/邻地，大喊召集，听众先完成活动再返回跟随；另有途中角色未收到的对照；二跳边界由 Spatial 夹具验收，无需为此改生存地图；Console 两种布局与 LLM 看到相同个人材料。 |
 
-未来实施按受影响测试与 Schema Verify 验收。真实模型调用按需要单独记录；脚本操作 Human 入口不等于真实人类体验验收。本次设计审查不宣称这些验收已经通过。
+上述矩阵的实际测试、Schema Verify 和入口证据集中于[实现验收](../experiments/spatial-shout-acceptance.md)。本次使用离线 Completion fixture 验证真实宿主接线，没有在线模型调用；脚本操作 Human 入口不等于真实人类体验验收。
 
 ## 8. 长期事件子系统的边界与重开条件
 

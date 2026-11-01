@@ -97,7 +97,7 @@ internal static class CyclePredictionMaintenance {
                 CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
-            foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven,
+            foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven, CycleEventKind.SpeechShouted,
                 CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.FollowStarted, CycleEventKind.FollowEnded, CycleEventKind.FollowersDismissed }) {
                 yield return new($"actor:{actor.Id}:attention", kind, "*");
             }

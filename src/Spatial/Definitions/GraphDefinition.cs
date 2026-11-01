@@ -77,14 +77,18 @@ public sealed record PassageDefinition {
     public PassageEntryAccess InitialEntryAccess { get; }
 }
 
-/// <summary>Owns canonical immutable Place and Passage content for a graph spatial world.</summary>
+/// <summary>Owns canonical immutable places, passages and semantic relations for a graph spatial world.</summary>
 public sealed class GraphDefinition {
     private readonly IReadOnlyDictionary<PlaceId, PlaceId> _placesById;
     private readonly IReadOnlyDictionary<PassageId, PassageDefinition> _passagesById;
 
-    private GraphDefinition(PlaceId[] places, PassageDefinition[] passages) {
+    private GraphDefinition(
+        PlaceId[] places,
+        PassageDefinition[] passages,
+        PlaceRelationDefinition[] relations) {
         Places = Array.AsReadOnly(places);
         Passages = Array.AsReadOnly(passages);
+        Relations = Array.AsReadOnly(relations);
         _placesById = places.ToDictionary(id => id);
         _passagesById = passages.ToDictionary(passage => passage.Id);
     }
@@ -93,9 +97,12 @@ public sealed class GraphDefinition {
 
     public IReadOnlyList<PassageDefinition> Passages { get; }
 
+    public IReadOnlyList<PlaceRelationDefinition> Relations { get; }
+
     public static GraphDefinition Create(
         IEnumerable<PlaceId> places,
-        IEnumerable<PassageDefinition> passages) {
+        IEnumerable<PassageDefinition> passages,
+        IEnumerable<PlaceRelationDefinition>? relations = null) {
         ArgumentNullException.ThrowIfNull(places);
         ArgumentNullException.ThrowIfNull(passages);
 
@@ -122,7 +129,21 @@ public sealed class GraphDefinition {
             }
         }
 
-        return new GraphDefinition(canonicalPlaces, canonicalPassages);
+        PlaceRelationDefinition[] relationArray = relations is null ? [] : [.. relations];
+        if (relationArray.Any(relation => relation is null)) {
+            throw new ArgumentException("Place relations cannot contain null entries.", nameof(relations));
+        }
+
+        PlaceRelationDefinition[] canonicalRelations =
+            [.. relationArray.OrderBy(relation => relation.EndpointA).ThenBy(relation => relation.EndpointB)];
+        EnsureUnique(canonicalRelations, relation => (relation.EndpointA, relation.EndpointB), nameof(relations));
+        foreach (PlaceRelationDefinition relation in canonicalRelations) {
+            if (!knownPlaces.Contains(relation.EndpointA) || !knownPlaces.Contains(relation.EndpointB)) {
+                throw new ArgumentException("Place relation references an undefined endpoint.", nameof(relations));
+            }
+        }
+
+        return new GraphDefinition(canonicalPlaces, canonicalPassages, canonicalRelations);
     }
 
     public bool Contains(PlaceId placeId) => _placesById.ContainsKey(placeId);

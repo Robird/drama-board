@@ -31,7 +31,11 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "领队普通 go 带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
         + "跟随者收到提醒仍需处理，可 use 补给后 continue 继续跟随；say / give 仍仅限同地，途中不能改变跟随关系。";
 
-    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance : "") + (observation.Goals is not null
+    private const string ShoutGuidance = "地点内的决策窗口可用 shout 大喊召集：署名话语覆盖本地点及声音连接的一跳地点，不继续传播，途中不能发送或接收。"
+        + "shout 与 say / give 共用发送额度，一次大喊只扣一次，无人听见也成功；回执不提供听众名单或接收确认。"
+        + "听到大喊不取消原活动，也不自动集合；完成或取消活动后再自主返回和跟随。听见远处角色不代表同地可赠与或跟随，话语不等于世界证实。";
+
+    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

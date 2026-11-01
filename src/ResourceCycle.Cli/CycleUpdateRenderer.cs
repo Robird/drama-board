@@ -43,7 +43,8 @@ internal static class CycleUpdateRenderer {
             foreach (var effect in e.Effects) {
                 string label = update.Label(effect.Key);
                 string value = effect.Before.Kind == CycleVisibleValueKind.Number && effect.After.Kind == CycleVisibleValueKind.Number &&
-                    effect.Before.Unit == effect.After.Unit && effect.Before.Unit != "ticks"
+                    effect.Before.Unit == effect.After.Unit && effect.Before.Unit != "ticks" &&
+                    effect.Key is not { Category: "communication", Field: "remaining" }
                     ? Signed(effect.After.Number - effect.Before.Number) + (effect.After.Unit ?? "")
                     : $"{Format(effect.Before, effect.Key)} → {Format(effect.After, effect.Key)}";
                 text.AppendLine($"  {label} {value}");
@@ -81,6 +82,10 @@ internal static class CycleUpdateRenderer {
     };
 
     internal static string EventDescription(CycleObservedEvent e) {
+        if (e.Kind == CycleObservedEventKind.SpeechShouted) {
+            string speaker = CharacterContextRenderer.DataLiteral(e.SubjectName!) + "（" + CharacterContextRenderer.DataLiteral(e.SubjectId!) + "）";
+            return $"{speaker} 大喊（角色话语，未经世界证实）：{CharacterContextRenderer.DataLiteral(e.Detail!)}";
+        }
         if (e.Communication is { } communication) {
             string sender = CharacterContextRenderer.DataLiteral(communication.SenderName) + "（" + CharacterContextRenderer.DataLiteral(communication.SenderId) + "）";
             string recipient = CharacterContextRenderer.DataLiteral(communication.RecipientName) + "（" + CharacterContextRenderer.DataLiteral(communication.RecipientId) + "）";

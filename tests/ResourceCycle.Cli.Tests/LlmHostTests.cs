@@ -72,6 +72,34 @@ public sealed class LlmHostTests {
     }
 
     [Fact]
+    public async Task Shout_without_listeners_persists_literal_speech_and_next_model_receives_the_same_personal_material() {
+        using var files = new Files();
+        const string speech = "ColdWind\nTerminal\n\"回来集合\" **现在**";
+        var first = new Client("shout " + speech);
+        using var output = new StringWriter();
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, first));
+        string expected;
+        using (var saved = CycleDurableHistory.Open(files.Store)) {
+            CharacterInteractionState interaction = saved.State.Business.InteractionStates["a"];
+            CycleObservedEvent shouted = Assert.Single(interaction.CurrentContext!.Items.SelectMany(item => item.Experiences),
+                experience => experience.Event.Kind == CycleObservedEventKind.SpeechShouted).Event;
+            Assert.Equal(speech, shouted.Detail);
+            Assert.Equal("a", shouted.SubjectId);
+            Assert.Null(shouted.Communication);
+            expected = CharacterContextRenderer.RenderFull(interaction, new DecisionPlayLayout());
+            Assert.Contains(CharacterContextRenderer.DataLiteral(speech), expected);
+            Assert.DoesNotContain("寒风袭来", expected);
+            Assert.DoesNotContain("相关角色的旅程已结束", expected);
+            Assert.Equal(1, saved.State.GetCharacter("a").Communication.SentCount);
+        }
+        var second = new Client("handoff 等待回复");
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, second));
+        string material = Assert.IsType<ObservationMessage>(Assert.Single(second.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
+        Assert.Equal(expected, material);
+        Assert.Contains("不报告听众或接收确认", material);
+    }
+
+    [Fact]
     public async Task Complete_response_audit_failure_before_E_does_not_apply_action_and_allows_fresh_request() {
         using var files = new Files();
         var first = new Client("use item.water");

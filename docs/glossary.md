@@ -44,7 +44,7 @@
 | 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝没有观察/经历，只保留本角色本轮最近 3 次已提交操作中的拒绝；成功与感知条目不因此删除。 |
 | 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | `CharacterInteractionState.UndeliveredExperiences` 保存 `CharacterExperience`；ExperienceSequence 按角色分配，Closed/未开始时累计，新 Opening 消费。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `CharacterInteractionState.DraftHandoff` 与 `Opening.PreviousAdvance.Handoff` 分开；下一次放行记录并清空草稿，不自动续传。 |
-| 署名通信（Signed communication） | 同地活跃角色间显式说话或赠与；话语内容是角色陈述，不自动成为规则、已探索地图或世界真相。 | `say` / `give`；山林 [CycleObservedCommunication](../src/ResourceCycle/CycleObservedEvent.cs) 通过既有 Context 交付；小镇由 `TownInteractionEntry` 保存双方记录，另支持赠钱。 |
+| 署名通信（Signed communication） | 活跃角色间的定向说话、赠与或范围大喊；话语内容是角色陈述，不自动成为规则、已探索地图或世界真相。 | `say` / `give` 限同地单一目标；山林另有 `shout`，以 `SpeechShouted` 的 SubjectId/SubjectName/Detail 表达署名原文，和 [CycleObservedCommunication](../src/ResourceCycle/CycleObservedEvent.cs) 一样通过既有 Context 交付；小镇由 `TownInteractionEntry` 保存双方记录，另支持赠钱。 |
 | 通信额度与待响应（Communication budget / attention） | 每角色每模型时刻有限发送；接收可合并为一个待响应标记，但逐条经历保留。确认保留原活动期限，不返还同刻额度。 | [CycleCommunicationState](../src/ResourceCycle/CycleCommunicationRules.cs) 的 `BudgetAt / SentCount / AttentionPending`；当前每时刻 4 次，时间前进按需恢复有效额度。 |
 | 有界个人交互记录（Bounded interaction history） | 本人收发的有限语义记录，区别于最近操作回执、活动结果和宿主审计日志；同一交互两边共用身份，各用本地序号。 | 小镇 [TownInteractionState / TownInteractionEntry](../src/Microtown/TownInteractionState.cs)：最多待交付 32 条、本次 opening 新项 32 条、此前 16 条；未读不裁剪，队列满拒绝发送。不是完整长期记忆。 |
 | 材料交付高水位（Delivered-through sequence） | 已纳入发布的决策材料的最高本地记录序号，不证明控制器已阅读或回答；与 Console 输出消费游标分开。 | `TownInteractionState.DeliveredThrough` 在 `DecisionOpened` 推进，`OpeningAfter` 标记该次新项下界；渲染不修改两者。 |
@@ -158,8 +158,8 @@
 | 空间实体（Spatial entity） | 拥有客观位置的实体；空间核心不要求其具备角色、背包或控制器。 | [SpatialEntity](../src/Spatial/State/GraphSpatialState.cs)、`EntityId` |
 | 地点（Place） | 可区分的稳定语义地点，构成空间图的节点。不是 UI 面板或叙事场景对象。 | `PlaceId`、[GraphDefinition](../src/Spatial/Definitions/GraphDefinition.cs) |
 | 通道（Passage） | 两个地点间有长度、有身份的连接，可分别控制从两端进入的权限。 | `PassageDefinition`、`PassageId`、`PassageEntryAccess` |
-| 语义连接（Place relation，设计中） | 地点间独立于移动通道的无向关联，携带 64-bit 能力 Flags；首版只定义声音传播位，不表示事件种类。 | [语义连接与大喊设计](design/spatial-relations-and-shout.md)，拟议 `PlaceRelationDefinition`，尚未实施。 |
-| 一跳实体范围（设计中） | 起点及通过能力匹配连接直接相邻的地点内实体；不递归、不含途中实体、不筛选事件兴趣。 | 同上设计，拟议 `SpatialQueries.GetEntitiesInOneHop`，尚未实施；游戏另行筛选接收角色。 |
+| 语义连接（Place relation） | 地点间独立于移动通道的无向关联，携带 64-bit 能力 Flags；首版只定义声音传播位，不表示事件种类。 | [PlaceRelationDefinition / PlaceRelationCapabilities](../src/Spatial/Definitions/PlaceRelationDefinition.cs)，由 `GraphDefinition.Relations` 保存。 |
+| 一跳实体范围 | 起点及通过能力匹配连接直接相邻的地点内实体；不递归、不含途中实体、不筛选事件兴趣。 | [SpatialQueries.GetEntitiesInOneHop](../src/Spatial/Queries/SpatialQueries.cs)；游戏另行筛选接收角色，见[语义连接与大喊](design/spatial-relations-and-shout.md)。 |
 | 客观位置（Spatial location） | 实体当前唯一的空间位置：在地点，或处于通道运动段。不同于角色对地图的知识。 | [SpatialLocation](../src/Spatial/State/SpatialLocation.cs)：`AtPlaceLocation` / `TraversingLocation` |
 | 运动段（Movement segment） | 用通道、锚点位置/时间、目标端点、速度快照和到达时刻描述的当前运动；不逐帧更新坐标。 | `TraversingLocation`、`SpatialEntity.MovementGeneration` |
 | 路线（Route） | 从起点到目标的一组通道行程，不意味着已启动或已完成移动。 | [RouteLeg、RouteFound](../src/Spatial/Navigation/RouteModels.cs)、`SpatialNavigator` |

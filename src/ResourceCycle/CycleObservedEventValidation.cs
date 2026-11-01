@@ -80,7 +80,7 @@ internal static class CycleObservedEventValidation {
             bool perceivesCause = fact.ActorId == actorId ||
                 CycleObservedEvents.MovedSelf(fact, actorId) ||
                 CycleObservedEvents.IsFollowingEvent(fact.Kind) && FollowingChanged(before, after, actorId) ||
-                fact.TargetActorId == actorId && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven ||
+                CycleObservedEvents.ReceivesCommunication(fact, actorId) ||
                 fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved ||
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed &&
                 fact.ResourceId is { } resourceId && previousByObserver[actorId].ContainsKey(new("resource", resourceId, "stock"));
@@ -132,6 +132,10 @@ internal static class CycleObservedEventValidation {
             }
         } else if (entry.Kind is CycleObservedEventKind.FollowStarted or CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed) {
             if (!CycleObservedEvents.IsFollowingEvent(fact.Kind)) { detail = "Terminal"; }
+        } else if (entry.Kind == CycleObservedEventKind.SpeechShouted) {
+            id = fact.ActorId;
+            name = before.GetCharacter(fact.ActorId!).Name;
+            detail = fact.SpeechText;
         } else if (entry.Kind is CycleObservedEventKind.SpeechSent or CycleObservedEventKind.ItemGiven) {
             communication = new(fact.ActorId!, before.GetCharacter(fact.ActorId!).Name,
                 fact.TargetActorId!, before.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount);
@@ -168,7 +172,7 @@ internal static class CycleObservedEventValidation {
             key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
         CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed => key.Category == "following",
         CycleObservedEventKind.CommunicationBudgetRenewed => key.Category == "communication" && key.Field == "remaining",
-        CycleObservedEventKind.SpeechSent => key.Category == "communication" && key.Field is "remaining" or "pending",
+        CycleObservedEventKind.SpeechSent or CycleObservedEventKind.SpeechShouted => key.Category == "communication" && key.Field is "remaining" or "pending",
         CycleObservedEventKind.ItemGiven => key.Category == "inventory" || key.Category == "communication" && key.Field is "remaining" or "pending",
         CycleObservedEventKind.BodyChanged => key.Category == "body" && key.Field is "food" or "water" or "warmth",
         CycleObservedEventKind.ExpeditionEnded => key == new CycleStateKey("world", "world", "outcome") ||
@@ -196,7 +200,7 @@ internal static class CycleObservedEventValidation {
         bool subjectSelf = fact.ActorId == actor.Id;
         bool ownOperation = subjectSelf && fact.OperationRecordId is not null;
         bool movedSelf = CycleObservedEvents.MovedSelf(fact, actor.Id);
-        bool received = fact.TargetActorId == actor.Id && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+        bool received = CycleObservedEvents.ReceivesCommunication(fact, actor.Id);
         bool ending = !next.IsActive;
         bool resourceCause = fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
         // Other characters' actions may update this observer's visible stock or notices. Their

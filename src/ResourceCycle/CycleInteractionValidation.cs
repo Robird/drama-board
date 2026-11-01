@@ -182,6 +182,7 @@ internal static class CycleInteractionValidation {
             Require(experience.ExperienceSequence == checked(nextSequence + i) && delivered.EventOrdinal == i &&
                 delivered.ObserverId == source.ObserverId && delivered.Kind == source.Kind && delivered.From == source.From && delivered.At == source.At &&
                 delivered.SubjectId == source.SubjectId && delivered.SubjectName == source.SubjectName && delivered.Detail == source.Detail &&
+                delivered.Communication == source.Communication &&
                 delivered.Effects.Count == source.Effects.Count && delivered.Effects.Zip(source.Effects).All(pair =>
                     pair.First.Key == pair.Second.Key && pair.First.Before == pair.Second.Before && pair.First.After == pair.Second.After),
                 "Delivered experience must match its observer's recorded event with a local identity.");

@@ -34,7 +34,7 @@ internal static class ContextHistoryPlayView {
                 : "本次没有待交付的上次推进记录。");
         }
         if (opening.PreviousAdvance is not null || context.Status == CharacterContextStatus.Terminal ||
-            opening.Experiences.Any(experience => experience.Event.Communication?.RecipientId == observation.Actor.Id)) {
+            opening.Experiences.Any(experience => IsReceivedCommunication(experience.Event, observation.Actor.Id))) {
             text.AppendLine($"返回原因：{Reasons(opening)}。");
             foreach (CycleNoticeObservation notice in opening.Observation.Notices) {
                 text.AppendLine("- 交付时通知：" + PlayView.RenderNotice(notice, context.Status == CharacterContextStatus.Terminal));
@@ -87,8 +87,7 @@ internal static class ContextHistoryPlayView {
         if (kinds.Contains(CycleObservedEventKind.GatherFinished)) { reasons.Add("采集停止"); }
         if (opening.Observation.FollowingLeaderId is null && kinds.Any(kind =>
             kind is CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed)) { reasons.Add("跟随结束"); }
-        if (opening.Experiences.Any(experience => experience.Event.Communication is { } communication &&
-            communication.RecipientId == opening.Observation.Actor.Id)) { reasons.Add("收到通信"); }
+        if (opening.Experiences.Any(experience => IsReceivedCommunication(experience.Event, opening.Observation.Actor.Id))) { reasons.Add("收到通信"); }
         if (kinds.Contains(CycleObservedEventKind.SurvivalWarning)) {
             string attributes = SurvivalWarningView.Attributes(opening.Experiences.Select(e => e.Event));
             reasons.Add(attributes.Length > 0 ? $"身体警告（{attributes}触及警戒线）" : "身体警告");
@@ -98,6 +97,10 @@ internal static class ContextHistoryPlayView {
         if (opening.ActivityState == CycleOutcomeActivityState.Terminal) { reasons.Add("旅程终局"); }
         return reasons.Count > 0 ? string.Join("、", reasons) : "已到可决策边界";
     }
+
+    private static bool IsReceivedCommunication(CycleObservedEvent observed, string actorId) =>
+        observed.Communication?.RecipientId == actorId ||
+        observed.Kind == CycleObservedEventKind.SpeechShouted && observed.ObserverId == actorId && observed.SubjectId != actorId;
 
     private static void Quote(StringBuilder text, string value) {
         text.AppendLine("> " + CharacterContextRenderer.DataLiteral(value));

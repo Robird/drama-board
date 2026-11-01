@@ -27,7 +27,12 @@ public sealed class LlmCharacterControllerTests {
         Assert.DoesNotContain("reopen", gathering);
         Assert.Contains("follow 主动集合", goals);
         Assert.Contains("dismiss-followers", goals);
+        Assert.Contains("shout 大喊召集", goals);
+        Assert.Contains("声音连接的一跳地点", goals);
+        Assert.Contains("回执不提供听众名单或接收确认", goals);
+        Assert.Contains("say / give 仍仅限同地", goals);
         Assert.DoesNotContain("follow", gathering);
+        Assert.DoesNotContain("shout", gathering);
         Assert.All(client.Requests, request => Assert.Empty(request.TailMessages));
     }
 
