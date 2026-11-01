@@ -158,6 +158,8 @@
 | 空间实体（Spatial entity） | 拥有客观位置的实体；空间核心不要求其具备角色、背包或控制器。 | [SpatialEntity](../src/Spatial/State/GraphSpatialState.cs)、`EntityId` |
 | 地点（Place） | 可区分的稳定语义地点，构成空间图的节点。不是 UI 面板或叙事场景对象。 | `PlaceId`、[GraphDefinition](../src/Spatial/Definitions/GraphDefinition.cs) |
 | 通道（Passage） | 两个地点间有长度、有身份的连接，可分别控制从两端进入的权限。 | `PassageDefinition`、`PassageId`、`PassageEntryAccess` |
+| 语义连接（Place relation，设计中） | 地点间独立于移动通道的无向关联，携带 64-bit 能力 Flags；首版只定义声音传播位，不表示事件种类。 | [语义连接与大喊设计](design/spatial-relations-and-shout.md)，拟议 `PlaceRelationDefinition`，尚未实施。 |
+| 一跳实体范围（设计中） | 起点及通过能力匹配连接直接相邻的地点内实体；不递归、不含途中实体、不筛选事件兴趣。 | 同上设计，拟议 `SpatialQueries.GetEntitiesInOneHop`，尚未实施；游戏另行筛选接收角色。 |
 | 客观位置（Spatial location） | 实体当前唯一的空间位置：在地点，或处于通道运动段。不同于角色对地图的知识。 | [SpatialLocation](../src/Spatial/State/SpatialLocation.cs)：`AtPlaceLocation` / `TraversingLocation` |
 | 运动段（Movement segment） | 用通道、锚点位置/时间、目标端点、速度快照和到达时刻描述的当前运动；不逐帧更新坐标。 | `TraversingLocation`、`SpatialEntity.MovementGeneration` |
 | 路线（Route） | 从起点到目标的一组通道行程，不意味着已启动或已完成移动。 | [RouteLeg、RouteFound](../src/Spatial/Navigation/RouteModels.cs)、`SpatialNavigator` |
