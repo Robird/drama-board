@@ -45,7 +45,7 @@ internal sealed class CycleViewSnapshot {
             "following" when key.Field.StartsWith("follower:", StringComparison.Ordinal) => CycleVisibleValue.Flag(false),
             "inventory" when key.Field == "count" => CycleVisibleValue.Numeric(Observation.Actor.Backpack.Count(key.ObjectId), "份"),
             "command" when key.Field == "warning" && _values.ContainsKey(new("command", key.ObjectId, "rejection")) => CycleVisibleValue.KnownAbsent,
-            "resource" or "passage" or "other" or "command" or "market" or "recipe" => CycleVisibleValue.Unobserved,
+            "resource" or "passage" or "other" or "command" or "market" or "recipe" or "trade" => CycleVisibleValue.Unobserved,
             _ => CycleVisibleValue.KnownAbsent
         };
     }
@@ -58,6 +58,7 @@ internal sealed class CycleViewSnapshot {
         "money" => "自己的资金余额",
         "market" => $"市场 {Observation.ItemNames.GetValueOrDefault(key.ObjectId, key.ObjectId)} · {FieldLabel(key.Field)}",
         "recipe" => $"配方 {key.ObjectId} · {FieldLabel(key.Field)}",
+        "trade" => $"报价 {key.ObjectId} · {FieldLabel(key.Field)}",
         "command" => $"{key.ObjectId} · {FieldLabel(key.Field)}",
         "notice-detail" => $"历史通知 · {NoticeFieldLabel(key.Field)}",
         "passage" => $"通路 {key.ObjectId} · {FieldLabel(key.Field)}",
@@ -104,6 +105,16 @@ internal sealed class CycleViewSnapshot {
             Add("recipe", recipe.Id, "output", Text(recipe.OutputItem), recipe.Id + "每批产物");
             Add("recipe", recipe.Id, "output-count", CycleVisibleValue.Numeric(recipe.OutputCount, "份"), recipe.Id + "每批产出数量");
             Add("recipe", recipe.Id, "duration", CycleVisibleValue.Numeric(recipe.DurationTicks, "duration"), recipe.Id + "每批生产耗时");
+        }
+        foreach (CycleTradeOffer offer in o.Trades) {
+            Add("trade", offer.Id, "proposer", Text(offer.ProposerId), "报价 " + offer.Id + "发起方");
+            Add("trade", offer.Id, "recipient", Text(offer.RecipientId), "报价 " + offer.Id + "收件人");
+            Add("trade", offer.Id, "give", Text(TradeView.Asset(offer.Give, o)), "报价 " + offer.Id + "发起方给予");
+            Add("trade", offer.Id, "want", Text(TradeView.Asset(offer.Want, o)), "报价 " + offer.Id + "发起方索取");
+            Add("trade", offer.Id, "status", Text(TradeView.Status(offer.Status)), "报价 " + offer.Id + "状态");
+            Add("trade", offer.Id, "created", At(offer.CreatedAt), "报价 " + offer.Id + "发起时间");
+            Add("trade", offer.Id, "expires", At(offer.ExpiresAt), "报价 " + offer.Id + "到期时间");
+            Add("trade", offer.Id, "closed", At(offer.ClosedAt), "报价 " + offer.Id + "结束时间");
         }
         Add("backpack", actor, "total", CycleVisibleValue.Numeric(o.Actor.Backpack.TotalCount, "件"), "背包总量");
         Add("backpack", actor, "capacity", o.Actor.Backpack.UnitCapacity is { } cap ? CycleVisibleValue.Numeric(cap, "件") : Text("不限"), "背包容量");
@@ -221,8 +232,12 @@ internal sealed class CycleViewSnapshot {
     }
 
     internal static string CommandId(CycleCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
-        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture));
+        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture),
+        c.TradeId ?? "", c.GiveAsset?.AssetId ?? "", c.GiveAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "",
+        c.WantAsset?.AssetId ?? "", c.WantAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "");
     internal static string CommandSyntax(CycleCommand c) => c.Kind switch {
+        CycleCommandKind.Offer => $"offer {c.TargetActorId} {c.GiveAsset!.AssetId} {c.GiveAsset.Amount} for {c.WantAsset!.AssetId} {c.WantAsset.Amount} {c.Hours}",
+        CycleCommandKind.Accept => $"accept {c.TradeId}", CycleCommandKind.Reject => $"reject {c.TradeId}", CycleCommandKind.Withdraw => $"withdraw {c.TradeId}",
         CycleCommandKind.Wait => $"wait {c.Hours}", CycleCommandKind.Gather => $"gather {c.ResourceId} {(c.All ? "all" : c.Count.ToString(CultureInfo.InvariantCulture))}",
         CycleCommandKind.Buy => $"buy {c.ItemId} {c.Count}", CycleCommandKind.Sell => $"sell {c.ItemId} {c.Count}",
         CycleCommandKind.Produce => $"produce {c.RecipeId} {c.Count}", CycleCommandKind.GiveMoney => $"give {c.TargetActorId} money {c.MoneyAmount}",
@@ -232,6 +247,7 @@ internal sealed class CycleViewSnapshot {
     };
 
     private static string FieldLabel(string field) => field switch {
+        "proposer" => "发起方", "recipient" => "收件人", "give" => "发起方给予", "want" => "发起方索取", "status" => "状态", "created" => "发起时间", "expires" => "到期时间", "closed" => "结束时间",
         "balance" => "资金余额", "buy-price" => "买入单价", "sell-price" => "卖出单价", "demand" => "剩余收购额度", "recipe" => "生产配方", "batches" => "生产批数",
         "input" => "预留投入物品", "input-count" => "预留投入数量", "output" => "计划产物", "output-count" => "计划产物数量",
         "food" => "食物", "water" => "饮水", "warmth" => "温暖", "food-rate" => "食物变化速率", "water-rate" => "饮水变化速率", "warmth-rate" => "温暖变化速率",

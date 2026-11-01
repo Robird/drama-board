@@ -12,6 +12,7 @@ internal static class CycleVisibleEndpointChanges {
         if (before.Time != after.Time || before.Light.IsDay != after.Light.IsDay ||
             before.Light.NextChange != after.Light.NextChange) { return true; }
         if (!before.InteractionStates[actorId].Goals.SameAs(after.InteractionStates[actorId].Goals)) { return true; }
+        if (!CycleEconomyObservation.Trades(before, actorId).SequenceEqual(CycleEconomyObservation.Trades(after, actorId))) { return true; }
         CycleCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);
         if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
             a.FollowingLeaderId != b.FollowingLeaderId || a.Money != b.Money ||

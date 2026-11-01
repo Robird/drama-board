@@ -34,7 +34,7 @@ internal static class ContextHistoryPlayView {
                 : "本次没有待交付的上次推进记录。");
         }
         if (opening.PreviousAdvance is not null || context.Status == CharacterContextStatus.Terminal ||
-            opening.Experiences.Any(experience => IsReceivedCommunication(experience.Event, observation.Actor.Id))) {
+            opening.Experiences.Any(experience => IsReceivedCommunication(experience.Event, observation.Actor.Id) || experience.Event.TradeChanges.Count > 0)) {
             text.AppendLine($"返回原因：{Reasons(opening)}。");
             foreach (CycleNoticeObservation notice in opening.Observation.Notices) {
                 text.AppendLine("- 交付时通知：" + PlayView.RenderNotice(notice, context.Status == CharacterContextStatus.Terminal));
@@ -89,6 +89,7 @@ internal static class ContextHistoryPlayView {
         if (opening.Observation.FollowingLeaderId is null && kinds.Any(kind =>
             kind is CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed)) { reasons.Add("跟随结束"); }
         if (opening.Experiences.Any(experience => IsReceivedCommunication(experience.Event, opening.Observation.Actor.Id))) { reasons.Add("收到通信"); }
+        if (opening.Experiences.Any(experience => experience.Event.TradeChanges.Count > 0)) { reasons.Add("报价有新进展"); }
         if (kinds.Contains(CycleObservedEventKind.SurvivalWarning)) {
             string attributes = SurvivalWarningView.Attributes(opening.Experiences.Select(e => e.Event));
             reasons.Add(attributes.Length > 0 ? $"身体警告（{attributes}触及警戒线）" : "身体警告");

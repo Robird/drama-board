@@ -8,6 +8,7 @@ namespace DramaBoard.ResourceCycle;
 internal static class CycleEconomyValidation {
     internal static void Validate(CycleBusinessState before, CycleFact fact) {
         CycleEconomyState? expectedEconomy = before.Economy;
+        CycleTradeState? expectedTrades = CycleTradeValidation.Validate(before, fact);
         bool economicOperation = fact.Kind is CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.MoneyGiven;
         bool economicEvent = economicOperation || fact.Kind is CycleEventKind.ProductionCompleted or CycleEventKind.MarketRefreshed;
         if (economicEvent && before.Economy is null) { Fail("Economic effects require an enabled economy."); }
@@ -25,6 +26,20 @@ internal static class CycleEconomyValidation {
             }
         }
         switch (fact.Kind) {
+            case CycleEventKind.TradeAccepted: {
+                CycleTradeOffer offer = before.Economy!.Trades.Offers.Single(entry => entry.Id == command!.TradeId);
+                foreach (CycleCharacter participant in before.Characters.Where(value => offer.Involves(value.Id))) {
+                    CycleTradeAsset payment = participant.Id == offer.ProposerId ? offer.Give : offer.Want;
+                    CycleTradeAsset receipt = participant.Id == offer.ProposerId ? offer.Want : offer.Give;
+                    if (payment.IsMoney) {
+                        if (participant.Money < payment.Amount) { Fail("A trade requires the full gross payment."); }
+                        money[participant.Id] -= payment.Amount;
+                    } else { inventories[participant.Id] = participant.Backpack.Remove(payment.AssetId, checked((int)payment.Amount)); }
+                    if (receipt.IsMoney) { money[participant.Id] = checked(money[participant.Id] + receipt.Amount); }
+                    else { inventories[participant.Id] = inventories[participant.Id].Add(receipt.AssetId, checked((int)receipt.Amount)); }
+                }
+                break;
+            }
             case CycleEventKind.MarketBought:
             case CycleEventKind.MarketSold: {
                 CycleCommand input = command!;
@@ -140,7 +155,9 @@ internal static class CycleEconomyValidation {
                 }
             }
         }
-        bool changesEconomy = fact.Kind is CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionCompleted or CycleEventKind.MarketRefreshed ||
+        bool changesTrades = before.Economy is not null && !before.Economy.Trades.SameState(expectedTrades);
+        if (expectedEconomy is not null && expectedTrades is not null) { expectedEconomy = expectedEconomy.Change(trades: expectedTrades); }
+        bool changesEconomy = changesTrades || fact.Kind is CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionCompleted or CycleEventKind.MarketRefreshed ||
             before.Economy is not null && fact.Kind is CycleEventKind.GatherYielded or CycleEventKind.ItemUsed;
         if (!changesEconomy && fact.Economy is not null || changesEconomy && fact.Economy is null ||
             (expectedEconomy is null ? fact.Economy is not null : !expectedEconomy.SameState(fact.Economy ?? before.Economy))) {

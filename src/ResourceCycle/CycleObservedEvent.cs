@@ -47,12 +47,13 @@ public readonly partial record struct CycleVisibleValue {
     }
 }
 
-[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 5)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEventKind", 6)]
 public enum CycleObservedEventKind {
     BodyChanged, ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, ExpeditionEnded, SpeechSent, ItemGiven,
-    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted, MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven
+    CommunicationBudgetRenewed, FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted, MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven,
+    TradeOffered, TradeAccepted, TradeRejected, TradeWithdrawn, TradesExpired, TradeParticipantFailed
 }
 
 /// <summary>Signed communication, not independently verified geography or another character's private state.</summary>
@@ -93,7 +94,7 @@ public sealed partial class CycleObservedEffect : IDurableObject {
 }
 
 /// <summary>Experienced facts frozen in E; effects explain, but never execute, recorded business replacements.</summary>
-[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 5)]
+[DurableType("DramaBoard.ResourceCycle.ObservedEvent", 6)]
 public sealed partial class CycleObservedEvent : IDurableObject {
     [DurableField(1)] private int _eventOrdinal;
     [DurableField(2)] private string _observerId;
@@ -107,6 +108,24 @@ public sealed partial class CycleObservedEvent : IDurableObject {
     [DurableField(10)] private CycleObservedCommunication? _communication;
     [DurableField(11)] private CycleProductionOrder? _production;
     public CycleProductionOrder? Production => _production;
+    [DurableField(12)] private List<CycleTradeOffer> _tradeChanges;
+    public IReadOnlyList<CycleTradeOffer> TradeChanges => _tradeChanges.AsReadOnly();
+    internal void ValidateTradeChanges() {
+        CycleTradeStatus? status = Kind switch {
+            CycleObservedEventKind.TradeOffered => CycleTradeStatus.Active,
+            CycleObservedEventKind.TradeAccepted => CycleTradeStatus.Accepted,
+            CycleObservedEventKind.TradeRejected => CycleTradeStatus.Rejected,
+            CycleObservedEventKind.TradeWithdrawn => CycleTradeStatus.Withdrawn,
+            CycleObservedEventKind.TradesExpired => CycleTradeStatus.Expired,
+            CycleObservedEventKind.TradeParticipantFailed => CycleTradeStatus.ParticipantFailed,
+            _ => null
+        };
+        if ((status is null) != (TradeChanges.Count == 0) || TradeChanges.Select(offer => offer.Id).Distinct(StringComparer.Ordinal).Count() != TradeChanges.Count ||
+            TradeChanges.Any(offer => offer.Status != status)) {
+            throw new InvalidOperationException("Trade experiences require exact participant terms and the matching transition.");
+        }
+        foreach (CycleTradeOffer offer in TradeChanges) { CycleEconomyObservation.ValidateVisibleTrade(offer, ObserverId, At); }
+    }
     public int EventOrdinal => _eventOrdinal;
     public string ObserverId => _observerId;
     public CycleObservedEventKind Kind => _kind;
@@ -119,10 +138,11 @@ public sealed partial class CycleObservedEvent : IDurableObject {
     public CycleObservedCommunication? Communication => _communication;
     public CycleObservedEvent(int eventOrdinal, string observerId, CycleObservedEventKind kind, ModelTime from, ModelTime at,
         string? subjectId = null, string? subjectName = null, string? detail = null, IEnumerable<CycleObservedEffect>? effects = null,
-        CycleObservedCommunication? communication = null, CycleProductionOrder? production = null) {
+        CycleObservedCommunication? communication = null, CycleProductionOrder? production = null, IEnumerable<CycleTradeOffer>? tradeChanges = null) {
         _eventOrdinal = eventOrdinal; _observerId = observerId; _kind = kind; _from = from; _at = at;
         _subjectId = subjectId; _subjectName = subjectName; _detail = detail; _effects = effects?.ToList() ?? [];
         _communication = communication;
         _production = production;
+        _tradeChanges = tradeChanges?.ToList() ?? [];
     }
 }

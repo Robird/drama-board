@@ -30,6 +30,13 @@ public static class CycleCommandParser {
             }
         }
         string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length is 7 or 8 && parts[0] == "offer" && parts[4] == "for" &&
+            long.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out long giveAmount) &&
+            long.TryParse(parts[6], NumberStyles.None, CultureInfo.InvariantCulture, out long wantAmount)) {
+            int duration = 6;
+            if (parts.Length == 8 && !int.TryParse(parts[7], NumberStyles.None, CultureInfo.InvariantCulture, out duration)) { return null; }
+            return CycleCommand.Offer(parts[1], new(parts[2], giveAmount), new(parts[5], wantAmount), duration);
+        }
         if (parts is ["give", var recipient, "money", var money] && long.TryParse(money, NumberStyles.None, CultureInfo.InvariantCulture, out long amount)) {
             return CycleCommand.GiveMoney(recipient, amount);
         }
@@ -51,6 +58,9 @@ public static class CycleCommandParser {
             return CycleCommand.Give(targetActorId, itemId, itemCount);
         }
         return parts switch {
+            ["accept", var accepted] => CycleCommand.Accept(accepted),
+            ["reject", var rejected] => CycleCommand.Reject(rejected),
+            ["withdraw", var withdrawn] => CycleCommand.Withdraw(withdrawn),
             ["follow", var leaderId] => CycleCommand.Follow(leaderId),
             ["unfollow"] => CycleCommand.Unfollow(),
             ["dismiss-followers"] => CycleCommand.DismissFollowers(),
@@ -63,6 +73,10 @@ public static class CycleCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(CycleCommand command) => command.Kind switch {
+        CycleCommandKind.Offer => $"offer {command.TargetActorId} {command.GiveAsset!.AssetId} {command.GiveAsset.Amount.ToString(CultureInfo.InvariantCulture)} for {command.WantAsset!.AssetId} {command.WantAsset.Amount.ToString(CultureInfo.InvariantCulture)} {command.Hours.ToString(CultureInfo.InvariantCulture)}",
+        CycleCommandKind.Accept => $"accept {command.TradeId}",
+        CycleCommandKind.Reject => $"reject {command.TradeId}",
+        CycleCommandKind.Withdraw => $"withdraw {command.TradeId}",
         CycleCommandKind.Buy => $"buy {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Sell => $"sell {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         CycleCommandKind.Produce => $"produce {command.RecipeId} {command.Count.ToString(CultureInfo.InvariantCulture)}",

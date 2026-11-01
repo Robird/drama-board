@@ -31,6 +31,8 @@ internal static class CycleObservedEventValidation {
                 throw new InvalidOperationException("Invalid observed event identity or interval.");
             }
             bool matchingKind = entry.Kind.ToString() == fact.Kind.ToString() || entry.Kind is CycleObservedEventKind.BodyChanged or CycleObservedEventKind.CommunicationBudgetRenewed ||
+                entry.Kind == CycleObservedEventKind.TradeParticipantFailed && CycleObservedEvents.IsParticipantFailure(fact) &&
+                    fact.TradeChanges.Any(offer => offer.Involves(entry.ObserverId)) ||
                 entry.Kind == CycleObservedEventKind.GatherFinished && fact.Kind == CycleEventKind.GatherYielded && fact.GatherStopReason is not null ||
                 entry.Kind == CycleObservedEventKind.FollowEnded && !CycleObservedEvents.IsFollowingEvent(fact.Kind) &&
                     FollowingChanged(before, after, entry.ObserverId) ||
@@ -102,6 +104,10 @@ internal static class CycleObservedEventValidation {
                     throw new InvalidOperationException("A yield must retain its completed cycle and a distinct ending when finished.");
                 }
             }
+            if (eventKinds.Contains((actorId, CycleObservedEventKind.TradeParticipantFailed)) !=
+                (CycleObservedEvents.IsParticipantFailure(fact) && fact.TradeChanges.Any(offer => offer.Involves(actorId)))) {
+                throw new InvalidOperationException("Participant failure must close offers only in each participant's own material.");
+            }
             var primaryKind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             if (eventKinds.Contains((actorId, primaryKind)) != expectsPrimary ||
                 eventKinds.Contains((actorId, CycleObservedEventKind.ExpeditionEnded)) !=
@@ -128,6 +134,9 @@ internal static class CycleObservedEventValidation {
         string? id = null, name = null, detail = null;
         CycleObservedCommunication? communication = null;
         CycleProductionOrder? production = null;
+        entry.ValidateTradeChanges();
+        IReadOnlyList<CycleTradeOffer> tradeChanges = CycleObservedEvents.IsTradeEvent(entry.Kind)
+            ? CycleObservedEvents.VisibleTradeChanges(fact, entry.ObserverId) : [];
         if (entry.Kind == CycleObservedEventKind.CommunicationBudgetRenewed) {
             if (before.Expedition is null || entry.Effects.Count != 1) {
                 throw new InvalidOperationException("Budget renewal requires one visible elapsed-budget effect.");
@@ -147,6 +156,8 @@ internal static class CycleObservedEventValidation {
                 ? after.GetCharacter(entry.ObserverId) : before.GetCharacter(entry.ObserverId)).Activity!.Production;
         } else if (entry.Kind is CycleObservedEventKind.MarketBought or CycleObservedEventKind.MarketSold) {
             id = fact.ItemId; name = CycleEconomyObservation.ItemName(id!);
+        } else if (CycleObservedEvents.IsTradeEvent(entry.Kind)) {
+            // The typed participant-scoped payload owns all terms; no location or free-text cause is inferred.
         } else if (entry.Kind == CycleObservedEventKind.BodyChanged) {
             if (before.GetCharacter(entry.ObserverId).Survival is null || entry.Effects.Count == 0) { throw new InvalidOperationException("An elapsed physiological interval requires a body and an actual change."); }
         } else if (entry.Kind == CycleObservedEventKind.ExpeditionEnded) {
@@ -170,7 +181,7 @@ internal static class CycleObservedEventValidation {
                 detail = environment.LastCold ? weather.Sheltered ? "ColdWindSheltered" : "ColdWind" : "Calm";
             }
         }
-        if (entry.SubjectId != id || entry.SubjectName != name || entry.Detail != detail || entry.Communication != communication || entry.Production != production) {
+        if (entry.SubjectId != id || entry.SubjectName != name || entry.Detail != detail || entry.Communication != communication || entry.Production != production || !entry.TradeChanges.SequenceEqual(tradeChanges)) {
             throw new InvalidOperationException("Observed event parameters must match its recorded business cause.");
         }
     }
@@ -180,6 +191,10 @@ internal static class CycleObservedEventValidation {
         CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed => key.Category == "following",
         CycleObservedEventKind.CommunicationBudgetRenewed => key.Category == "communication" && key.Field == "remaining",
         CycleObservedEventKind.SpeechSent or CycleObservedEventKind.SpeechShouted => key.Category == "communication" && key.Field is "remaining" or "pending",
+        CycleObservedEventKind.TradeOffered => key.Category == "communication" && key.Field is "remaining" or "pending",
+        CycleObservedEventKind.TradeAccepted => key.Category is "inventory" or "money" || key.Category == "communication" && key.Field == "pending",
+        CycleObservedEventKind.TradeRejected or CycleObservedEventKind.TradeWithdrawn or CycleObservedEventKind.TradesExpired or
+            CycleObservedEventKind.TradeParticipantFailed => key.Category == "communication" && key.Field == "pending",
         CycleObservedEventKind.MarketBought or CycleObservedEventKind.MarketSold => key.Category is "inventory" or "money",
         CycleObservedEventKind.MoneyGiven => key.Category == "money" || key.Category == "communication" && key.Field is "remaining" or "pending",
         CycleObservedEventKind.ProductionStarted => key.Category is "activity" or "inventory" or "notice" or "continuity" ||
@@ -195,7 +210,7 @@ internal static class CycleObservedEventValidation {
         CycleObservedEventKind.ItemUsed => key.Category == "inventory" || key.Category == "body" && key.Field is "food" or "water",
         CycleObservedEventKind.ResourceRegenerated or CycleObservedEventKind.ResourceDestroyed => key.Category is "resource" or "notice",
         CycleObservedEventKind.LightChanged => key.Category == "world" && key.Field == "light" || key.Category == "body" && key.Field.EndsWith("-rate", StringComparison.Ordinal),
-        CycleObservedEventKind.WeatherResolved => key.Category == "body" && key.Field is "warmth" or "warning-warmth",
+        CycleObservedEventKind.WeatherResolved => key.Category == "inventory" || key.Category == "body" && key.Field is "warmth" or "warning-warmth",
         CycleObservedEventKind.SurvivalWarning => key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
         CycleObservedEventKind.SurvivalFailed => key.Category == "inventory",
         CycleObservedEventKind.AttentionAcknowledged => key.Category is "notice" or "continuity" || key.Category == "communication" && key.Field == "pending" || key.Category == "body" && key.Field.StartsWith("warning-", StringComparison.Ordinal),
@@ -226,7 +241,7 @@ internal static class CycleObservedEventValidation {
                 yield return new("following", actor.Id, $"follower:{character.Id}");
             }
         }
-        if (subjectSelf || received) {
+        if (subjectSelf || received || ending) {
             yield return new("money", actor.Id, "balance");
             foreach (string item in actor.Backpack.Items.Keys.Concat(next.Backpack.Items.Keys).Distinct(StringComparer.Ordinal)) { yield return new("inventory", item, "count"); }
         }

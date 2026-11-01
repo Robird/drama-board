@@ -39,6 +39,16 @@ internal static class CycleObservedEvents {
                 // A leader's terminal cause is not the surviving follower's own death or arrival.
                 Emit(CycleObservedEventKind.FollowEnded, following, detail: "Terminal");
             }
+            bool tradeFailure = IsParticipantFailure(fact) && fact.TradeChanges.Any(offer => offer.Involves(before.Id));
+            if (tradeFailure) {
+                List<CycleObservedEffect> tradeEffects = [];
+                if (!ended) {
+                    Add(tradeEffects, new("communication", before.Id, "pending"), CycleVisibleValue.Flag(before.Communication.AttentionPending),
+                        CycleVisibleValue.Flag(after.Communication.AttentionPending));
+                }
+                // A distant counterparty learns only that their offer closed, not another actor's death scene.
+                Emit(CycleObservedEventKind.TradeParticipantFailed, tradeEffects);
+            }
             bool received = ReceivesCommunication(fact, before.Id);
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
@@ -55,7 +65,7 @@ internal static class CycleObservedEvents {
             CycleObservedEventKind kind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             // Direct physiology is independent of the preceding elapsed-time interval.
             if (integrated is not null && final is not null) { AddVitals(direct, before.Id, integrated, final); }
-            if (subjectSelf || received) {
+            if (subjectSelf || received || ended) {
                 Add(direct, new("money", before.Id, "balance"), Number(before.Money, "钱"), Number(after.Money, "钱"));
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
@@ -79,8 +89,10 @@ internal static class CycleObservedEvents {
             if (world.Expedition is not null) {
                 Add(direct, new("communication", before.Id, "remaining"), Number(elapsedRemaining, "次"),
                     Number(CycleCommunicationRules.Remaining(after, fact.At), "次"));
-                Add(lifecycle, new("communication", before.Id, "pending"), CycleVisibleValue.Flag(before.Communication.AttentionPending),
-                    CycleVisibleValue.Flag(after.Communication.AttentionPending));
+                if (!tradeFailure || ended) {
+                    Add(lifecycle, new("communication", before.Id, "pending"), CycleVisibleValue.Flag(before.Communication.AttentionPending),
+                        CycleVisibleValue.Flag(after.Communication.AttentionPending));
+                }
             }
             if (visibleResource && fact.ChangedResources.SingleOrDefault(r => r.Id == fact.ResourceId) is { } changedResource) {
                 Add(direct, new("resource", changedResource.Id, "stock"), Number(world.GetResource(changedResource.Id).Stock, "份"), Number(changedResource.Stock, "份"));
@@ -144,12 +156,24 @@ internal static class CycleObservedEvents {
                             world.GetCharacter(fact.TargetActorId!).Name, fact.SpeechText, fact.ItemId, fact.ItemCount, fact.MoneyAmount)
                         : null,
                     eventKind == CycleObservedEventKind.ProductionStarted ? after.Activity!.Production :
-                        eventKind == CycleObservedEventKind.ProductionCompleted ? before.Activity!.Production : null));
+                        eventKind == CycleObservedEventKind.ProductionCompleted ? before.Activity!.Production : null,
+                    IsTradeEvent(eventKind) ? VisibleTradeChanges(fact, before.Id) : null));
         }
         return fact.WithObservedEvents(events);
     }
 
+    internal static bool IsParticipantFailure(CycleFact fact) =>
+        fact.Kind is CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved;
+    internal static IReadOnlyList<CycleTradeOffer> VisibleTradeChanges(CycleFact fact, string actorId) =>
+        Array.AsReadOnly(fact.TradeChanges.Where(offer => offer.Involves(actorId)).Select(CycleEconomyObservation.VisibleTrade).ToArray());
+    internal static bool IsTradeEvent(CycleObservedEventKind kind) => kind is CycleObservedEventKind.TradeOffered or
+        CycleObservedEventKind.TradeAccepted or CycleObservedEventKind.TradeRejected or CycleObservedEventKind.TradeWithdrawn or
+        CycleObservedEventKind.TradesExpired or CycleObservedEventKind.TradeParticipantFailed;
+    internal static bool IsTradeEvent(CycleEventKind kind) => kind is CycleEventKind.TradeOffered or
+        CycleEventKind.TradeAccepted or CycleEventKind.TradeRejected or CycleEventKind.TradeWithdrawn or CycleEventKind.TradesExpired;
+
     internal static bool ReceivesCommunication(CycleFact fact, string actorId) =>
+        IsTradeEvent(fact.Kind) ? fact.TradeChanges.Any(offer => offer.Involves(actorId)) :
         fact.Kind == CycleEventKind.SpeechShouted
             ? fact.ActorId != actorId && fact.ChangedCharacters.Any(character => character.Id == actorId)
             : fact.TargetActorId == actorId && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.MoneyGiven;

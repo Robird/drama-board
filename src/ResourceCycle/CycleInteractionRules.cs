@@ -13,9 +13,18 @@ internal static class CycleInteractionRules {
         }
         var fact = new CycleFact(CycleEventKind.DecisionContextOpened, world.Time, actorId,
             changedCharacters: [world.GetCharacter(actorId).AdvanceDecisionGeneration()], result: "已开启新的决策回合。");
+        if (world.Business.Economy is { } economy) {
+            CycleTradeState trades = economy.Trades.OpenContext(actorId, checked((state.CurrentContext?.ContextSequence ?? 0) + 1),
+                world.Characters.Where(actor => !actor.IsActive).Select(actor => actor.Id).ToArray());
+            if (!economy.Trades.SameState(trades)) { fact = fact.WithEconomy(economy.Change(trades: trades)); }
+        }
         CycleWorld candidate = Candidate(world, fact);
         CharacterContext context = CreateContext(candidate, state, state.UndeliveredExperiences, terminal: false);
-        return fact.WithInteractions([new(actorId, context, nextExperienceSequence: state.NextExperienceSequence, goals: state.Goals)]);
+        // Reclaiming a delivered terminal offer may change the other participant's still-open view.
+        // Record that ordinary observation update in this same boundary without creating another operation.
+        var changes = Enrich(world, fact).InteractionChanges.ToDictionary(change => change.ActorId, StringComparer.Ordinal);
+        changes[actorId] = new(actorId, context, nextExperienceSequence: state.NextExperienceSequence, goals: state.Goals);
+        return fact.WithInteractions(world.Characters.Where(actor => changes.ContainsKey(actor.Id)).Select(actor => changes[actor.Id]));
     }
 
     internal static CycleFact EditHandoff(CycleWorld world, string actorId) => new(CycleEventKind.HandoffEdited,
@@ -146,6 +155,6 @@ internal static class CycleInteractionRules {
         };
 
     internal static CycleObservedEvent LocalEvent(CycleObservedEvent entry, int ordinal) => new(ordinal, entry.ObserverId,
-        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects, entry.Communication, entry.Production);
+        entry.Kind, entry.From, entry.At, entry.SubjectId, entry.SubjectName, entry.Detail, entry.Effects, entry.Communication, entry.Production, entry.TradeChanges);
 
 }

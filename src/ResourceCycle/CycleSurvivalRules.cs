@@ -178,7 +178,8 @@ public static class CycleSurvivalRules {
             // Communication changes neither exposure nor physiology rules. Preserve the current causes,
             // including valid scenario-specific rate decompositions, while reanchoring elapsed values.
             CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted or CycleEventKind.MoneyGiven or CycleEventKind.MarketBought or CycleEventKind.MarketSold or
-                CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed
+                CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed or
+                CycleEventKind.TradeOffered or CycleEventKind.TradeAccepted or CycleEventKind.TradeRejected or CycleEventKind.TradeWithdrawn or CycleEventKind.TradesExpired
                 ? actor.Survival!.Project(fact.At)
                 : actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
                     WarmthRate(IsSheltered(spatial, actor.Id), light));

@@ -186,6 +186,7 @@ internal static class CycleInteractionValidation {
                 delivered.ObserverId == source.ObserverId && delivered.Kind == source.Kind && delivered.From == source.From && delivered.At == source.At &&
                 delivered.SubjectId == source.SubjectId && delivered.SubjectName == source.SubjectName && delivered.Detail == source.Detail &&
                 delivered.Communication == source.Communication && delivered.Production == source.Production &&
+                delivered.TradeChanges.SequenceEqual(source.TradeChanges) &&
                 delivered.Effects.Count == source.Effects.Count && delivered.Effects.Zip(source.Effects).All(pair =>
                     pair.First.Key == pair.Second.Key && pair.First.Before == pair.Second.Before && pair.First.After == pair.Second.After),
                 "Delivered experience must match its observer's recorded event with a local identity.");
@@ -245,12 +246,16 @@ internal static class CycleInteractionValidation {
             observation.Recipes.SequenceEqual(CycleEconomyObservation.Recipes(state, place)) &&
             observation.MarketRefreshAt == (quotes.Count == 0 ? null : state.Economy!.Market.NextRefresh),
             "Recorded market and recipes must exactly match the local endpoint.");
+        Require(observation.Trades.SequenceEqual(CycleEconomyObservation.Trades(state, actorId)),
+            "Recorded trades must contain exactly this participant's retained public terms, without delivery cursors.");
         ValidateBodyAndWeather(state, actor, observation);
         ValidateKnownGeography(state, actorId, place, observation);
         Require(observation.HarvestDurations.Count == visible.Length && visible.All(resource =>
             observation.HarvestDurations.TryGetValue(resource.Id, out long duration) && duration == CycleActions.HarvestDuration(resource, actor)),
             "Recorded gathering durations must match the actor and visible resource definitions.");
         Require(observation.Commands.All(entry => entry.Command.Kind switch {
+            CycleCommandKind.Offer => state.Economy is not null && others.Any(other => other.Id == entry.Command.TargetActorId),
+            CycleCommandKind.Accept or CycleCommandKind.Reject or CycleCommandKind.Withdraw => observation.Trades.Any(offer => offer.Id == entry.Command.TradeId),
             CycleCommandKind.Buy => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.BuyPrice > 0),
             CycleCommandKind.Sell => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.SellPrice > 0),
             CycleCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),

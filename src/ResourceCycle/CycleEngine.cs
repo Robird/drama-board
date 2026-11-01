@@ -144,6 +144,9 @@ public static class CycleEngine {
                 }
                 CycleCommand? command = CycleCommandParser.Parse(operation.RawInput);
                 string? rejection = command is null ? "无法识别行动格式，请使用当前列出的行动命令。" : decision.Check(command);
+                if (rejection is null && command is not null && CycleTradeRules.IsTradeCommand(command)) {
+                    rejection = CycleActions.Check(world, prediction.TargetId, command);
+                }
                 if (command is null && GoalCommandParser.IsGoalCommand(operation.RawInput)) {
                     GoalCommandParser.TryParse(operation.RawInput, out _, out string? goalError);
                     rejection = goalError ?? rejection;
@@ -160,7 +163,7 @@ public static class CycleEngine {
                 }
                 fact = CyclePlanning.Decision(world, prediction.TargetId, command).WithOperation(operation);
             } else { fact = CyclePlanning.Occurrence(world, prediction); }
-            return new([CycleInteractionRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, CycleEconomyRules.Enrich(world, fact))), operation)]);
+            return new([CycleInteractionRules.Enrich(world, CyclePlanning.Observe(world, CycleSurvivalRules.Enrich(world, CycleTradeRules.Enrich(world, CycleEconomyRules.Enrich(world, fact)))), operation)]);
         }
         private static OccurrenceCandidate<CyclePrediction> Candidate(CyclePrediction prediction) =>
             new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);

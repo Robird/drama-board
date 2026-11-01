@@ -13,6 +13,7 @@ internal static class CyclePlanning {
         CyclePredictionKind.CompleteActivity => CompleteActivity(world, prediction.TargetId, prediction.Due),
         CyclePredictionKind.SurvivalFatal or CyclePredictionKind.SurvivalWarning => CycleSurvivalRules.Boundary(world, prediction),
         CyclePredictionKind.Weather => CycleEnvironmentRules.Plan(world, prediction.Due),
+        CyclePredictionKind.TradesExpire => CycleTradeRules.Expire(world),
         CyclePredictionKind.MarketRefresh => CycleEconomyRules.Refresh(world, prediction.Due),
         _ => throw new InvalidOperationException("This occurrence requires a Player decision.")
     };
@@ -20,6 +21,8 @@ internal static class CyclePlanning {
     public static CycleFact Decision(CycleWorld world, string actorId, CycleCommand command) {
         CycleCharacter actor = world.GetCharacter(actorId);
         switch (command.Kind) {
+            case CycleCommandKind.Offer or CycleCommandKind.Accept or CycleCommandKind.Reject or CycleCommandKind.Withdraw:
+                return CycleTradeRules.Plan(world, actorId, command);
             case CycleCommandKind.Buy or CycleCommandKind.Sell or CycleCommandKind.Produce or CycleCommandKind.GiveMoney:
                 return CycleEconomyRules.Plan(world, actorId, command);
             case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:

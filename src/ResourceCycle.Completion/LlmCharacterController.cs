@@ -21,6 +21,12 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "只使用眼前提供的市场、配方和物品标识；use item.ration 可补给，具体效果以当前材料为准。"
         + "可用 give <actor-id> money <amount> 赠送自己的钱；接收或赠与不代表知道他人的余额或背包。";
 
+    private const string TradeGuidance = "居民报价由 offer 的给予 / 索取条款组成；看清自己支付与收到什么，以及报价身份、参与者和到期时间。"
+        + "报价不预留资产，不证明对方余额或背包。只有收件人可 accept / reject，只有发起方可 withdraw；可尝试接受不保证成交，以提交回执为准。"
+        + "offer / accept 需要同地，reject / withdraw 可异地，途中不可处理；只有 offer 消耗共享发送额度。"
+        + "交易操作不耗模拟时间、不取消生产或其他活动、不重置期限，也不确认已有警告；需要放行时 continue。"
+        + "已拒绝、撤回、到期或参与方不可继续的报价没有转移资产；已成交操作不要重复。";
+
     private const string GoalGuidance = "界面已提供目标管理。对照所有未结束事项与复查线索；方法失效不自动取消仍成立的目的。"
         + "新采纳的承诺、重要进展、方法变更或调查结论需要跨回合保留时，用界面中的目标命令记录简短内容和依据。"
         + "一次提交一条固定目标命令及 JSON 对象；以实际帮助中的字段和容量为准。成功编辑后根据结果继续行动，不因下一次独立调用重新创建。"
@@ -41,7 +47,7 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "shout 与 say / give 共用发送额度，一次大喊只扣一次，无人听见也成功；回执不提供听众名单或接收确认。"
         + "听到大喊不取消原活动，也不自动集合；完成或取消活动后再自主返回和跟随。听见远处角色不代表同地可赠与或跟随，话语不等于世界证实。";
 
-    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance : "") + (observation.Goals is not null
+    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance + TradeGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

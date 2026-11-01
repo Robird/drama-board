@@ -1,6 +1,6 @@
 # 经济融合编码起点
 
-2026-11-01。C2／C4 的生产、市场与现金纵切已经编码，正在验收；居民报价仍待实施。当前施工状态只维护在 [work-plan](work-plan.md)，本文件保留实施合同及后续交易候选。
+2026-11-01。C2／C4 的生产、市场与现金纵切已经验收；居民报价按下述合同实施。当前施工状态只维护在 [work-plan](work-plan.md)。
 
 ## 保持的合同
 
@@ -57,13 +57,17 @@
 | [CycleObservation](../../../src/ResourceCycle/CycleObservation.cs) | 自己的钱、当地市场／配方、本人报价；同步材料类型、相等性、投递校验、OperationResults、Console 与 Completion。 |
 | [CycleActions](../../../src/ResourceCycle/CycleActions.cs)、[CycleSurvival](../../../src/ResourceCycle/CycleSurvival.cs) | 当前 Use 将 item.food 以外的物品按水需求判断；新增口粮须同步供应效果、满值拒绝、名称和说明。 |
 
-## 当前实现与后续交易候选
+## 当前实现
 
-`CycleBusinessState.Economy` 当前聚合 Market／Totals，角色新增 Money；LivingWorld 启用，基础采集夹具可不启用。未启用时拒绝经济命令且资金为零。这不是新增第二产品模式。Trades 在紧接的报价切片加入。
+`CycleBusinessState.Economy` 当前聚合 Market／Totals／Trades，角色新增 Money；LivingWorld 启用，基础采集夹具可不启用。未启用时拒绝经济命令且资金为零。这不是新增第二产品模式。Trades 保存有界报价与交付证据。
 
-已接线 `buy <item> <count>`、`sell <item> <count>`、`produce <recipe> <batches>`、`give <actor> money <amount>`。前三种数量为 1–1000；金钱赠与使用独立 GiveMoney kind 与 long 金额，不改变采集 Count 的类型。`offer`、`accept`、`reject`、`withdraw` 尚待实施，届时支持金钱与物品交换。
+已接线 `buy <item> <count>`、`sell <item> <count>`、`produce <recipe> <batches>`、`give <actor> money <amount>`。前三种数量为 1–1000；金钱赠与使用独立 GiveMoney kind 与 long 金额，不改变采集 Count 的类型。`offer`、`accept`、`reject`、`withdraw` 已支持金钱与物品交换。
 
-候选规则：买卖仅市场、生产仅工坊；报价与接受须同地，拒绝／撤回可在自己的地点决策窗口执行；途中保留现有限制。报价发送可共用通信额度，关闭已有报价不消耗发送额度，避免无额度可退出。忙碌／跟随只在已有决策窗口操作，不新增主动插话调度。
+规则：买卖仅市场、生产仅工坊；报价与接受须同地，拒绝／撤回可在自己的地点决策窗口执行；途中保留现有限制。报价发送共用通信额度，接受及关闭已有报价不消耗发送额度，避免无额度可退出。忙碌／跟随只在已有决策窗口操作，不新增主动插话调度。
+
+报价命令合同为 `offer <actor> <asset> <amount> for <asset> <amount> [hours]`，期限为 1–24 小时、默认 6 小时；`accept/reject/withdraw <tradeId>` 处理已有报价。资产为 `money` 或已知物品 ID；钱使用正 long，物品为 1–1000。报价账总量 24、每位发起者最多 8，含尚未完成终态交付的记录。状态为 Active/Accepted/Rejected/Withdrawn/Expired/ParticipantFailed；本世界没有固定实验 WorldEnded。
+
+个人冻结观察提供 `Trades`，事件提供 `TradeChanges`；批量到期或死亡按收件人合并通知。远处对方死亡只带相关交易终止，不提供死亡地点、身体状态，也不伪装成观察者自己的死亡。交付证据采用实际发布的 Context Opening，先回收过去已完成双方终态交付的记录，再记本次交付；已打印/已读/同意不是同一个概念。
 
 | 当前配方 | 输入→输出 | 耗时／用途 |
 | --- | --- | --- |

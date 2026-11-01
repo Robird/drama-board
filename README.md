@@ -2,7 +2,7 @@
 
 DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定性事件，**Spatial** 表达地点、通路、移动实体与相遇，**Host** 驱动 Kernel。核心不依赖 Player 或应用服务器。
 
-当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民报价交易仍待从 Microtown 融合。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
+当前推荐游戏入口是 **山野镇 / Hillside**，暂沿用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民之间也可报价交换资金和物品。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，施工进度只在[专题工作计划](docs/codex-goals/living-world/work-plan.md)维护。
 
 跨会话状态见 [PROJECT-STATE](PROJECT-STATE.md)，文档导航见 [docs/README](docs/README.md)，协作约定见 [AGENTS](AGENTS.md)。
 
@@ -74,6 +74,8 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 | 取消采集/等待/生产 | `cancel` |
 | 定向说话、赠与 | `say <actor-id> <text>`、`give <actor-id> <item-id> <count>` |
 | 赠钱 | `give <actor-id> money <amount>` |
+| 发起报价 | `offer <actor-id> <asset> <amount> for <asset> <amount> [hours]` |
+| 接受、拒绝、撤回报价 | `accept <trade-id>`、`reject <trade-id>`、`withdraw <trade-id>` |
 | 大喊 | `shout <text>` |
 | 跟随/解散 | `follow <actor-id>`、`unfollow`、`dismiss-followers` |
 
@@ -87,7 +89,9 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 
 跟随需要同地且没有耗时活动；领队普通 `go` 带所有实际跟随者一起出发，到达仍保持关系。跟随者不能自行开始移动、采集、生产或等待，个人身体提醒仍需自己处理。到工作地点后可以解散，结束工作再集合；没有自动等待未加入同伴的机制。见[跟随设计](docs/design/character-following.md)。
 
-说话、赠与限同地活跃角色；大喊送达本地与一跳声音连接地点的活跃角色，途中角色听不到。声音连接独立于移动通路，目前为 camp ↔ stream、ridge ↔ cabin。三种操作共用每角色每模拟时刻四次成功发送额度；无人听见的大喊也成功，不返回听众名单。通信唤醒不取消活动、不改变期限或跟随关系。独立闲置角色须安排耗时行动或加入跟随才能放行时间。见[大喊设计](docs/design/spatial-relations-and-shout.md)。
+报价里的资产可用 `money` 或物品 ID；期限为 1–24 小时，省略为 6 小时。例如 `offer b item.water 1 for money 2 4` 表示用一份水换两钱，四小时后到期。发起与接受须双方同地，拒绝或撤回可在远处自己的决策窗口进行；途中仍不能交易。报价不预留资产，接受时双方重新核对完整支付额与背包容量，一次成交；可尝试不保证成功。终态保留至实际交付后回收。交易不改变原生产/等待期限、跟随或既有警告。见[交易验收](docs/experiments/living-world-trades-acceptance.md)，构建后可运行 `pwsh -NoProfile -File scripts/Smoke-Hillside.ps1 -Scenario Trade` 复验。
+
+说话、赠与限同地活跃角色；大喊送达本地与一跳声音连接地点的活跃角色，途中角色听不到。声音连接独立于移动通路，目前为 camp ↔ stream、ridge ↔ cabin。说话、赠物、赠钱、大喊与发起报价共用每角色每模拟时刻四次成功发送额度；接受、拒绝和撤回不消耗发送额度。无人听见的大喊也成功，不返回听众名单。通信唤醒不取消活动、不改变期限或跟随关系。独立闲置角色须安排耗时行动或加入跟随才能放行时间。见[大喊设计](docs/design/spatial-relations-and-shout.md)。
 
 每名角色拥有独立的[目标记录](docs/design/goal-management/README.md)。例如 `create-goal {"title":"准备饮水","criteria":"出发前携带两份饮水","focus":true}`，`show-goal {}` 列出保留目标；界面列出其余编辑、关联、聚焦与结束命令。目标不会代执行活动，也不伪造完成事实。`handoff <text>` 为下一个 Context 留一次性便条，`handoff --clear` 清除；长期意图适合记录为目标。
 
@@ -101,7 +105,7 @@ Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令�
 
 ## 原型与历史证据
 
-Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场与赠钱，居民报价仍需迁入才能完成 C2/C4；旧证据不能替代融合验收。
+Microtown 当前是经济融合的源码与行为参照，不再作为另一条推荐产品路线推进。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场、赠钱与居民报价；旧证据不能替代融合验收。
 
 ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。原 Smoke 脚本包含旧参数，目前不作为推荐新世界运行方式。历史实现与验证仍可查阅：
 

@@ -58,7 +58,11 @@ internal static class CycleFollowingRules {
         foreach (CycleCharacter before in world.Characters) {
             CycleCharacter after = changes.GetValueOrDefault(before.Id, before);
             if (after.FollowingLeaderId is { } leader && ended.Contains(leader)) {
-                changes[after.Id] = after.WithFollowing(null);
+                changes[after.Id] = changes.ContainsKey(after.Id)
+                    ? new(after.Id, after.Name, after.SkillLevel, after.Backpack, after.Activity, after.Notices,
+                        after.DecisionGeneration, after.LastResult, after.NextActivityId, after.Survival, after.Ending,
+                        after.Communication, null, after.Money)
+                    : after.WithFollowing(null);
             }
         }
         return fact.WithCharacters(world.Characters.Where(c => changes.ContainsKey(c.Id)).Select(c => changes[c.Id]));

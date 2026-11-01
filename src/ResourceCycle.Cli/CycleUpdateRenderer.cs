@@ -31,6 +31,10 @@ internal static class CycleUpdateRenderer {
                 string field = group.Key.Field == "warning" ? "额外提示" : "条件";
                 string value = group.Key.Field == "warning" && group.Key.Value.Kind is CycleVisibleValueKind.KnownAbsent or CycleVisibleValueKind.Unobserved
                     ? "原行动提示已不再适用" : Format(group.Key.Value, group.First().Key);
+                if (group.Key.Field == "rejection" && group.Key.Value.Kind == CycleVisibleValueKind.KnownAbsent &&
+                    group.Any(pair => pair.Key.ObjectId.StartsWith("Accept|", StringComparison.Ordinal))) {
+                    value += "；accept 仅可尝试，成交以提交结果为准";
+                }
                 text.AppendLine($"- {commands} · {field}：{value}");
         }
         return text.ToString();
@@ -82,6 +86,13 @@ internal static class CycleUpdateRenderer {
     };
 
     internal static string EventDescription(CycleObservedEvent e) {
+        string description = e.Kind is CycleObservedEventKind.TradeOffered or CycleObservedEventKind.TradeAccepted or
+            CycleObservedEventKind.TradeRejected or CycleObservedEventKind.TradeWithdrawn or CycleObservedEventKind.TradesExpired or
+            CycleObservedEventKind.TradeParticipantFailed ? "" : EventDescriptionCore(e);
+        return string.Join(" ", new[] { description }.Where(value => value.Length > 0).Concat(e.TradeChanges.Select(TradeView.Describe)));
+    }
+
+    private static string EventDescriptionCore(CycleObservedEvent e) {
         if (e.Kind == CycleObservedEventKind.SpeechShouted) {
             string speaker = CharacterContextRenderer.DataLiteral(e.SubjectName!) + "（" + CharacterContextRenderer.DataLiteral(e.SubjectId!) + "）";
             return $"{speaker} 大喊（角色话语，未经世界证实）：{CharacterContextRenderer.DataLiteral(e.Detail!)}";
@@ -139,6 +150,10 @@ internal static class CycleUpdateRenderer {
         }
         foreach (var parts in commands.Where(parts => parts[0] != nameof(CycleCommandKind.Wait))) {
             yield return parts[0] switch {
+                nameof(CycleCommandKind.Offer) => $"offer {parts[7]} {parts[11]} {parts[12]} for {parts[13]} {parts[14]} {parts[1]}",
+                nameof(CycleCommandKind.Accept) => $"accept {parts[10]}",
+                nameof(CycleCommandKind.Reject) => $"reject {parts[10]}",
+                nameof(CycleCommandKind.Withdraw) => $"withdraw {parts[10]}",
                 nameof(CycleCommandKind.Gather) => $"gather {parts[2]} {(parts[4] == "all" ? "all" : parts[3])}",
                 nameof(CycleCommandKind.Buy) => $"buy {parts[6]} {parts[3]}",
                 nameof(CycleCommandKind.Sell) => $"sell {parts[6]} {parts[3]}",

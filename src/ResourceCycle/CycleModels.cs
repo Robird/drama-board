@@ -5,15 +5,15 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.EventKind", 13)]
+[DurableType("DramaBoard.ResourceCycle.EventKind", 14)]
 public enum CycleEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected, SpeechSent, ItemGiven, GoalOperation,
     FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted,
-    MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven
+    MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven, TradeOffered, TradeAccepted, TradeRejected, TradeWithdrawn, TradesExpired
 }
-public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, MarketRefresh, SurvivalWarning, RequestDecision }
+public enum CyclePredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, MarketRefresh, TradesExpire, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }
 
 public static class CycleTime {

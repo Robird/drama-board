@@ -83,7 +83,7 @@ internal static class CycleFactApplication {
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
         bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or CycleEventKind.SpeechShouted or
-            CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed or CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.MoneyGiven;
+            CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed or CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.MoneyGiven or CycleEventKind.TradeOffered or CycleEventKind.TradeAccepted or CycleEventKind.TradeRejected or CycleEventKind.TradeWithdrawn;
         bool rejected = fact.Kind == CycleEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
         if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
@@ -111,6 +111,10 @@ internal static class CycleFactApplication {
             (CycleCommandKind.Sell, CycleEventKind.MarketSold) or
             (CycleCommandKind.Produce, CycleEventKind.ProductionStarted) or
             (CycleCommandKind.GiveMoney, CycleEventKind.MoneyGiven) or
+            (CycleCommandKind.Offer, CycleEventKind.TradeOffered) or
+            (CycleCommandKind.Accept, CycleEventKind.TradeAccepted) or
+            (CycleCommandKind.Reject, CycleEventKind.TradeRejected) or
+            (CycleCommandKind.Withdraw, CycleEventKind.TradeWithdrawn) or
             (CycleCommandKind.Follow, CycleEventKind.FollowStarted) or
             (CycleCommandKind.Unfollow, CycleEventKind.FollowEnded) or
             (CycleCommandKind.DismissFollowers, CycleEventKind.FollowersDismissed))) {
@@ -122,6 +126,9 @@ internal static class CycleFactApplication {
             throw new InvalidOperationException("Only communication or follow-start facts may carry their declared target or payload.");
         }
         bool valid = fact.Kind switch {
+            CycleEventKind.TradeOffered or CycleEventKind.TradeAccepted or CycleEventKind.TradeRejected or CycleEventKind.TradeWithdrawn =>
+                actorEffect && fact.ChangedCharacters.Count == 2 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
+            CycleEventKind.TradesExpired => fact.ActorId is null && fact.ChangedCharacters.Count > 0 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
             CycleEventKind.MarketBought or CycleEventKind.MarketSold or CycleEventKind.ProductionStarted or CycleEventKind.ProductionCompleted =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
             CycleEventKind.MoneyGiven => actorEffect && fact.ChangedCharacters.Count == 2 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null && fact.SpatialFacts.Count == 0,
@@ -236,7 +243,8 @@ internal static class CycleFactApplication {
         }
         if (fact.Kind is CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed) {
             string[] expectedIds = business.Characters.Where(c => c.Id == fact.ActorId ||
-                c.FollowingLeaderId is { } leader && ended.Contains(leader)).Select(c => c.Id).ToArray();
+                c.FollowingLeaderId is { } leader && ended.Contains(leader) ||
+                fact.Kind == CycleEventKind.SurvivalFailed && c.IsActive && fact.TradeChanges.Any(offer => offer.Involves(c.Id))).Select(c => c.Id).ToArray();
             if (!expectedIds.SequenceEqual(fact.ChangedCharacters.Select(c => c.Id))) {
                 throw new InvalidOperationException("An arrival or death changes only its subject and followers released by that subject's ending.");
             }
@@ -263,13 +271,16 @@ internal static class CycleFactApplication {
 
     private static void ValidateCommunicationState(CycleBusinessState business, CycleFact fact, bool communication) {
         // Monetary gift participant state is checked together with its exact wallet effects.
-        if (fact.Kind == CycleEventKind.MoneyGiven) { return; }
+        if (fact.Kind is CycleEventKind.MoneyGiven or CycleEventKind.TradeOffered or CycleEventKind.TradeAccepted or
+            CycleEventKind.TradeRejected or CycleEventKind.TradeWithdrawn or CycleEventKind.TradesExpired) { return; }
         if (!communication) {
             foreach (CycleCharacter changed in fact.ChangedCharacters) {
                 CycleCommunicationState before = business.GetCharacter(changed.Id).Communication;
                 bool acknowledge = !changed.IsActive || changed.Id == fact.ActorId && fact.Kind is
                     CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ProductionStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted;
-                if (changed.Communication != (acknowledge ? before.Acknowledge() : before)) {
+                bool tradeNotice = changed.IsActive && fact.Kind is CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved &&
+                    fact.TradeChanges.Any(offer => offer.Involves(changed.Id));
+                if (changed.Communication != (acknowledge ? before.Acknowledge() : tradeNotice ? before.Receive() : before)) {
                     throw new InvalidOperationException("Only accepted communication spends budget; only explicit acknowledgement clears its attention.");
                 }
             }

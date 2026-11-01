@@ -39,6 +39,10 @@ public sealed partial class CycleBackground : IDurableObject {
             observation.Resources.Any(resource => resource.ItemId == "item.wood"))) {
             rules.Add("干木目前不能生火或直接取暖；在庇护中停留可以回暖，仍会消耗食物和饮水。");
         }
+        if (observation.IsExpedition) {
+            rules.Add("可向同地角色 offer 报价，用物品或现金交换；报价不预留资产，accept 接受时双方必须同地且具备完整支付和容量。候选接受命令只核对你可见的信息，实际提交仍可能因对方无法结算而失败。");
+            rules.Add("报价双方可用 reject 拒绝或 withdraw 撤回；只有报价人可撤回，只有接收人可接受或拒绝。拒绝和撤回不要求同地；到期或参与者无法继续时自动关闭。报价与 say、shout、give 共用发送额度；处理已有报价不占额度，也不取消活动或确认旧提醒。");
+        }
         if (observation.MarketQuotes.Count != 0) {
             rules.Add("市场可 buy 买入或 sell 出售，均即时结算；供应与收购额度有限，按本地显示的时刻刷新。现金和背包只对本人可见。");
         }

@@ -9,7 +9,7 @@ internal static class CycleObservationEquality {
         a.Time == b.Time && a.IsDay == b.IsDay && a.NextLightChange == b.NextLightChange &&
         SameActor(a.Actor, b.Actor) && SameList(a.Resources, b.Resources, SameResource) &&
         SameList(a.MarketQuotes, b.MarketQuotes, (x, y) => x == y) &&
-        SameList(a.Recipes, b.Recipes, (x, y) => x == y) && a.MarketRefreshAt == b.MarketRefreshAt &&
+        SameList(a.Trades, b.Trades, (x, y) => x == y) && SameList(a.Recipes, b.Recipes, (x, y) => x == y) && a.MarketRefreshAt == b.MarketRefreshAt &&
         SameDictionary(a.HarvestDurations, b.HarvestDurations) && SameDictionary(a.ItemNames, b.ItemNames) &&
         SameList(a.OtherCharacters, b.OtherCharacters, (x, y) => x == y) &&
         SameList(a.Notices, b.Notices, SameNoticeObservation) &&

@@ -22,5 +22,19 @@ internal static class CycleEconomyObservation {
     }
     internal static IReadOnlyList<CycleRecipe> Recipes(CycleBusinessState state, string? place) =>
         state.Economy is not null && place == "workshop" ? LivingWorldEconomyContent.Recipes : [];
+    // Delivery cursors belong to the host ledger, not either character's knowledge.
+    internal static CycleTradeOffer VisibleTrade(CycleTradeOffer offer) => offer with {
+        ProposerDeliveredVersion = 0, RecipientDeliveredVersion = 0,
+        ProposerDeliveryContextSequence = 0, RecipientDeliveryContextSequence = 0
+    };
+    internal static IReadOnlyList<CycleTradeOffer> Trades(CycleBusinessState state, string actorId) =>
+        Array.AsReadOnly(state.Economy?.Trades.Offers.Where(offer => offer.Involves(actorId)).Select(VisibleTrade).ToArray() ?? []);
+    internal static void ValidateVisibleTrade(CycleTradeOffer offer, string actorId, DramaBoard.Kernel.Time.ModelTime at) {
+        offer.Validate(at);
+        if (!offer.Involves(actorId) || offer.ProposerDeliveredVersion != 0 || offer.RecipientDeliveredVersion != 0 ||
+            offer.ProposerDeliveryContextSequence != 0 || offer.RecipientDeliveryContextSequence != 0) {
+            throw new InvalidOperationException("A personal trade view must exclude unrelated offers and internal delivery cursors.");
+        }
+    }
     internal static string ItemName(string item) => LivingWorldEconomyContent.Items.GetValueOrDefault(item, item);
 }

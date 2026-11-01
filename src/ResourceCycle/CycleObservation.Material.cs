@@ -67,7 +67,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 7)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 8)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -131,7 +131,14 @@ public sealed partial class CycleObservation : IDurableObject {
     public IReadOnlyList<CycleRecipe> Recipes { get => _recipes.AsReadOnly(); init => _recipes = new(value); }
     [DurableField(30)] private ModelTime? _marketRefreshAt;
     public ModelTime? MarketRefreshAt { get => _marketRefreshAt; init => _marketRefreshAt = value; }
+    [DurableField(31)] private List<CycleTradeOffer> _trades = [];
+    /// <summary>Only this resident's retained terms and status; delivery cursors are removed.</summary>
+    public IReadOnlyList<CycleTradeOffer> Trades { get => _trades.AsReadOnly(); init => _trades = new(value); }
     internal void ValidateEconomy() {
+        if (Trades.Select(offer => offer.Id).Distinct(StringComparer.Ordinal).Count() != Trades.Count) {
+            throw new InvalidOperationException("A personal trade view cannot repeat an offer.");
+        }
+        foreach (CycleTradeOffer offer in Trades) { CycleEconomyObservation.ValidateVisibleTrade(offer, Actor.Id, Time); }
         if (Actor.Money < 0 || MarketQuotes.Select(q => q.ItemId).Distinct(StringComparer.Ordinal).Count() != MarketQuotes.Count ||
             Recipes.Select(r => r.Id).Distinct(StringComparer.Ordinal).Count() != Recipes.Count ||
             MarketQuotes.Any(q => string.IsNullOrWhiteSpace(q.ItemId) || q.BuyPrice < 0 || q.SellPrice < 0 || q.Stock < 0 || q.Demand < 0) ||

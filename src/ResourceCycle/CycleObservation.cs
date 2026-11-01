@@ -35,7 +35,7 @@ public sealed class CycleDecisionContext {
             if (command?.Kind == CycleCommandKind.Go && !observation.Passages.Any(passage => passage.Id == command.PassageId)) {
                 return "当前不可见或不可用的通路。";
             }
-            return CycleActions.Check(world, actorId, command);
+            return CycleActions.Check(world, actorId, command, null, visibleOnly: true);
         }
         return new(observation, state, Check,
             command => Check(command) is null ? CycleSurvivalRules.ActionWarning(world, actorId, command) : null);
@@ -92,6 +92,7 @@ public sealed class CycleDecisionContext {
         }).ToArray();
         IReadOnlyList<CycleMarketQuote> quotes = CycleEconomyObservation.Quotes(world.Business, place);
         IReadOnlyList<CycleRecipe> recipes = CycleEconomyObservation.Recipes(world.Business, place);
+        IReadOnlyList<CycleTradeOffer> trades = CycleEconomyObservation.Trades(world.Business, actorId);
         List<CycleCommand> commands = [CycleCommand.Continue(), CycleCommand.Cancel()];
         if (CycleActions.SupportsHandoff(world)) { commands.Add(CycleCommand.Handoff(null)); }
         foreach (CycleResource resource in resources) {
@@ -113,10 +114,31 @@ public sealed class CycleDecisionContext {
         commands.AddRange(quotes.Where(quote => quote.BuyPrice > 0).Select(quote => CycleCommand.Buy(quote.ItemId)));
         commands.AddRange(quotes.Where(quote => quote.SellPrice > 0).Select(quote => CycleCommand.Sell(quote.ItemId)));
         commands.AddRange(recipes.Select(recipe => CycleCommand.Produce(recipe.Id)));
+        if (world.Business.Economy is not null) {
+            // Starter offers use only the observer's inventory and known item identities, never a neighbour's holdings.
+            string[] knownItems = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
+                .Concat(quotes.Select(quote => quote.ItemId)).Concat(recipes.SelectMany(recipe => new[] { recipe.InputItem, recipe.OutputItem }))
+                .Concat(trades.SelectMany(offer => new[] { offer.Give, offer.Want }).Where(asset => !asset.IsMoney).Select(asset => asset.AssetId))
+                .Where(LivingWorldEconomyContent.Items.ContainsKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            foreach (CycleOtherCharacterObservation other in others) {
+                foreach (string item in knownItems) {
+                    if (actor.Money > 0) { commands.Add(CycleCommand.Offer(other.Id, new("money", 1), new(item, 1))); }
+                    if (actor.Backpack.Count(item) > 0) { commands.Add(CycleCommand.Offer(other.Id, new(item, 1), new("money", 1))); }
+                }
+            }
+            foreach (CycleTradeOffer offer in trades.Where(offer => offer.Status == CycleTradeStatus.Active)) {
+                if (offer.ProposerId == actorId) { commands.Add(CycleCommand.Withdraw(offer.Id)); }
+                else { commands.Add(CycleCommand.Accept(offer.Id)); commands.Add(CycleCommand.Reject(offer.Id)); }
+            }
+        }
+        // Candidate acceptance is provisional; submission still uses the authoritative full Check above.
+        string? DisplayCheck(CycleCommand command) => CycleTradeRules.IsTradeCommand(command)
+            ? CycleActions.Check(world, actorId, command, contextSequence, visibleOnly: true) : Check(command);
         CycleVisit[] visits = expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
         ModelTime? arrival = location is TraversingLocation moving ? moving.ArrivalDue : null;
         var itemNames = actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
             .Concat(quotes.Select(quote => quote.ItemId)).Concat(recipes.SelectMany(recipe => new[] { recipe.InputItem, recipe.OutputItem }))
+            .Concat(trades.SelectMany(offer => new[] { offer.Give, offer.Want }).Where(asset => !asset.IsMoney).Select(asset => asset.AssetId))
             .Concat(actor.Activity?.Production is { } production ? new[] { production.InputItem, production.OutputItem } : [])
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(id => id, id => expedition is null
@@ -132,13 +154,13 @@ public sealed class CycleDecisionContext {
             Actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity,
                 Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId, actor.Money),
             Resources = Array.AsReadOnly(resources),
-            MarketQuotes = quotes, Recipes = recipes,
+            MarketQuotes = quotes, Recipes = recipes, Trades = trades,
             MarketRefreshAt = quotes.Count == 0 ? null : world.Business.Economy!.Market.NextRefresh,
             HarvestDurations = new System.Collections.ObjectModel.ReadOnlyDictionary<string, long>(resources.ToDictionary(
                 resource => resource.Id, resource => CycleActions.HarvestDuration(resource, actor), StringComparer.Ordinal)),
             ItemNames = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(itemNames),
             OtherCharacters = Array.AsReadOnly(others), Notices = Array.AsReadOnly(notices),
-            Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, Check(command), Warning(command))).ToArray()),
+            Commands = Array.AsReadOnly(commands.Select(command => new CycleCommandCheck(command, DisplayCheck(command), CycleTradeRules.IsTradeCommand(command) ? null : Warning(command))).ToArray()),
             IsExpedition = expedition is not null, PlaceId = place,
             PlaceName = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? CycleExpeditionMap.GetPlace(place).Description : null,

@@ -1,4 +1,5 @@
-param([string]$Configuration = 'Release', [string]$OutputDirectory)
+param([string]$Configuration = 'Release', [string]$OutputDirectory,
+    [ValidateSet('Economy', 'Trade')][string]$Scenario = 'Economy')
 
 # Scripted engineering acceptance, not free play or real LLM evidence.
 # Uses ordinary Console commands and two processes against one fresh save.
@@ -20,7 +21,10 @@ function Invoke-Console([string]$Name, [string[]]$Commands, [bool]$NewWorld) {
     foreach ($argument in @($cliPath, '--store', $storePath, '--steps', '1000', '--until-hour', '32')) {
         $start.ArgumentList.Add($argument)
     }
-    if ($NewWorld) { $start.ArgumentList.Add('--characters'); $start.ArgumentList.Add('1') }
+    if ($NewWorld) {
+        $start.ArgumentList.Add('--characters')
+        $start.ArgumentList.Add($(if ($Scenario -eq 'Trade') { '2' } else { '1' }))
+    }
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true
@@ -63,8 +67,16 @@ $second = @(
     'produce ration 1', 'use item.ration', 'go market-workshop',
     'sell item.ration 1', 'go market-home'
 )
-Invoke-Console '01-production-and-first-trip' $first $true
-Invoke-Console '02-cold-open-and-second-trip' $second $false
+if ($Scenario -eq 'Trade') {
+    $first = @('offer b item.water 1 for money 2 4')
+    $second = @('accept trade:a:1:1', 'offer b item.food 1 for item.water 1 4',
+        'reject trade:a:1:2', 'offer b money 1 for item.water 1 4', 'wait 1', 'withdraw trade:a:1:3')
+    Invoke-Console '01-offer' $first $true
+    Invoke-Console '02-cold-open-accept-reject-withdraw' $second $false
+} else {
+    Invoke-Console '01-production-and-first-trip' $first $true
+    Invoke-Console '02-cold-open-and-second-trip' $second $false
+}
 
 $received = [ordered]@{}
 $completed = @{}
@@ -87,6 +99,7 @@ foreach ($id in $received.Keys) {
 }
 $report = [ordered]@{
     Kind = 'Scripted engineering Console smoke; no model calls or free play'
+    Scenario = $Scenario
     Commands = $received.Count
     Processes = 2
     Store = $storePath
@@ -94,4 +107,4 @@ $report = [ordered]@{
     OperationsSha256 = (Get-FileHash -LiteralPath (Join-Path $storePath 'operations.jsonl') -Algorithm SHA256).Hash
 }
 [IO.File]::WriteAllText((Join-Path $outputRoot 'result.json'), ($report | ConvertTo-Json), $utf8)
-Write-Output "Hillside Console smoke passed: $($received.Count) committed commands, two trips and a cold reopen. Evidence: $outputRoot"
+Write-Output "Hillside $Scenario Console smoke passed: $($received.Count) committed commands in two processes. Evidence: $outputRoot"

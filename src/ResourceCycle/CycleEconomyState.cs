@@ -5,26 +5,30 @@ using DramaBoard.Kernel.Time;
 namespace DramaBoard.ResourceCycle;
 
 /// <summary>Market quotas and conservation counters share the world's commit boundary.</summary>
-[DurableType("DramaBoard.ResourceCycle.EconomyState", 1)]
+[DurableType("DramaBoard.ResourceCycle.EconomyState", 2)]
 public sealed partial class CycleEconomyState : IDurableObject {
     [DurableField(1)] private readonly CycleMarket _market;
     [DurableField(2)] private readonly CycleEconomicTotals _totals;
+    [DurableField(3)] private readonly CycleTradeState _trades;
+    public CycleTradeState Trades => _trades;
     public CycleMarket Market => _market;
     public CycleEconomicTotals Totals => _totals;
-    public CycleEconomyState(CycleMarket market, CycleEconomicTotals totals) {
+    public CycleEconomyState(CycleMarket market, CycleEconomicTotals totals, CycleTradeState? trades = null) {
+        _trades = trades ?? CycleTradeState.Empty;
         _market = market ?? throw new ArgumentNullException(nameof(market));
         _totals = totals ?? throw new ArgumentNullException(nameof(totals));
     }
-    public CycleEconomyState Change(CycleMarket? market = null, CycleEconomicTotals? totals = null) =>
-        new(market ?? Market, totals ?? Totals);
+    public CycleEconomyState Change(CycleMarket? market = null, CycleEconomicTotals? totals = null, CycleTradeState? trades = null) =>
+        new(market ?? Market, totals ?? Totals, trades ?? Trades);
     public void Validate(CycleBusinessState business) {
         if (Market is null || Totals is null || Market.NextRefresh < business.Time) {
             throw new InvalidOperationException("Invalid economy boundary.");
         }
         Market.Validate();
         Totals.Verify(business);
+        Trades.Validate(business);
     }
-    public bool SameState(CycleEconomyState? other) => other is not null && Market.SameState(other.Market) && Totals.SameState(other.Totals);
+    public bool SameState(CycleEconomyState? other) => other is not null && Market.SameState(other.Market) && Totals.SameState(other.Totals) && Trades.SameState(other.Trades);
     public override string ToString() => System.Text.Json.JsonSerializer.Serialize(this);
 }
 

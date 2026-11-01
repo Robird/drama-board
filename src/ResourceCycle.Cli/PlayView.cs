@@ -128,6 +128,7 @@ internal static class PlayView {
         }
         text.AppendLine();
         EconomyView.RenderStatus(text, observation);
+        TradeView.RenderStatus(text, observation);
         if (observation.Outcome != CycleExpeditionOutcome.Exploring) {
             text.AppendLine("## 结局");
             text.AppendLine(observation.Outcome == CycleExpeditionOutcome.Escaped ? "获救。" : "这位居民的生命已结束。其他居民仍可继续生活。");
@@ -211,6 +212,7 @@ internal static class PlayView {
         CommunicationView.Render(text, observation);
         FollowingView.RenderCommands(text, observation);
         EconomyView.RenderCommands(text, observation);
+        TradeView.RenderCommands(text, observation);
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (CyclePassageObservation passage in observation.Passages) {

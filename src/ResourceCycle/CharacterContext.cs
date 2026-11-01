@@ -221,6 +221,7 @@ public sealed partial class CharacterExperience : IDurableObject {
                 throw new InvalidOperationException("Communication experiences must retain their signed content.");
             }
             entry.Communication?.Validate(actorId, entry.Kind);
+            entry.ValidateTradeChanges();
             if ((entry.Kind is CycleObservedEventKind.ProductionStarted or CycleObservedEventKind.ProductionCompleted) != (entry.Production is not null) ||
                 entry.Production is { } production && (string.IsNullOrWhiteSpace(production.RecipeId) || production.Batches <= 0 ||
                     string.IsNullOrWhiteSpace(production.InputItem) || production.InputCount <= 0 ||
