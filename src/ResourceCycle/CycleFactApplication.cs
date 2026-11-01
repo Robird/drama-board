@@ -54,7 +54,8 @@ internal static class CycleFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
+        bool successfulDecision = fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or CycleEventKind.MoveStarted or CycleEventKind.ItemUsed or CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or
+            CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed;
         bool rejected = fact.Kind == CycleEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
         if (operation ? string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.OperationRecordId) || fact.RawInput is null ||
@@ -76,12 +77,15 @@ internal static class CycleFactApplication {
             (CycleCommandKind.Handoff, CycleEventKind.HandoffEdited) or
             (CycleCommandKind.Goal, CycleEventKind.GoalOperation) or
             (CycleCommandKind.Say, CycleEventKind.SpeechSent) or
-            (CycleCommandKind.Give, CycleEventKind.ItemGiven))) {
+            (CycleCommandKind.Give, CycleEventKind.ItemGiven) or
+            (CycleCommandKind.Follow, CycleEventKind.FollowStarted) or
+            (CycleCommandKind.Unfollow, CycleEventKind.FollowEnded) or
+            (CycleCommandKind.DismissFollowers, CycleEventKind.FollowersDismissed))) {
             throw new InvalidOperationException("The accepted raw input must parse to the recorded operation kind.");
         }
         bool communication = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
-        if (!communication && (fact.TargetActorId is not null || fact.SpeechText is not null || fact.ItemId is not null || fact.ItemCount != 0)) {
-            throw new InvalidOperationException("Only communication facts may carry a target or transferred payload.");
+        if (!communication && (fact.TargetActorId is not null && fact.Kind != CycleEventKind.FollowStarted || fact.SpeechText is not null || fact.ItemId is not null || fact.ItemCount != 0)) {
+            throw new InvalidOperationException("Only communication or follow-start facts may carry their declared target or payload.");
         }
         bool valid = fact.Kind switch {
             CycleEventKind.SpeechSent or CycleEventKind.ItemGiven => actorEffect && fact.ChangedCharacters.Count == 2 &&
@@ -95,17 +99,20 @@ internal static class CycleFactApplication {
             CycleEventKind.WaitStarted or CycleEventKind.WaitCompleted or CycleEventKind.ActivityCancelled or CycleEventKind.AttentionAcknowledged or
                 CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
-            CycleEventKind.MoveStarted or CycleEventKind.MoveArrived =>
-                actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
+            CycleEventKind.MoveStarted or CycleEventKind.MoveArrived or CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed =>
+                actorEffect && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             CycleEventKind.WeatherResolved => fact.ActorId is null && fact.ChangedCharacters.Count > 0 &&
                 fact.ChangedCharacters.All(c => c.Survival is not null) && fact.ChangedResources.Count == 0 &&
                 fact.Light is null && fact.Script is null && fact.ResourceId is null,
-            CycleEventKind.SurvivalWarning or CycleEventKind.SurvivalFailed or CycleEventKind.ItemUsed =>
+            CycleEventKind.SurvivalFailed => actorEffect && fact.ChangedCharacters.Single(c => c.Id == fact.ActorId).Survival is not null &&
+                fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
+            CycleEventKind.SurvivalWarning or CycleEventKind.ItemUsed =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedCharacters[0].Survival is not null &&
                 fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             _ => false
         };
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
+        ValidateFollowingChanges(business, fact);
         ValidateCommunicationState(business, fact, communication);
         if (fact.Kind is CycleEventKind.HandoffEdited or CycleEventKind.GoalOperation or CycleEventKind.DecisionContextOpened or CycleEventKind.OperationRejected) {
             CycleCharacter before = business.GetCharacter(fact.ActorId!);
@@ -135,18 +142,91 @@ internal static class CycleFactApplication {
             fact.Visits.Any(v => !business.GetCharacter(v.ActorId).IsActive)) {
             throw new InvalidOperationException("Unexpected expedition observation.");
         }
-        if (fact.Kind == CycleEventKind.SurvivalFailed && fact.ChangedCharacters[0].Ending?.Outcome != CycleExpeditionOutcome.Dead) {
+        if (fact.Kind == CycleEventKind.SurvivalFailed && fact.ChangedCharacters.Single(c => c.Id == fact.ActorId).Ending?.Outcome != CycleExpeditionOutcome.Dead) {
             throw new InvalidOperationException("A fatal survival fact must record the personal ending.");
         }
         if (fact.Kind == CycleEventKind.WeatherResolved) { ValidateWeather(business, fact); }
         else if (fact.Environment is not null) { throw new InvalidOperationException("Only weather can replace the environment stream."); }
     }
+    private static void ValidateFollowingChanges(CycleBusinessState business, CycleFact fact) {
+        var ended = fact.ChangedCharacters.Where(c => !c.IsActive).Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (CycleCharacter before in business.Characters) {
+            CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == before.Id) ?? before;
+            string? expected = before.FollowingLeaderId;
+            if (!after.IsActive || expected is not null && ended.Contains(expected) ||
+                fact.Kind == CycleEventKind.FollowEnded && before.Id == fact.ActorId ||
+                fact.Kind == CycleEventKind.FollowersDismissed && expected == fact.ActorId) { expected = null; }
+            if (fact.Kind == CycleEventKind.FollowStarted && before.Id == fact.ActorId) { expected = fact.TargetActorId; }
+            if (after.FollowingLeaderId != expected) {
+                throw new InvalidOperationException("Following changes must match the explicit command or a participant's terminal fact.");
+            }
+        }
+        bool relationCommand = fact.Kind is CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed;
+        if (relationCommand) {
+            CycleCharacter actor = business.GetCharacter(fact.ActorId!);
+            if (business.Expedition is null || fact.At != business.Time || !CycleActions.NeedsDecision(business, actor.Id) ||
+                CycleActions.Location(business, actor.Id) is not AtPlaceLocation at) {
+                throw new InvalidOperationException("Following commands require a decision opportunity at an actual place.");
+            }
+            if (fact.Kind == CycleEventKind.FollowStarted) {
+                CycleCommand command = CycleCommandParser.Parse(fact.RawInput!)!;
+                CycleCharacter? leader = business.Characters.SingleOrDefault(c => c.Id == fact.TargetActorId);
+                if (command.TargetActorId != fact.TargetActorId || leader is null || !leader.IsActive || leader.Id == actor.Id ||
+                    leader.FollowingLeaderId is not null || actor.FollowingLeaderId is not null || actor.Activity is not null ||
+                    CycleFollowingRules.Followers(business, actor.Id).Any() ||
+                    CycleActions.Location(business, leader.Id) is not AtPlaceLocation leaderPlace || leaderPlace.PlaceId != at.PlaceId) {
+                    throw new InvalidOperationException("Follow must establish a new direct relation with an active colocated leader.");
+                }
+            } else if (fact.Kind == CycleEventKind.FollowEnded && actor.FollowingLeaderId is null ||
+                fact.Kind == CycleEventKind.FollowersDismissed && !CycleFollowingRules.Followers(business, actor.Id).Any()) {
+                throw new InvalidOperationException("Only an existing following relation can be ended.");
+            }
+            string[] expectedIds = fact.Kind == CycleEventKind.FollowersDismissed
+                ? CycleFollowingRules.MovingMembers(business, actor.Id).Select(c => c.Id).ToArray() : [actor.Id];
+            if (!expectedIds.SequenceEqual(fact.ChangedCharacters.Select(c => c.Id)) || fact.SpatialFacts.Count != 0) {
+                throw new InvalidOperationException("A following command changes exactly its declared participants, without movement.");
+            }
+            foreach (CycleCharacter changed in fact.ChangedCharacters) {
+                CycleCharacter before = business.GetCharacter(changed.Id);
+                bool acknowledge = fact.Kind == CycleEventKind.FollowStarted;
+                CycleSurvival? expectedBody = before.Survival?.Project(fact.At);
+                if (acknowledge) { expectedBody = expectedBody?.Acknowledge(fact.At); }
+                ValidatePreservedCharacter(before, changed, expectedBody, acknowledge, changed.Id == actor.Id ? fact.Result : before.LastResult);
+            }
+        }
+        if (fact.Kind is CycleEventKind.MoveArrived or CycleEventKind.SurvivalFailed) {
+            string[] expectedIds = business.Characters.Where(c => c.Id == fact.ActorId ||
+                c.FollowingLeaderId is { } leader && ended.Contains(leader)).Select(c => c.Id).ToArray();
+            if (!expectedIds.SequenceEqual(fact.ChangedCharacters.Select(c => c.Id))) {
+                throw new InvalidOperationException("An arrival or death changes only its subject and followers released by that subject's ending.");
+            }
+            foreach (CycleCharacter changed in fact.ChangedCharacters.Where(c => c.Id != fact.ActorId)) {
+                CycleCharacter before = business.GetCharacter(changed.Id);
+                CycleSurvival? expectedBody = before.Survival?.WithRates(fact.At, before.Survival.FoodRate, before.Survival.WaterRate,
+                    CycleSurvivalRules.WarmthRate(CycleSurvivalRules.IsSheltered(business.Expedition!.Spatial, before.Id), business.Light.IsDay));
+                ValidatePreservedCharacter(before, changed, expectedBody, false, before.LastResult);
+            }
+        }
+    }
+
+    private static void ValidatePreservedCharacter(CycleCharacter before, CycleCharacter after, CycleSurvival? expectedBody, bool acknowledge, string? result) {
+        if (before.Name != after.Name || before.SkillLevel != after.SkillLevel || before.Ending != after.Ending ||
+            before.NextActivityId != after.NextActivityId || after.DecisionGeneration != checked(before.DecisionGeneration + 1) ||
+            !SameActivity(before.Activity, after.Activity) || !SameSurvival(expectedBody, after.Survival) ||
+            before.Backpack.UnitCapacity != after.Backpack.UnitCapacity ||
+            !before.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal).SequenceEqual(after.Backpack.Items.OrderBy(i => i.Key, StringComparer.Ordinal)) ||
+            !(acknowledge ? Enumerable.Empty<CycleNotice>() : before.Notices).Select(NoticeFields).SequenceEqual(after.Notices.Select(NoticeFields)) ||
+            after.LastResult != result) {
+            throw new InvalidOperationException("Following effects must preserve each participant's unrelated state and unacknowledged reminders.");
+        }
+    }
+
     private static void ValidateCommunicationState(CycleBusinessState business, CycleFact fact, bool communication) {
         if (!communication) {
             foreach (CycleCharacter changed in fact.ChangedCharacters) {
                 CycleCommunicationState before = business.GetCharacter(changed.Id).Communication;
                 bool acknowledge = !changed.IsActive || changed.Id == fact.ActorId && fact.Kind is
-                    CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted;
+                    CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted;
                 if (changed.Communication != (acknowledge ? before.Acknowledge() : before)) {
                     throw new InvalidOperationException("Only accepted communication spends budget; only explicit acknowledgement clears its attention.");
                 }
@@ -217,7 +297,7 @@ internal static class CycleFactApplication {
             CycleCharacter prior = business.GetCharacter(changed.Id);
             if (!prior.IsActive) { throw new InvalidOperationException("A retired character cannot be changed by later gameplay."); }
             if (changed.Ending is not { } ending) { continue; }
-            if (business.Expedition is null || ending.At != fact.At ||
+            if (business.Expedition is null || ending.At != fact.At || fact.Kind != CycleEventKind.WeatherResolved && changed.Id != fact.ActorId ||
                 (ending.Outcome == CycleExpeditionOutcome.Escaped ? fact.Kind != CycleEventKind.MoveArrived :
                     ending.Outcome != CycleExpeditionOutcome.Dead || fact.Kind is not (CycleEventKind.SurvivalFailed or CycleEventKind.WeatherResolved))) {
                 throw new InvalidOperationException("A personal ending must match its cause and boundary.");
@@ -229,11 +309,34 @@ internal static class CycleFactApplication {
             endingIds.Add(changed.Id);
         }
         int index = 0;
-        if (fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived) {
+        if (fact.Kind == CycleEventKind.MoveStarted) {
+            if (business.Expedition is null || fact.ActorId is null || fact.At != business.Time || !CycleActions.NeedsDecision(business, fact.ActorId) ||
+                business.GetCharacter(fact.ActorId).FollowingLeaderId is not null) {
+                throw new InvalidOperationException("Only an independently deciding leader can start movement.");
+            }
+            CycleCharacter[] members = CycleFollowingRules.MovingMembers(business, fact.ActorId).ToArray();
+            CycleCommand command = CycleCommandParser.Parse(fact.RawInput!)!;
+            if (fact.SpatialFacts.Count != members.Length || !members.Select(c => c.Id).SequenceEqual(fact.ChangedCharacters.Select(c => c.Id))) {
+                throw new InvalidOperationException("Movement must include exactly the leader and all current followers in character order.");
+            }
+            for (int memberIndex = 0; memberIndex < members.Length; memberIndex++) {
+                CycleCharacter prior = members[memberIndex], changed = fact.ChangedCharacters[memberIndex];
+                if (!prior.IsActive || prior.Activity is not null ||
+                    CycleActions.Location(business, prior.Id) is not AtPlaceLocation atPlace ||
+                    fact.SpatialFacts[memberIndex] is not TraversalStartedFact start || start.EntityId.Value != prior.Id ||
+                    start.PassageId.Value != command.PassageId || start.FromPlaceId != atPlace.PlaceId || start.SpeedSnapshot != 1) {
+                    throw new InvalidOperationException("Every recorded member must start the selected passage from their actual place at the common speed.");
+                }
+                bool own = prior.Id == fact.ActorId;
+                CycleSurvival? expectedBody = prior.Survival?.WithRates(fact.At, prior.Survival.FoodRate, prior.Survival.WaterRate,
+                    CycleSurvivalRules.WarmthRate(false, business.Light.IsDay));
+                if (own) { expectedBody = expectedBody?.Acknowledge(fact.At); }
+                ValidatePreservedCharacter(prior, changed, expectedBody, own, own ? fact.Result : prior.LastResult);
+            }
+            index = members.Length;
+        } else if (fact.Kind == CycleEventKind.MoveArrived) {
             if (business.Expedition is null || fact.SpatialFacts.Count == 0 ||
-                (fact.Kind == CycleEventKind.MoveStarted
-                    ? fact.SpatialFacts[0] is not TraversalStartedFact started || started.EntityId.Value != fact.ActorId
-                    : fact.SpatialFacts[0] is not TraversalArrivedFact arrived || arrived.EntityId.Value != fact.ActorId)) {
+                fact.SpatialFacts[0] is not TraversalArrivedFact arrived || arrived.EntityId.Value != fact.ActorId) {
                 throw new InvalidOperationException("Movement requires a matching recorded spatial fact.");
             }
             index = 1;

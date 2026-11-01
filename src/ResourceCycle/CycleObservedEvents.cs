@@ -12,6 +12,8 @@ internal static class CycleObservedEvents {
         foreach (GraphSpatialFact movement in fact.SpatialFacts) {
             afterSpatial = CycleExpeditionMap.Reducer.Apply(afterSpatial!, new(fact.At, 0), movement);
         }
+        CycleCharacter[] afterCharacters = world.Characters.Select(character =>
+            fact.ChangedCharacters.SingleOrDefault(changed => changed.Id == character.Id) ?? character).ToArray();
         foreach (CycleCharacter before in world.Characters) {
             if (!before.IsActive) { continue; }
             CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == before.Id) ?? before;
@@ -28,14 +30,23 @@ internal static class CycleObservedEvents {
             if (before.Survival is { } body) { AddVitals(process, before.Id, body.Project(world.Time), integrated!); }
             if (process.Count > 0) { Emit(CycleObservedEventKind.BodyChanged, process, from: world.Time); }
 
-            bool own = fact.ActorId == before.Id;
+            bool subjectSelf = fact.ActorId == before.Id;
+            bool ownOperation = subjectSelf && fact.OperationRecordId is not null;
+            bool movedSelf = MovedSelf(fact, before.Id);
+            List<CycleObservedEffect> following = FollowingEffects(world.Characters, afterCharacters, before.Id);
+            bool relationCommand = IsFollowingEvent(fact.Kind);
+            if (following.Count > 0 && !relationCommand) {
+                // A leader's terminal cause is not the surviving follower's own death or arrival.
+                Emit(CycleObservedEventKind.FollowEnded, following, detail: "Terminal");
+            }
             bool received = fact.TargetActorId == before.Id && fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven;
             bool visibleResource = fact.ResourceId is { } resourceId &&
                 (world.Expedition is null || CycleActions.CurrentPlace(world, before.Id) is { } place && CycleExpeditionMap.GetResourcePlace(resourceId) == place);
             bool publicEvent = fact.Kind is CycleEventKind.LightChanged or CycleEventKind.WeatherResolved || visibleResource &&
                 fact.Kind is CycleEventKind.ResourceRegenerated or CycleEventKind.ResourceDestroyed;
-            if (!own && !received && !publicEvent) { continue; }
+            if (!subjectSelf && !received && !publicEvent && !movedSelf && !(relationCommand && following.Count > 0)) { continue; }
             var direct = new List<CycleObservedEffect>();
+            if (relationCommand) { direct.AddRange(following); }
             var ending = new List<CycleObservedEffect>();
             List<CycleObservedEffect> lifecycle = ended ? ending : direct;
             string? subjectId = fact.ResourceId;
@@ -44,7 +55,7 @@ internal static class CycleObservedEvents {
             CycleObservedEventKind kind = Enum.Parse<CycleObservedEventKind>(fact.Kind.ToString());
             // Direct physiology is independent of the preceding elapsed-time interval.
             if (integrated is not null && final is not null) { AddVitals(direct, before.Id, integrated, final); }
-            if (own || received) {
+            if (subjectSelf || received) {
                 foreach (string item in before.Backpack.Items.Keys.Concat(after.Backpack.Items.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)) {
                     Add(direct, new("inventory", item, "count"), Number(before.Backpack.Count(item), "份"), Number(after.Backpack.Count(item), "份"));
                     if (fact.Kind == CycleEventKind.ItemUsed && before.Backpack.Count(item) != after.Backpack.Count(item)) {
@@ -76,7 +87,7 @@ internal static class CycleObservedEvents {
             if (fact.Kind == CycleEventKind.LightChanged) {
                 Add(direct, new("world", "world", "light"), CycleVisibleValue.Flag(world.Light.IsDay), CycleVisibleValue.Flag(fact.Light!.IsDay));
             }
-            if (own && fact.Kind is CycleEventKind.MoveStarted or CycleEventKind.MoveArrived) {
+            if (movedSelf) {
                 SpatialLocation priorLocation = world.Expedition!.Spatial.Entities.Single(e => e.Id.Value == before.Id).Location;
                 SpatialLocation nextLocation = after.Ending?.Location ?? afterSpatial!.Entities.Single(e => e.Id.Value == before.Id).Location;
                 Add(direct, new("location", before.Id, "place"), PlaceValue(priorLocation), PlaceValue(nextLocation));
@@ -84,7 +95,7 @@ internal static class CycleObservedEvents {
                 subjectId = nextLocation is AtPlaceLocation atPlace ? atPlace.PlaceId.Value : null;
                 subjectName = subjectId is null ? null : CycleExpeditionMap.GetPlace(subjectId).Name;
             }
-            if (own && fact.OperationRecordId is not null) {
+            if (ownOperation) {
                 Add(direct, new("continuity", before.Id, "draft"), Text(world.Business.InteractionStates[before.Id].DraftHandoff),
                     Text(draftAfter));
             }
@@ -94,7 +105,7 @@ internal static class CycleObservedEvents {
             }
             if (fact.Kind == CycleEventKind.GatherFinished) { detail = fact.GatherStopReason?.ToString(); }
             // A successful final yield owns the transfer; its separate ending owns the lifecycle removal.
-            if (own && fact.Kind == CycleEventKind.GatherYielded && after.Activity is null) {
+            if (subjectSelf && fact.Kind == CycleEventKind.GatherYielded && after.Activity is null) {
                 if (before.Activity is { } gathering) {
                     Add(direct, new("activity", before.Id, "completed"), Number(gathering.CompletedCount, "份"), Number(gathering.CompletedCount + 1, "份"));
                 }
@@ -103,7 +114,7 @@ internal static class CycleObservedEvents {
                 AddActivity(gatheringEnded, before.Id, before.Activity, null, finalYield: true);
                 Emit(CycleObservedEventKind.GatherFinished, gatheringEnded, subjectId, subjectName, fact.GatherStopReason?.ToString());
             } else {
-                if (own || ended) { AddActivity(lifecycle, before.Id, before.Activity, after.Activity); }
+                if (subjectSelf || ended) { AddActivity(lifecycle, before.Id, before.Activity, after.Activity); }
                 // Empty acknowledgement/handoff operations have an operation answer, but no experienced change.
                 if (direct.Count > 0 || fact.Kind is not (CycleEventKind.AttentionAcknowledged or CycleEventKind.HandoffEdited)) {
                     Emit(kind, direct, subjectId, subjectName, detail);
@@ -125,6 +136,28 @@ internal static class CycleObservedEvents {
                         : null));
         }
         return fact.WithObservedEvents(events);
+    }
+
+    internal static bool MovedSelf(CycleFact fact, string actorId) => fact.SpatialFacts.Any(movement => movement switch {
+        TraversalStartedFact started => started.EntityId.Value == actorId,
+        TraversalArrivedFact arrived => arrived.EntityId.Value == actorId,
+        _ => false
+    });
+
+    internal static bool IsFollowingEvent(CycleEventKind kind) =>
+        kind is CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed;
+
+    private static List<CycleObservedEffect> FollowingEffects(IReadOnlyList<CycleCharacter> before,
+        IReadOnlyList<CycleCharacter> after, string observerId) {
+        List<CycleObservedEffect> effects = [];
+        Add(effects, new("following", observerId, "leader"), Text(before.Single(c => c.Id == observerId).FollowingLeaderId),
+            Text(after.Single(c => c.Id == observerId).FollowingLeaderId));
+        foreach (CycleCharacter character in before) {
+            Add(effects, new("following", observerId, $"follower:{character.Id}"),
+                CycleVisibleValue.Flag(character.FollowingLeaderId == observerId),
+                CycleVisibleValue.Flag(after.Single(c => c.Id == character.Id).FollowingLeaderId == observerId));
+        }
+        return effects;
     }
 
     private static void AddVitals(List<CycleObservedEffect> effects, string actorId, CycleSurvival before, CycleSurvival after) {

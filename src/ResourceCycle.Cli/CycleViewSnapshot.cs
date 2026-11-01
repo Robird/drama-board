@@ -42,6 +42,7 @@ internal sealed class CycleViewSnapshot {
     public CycleVisibleValue Resolve(CycleStateKey key) {
         if (_values.TryGetValue(key, out var value)) { return value; }
         return key.Category switch {
+            "following" when key.Field.StartsWith("follower:", StringComparison.Ordinal) => CycleVisibleValue.Flag(false),
             "inventory" when key.Field == "count" => CycleVisibleValue.Numeric(Observation.Actor.Backpack.Count(key.ObjectId), "份"),
             "command" when key.Field == "warning" && _values.ContainsKey(new("command", key.ObjectId, "rejection")) => CycleVisibleValue.KnownAbsent,
             "resource" or "passage" or "other" or "command" => CycleVisibleValue.Unobserved,
@@ -50,6 +51,8 @@ internal sealed class CycleViewSnapshot {
     }
 
     public string Label(CycleStateKey key) => _labels.GetValueOrDefault(key) ?? key.Category switch {
+        "following" when key.Field == "leader" => "跟随领队",
+        "following" when key.Field.StartsWith("follower:", StringComparison.Ordinal) => "直属队员 " + key.Field[9..],
         "inventory" => $"{Observation.ItemNames.GetValueOrDefault(key.ObjectId, key.ObjectId)}库存",
         "resource" => $"{key.ObjectId} · {FieldLabel(key.Field)}",
         "command" => $"{key.ObjectId} · {FieldLabel(key.Field)}",
@@ -104,6 +107,12 @@ internal sealed class CycleViewSnapshot {
             Add("body", actor, "warning-warmth", CycleVisibleValue.Flag((s.PendingWarningMask & 4) != 0));
             Add("body", actor, "warnings", s.PendingWarnings.Count == 0 ? CycleVisibleValue.KnownAbsent : Text(string.Join("；", s.PendingWarnings)), "待确认历史警告");
         }
+        if (o.IsExpedition) {
+            Add("following", actor, "leader", Text(o.FollowingLeaderId), "跟随领队");
+            foreach (var follower in o.Followers) {
+                Add("following", actor, "follower:" + follower.Key, CycleVisibleValue.Flag(true), $"直属队员 {follower.Value}（{follower.Key}）");
+            }
+        }
         var activity = o.Actor.Activity;
         Add("activity", actor, "kind", Text(activity?.Kind.ToString()));
         Add("activity", actor, "due", At(activity?.Due));
@@ -155,6 +164,7 @@ internal sealed class CycleViewSnapshot {
         foreach (var other in o.OtherCharacters) {
             Add("other", other.Id, "name", Text(other.Name), "同地角色 " + other.Id);
             Add("other", other.Id, "gathering", Text(other.GatheringResourceId), other.Name + "采集");
+            Add("other", other.Id, "following-leader", Text(other.FollowingLeaderId), other.Name + "跟随领队");
             Add("other", other.Id, "waiting", CycleVisibleValue.Flag(other.Waiting), other.Name + "等待");
         }
         foreach (var memory in o.Memories) {
@@ -183,9 +193,10 @@ internal sealed class CycleViewSnapshot {
     }
 
     internal static string CommandId(CycleCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
-        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "");
+        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "");
     internal static string CommandSyntax(CycleCommand c) => c.Kind switch {
         CycleCommandKind.Wait => $"wait {c.Hours}", CycleCommandKind.Gather => $"gather {c.ResourceId} {(c.All ? "all" : c.Count.ToString(CultureInfo.InvariantCulture))}",
+        CycleCommandKind.Follow => $"follow {c.TargetActorId}", CycleCommandKind.DismissFollowers => "dismiss-followers",
         CycleCommandKind.Go => $"go {c.PassageId}", CycleCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
     };
 

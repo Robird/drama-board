@@ -362,11 +362,20 @@ public sealed partial class PendingAdvance : IDurableObject {
     }
 
     internal void Validate(string actorId, ModelTime worldTime) {
+        // This is an historical acceptance record, not a handle to the actor's current activity.
+        // A following Continue may have no timed association; its acceptance fact checks the relation.
+        bool validAssociation = Command?.Kind switch {
+            CycleCommandKind.Wait or CycleCommandKind.Gather => ActivityId is not null && MovementGeneration is null,
+            CycleCommandKind.Go => ActivityId is null && MovementGeneration is not null,
+            CycleCommandKind.Follow => ActivityId is null && MovementGeneration is null,
+            CycleCommandKind.Continue => ActivityId is null || MovementGeneration is null,
+            _ => false
+        };
         if (ActorId != actorId || string.IsNullOrWhiteSpace(ActorId) || SourceContextSequence <= 0 || OperationSequence <= 0 ||
-            RawInput is null || Command is null || CycleCommandParser.Parse(RawInput) != Command || Command.Kind is not (CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Continue) ||
+            RawInput is null || Command is null || CycleCommandParser.Parse(RawInput) != Command || !validAssociation ||
             string.IsNullOrWhiteSpace(ToolCallId) || string.IsNullOrWhiteSpace(OperationRecordId) ||
             AcceptedAt.Ticks < 0 || AcceptedAt > worldTime || string.IsNullOrWhiteSpace(Description) ||
-            ActivityId <= 0 || MovementGeneration < 0 || (ActivityId is null) == (MovementGeneration is null) ||
+            ActivityId <= 0 || MovementGeneration < 0 ||
             !CharacterInteractionState.ValidHandoff(Handoff)) {
             throw new InvalidOperationException("Invalid advancing operation identity or activity association.");
         }

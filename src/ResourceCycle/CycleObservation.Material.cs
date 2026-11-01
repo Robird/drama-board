@@ -21,12 +21,13 @@ public sealed partial record CycleActorObservation(
     public IReadOnlyList<CycleNotice> Notices { get => _notices.AsReadOnly(); init => _notices = new(value); }
 }
 
-[DurableType("DramaBoard.ResourceCycle.OtherCharacterObservation", 1)]
+[DurableType("DramaBoard.ResourceCycle.OtherCharacterObservation", 2)]
 public sealed partial record CycleOtherCharacterObservation(
     [field: DurableField(1)] string Id,
     [field: DurableField(2)] string Name,
     [field: DurableField(3)] string? GatheringResourceId,
-    [field: DurableField(4)] bool Waiting) : IDurableObject;
+    [field: DurableField(4)] bool Waiting,
+    [field: DurableField(5)] string? FollowingLeaderId = null) : IDurableObject;
 
 [DurableType("DramaBoard.ResourceCycle.PassageObservation", 1)]
 public sealed partial record CyclePassageObservation(
@@ -64,7 +65,7 @@ public sealed partial record CycleCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Observation", 5)]
+[DurableType("DramaBoard.ResourceCycle.Observation", 6)]
 public sealed partial class CycleObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -115,11 +116,28 @@ public sealed partial class CycleObservation : IDurableObject {
     [DurableField(24)] private GoalSet? _goals;
     /// <summary>Frozen private goal material; null means this scenario has no goal capability.</summary>
     public GoalSet? Goals { get => _goals; init => _goals = value; }
+    [DurableField(25)] private string? _followingLeaderId;
+    public string? FollowingLeaderId { get => _followingLeaderId; init => _followingLeaderId = value; }
+    [DurableField(26)] private string? _followingLeaderName;
+    public string? FollowingLeaderName { get => _followingLeaderName; init => _followingLeaderName = value; }
+    [DurableField(27)] private Dictionary<string, string> _followers = new(StringComparer.Ordinal);
+    /// <summary>Known identities in the observer's own relationship, without sharing private state or geography.</summary>
+    public IReadOnlyDictionary<string, string> Followers { get => new ReadOnlyDictionary<string, string>(_followers); init => _followers = new(value, StringComparer.Ordinal); }
+    internal void ValidateFollowing() {
+        if ((FollowingLeaderId is null) != (FollowingLeaderName is null) ||
+            FollowingLeaderId is not null && (string.IsNullOrWhiteSpace(FollowingLeaderId) || string.IsNullOrWhiteSpace(FollowingLeaderName) ||
+                FollowingLeaderId == Actor.Id || Followers.Count != 0) ||
+            Followers.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value) || pair.Key == Actor.Id) ||
+            !IsExpedition && (FollowingLeaderId is not null || Followers.Count != 0 || OtherCharacters.Any(other => other.FollowingLeaderId is not null))) {
+            throw new InvalidOperationException("Invalid frozen following identities.");
+        }
+    }
     internal void ValidateJourney() {
         if ((ArrivalDue is null) != (Journey is null) || Journey is not null && (!IsExpedition || PlaceId is not null)) {
             throw new InvalidOperationException("Journey and visible location disagree.");
         }
         Journey?.Validate();
+        ValidateFollowing();
     }
     public string? CheckDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Rejection;
     public string? WarningDisplayed(CycleCommand command) => Commands.Single(entry => entry.Command == command).Warning;

@@ -25,6 +25,9 @@ public sealed class LlmCharacterControllerTests {
         Assert.DoesNotContain("界面已提供目标管理", gathering);
         Assert.DoesNotContain("handoff", gathering);
         Assert.DoesNotContain("reopen", gathering);
+        Assert.Contains("follow 主动集合", goals);
+        Assert.Contains("dismiss-followers", goals);
+        Assert.DoesNotContain("follow", gathering);
         Assert.All(client.Requests, request => Assert.Empty(request.TailMessages));
     }
 

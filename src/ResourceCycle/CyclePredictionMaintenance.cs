@@ -21,6 +21,9 @@ internal static class CyclePredictionMaintenance {
         dirty.Add(ConsumedOwner(fact));
         // Ending changes remove every forecast owned by that actor, regardless of the source event.
         foreach (CycleCharacter actor in after.Characters) {
+            if (before.GetCharacter(actor.Id).FollowingLeaderId != actor.FollowingLeaderId) {
+                dirty.Add($"actor:{actor.Id}:attention");
+            }
             if (before.GetCharacter(actor.Id).IsActive != actor.IsActive) {
                 dirty.Add($"actor:{actor.Id}:activity");
                 dirty.Add($"actor:{actor.Id}:attention");
@@ -91,10 +94,11 @@ internal static class CyclePredictionMaintenance {
             }
             foreach (CycleEventKind kind in new[] { CycleEventKind.WaitStarted, CycleEventKind.WaitCompleted,
                 CycleEventKind.GatherFinished, CycleEventKind.ActivityCancelled, CycleEventKind.AttentionAcknowledged,
-                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
+                CycleEventKind.HandoffEdited, CycleEventKind.GoalOperation, CycleEventKind.DecisionContextOpened, CycleEventKind.OperationRejected }) {
                 yield return new($"actor:{actor.Id}:attention", kind, actor.Id);
             }
-            foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven }) {
+            foreach (CycleEventKind kind in new[] { CycleEventKind.GatherStarted, CycleEventKind.GatherYielded, CycleEventKind.ResourceDestroyed, CycleEventKind.SpeechSent, CycleEventKind.ItemGiven,
+                CycleEventKind.MoveStarted, CycleEventKind.MoveArrived, CycleEventKind.FollowStarted, CycleEventKind.FollowEnded, CycleEventKind.FollowersDismissed }) {
                 yield return new($"actor:{actor.Id}:attention", kind, "*");
             }
         }

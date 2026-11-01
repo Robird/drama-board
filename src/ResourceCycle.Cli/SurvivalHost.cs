@@ -2,11 +2,15 @@ using DramaBoard.ResourceCycle;
 
 /// <summary>Host-only scenario selection and controller bindings; never stored in the game graph.</summary>
 internal static class SurvivalHost {
-    public static void RequireMode(CycleWorld world, bool duo) {
-        string[] expected = duo ? ["a", "b"] : ["a"];
-        if (world.Expedition is null || !world.Characters.Select(character => character.Id)
-            .Order(StringComparer.Ordinal).SequenceEqual(expected)) {
-            throw new ArgumentException(duo ? "--duo 需要 a、b 双角色生存存档。" : "--survival 需要单角色 a 生存存档；双角色请使用 --duo。");
+    public static void RequireMode(CycleWorld world, int? characterCount) {
+        int actual = world.Characters.Count;
+        string[] expected = ["a", "b", "c"];
+        if (world.Expedition is null || actual is < 1 or > 3 ||
+            !world.Characters.Select(character => character.Id).Order(StringComparer.Ordinal).SequenceEqual(expected.Take(actual))) {
+            throw new ArgumentException("--survival 需要含 a / a、b / a、b、c 的生存存档。");
+        }
+        if (characterCount is { } selected && selected != actual) {
+            throw new ArgumentException($"指定 --characters {selected} 与存档人数 {actual} 不符；省略人数可直接沿用存档。");
         }
     }
 

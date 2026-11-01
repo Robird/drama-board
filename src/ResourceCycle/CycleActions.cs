@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.ResourceCycle;
 
-[DurableType("DramaBoard.ResourceCycle.CommandKind", 3)]
-public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal }
+[DurableType("DramaBoard.ResourceCycle.CommandKind", 4)]
+public enum CycleCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.ResourceCycle.Command", 4)]
+[DurableType("DramaBoard.ResourceCycle.Command", 5)]
 public sealed partial record CycleCommand(
     [field: DurableField(1)] CycleCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
@@ -33,6 +33,9 @@ public sealed partial record CycleCommand(
     public static CycleCommand Go(string passageId) => new(CycleCommandKind.Go, PassageId: passageId);
     public static CycleCommand Use(string itemId) => new(CycleCommandKind.Use, ItemId: itemId);
     public static CycleCommand Handoff(string? text) => new(CycleCommandKind.Handoff, HandoffText: text);
+    public static CycleCommand Follow(string targetActorId) => new(CycleCommandKind.Follow, TargetActorId: targetActorId);
+    public static CycleCommand Unfollow() => new(CycleCommandKind.Unfollow);
+    public static CycleCommand DismissFollowers() => new(CycleCommandKind.DismissFollowers);
 }
 
 /// <summary>Captured controller identity; IDs are opaque and must survive execution and recovery unchanged.</summary>
@@ -50,6 +53,7 @@ public static class CycleActions {
     /// <summary>Scenario capability, independent of whether an actor has decision history.</summary>
     public static bool SupportsHandoff(CycleWorld world) => world.Expedition is not null;
     public static bool SupportsGoals(CycleWorld world) => world.Expedition is not null;
+    public static bool SupportsFollowing(CycleWorld world) => world.Expedition is not null;
     /// <summary>Active position or historical ending position. Never use this fallback for interaction eligibility.</summary>
     public static SpatialLocation? Location(CycleWorld world, string actorId) => Location(world.Business, actorId);
     public static SpatialLocation? Location(CycleBusinessState business, string actorId) =>
@@ -63,7 +67,8 @@ public static class CycleActions {
     internal static bool NeedsDecision(CycleBusinessState business, string actorId) {
         CycleCharacter actor = business.GetCharacter(actorId);
         return actor.IsActive &&
-            (actor.Communication.AttentionPending || actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 || !IsTravelling(business, actorId) && actor.NeedsDecision);
+            (actor.Communication.AttentionPending || actor.Notices.Count > 0 || actor.Survival?.PendingMask > 0 ||
+                !IsTravelling(business, actorId) && actor.Activity is null && actor.FollowingLeaderId is null);
     }
 
     public static long HarvestDuration(CycleResource resource, CycleCharacter actor) {
@@ -87,13 +92,20 @@ public static class CycleActions {
         if (command.Kind != CycleCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
         if (command.Kind != CycleCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
         if (command.Kind is not (CycleCommandKind.Use or CycleCommandKind.Give) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
-        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
+        if (command.Kind is not (CycleCommandKind.Say or CycleCommandKind.Give or CycleCommandKind.Follow) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
         if (command.Kind != CycleCommandKind.Say && command.SpeechText is not null) { return "这个行动不接受话语参数。"; }
         if (actor.DecisionGeneration >= long.MaxValue - 2) { return "角色请求版本已达到支持上限。"; }
         if ((contextSequence ?? world.Business.InteractionStates[actorId].CurrentContext?.ContextSequence) == long.MaxValue &&
-            (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go ||
-                command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling))) { return "决策回合编号已达到支持上限。"; }
+            (command.Kind is CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Go or CycleCommandKind.Follow ||
+                command.Kind == CycleCommandKind.Continue && (actor.Activity is not null || travelling || actor.FollowingLeaderId is not null))) { return "决策回合编号已达到支持上限。"; }
+        if (actor.FollowingLeaderId is not null && command.Kind is CycleCommandKind.Go or CycleCommandKind.Gather or CycleCommandKind.Wait) {
+            return "正在跟随领队，请先 unfollow 再开始独立耗时行动。";
+        }
         switch (command.Kind) {
+            case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:
+                if (!SupportsFollowing(world)) { return "此场景未启用跟随。"; }
+                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "跟随操作只接受声明的角色参数。"; }
+                return CycleFollowingRules.Check(world, actor, command);
             case CycleCommandKind.Goal:
                 if (!SupportsGoals(world)) { return "此场景未启用目标管理。"; }
                 if (command.Goal is null || command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) {
@@ -116,7 +128,7 @@ public static class CycleActions {
                 return !CharacterInteractionState.ValidHandoff(command.HandoffText) ? "交接文字最多 2000 个 Unicode 字符。" : null;
             case CycleCommandKind.Continue:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "continue 不接受参数。"; }
-                return actor.Communication.AttentionPending || actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling) && actor.Notices.Count > 0
+                return actor.Communication.AttentionPending || actor.Survival?.PendingMask > 0 || (actor.Activity is not null || travelling || actor.FollowingLeaderId is not null) && actor.Notices.Count > 0
                     ? null : "当前没有需要确认的交流、活动感知或身体警告。";
             case CycleCommandKind.Cancel:
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All) { return "cancel 不接受参数。"; }
@@ -145,8 +157,13 @@ public static class CycleActions {
                 if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.PassageId)) { return "移动需要一个当前可见的通路编号。"; }
                 string? place = CurrentPlace(world, actorId);
                 if (place is null || !CycleExpeditionMap.GetPassages(place).Any(p => p.Id == command.PassageId)) { return "当前地点没有这条通路。"; }
-                return CycleExpeditionMap.Planner.TryStartTraversal(world.Expedition!.Spatial, new(actorId), new(command.PassageId), 1, world.Time)
-                    is SpatialPlanAccepted ? null : "当前不能进入这条通路。";
+                foreach (CycleCharacter member in CycleFollowingRules.MovingMembers(world.Business, actorId)) {
+                    if (!member.IsActive || member.Activity is not null || CurrentPlace(world, member.Id) != place || member.DecisionGeneration >= long.MaxValue - 2 ||
+                        CycleExpeditionMap.Planner.TryStartTraversal(world.Expedition!.Spatial, new(member.Id), new(command.PassageId), 1, world.Time) is not SpatialPlanAccepted) {
+                        return $"同行成员 {member.Name} 当前无法出发；所有人保持原状。";
+                    }
+                }
+                return null;
             case CycleCommandKind.Use:
                 if (command.Hours != 0 || command.ResourceId is not null || command.PassageId is not null || command.Count != 0 || command.All ||
                     string.IsNullOrWhiteSpace(command.ItemId)) { return "使用补给需要一个物品编号。"; }

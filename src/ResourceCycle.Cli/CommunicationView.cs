@@ -10,7 +10,7 @@ internal static class CommunicationView {
         text.AppendLine(communication.AttentionPending
             ? "**有待响应的通信。** 可先回复、赠与或使用物品，再 `continue` 确认。"
             : "当前没有待响应的通信。");
-        text.AppendLine("`continue` 确认通信、通知与历史警告，保留原活动及截止时刻；闲置时确认不推进时间，仍须选择耗时行动。");
+        text.AppendLine("`continue` 确认通信、通知与历史警告，保留原活动及截止时刻；跟随时确认后继续同行；闲置时确认不推进时间，仍须选择耗时行动。");
         text.AppendLine($"- `say <actor-id> <text>`：发送署名话语，不耗时间；text 为非空文字，最多 {communication.MaximumSpeechScalars} 个 Unicode 字符，可含空格。话语是角色的说法，不代表世界已证实。");
         text.AppendLine("- `give <actor-id> <item-id> <count>`：不耗时间；count 为正整数且不超过自己持有量。接收方容量与数量上限在提交时检查；拒绝不扣物、不转移、不扣发送额度。");
         text.AppendLine(observation.OtherCharacters.Count == 0

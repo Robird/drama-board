@@ -49,6 +49,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         RenderActivity(text, observation, ended: false);
         text.AppendLine($"采药等级 {observation.Actor.SkillLevel}（基础速度的 {100m + 25m * observation.Actor.SkillLevel:0}%）。");
         text.AppendLine();
+        FollowingView.RenderStatus(text, observation);
         PlayView.RenderOtherCharacters(text, observation);
         RenderSupplies(text, observation, ended: false);
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
@@ -57,7 +58,8 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine("## 眼前的行动");
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderHelp(observation)); }
         CommunicationView.Render(text, observation);
-        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；闲置时确认不推进时间");
+        FollowingView.RenderCommands(text, observation);
+        AppendCommand(text, observation, "continue", CycleCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；跟随时确认后继续同行，闲置时确认不推进时间");
         if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
             AppendCommand(text, observation, "cancel", CycleCommand.Cancel(), "取消采集或等待，保留已获得物品，放弃未完成的一份");
         }
@@ -129,7 +131,9 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
     private static void RenderActivity(StringBuilder text, CycleObservation observation, bool ended) {
         if (observation.ArrivalDue is not null) { return; }
         if (observation.Actor.Activity is not { } activity) {
-            text.AppendLine(ended ? "此角色已停止安排活动；原推进及中断情况见终局记录。" : "当前空闲，可选择下方行动。");
+            text.AppendLine(ended ? "此角色已停止安排活动；原推进及中断情况见终局记录。"
+                : observation.FollowingLeaderId is not null ? "正在跟随，等候领队安排行程；处理提醒后 continue 可继续同行。"
+                : "当前空闲，可选择下方行动。");
         } else if (activity.Kind == CycleActivityKind.Wait) {
             text.AppendLine(ended ? $"未完成的等待已冻结；原截止 {Time(activity.Due)}。" : $"正在等待 · {Time(activity.Due)} 完成。");
         } else {

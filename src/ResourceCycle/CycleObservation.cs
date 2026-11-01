@@ -76,7 +76,7 @@ public sealed class CycleDecisionContext {
             (expedition is null || place is not null && CycleActions.CurrentPlace(world, other.Id) == place))
             .Select(other => new CycleOtherCharacterObservation(other.Id, other.Name,
                 other.Activity is { Kind: CycleActivityKind.Gather } gathering ? gathering.ResourceId : null,
-                other.Activity?.Kind == CycleActivityKind.Wait)).ToArray();
+                other.Activity?.Kind == CycleActivityKind.Wait, other.FollowingLeaderId)).ToArray();
         CycleNoticeObservation[] notices = actor.Notices.Select(notice => {
             CycleResource? visible = resources.SingleOrDefault(resource => resource.Id == notice.ResourceId);
             CycleResource? remembered = expedition?.Visits.Where(visit => visit.ActorId == actorId)
@@ -98,6 +98,11 @@ public sealed class CycleDecisionContext {
         }
         commands.AddRange(Enumerable.Range(1, 24).Select(CycleCommand.Wait));
         commands.AddRange(passages.Select(passage => CycleCommand.Go(passage.Id)));
+        if (expedition is not null) {
+            commands.AddRange(others.Select(other => CycleCommand.Follow(other.Id)));
+            commands.Add(CycleCommand.Unfollow());
+            commands.Add(CycleCommand.DismissFollowers());
+        }
         if (actor.Survival is not null) {
             commands.AddRange(actor.Backpack.Items.Keys.Concat(resources.Select(resource => resource.ItemId))
                 .Distinct(StringComparer.Ordinal).Where(id => CycleSurvivalRules.UseDescription(id) is not null)
@@ -113,6 +118,10 @@ public sealed class CycleDecisionContext {
         var observation = new CycleObservation {
             Time = actor.Ending?.At ?? world.Time, IsDay = world.Light.IsDay, NextLightChange = world.Light.NextChange,
             Goals = expedition is null ? null : world.Business.InteractionStates[actorId].Goals,
+            FollowingLeaderId = actor.FollowingLeaderId,
+            FollowingLeaderName = actor.FollowingLeaderId is { } leader ? world.GetCharacter(leader).Name : null,
+            Followers = world.Characters.Where(other => other.FollowingLeaderId == actorId)
+                .ToDictionary(other => other.Id, other => other.Name, StringComparer.Ordinal),
             Actor = new(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack, actor.Activity,
                 Array.AsReadOnly(actor.Notices.ToArray()), actor.LastResult, actor.NextActivityId),
             Resources = Array.AsReadOnly(resources),

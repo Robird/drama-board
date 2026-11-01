@@ -32,7 +32,7 @@ internal static class CycleInteractionValidation {
             }
             CharacterContext? oldContext = prior.CurrentContext;
             if (own) { Require(oldContext?.Status == CharacterContextStatus.Open, "An operation must belong to an open context."); }
-            bool release = own && (fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted ||
+            bool release = own && (fact.Kind is CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted ||
                 fact.Kind == CycleEventKind.AttentionAcknowledged && !CycleActions.NeedsDecision(after, actorId));
             if (release) {
                 CharacterContext next = recorded.CurrentContext!;
@@ -94,7 +94,8 @@ internal static class CycleInteractionValidation {
             Require(prior.CurrentContext is null or { Status: CharacterContextStatus.Closed } && CycleActions.NeedsDecision(before, prior.ActorId),
                 "A decision opening requires an unstarted or closed character at an input boundary.");
         }
-        bool ongoing = after.GetCharacter(prior.ActorId).Activity is not null || CycleActions.IsTravelling(after, prior.ActorId);
+        CycleCharacter actor = after.GetCharacter(prior.ActorId);
+        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || CycleActions.IsTravelling(after, prior.ActorId);
         Require(context.Opening.ActivityState == (terminal ? CycleOutcomeActivityState.Terminal : ongoing
             ? CycleOutcomeActivityState.Ongoing : CycleOutcomeActivityState.Completed), "The opening must describe the recorded activity endpoint.");
         ValidateObservation(after, prior.ActorId, context.Opening.Observation);
@@ -106,7 +107,8 @@ internal static class CycleInteractionValidation {
         PendingAdvance pending = next.PendingAdvance ?? throw new InvalidOperationException("A release requires a pending action.");
         bool kindMatches = (pending.Command.Kind, fact.Kind) is
             (CycleCommandKind.Wait, CycleEventKind.WaitStarted) or (CycleCommandKind.Gather, CycleEventKind.GatherStarted) or
-            (CycleCommandKind.Go, CycleEventKind.MoveStarted) or (CycleCommandKind.Continue, CycleEventKind.AttentionAcknowledged);
+            (CycleCommandKind.Go, CycleEventKind.MoveStarted) or (CycleCommandKind.Continue, CycleEventKind.AttentionAcknowledged) or
+            (CycleCommandKind.Follow, CycleEventKind.FollowStarted);
         SpatialEntity? entity = after.Expedition?.Spatial.Entities.Single(e => e.Id.Value == prior.ActorId);
         Require(kindMatches && pending.ActorId == fact.ActorId && pending.SourceContextSequence == prior.CurrentContext!.ContextSequence &&
             pending.ToolCallId == fact.ToolCallId && pending.OperationRecordId == fact.OperationRecordId && pending.AcceptedAt == fact.At &&
@@ -131,8 +133,16 @@ internal static class CycleInteractionValidation {
             Require(pending.Command == CycleCommand.Wait(pending.Command.Hours) &&
                 after.GetCharacter(prior.ActorId).Activity?.DurationTicks == pending.Command.Hours * CycleTime.Hour,
                 "The recorded wait duration does not match its activity.");
+        } else if (pending.Command.Kind == CycleCommandKind.Follow) {
+            Require(pending.Command == CycleCommand.Follow(after.GetCharacter(prior.ActorId).FollowingLeaderId!) &&
+                pending.ActivityId is null && pending.MovementGeneration is null && entity?.Location is AtPlaceLocation,
+                "The following release must retain its accepted leader and have no timed activity association.");
         } else {
             Require(pending.Command == CycleCommand.Continue(), "The resume action must preserve the accepted command.");
+            if (pending.ActivityId is null && pending.MovementGeneration is null) {
+                Require(after.GetCharacter(prior.ActorId).FollowingLeaderId is not null && entity?.Location is AtPlaceLocation,
+                    "A resume without a timed association requires an accepted standing follow relationship.");
+            }
         }
         Require(pending.Description == CycleInteractionRules.DescribeAdvance(pending.Command, prior.CurrentContext!.LatestObservation,
             entity?.Location is TraversingLocation), "The action description must retain only acceptance-time visible knowledge.");
@@ -180,6 +190,12 @@ internal static class CycleInteractionValidation {
 
     private static void ValidateObservation(CycleBusinessState state, string actorId, CycleObservation observation) {
         CycleCharacter actor = state.GetCharacter(actorId);
+        CycleCharacter[] followers = state.Characters.Where(other => other.FollowingLeaderId == actorId).ToArray();
+        Require(observation.FollowingLeaderId == actor.FollowingLeaderId &&
+            observation.FollowingLeaderName == (actor.FollowingLeaderId is { } leaderId ? state.GetCharacter(leaderId).Name : null) &&
+            observation.Followers.Count == followers.Length && followers.All(follower =>
+                observation.Followers.TryGetValue(follower.Id, out string? name) && name == follower.Name),
+            "Recorded following material must match the actor's own relationship without exposing private companion state.");
         Require(state.Expedition is null ? observation.Goals is null : state.InteractionStates[actorId].Goals.SameAs(observation.Goals),
             "The frozen goal material must match only this character's own goal collection.");
         Require(observation.Communication == (state.Expedition is null ? null : new CycleCommunicationObservation(
@@ -216,7 +232,8 @@ internal static class CycleInteractionValidation {
         Require(observation.OtherCharacters.Count == others.Length && observation.OtherCharacters.Zip(others).All(pair =>
             pair.First.Id == pair.Second.Id && pair.First.Name == pair.Second.Name &&
             pair.First.GatheringResourceId == (pair.Second.Activity is { Kind: CycleActivityKind.Gather } gathering ? gathering.ResourceId : null) &&
-            pair.First.Waiting == (pair.Second.Activity?.Kind == CycleActivityKind.Wait)),
+            pair.First.Waiting == (pair.Second.Activity?.Kind == CycleActivityKind.Wait) &&
+            pair.First.FollowingLeaderId == pair.Second.FollowingLeaderId),
             "Recorded public activities must match the visible actors without exposing private fields.");
         ValidateBodyAndWeather(state, actor, observation);
         ValidateKnownGeography(state, actorId, place, observation);
@@ -227,7 +244,8 @@ internal static class CycleInteractionValidation {
             CycleCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.PassageId),
             CycleCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
             CycleCommandKind.Use => actor.Survival is not null && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
-            CycleCommandKind.Handoff or CycleCommandKind.Goal => state.Expedition is not null,
+            CycleCommandKind.Follow => state.Expedition is not null && others.Any(other => other.Id == entry.Command.TargetActorId),
+            CycleCommandKind.Handoff or CycleCommandKind.Goal or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers => state.Expedition is not null,
             _ => true
         }), "A recorded command catalogue must not expose unseen identities or unavailable scenario capabilities.");
     }

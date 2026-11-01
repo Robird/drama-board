@@ -27,7 +27,11 @@ public sealed class LlmCharacterController : ICycleCharacterController {
         + "新通信改变你采纳的分工或承诺时，若草稿尚未覆盖，先更新一次 handoff：记明谁承诺何物、自己的下一步及待核实事项。"
         + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。";
 
-    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.Goals is not null
+    private const string FollowingGuidance = "生存探索可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather 或 wait。"
+        + "领队普通 go 带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
+        + "跟随者收到提醒仍需处理，可 use 补给后 continue 继续跟随；say / give 仍仅限同地，途中不能改变跟随关系。";
+
+    private static string GuidanceFor(CycleObservation observation) => PromptBody + (observation.IsExpedition ? FollowingGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == CycleCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

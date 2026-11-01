@@ -50,7 +50,7 @@ public sealed partial class CycleExpedition : IDurableObject {
     internal bool SameState(CycleExpedition other) => ScenarioId == other.ScenarioId && Spatial.Equals(other.Spatial) &&
         Visits.SequenceEqual(other.Visits) && ReferenceEquals(Environment, other.Environment);
     internal void Validate(CycleBusinessState business) {
-        if (ScenarioId != CycleExpeditionMap.ScenarioId || business.Characters.Count is < 1 or > 2 ||
+        if (ScenarioId != CycleExpeditionMap.ScenarioId || business.Characters.Count is < 1 or > 3 ||
             Spatial.Entities.Count != business.Characters.Count(c => c.IsActive) || Spatial.ScheduledPassageEntryChanges.Count != 0 ||
             Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != Visits.Count) {
             throw new InvalidOperationException("Invalid expedition scenario, participants, observations or ending.");

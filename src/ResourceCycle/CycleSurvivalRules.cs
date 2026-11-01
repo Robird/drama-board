@@ -163,6 +163,7 @@ public static class CycleSurvivalRules {
 
     /// <summary>Changes anchors only while planning; recorded facts contain all effects needed for recovery.</summary>
     internal static CycleFact Enrich(CycleWorld world, CycleFact fact) {
+        fact = CycleFollowingRules.CleanupEndings(world, fact);
         var changes = fact.ChangedCharacters.ToDictionary(c => c.Id, StringComparer.Ordinal);
         GraphSpatialState? spatial = world.Expedition?.Spatial;
         if (spatial is not null) {
@@ -175,11 +176,13 @@ public static class CycleSurvivalRules {
             if (!actor.IsActive) { continue; }
             // Communication changes neither exposure nor physiology rules. Preserve the current causes,
             // including valid scenario-specific rate decompositions, while reanchoring elapsed values.
-            CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven
+            CycleSurvival body = fact.Kind is CycleEventKind.SpeechSent or CycleEventKind.ItemGiven or
+                CycleEventKind.FollowStarted or CycleEventKind.FollowEnded or CycleEventKind.FollowersDismissed
                 ? actor.Survival!.Project(fact.At)
                 : actor.Survival!.WithRates(fact.At, actor.Survival.FoodRate, actor.Survival.WaterRate,
                     WarmthRate(IsSheltered(spatial, actor.Id), light));
-            if (fact.LastServedActorId == actor.Id && fact.Kind is not (CycleEventKind.ItemUsed or CycleEventKind.SpeechSent or CycleEventKind.ItemGiven)) { body = body.Acknowledge(fact.At); }
+            if (fact.LastServedActorId == actor.Id && fact.Kind is CycleEventKind.AttentionAcknowledged or CycleEventKind.ActivityCancelled or
+                CycleEventKind.WaitStarted or CycleEventKind.GatherStarted or CycleEventKind.MoveStarted or CycleEventKind.FollowStarted) { body = body.Acknowledge(fact.At); }
             changes[actor.Id] = changes.ContainsKey(actor.Id) ? actor.WithSurvival(body) : actor.Change(actor.Activity, survival: body);
         }
         return changes.Count == 0 ? fact : fact.WithCharacters(world.Characters.Where(c => changes.ContainsKey(c.Id)).Select(c => changes[c.Id]));

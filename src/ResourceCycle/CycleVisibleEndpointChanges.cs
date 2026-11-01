@@ -14,6 +14,10 @@ internal static class CycleVisibleEndpointChanges {
         if (!before.InteractionStates[actorId].Goals.SameAs(after.InteractionStates[actorId].Goals)) { return true; }
         CycleCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);
         if (a.Ending != b.Ending || a.Name != b.Name || a.SkillLevel != b.SkillLevel || a.LastResult != b.LastResult ||
+            a.FollowingLeaderId != b.FollowingLeaderId ||
+            !before.Characters.Where(c => c.FollowingLeaderId == actorId).Select(c => (c.Id, c.Name))
+                .SequenceEqual(after.Characters.Where(c => c.FollowingLeaderId == actorId).Select(c => (c.Id, c.Name))) ||
+            a.FollowingLeaderId is { } leader && before.GetCharacter(leader).Name != after.GetCharacter(leader).Name ||
             a.NextActivityId != b.NextActivityId || !SameInventory(a.Backpack, b.Backpack) ||
             !SameActivity(a.Activity, b.Activity) || !SameList(a.Notices, b.Notices, SameNotice) ||
             !SameBody(a.Survival, b.Survival, before.Time) || a.Communication != b.Communication) { return true; }
@@ -48,7 +52,7 @@ internal static class CycleVisibleEndpointChanges {
             place is not null && Place(state, other.Id) == place)).ToArray();
 
     private static bool SamePublicCharacter(CycleCharacter a, CycleCharacter b) =>
-        a.Id == b.Id && a.Name == b.Name &&
+        a.Id == b.Id && a.Name == b.Name && a.FollowingLeaderId == b.FollowingLeaderId &&
         (a.Activity is { Kind: CycleActivityKind.Gather } ag ? ag.ResourceId : null) ==
             (b.Activity is { Kind: CycleActivityKind.Gather } bg ? bg.ResourceId : null) &&
         (a.Activity?.Kind == CycleActivityKind.Wait) == (b.Activity?.Kind == CycleActivityKind.Wait);

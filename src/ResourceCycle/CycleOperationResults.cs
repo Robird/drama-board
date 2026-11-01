@@ -31,6 +31,9 @@ public static class CycleOperationResults {
                 CycleObservedEventKind.WaitStarted => "开始等待。",
                 CycleObservedEventKind.GatherStarted => $"开始采集{e.SubjectName}。",
                 CycleObservedEventKind.MoveStarted => "开始移动。",
+                CycleObservedEventKind.FollowStarted => "已开始跟随；由领队决定移动，结束跟随后可独立行动。",
+                CycleObservedEventKind.FollowEnded => "已结束跟随。",
+                CycleObservedEventKind.FollowersDismissed => "已解散全部跟随者。",
                 CycleObservedEventKind.SpeechSent => $"已向 {e.Communication!.RecipientName}（{e.Communication.RecipientId}）发送署名话语。",
                 CycleObservedEventKind.ItemGiven => $"已将 {e.Communication!.ItemId} ×{e.Communication.ItemCount} 赠与 {e.Communication.RecipientName}（{e.Communication.RecipientId}）。",
                 _ => e.Kind.ToString()
@@ -54,6 +57,8 @@ public static class CycleOperationResults {
         ("inventory", "count") => key.ObjectId,
         ("communication", "remaining") => "本时刻剩余交流次数",
         ("communication", "pending") => "待响应通信",
+        ("following", "leader") => "跟随领队",
+        ("following", var field) when field.StartsWith("follower:", StringComparison.Ordinal) => $"队员 {field[9..]}",
         _ => $"{key.Category}/{key.Field}"
     };
 }

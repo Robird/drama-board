@@ -97,7 +97,7 @@ internal static class CycleInteractionRules {
     }
 
     internal static bool ReleasesSimulation(CycleBusinessState candidate, string actorId, CycleCommand command) =>
-        command.Kind is CycleCommandKind.Go or CycleCommandKind.Wait or CycleCommandKind.Gather ||
+        command.Kind is CycleCommandKind.Go or CycleCommandKind.Wait or CycleCommandKind.Gather or CycleCommandKind.Follow ||
         command.Kind == CycleCommandKind.Continue && !CycleActions.NeedsDecision(candidate, actorId);
 
     internal static IEnumerable<CharacterContextItem> RetainItems(IReadOnlyList<CharacterContextItem> items, long operationSequence) =>
@@ -112,7 +112,8 @@ internal static class CycleInteractionRules {
         IEnumerable<CharacterExperience> experiences, bool terminal) {
         long contextSequence = checked((state.CurrentContext?.ContextSequence ?? 0) + 1);
         CycleObservation observation = CycleDecisionContext.ObserveOpening(world, state.ActorId, contextSequence);
-        bool ongoing = world.GetCharacter(state.ActorId).Activity is not null || CycleActions.IsTravelling(world, state.ActorId);
+        CycleCharacter actor = world.GetCharacter(state.ActorId);
+        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || CycleActions.IsTravelling(world, state.ActorId);
         var opening = new CharacterContextOpening(CycleBackground.For(observation), observation, state.PendingAdvance,
             world.Time, terminal ? CycleOutcomeActivityState.Terminal : ongoing ? CycleOutcomeActivityState.Ongoing : CycleOutcomeActivityState.Completed,
             experiences);
@@ -137,6 +138,9 @@ internal static class CycleInteractionRules {
             CycleCommandKind.Go => known.Passages.Single(p => p.Id == command.PassageId).Description,
             CycleCommandKind.Gather => $"采集{known.Resources.Single(r => r.Id == command.ResourceId).Name}",
             CycleCommandKind.Wait => $"在原地等待 {command.Hours} 小时",
+            CycleCommandKind.Follow => $"跟随 {known.OtherCharacters.Single(actor => actor.Id == command.TargetActorId).Name}（{command.TargetActorId}）",
+            CycleCommandKind.Continue when !travelling && known.FollowingLeaderId is not null =>
+                $"确认提醒并继续跟随 {known.FollowingLeaderName}（{known.FollowingLeaderId}）",
             _ => travelling ? "确认提醒并继续原定行程" : "确认提醒并继续原定活动"
         };
 

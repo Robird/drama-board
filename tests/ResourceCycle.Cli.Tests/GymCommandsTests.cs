@@ -32,7 +32,7 @@ public sealed class GymCommandsTests {
         Assert.True(options.Llm!.Gym);
         Assert.True(options.Llm.Feedback);
         Assert.Equal(options.Branch, options.Llm.Branch);
-        Assert.True(options.Duo);
+        Assert.Equal(2, options.CharacterCount);
         Assert.Null(options.Management);
         Assert.Equal(GymManagementKind.Feedbacks,
             Options.Parse(["--store", "game", "--gym-feedbacks", "--actor", "b"]).Management!.Kind);

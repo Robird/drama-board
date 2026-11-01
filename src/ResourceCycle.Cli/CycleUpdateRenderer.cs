@@ -66,7 +66,7 @@ internal static class CycleUpdateRenderer {
     private static string TextValue(string text, CycleStateKey? key) => key switch {
         { Category: "continuity", Field: "draft" } => CharacterContextRenderer.DataLiteral(text),
         { Category: "activity", Field: "kind" } or { Category: "continuity", Field: "pending" } => text switch {
-            "Wait" => "等待", "Gather" => "采集", "Go" => "移动", "Continue" => "确认后继续", _ => text
+            "Follow" => "跟随", "Wait" => "等待", "Gather" => "采集", "Go" => "移动", "Continue" => "确认后继续", _ => text
         },
         { Category: "world", Field: "outcome" } => text switch {
             "Exploring" => "探索中", "Escaped" => "获救", "Dead" => "旅程结束", _ => text
@@ -98,10 +98,12 @@ internal static class CycleUpdateRenderer {
             "LightChanged" => "昼夜发生变化。", "WeatherResolved" => "天气结算。", "MoveArrived" => $"已抵达{subject}。",
             "SurvivalWarning" => $"身体警告：{SurvivalWarningView.Attributes([e])}触及警戒线。", "SurvivalFailed" => "生存状态耗尽。", "ExpeditionEnded" => "旅程结束。",
             "HandoffEdited" => "已更新下回合留言。", "ResourceRegenerated" => $"{subject}再生。", "ResourceDestroyed" => $"{subject}资源被清空。",
+            "FollowStarted" => "已建立跟随关系。", "FollowEnded" => "跟随关系已解除。", "FollowersDismissed" => "已解散直属队员。",
             "CommunicationBudgetRenewed" => "时间已推进，本时刻通信额度恢复。",
             _ => $"{e.Kind}：{subject}。"
         };
         return e.Detail is { Length: > 0 } detail ? title + " " + (detail switch {
+            "Terminal" => "相关角色的旅程已结束；已开始的路段仍独立完成。",
             "ColdWind" => "寒风袭来，当前暴露。", "ColdWindSheltered" => "寒风袭来，庇护内免损。", "Calm" => "天气平静。",
             "TargetReached" => "已达到采集目标。", "ResourceEmpty" => "资源已耗尽。", "ItemLimit" => "物品数量达到上限。",
             "CapacityLimit" => "背包容量已满。", "TimeLimit" => "已达到可表示的时间上限。", _ => detail
@@ -121,6 +123,8 @@ internal static class CycleUpdateRenderer {
         foreach (var parts in commands.Where(parts => parts[0] != nameof(CycleCommandKind.Wait))) {
             yield return parts[0] switch {
                 nameof(CycleCommandKind.Gather) => $"gather {parts[2]} {(parts[4] == "all" ? "all" : parts[3])}",
+                nameof(CycleCommandKind.Follow) => $"follow {parts[7]}",
+                nameof(CycleCommandKind.DismissFollowers) => "dismiss-followers",
                 nameof(CycleCommandKind.Go) => $"go {parts[5]}", nameof(CycleCommandKind.Use) => $"use {parts[6]}",
                 _ => parts[0].ToLowerInvariant()
             };

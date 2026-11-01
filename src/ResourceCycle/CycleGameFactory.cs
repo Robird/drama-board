@@ -10,10 +10,10 @@ namespace DramaBoard.ResourceCycle;
 /// invocation. Supplied entity instances are retained, not cloned; callers must not mutate
 /// them after handing the world to a history. Input sequences are copied.</remarks>
 public static class CycleGameFactory {
-    /// <summary>Creates a fixed, revision-bound mountain scenario with one or two independent explorers and no revealed distant truth.</summary>
+    /// <summary>Creates a fixed, revision-bound mountain scenario with one to three explorers and no revealed distant truth.</summary>
     public static (CycleWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true,
         bool enableWeather = true, ulong weatherSeed = CycleEnvironmentRules.DefaultSeed, int characterCount = 1) {
-        if (characterCount is < 1 or > 2) { throw new ArgumentOutOfRangeException(nameof(characterCount)); }
+        if (characterCount is < 1 or > 3) { throw new ArgumentOutOfRangeException(nameof(characterCount)); }
         ModelTime time = start ?? new ModelTime(15 * CycleTime.Hour);
         CycleResource[] resources = [
             new("berries", "野浆果", "item.food", true, 3 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
@@ -21,8 +21,8 @@ public static class CycleGameFactory {
             new("wood", "干木", "item.wood", true, 6 * CycleTime.Hour, 6, 6, harvestTicks: CycleTime.Hour / 2),
             new("ridge-herbs", "山脊野菜", "item.food", true, 4 * CycleTime.Hour, 4, 4, harvestTicks: CycleTime.Hour / 2)
         ];
-        CycleCharacter[] characters = Enumerable.Range(0, characterCount).Select(index => new CycleCharacter(index == 0 ? "a" : "b",
-            index == 0 ? "阿青" : "阿白", backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
+        CycleCharacter[] characters = Enumerable.Range(0, characterCount).Select(index => new CycleCharacter(new[] { "a", "b", "c" }[index],
+            new[] { "阿青", "阿白", "阿岚" }[index], backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
                 ["item.water"] = 1
             }) : null, survival: enableNeeds ? CycleSurvival.Create(time, food: 30, water: 45, warmth: 60) : null)).ToArray();
         GraphSpatialState spatial = GraphSpatialState.Create(CycleExpeditionMap.Graph, characters.Select(c => new EntityPlacement(new(c.Id), new("camp"))));

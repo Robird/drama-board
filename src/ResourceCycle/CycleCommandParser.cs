@@ -40,6 +40,9 @@ public static class CycleCommandParser {
             return CycleCommand.Give(targetActorId, itemId, itemCount);
         }
         return parts switch {
+            ["follow", var leaderId] => CycleCommand.Follow(leaderId),
+            ["unfollow"] => CycleCommand.Unfollow(),
+            ["dismiss-followers"] => CycleCommand.DismissFollowers(),
             ["continue"] => CycleCommand.Continue(),
             ["cancel"] => CycleCommand.Cancel(),
             ["go", var passageId] => CycleCommand.Go(passageId),
@@ -49,6 +52,9 @@ public static class CycleCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(CycleCommand command) => command.Kind switch {
+        CycleCommandKind.Follow => $"follow {command.TargetActorId}",
+        CycleCommandKind.Unfollow => "unfollow",
+        CycleCommandKind.DismissFollowers => "dismiss-followers",
         CycleCommandKind.Goal => GoalCommandParser.Format(command.Goal!),
         CycleCommandKind.Say => $"say {command.TargetActorId} {command.SpeechText}",
         CycleCommandKind.Give => $"give {command.TargetActorId} {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",

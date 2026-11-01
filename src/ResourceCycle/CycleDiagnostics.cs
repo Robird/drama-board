@@ -17,7 +17,7 @@ public static class CycleDiagnostics {
         text.AppendLine();
         text.AppendLine("## Characters");
         foreach (CycleCharacter actor in world.Characters) {
-            text.AppendLine($"- {actor.Id}: {actor.Activity?.ToString() ?? "idle"}; request generation {actor.DecisionGeneration}; needs decision={actor.NeedsDecision}");
+            text.AppendLine($"- {actor.Id}: {actor.Activity?.ToString() ?? "idle"}; request generation {actor.DecisionGeneration}; needs decision={CycleActions.NeedsDecision(world, actor.Id)}; following={actor.FollowingLeaderId ?? "none"}");
             if (actor.Ending is { } ending) {
                 text.AppendLine($"  - ended: {ending.Outcome} at {ending.At}; {ending.Reason}; historical location: {ending.Location}");
             }

@@ -41,12 +41,63 @@ public sealed class DuoHostTests {
 
     [Fact]
     public void Duo_has_explicit_human_and_mixed_modes() {
-        Assert.True(Options.Parse(["--duo"]).Duo);
+        Assert.Equal(2, Options.Parse(["--duo"]).CharacterCount);
+        Assert.True(Options.Parse(["--duo"]).Survival);
         Assert.Null(Options.Parse(["--duo"]).Llm);
         Assert.NotNull(Options.Parse(["--duo", "--llm"]).Llm);
         Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--play"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--survival"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--trace"]));
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--duo", "--characters", "2"]));
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--characters", "3"]));
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--survival", "--characters", "4"]));
+        Assert.Throws<ArgumentException>(() => Options.Parse(["--play", "--characters", "3"]));
+        Assert.Null(Options.Parse(["--survival"]).CharacterCount);
+        Assert.Equal(3, Options.Parse(["--survival", "--characters", "3"]).CharacterCount);
+        Assert.Equal(1, Options.Parse(["--survival", "--characters", "1"]).CharacterCount);
+    }
+
+    [Fact]
+    public async Task Three_character_host_routes_b_and_c_to_one_shared_model_budget_and_records_actual_actors() {
+        using var files = new Files();
+        var client = new Client("handoff model-private");
+        using var output = new StringWriter();
+        using var input = new StringReader("wait 10\n");
+        LlmHostOptions options = files.Options() with { MaxCalls = 2, Gym = true };
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client,
+            characterCount: 3, inputReader: input));
+        Assert.Equal(2, client.Requests.Count);
+        using var saved = CycleDurableHistory.Open(files.Store);
+        Assert.Equal(3, saved.State.Characters.Count);
+        Assert.All(new[] { "b", "c" }, actor => Assert.Equal("model-private", saved.State.Business.InteractionStates[actor].DraftHandoff));
+        using var journal = CycleOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        Assert.Equal(new[] { "a", "b", "c" }, journal.Entries.Select(entry => entry.Received.ActorId).Order().ToArray());
+        JsonElement host = File.ReadLines(options.LogPath!).Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+            .Single(line => line.GetProperty("Kind").GetString() == "host").GetProperty("Payload");
+        Assert.Equal(new[] { "Human", "LLM", "LLM" }, host.GetProperty("Actors").EnumerateArray()
+            .Select(actor => actor.GetProperty("Controller").GetString()).ToArray());
+        using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
+        JsonElement started = Assert.Single(gym.Records, record => record.Kind == "run-start").Payload;
+        Assert.Equal(3, started.GetProperty("CharacterCount").GetInt32());
+        Assert.Equal(new[] { "a", "b", "c" }, started.GetProperty("Actors").EnumerateArray()
+            .Select(actor => actor.GetProperty("ActorId").GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task Three_character_save_uses_saved_count_without_an_explicit_option() {
+        using var files = new Files();
+        var initial = CycleGameFactory.CreateSurvival(enableNeeds: false, characterCount: 3);
+        using (var save = CycleDurableHistory.Create(files.Store, initial.World, initial.Cursor)) { }
+        using var output = new StringWriter();
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true,
+            inputReader: new StringReader(""), outputWriter: output));
+        Assert.Contains("3 人山林求生", output.ToString());
+        using var mixedOutput = new StringWriter();
+        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with {
+            AuthFile = Path.Combine(files.Root, "missing-auth.json")
+        }, default, mixedOutput, inputReader: new StringReader("")));
+        Assert.Contains("a = Human，b = LLM，c = LLM", mixedOutput.ToString());
+        Assert.DoesNotContain("credential/", mixedOutput.ToString());
     }
 
     [Fact]
@@ -55,7 +106,7 @@ public sealed class DuoHostTests {
         var client = new Client("handoff model-private");
         using var output = new StringWriter();
         using var input = new StringReader("handoff human-private\nwait 1\n");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, client, duo: true, inputReader: input));
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, client, characterCount: 2, inputReader: input));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(client.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.DoesNotContain("human-private", material);
         Assert.DoesNotContain("Console 输入", material);
@@ -76,7 +127,7 @@ public sealed class DuoHostTests {
         using var input = new StringReader("");
         using var output = new StringWriter();
         Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { AuthFile = Path.Combine(files.Root, "missing-auth.json") },
-            default, output, duo: true, inputReader: input));
+            default, output, characterCount: 2, inputReader: input));
         Assert.Contains("human-session-ended", output.ToString());
         Assert.DoesNotContain("credential/", output.ToString());
     }
@@ -94,8 +145,8 @@ public sealed class DuoHostTests {
         using (var save = CycleDurableHistory.Create(files.Store, opened, cursor)) { save.CommitEvent(kernel.LastCompletion!.Event); }
         Dictionary<string, byte[]> before = Directory.GetFiles(files.Store, "*", SearchOption.AllDirectories)
             .ToDictionary(path => path, File.ReadAllBytes);
-        await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: new StringWriter()));
-        await Assert.ThrowsAsync<ArgumentException>(() => LlmConsole.RunAsync(files.Store, files.Options(), default, new StringWriter(), new Client("wait 1")));
+        await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: new StringWriter(), characterCount: 1));
+        await Assert.ThrowsAsync<ArgumentException>(() => LlmConsole.RunAsync(files.Store, files.Options(), default, new StringWriter(), new Client("wait 1"), characterCount: 1));
         Assert.Equal(before.Keys.Order(), Directory.GetFiles(files.Store, "*", SearchOption.AllDirectories).Order());
         foreach (var pair in before) { Assert.Equal(pair.Value, File.ReadAllBytes(pair.Key)); }
         using var saved = CycleDurableHistory.Open(files.Store);
@@ -110,7 +161,7 @@ public sealed class DuoHostTests {
         using (var save = CycleDurableHistory.Create(files.Store, initial.World, initial.Cursor)) { }
         using var output = new StringWriter();
         using var input = new StringReader("go trail-1\nwait 10\ngo trail-3\ngo trail-4\ngo trail-1\ngo trail-3\ngo trail-4\n");
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: input, outputWriter: output, duo: true));
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: input, outputWriter: output, characterCount: 2));
         using (var final = CycleDurableHistory.Open(files.Store)) {
             Assert.All(final.State.Characters, actor => Assert.Equal(CycleExpeditionOutcome.Escaped, actor.Ending?.Outcome));
             Assert.True(final.State.GetCharacter("a").Ending!.At < final.State.GetCharacter("b").Ending!.At);
@@ -119,7 +170,7 @@ public sealed class DuoHostTests {
         Assert.Equal(1, text.Split("宿主全局总结").Length - 1);
         Assert.Contains("全部获救", text);
         using var reopenedOutput = new StringWriter();
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: reopenedOutput, duo: true));
+        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, survival: true, inputReader: new StringReader(""), outputWriter: reopenedOutput, characterCount: 2));
         Assert.DoesNotContain("[Console 输入]", reopenedOutput.ToString());
     }
 
@@ -136,7 +187,7 @@ public sealed class DuoHostTests {
         using var input = new StringReader("");
         using var output = new StringWriter();
         Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { AuthFile = Path.Combine(files.Root, "missing-auth.json") },
-            default, output, duo: true, inputReader: input));
+            default, output, characterCount: 2, inputReader: input));
         Assert.Contains("[Console 输入] a>", output.ToString());
         Assert.DoesNotContain("宿主全局总结", output.ToString());
         Assert.DoesNotContain("credential/", output.ToString());

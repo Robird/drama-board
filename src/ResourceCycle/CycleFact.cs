@@ -9,7 +9,7 @@ namespace DramaBoard.ResourceCycle;
 public enum CycleOperationDisposition { Succeeded, Rejected }
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.ResourceCycle.Fact", 13)]
+[DurableType("DramaBoard.ResourceCycle.Fact", 14)]
 public sealed partial class CycleFact : IDurableObject {
     [DurableField(1)] private CycleEventKind _kind;
     [DurableField(2)] private ModelTime _at;

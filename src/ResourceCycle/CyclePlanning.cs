@@ -19,6 +19,8 @@ internal static class CyclePlanning {
     public static CycleFact Decision(CycleWorld world, string actorId, CycleCommand command) {
         CycleCharacter actor = world.GetCharacter(actorId);
         switch (command.Kind) {
+            case CycleCommandKind.Follow or CycleCommandKind.Unfollow or CycleCommandKind.DismissFollowers:
+                return CycleFollowingRules.Plan(world, actor, command);
             case CycleCommandKind.Say or CycleCommandKind.Give:
                 return CycleCommunicationRules.Plan(world, actorId, command);
             case CycleCommandKind.Continue: {
@@ -46,12 +48,16 @@ internal static class CyclePlanning {
             case CycleCommandKind.Gather:
                 return StartGather(world, actor, command);
             case CycleCommandKind.Go: {
-                var accepted = (SpatialPlanAccepted)CycleExpeditionMap.Planner.TryStartTraversal(
-                    world.Expedition!.Spatial, new(actorId), new(command.PassageId!), 1, world.Time);
                 string result = $"沿通路 {command.PassageId} 出发；本段移动不可取消。";
+                CycleCharacter[] members = CycleFollowingRules.MovingMembers(world.Business, actorId).ToArray();
+                GraphSpatialFact[] movements = members.SelectMany(member =>
+                    ((SpatialPlanAccepted)CycleExpeditionMap.Planner.TryStartTraversal(
+                        world.Expedition!.Spatial, new(member.Id), new(command.PassageId!), 1, world.Time)).Facts).ToArray();
                 return new(CycleEventKind.MoveStarted, world.Time, actorId,
-                    changedCharacters: [actor.Change(null, notices: [], result: result, communication: actor.Communication.Acknowledge())], lastServedActorId: actorId,
-                    result: result, spatialFacts: accepted.Facts);
+                    changedCharacters: members.Select(member => member.Id == actorId
+                        ? member.Change(null, notices: [], result: result, communication: member.Communication.Acknowledge())
+                        : member.Change(null)), lastServedActorId: actorId,
+                    result: result, spatialFacts: movements);
             }
             case CycleCommandKind.Use: {
                 string result = CycleSurvivalRules.UseDescription(command.ItemId!)!;
@@ -92,7 +98,7 @@ internal static class CyclePlanning {
             CycleCharacter after = fact.ChangedCharacters.SingleOrDefault(c => c.Id == actor.Id) ?? actor;
             SpatialLocation location = spatial.Entities.SingleOrDefault(e => e.Id.Value == actor.Id)?.Location ?? after.Ending!.Location;
             // Keep the departure snapshot too; moving does not reveal the destination.
-            if (fact.Kind == CycleEventKind.MoveStarted && actor.Id == fact.ActorId) {
+            if (fact.Kind == CycleEventKind.MoveStarted && fact.SpatialFacts.OfType<TraversalStartedFact>().Any(started => started.EntityId.Value == actor.Id)) {
                 location = world.Expedition.Spatial.Entities.Single(e => e.Id.Value == actor.Id).Location;
             }
             if (location is AtPlaceLocation at) {

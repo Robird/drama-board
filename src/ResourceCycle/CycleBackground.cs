@@ -45,7 +45,12 @@ public sealed partial class CycleBackground : IDurableObject {
         }
         if (observation.Communication is { } communication) {
             rules.Add($"同地活跃角色可用 say 说话、give 赠与；每个角色每个游戏时刻共可成功发送 {communication.SendLimit} 次，不耗时；时间推进后恢复额度，换回合或确认消息不返还额度。");
-            rules.Add("话语是署名角色的声明，不代表游戏确认了地图或事实。收到话语或赠与会请求响应，但不取消活动；continue 确认通信并保留原期限，闲置时仍须安排耗时行动。");
+            rules.Add("话语是署名角色的声明，不代表游戏确认了地图或事实。收到话语或赠与会请求响应，但不取消活动；continue 确认通信并保留原期限，独自闲置时须安排耗时行动或加入跟随才能放行时间。");
+        }
+        if (observation.IsExpedition) {
+            rules.Add("同地且没有耗时活动时可 follow <角色编号> 主动跟随；成功后确认自己的提醒并等待领队，不必每段路重新输入。领队用普通 go 带实际已跟随者一起移动，不自动等待未加入的人。");
+            rules.Add("跟随期间不能自行 go、gather 或 wait；身体提醒仍交给本人处理，可补给后 continue。领队到达后可 dismiss-followers 让大家分头行动；队员在地点内自己的决策窗口可 unfollow，途中不能退出。");
+            rules.Add("解除跟随不确认任何人的提醒；完成或取消自己的活动后才可重新加入。跟随只授权移动，不共享私有目标、背包或地图记忆。");
         }
         return new CycleBackground(observation.IsExpedition ? "山林求生" : "林间苗圃",
             observation.IsExpedition ? "你在山林中迷途。观察路标、探索通路，寻找人类社会。"

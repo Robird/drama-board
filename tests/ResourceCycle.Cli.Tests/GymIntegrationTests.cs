@@ -17,7 +17,7 @@ public sealed class GymIntegrationTests {
         using var input = new StringReader("handoff human-private\nwait 1\n");
         using var output = new StringWriter();
         var options = files.Options(2);
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client, duo: true, inputReader: input));
+        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client, characterCount: 2, inputReader: input));
 
         var snapshot = files.Read();
         JsonElement builds = Assert.Single(snapshot.Records, record => record.Kind == "run-start").Payload.GetProperty("Builds");
@@ -66,7 +66,7 @@ public sealed class GymIntegrationTests {
         using var baselineFiles = new Files();
         using var baselineInput = new StringReader("handoff human-private\nwait 1\n");
         Assert.Equal(2, await LlmConsole.RunAsync(baselineFiles.Store, baselineFiles.Options(1), default, output,
-            new Client(Act("handoff model-private")), duo: true, inputReader: baselineInput));
+            new Client(Act("handoff model-private")), characterCount: 2, inputReader: baselineInput));
         using var baseline = CycleDurableHistory.Open(baselineFiles.Store);
         Assert.Equal(baseline.Cursor.Version.TransitionCount, state.Cursor.Version.TransitionCount);
         foreach (string actor in new[] { "a", "b" }) {

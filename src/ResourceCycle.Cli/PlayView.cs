@@ -72,6 +72,8 @@ internal static class PlayView {
             }
         } else if (observation.ArrivalDue is { } due) {
             text.AppendLine($"- 正在移动，预计 {FormatTime(due)} 到达；当前不可采集、等待或取消移动。");
+        } else if (observation.FollowingLeaderId is not null) {
+            text.AppendLine("- 正在跟随，等候领队安排行程；处理提醒后 continue 可继续同行。");
         } else if (character.Activity is not { } activity) {
             text.AppendLine(observation.Outcome != CycleExpeditionOutcome.Exploring ? "- 无待执行的活动。" :
                 observation.IsExpedition ? "- 空闲。可以沿可见通路移动、采集当前位置的资源，或等待。" :
@@ -109,6 +111,7 @@ internal static class PlayView {
                 (observation.IsExpedition ? "" : $" {members} |"));
         }
         text.AppendLine();
+        FollowingView.RenderStatus(text, observation);
         RenderOtherCharacters(text, observation);
         text.AppendLine("## 你的背包");
         if (character.Backpack.UnitCapacity is { } capacity) {
@@ -185,7 +188,7 @@ internal static class PlayView {
         foreach (CycleOtherCharacterObservation other in observation.OtherCharacters) {
             string status = other.GatheringResourceId is { } resourceId
                 ? $"正在采集 {observation.Resources.FirstOrDefault(resource => resource.Id == resourceId)?.Name ?? resourceId}"
-                : other.Waiting ? "正在等待" : "空闲";
+                : other.Waiting ? "正在等待" : other.FollowingLeaderId is { } leader ? $"正在跟随 `{leader}`" : "空闲";
             text.AppendLine($"- {other.Name}（`{other.Id}`）：{status}。");
         }
         text.AppendLine();
@@ -203,6 +206,7 @@ internal static class PlayView {
             text.AppendLine($"- `handoff <文字>`：覆盖本轮交接草稿（最多 {CharacterInteractionState.MaximumHandoffScalars} 个 Unicode 字符）；`handoff --clear` 清空。零耗时，不确认警告；下一次放行模拟时交给新回合，不自动续传旧交接。");
         }
         CommunicationView.Render(text, observation);
+        FollowingView.RenderCommands(text, observation);
         if (observation.IsExpedition) {
             text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (CyclePassageObservation passage in observation.Passages) {

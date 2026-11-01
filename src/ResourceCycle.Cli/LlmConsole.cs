@@ -18,35 +18,36 @@ internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = n
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
     public static async Task<int> RunAsync(string? store, LlmHostOptions options, CancellationToken cancellationToken,
-        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, bool duo = false, TextReader? inputReader = null) {
+        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, int? characterCount = null, TextReader? inputReader = null) {
         TextWriter output = outputWriter ?? Console.Out;
         if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) {
             throw new ArgumentException("Gym、反馈和分支运行需要 --store。");
         }
         using CycleDurableHistory? durable = store is null ? null : Directory.Exists(store)
             ? options.Branch is null ? CycleDurableHistory.Open(store) : CycleDurableHistory.Open(store, options.Branch)
-            : options.Branch is null ? CreateStore(store, duo) : throw new ArgumentException("指定分支需要已有存档。");
+            : options.Branch is null ? CreateStore(store, characterCount) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<CycleWorld, CycleFact> history;
         if (durable is not null) { history = durable; }
         else {
-            var initial = CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1);
+            var initial = CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1);
             history = new InMemoryOccurrenceHistory<CycleWorld, CycleFact>(initial.World, initial.Cursor);
         }
-        SurvivalHost.RequireMode(history.State, duo);
-        string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", duo ? "duo-llm-runs" : "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
+        SurvivalHost.RequireMode(history.State, characterCount);
+        string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
         using var audit = new LlmRunAudit(logPath, output);
         using CycleOperationJournal operations = store is null ? CycleOperationJournal.CreateInMemory()
             : CycleOperationJournal.Open(GymSession.OperationsPath(store, durable!));
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
-        var human = duo ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+        var human = history.State.Characters.Count > 1 ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
             inputReader: inputReader, outputWriter: output, operations: operations,
             worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}") : null;
         ICycleCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
-            new Dictionary<string, ICycleCharacterController> { ["a"] = human, ["b"] = forwarding });
+            history.State.Characters.ToDictionary(character => character.Id,
+                character => character.Id == "a" ? (ICycleCharacterController)human : forwarding, StringComparer.Ordinal));
         var kernel = CycleEngine.CreateKernel(history, characterController: routed);
         bool recovered = kernel.RecoverPending(cancellationToken);
-        SurvivalHost.RequireMode(kernel.World, duo);
+        SurvivalHost.RequireMode(kernel.World, characterCount);
         if (durable is not null) {
             operations.Reconcile(durable.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new CycleOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
@@ -56,8 +57,10 @@ internal static class LlmConsole {
         audit.Gym = gym;
         gym?.CaptureCommitted(kernel.World, operations);
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
-            Version = kernel.Version.ToString(), Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
-        output.WriteLine($"{(duo ? "双角色模式：a = Human，b = LLM" : "LLM 旁观模式")}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 {(duo ? "--duo" : "--survival")} --llm 和连接配置。");
+            Version = kernel.Version.ToString(), Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == "a" ? "Human" : "LLM" }).ToArray(),
+            Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters } });
+        string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == "a" ? "Human" : "LLM")}"));
+        output.WriteLine($"角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --survival --llm 和连接配置。");
         CompletionConnectionBinding? binding = null;
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
         void DeliverTerminals() {
@@ -82,7 +85,7 @@ internal static class LlmConsole {
                     string connectionId = binding.ConnectionId;
                     model = binding.Model;
                     client = binding.Client;
-                    audit.Write("binding", new { ActorId = duo ? "b" : "a", ConnectionId = connectionId, ModelId = model });
+                    audit.Write("binding", new { ActorIds = kernel.World.Characters.Where(character => human is null || character.Id != "a").Select(character => character.Id).ToArray(), ConnectionId = connectionId, ModelId = model });
                 }
                 return new LlmCharacterController(client, model,
                     context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
@@ -111,7 +114,7 @@ internal static class LlmConsole {
             }
         } catch (PlayConsole.PlayEndedException) {
             audit.Write("host-stop", new { Reason = "human-session-ended", Saved = store is not null });
-            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --duo --llm 与同一存档及连接配置。");
+            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --survival --llm 与同一存档及连接配置。");
             return 0;
         } catch (LlmControllerPausedException error) {
             audit.Write("host-stop", new { Reason = error.ReasonCode, error.CallsMade, Saved = store is not null });
@@ -140,8 +143,8 @@ internal static class LlmConsole {
         }
     }
 
-    private static CycleDurableHistory CreateStore(string path, bool duo) {
-        var initial = CycleGameFactory.CreateSurvival(characterCount: duo ? 2 : 1);
+    private static CycleDurableHistory CreateStore(string path, int? characterCount) {
+        var initial = CycleGameFactory.CreateSurvival(characterCount: characterCount ?? 1);
         return CycleDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 

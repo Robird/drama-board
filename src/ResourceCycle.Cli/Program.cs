@@ -20,9 +20,10 @@ try {
               --store PATH          创建或恢复单根存档；省略则仅内存运行
               --branch ID           打开已有存档的指定分支；多分支时不能省略
               --play                三角色轮流采集；可配合 --store 续玩，不接受批处理选项
-              --survival            单角色山林探索；可配合 --store 续玩，不接受批处理选项
-              --duo                 双角色山林探索；共用 Console，配合 --llm 时 a 由人类、b 由模型控制
-              --llm                 --survival 控制 a；--duo 控制 b；默认 Codex Responses / gpt-6.1-sol
+              --survival            山林探索；新局默认单角色；可配合 --store 续玩，不接受批处理选项
+              --characters 1|2|3    生存新局人数；恢复时省略则沿用存档人数
+              --duo                 --survival --characters 2 的快捷入口，不能与二者混用
+              --llm                 单人控制 a；多人 a 为 Human、其余为 LLM；默认 Codex Responses / gpt-6.1-sol
               --model ID            模型 ID；自定义目录默认沿用所选连接的模型
               --auth-file PATH      内置 Codex 连接的认证文件；默认使用 Codex 的标准路径
               --catalog PATH        Completion V3 连接目录；必须配合 --connection ID 精确选择
@@ -68,9 +69,9 @@ try {
     };
     Console.CancelKeyPress += cancelHandler;
     try {
-        if (options.Play || options.Survival || options.Duo) {
-            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, duo: options.Duo); }
-            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival || options.Duo, duo: options.Duo, branch: options.Branch);
+        if (options.Play || options.Survival) {
+            if (options.Llm is { } llm) { return await LlmConsole.RunAsync(options.Store, llm, cancellation.Token, characterCount: options.CharacterCount); }
+            return await PlayConsole.RunAsync(options.Store, cancellation.Token, options.Survival, characterCount: options.CharacterCount, branch: options.Branch);
         }
         using CycleDurableHistory? durable = options.Store is { } store
             ? Directory.Exists(store)
@@ -141,7 +142,7 @@ static CycleDurableHistory CreateStore(string path) {
 }
 
 internal sealed record Options(string? Store, ModelTime Until, int Steps, bool FullRecompute,
-    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, bool Duo = false,
+    bool Trace, string? Snapshot, bool Help, bool Play, bool Survival, LlmHostOptions? Llm = null, int? CharacterCount = null,
     string? Branch = null, GymManagementOptions? Management = null) {
     public static Options Parse(string[] args) {
         string? store = null;
@@ -150,6 +151,7 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
         int steps = 10_000;
         bool full = false, trace = false, help = false, play = false, survival = false;
         bool llm = false, duo = false;
+        int? characterCount = null;
         bool gym = false, feedback = false, branches = false, feedbacks = false;
         string? branch = null, actor = null, export = null, fork = null, forkRequest = null, forkLabel = null;
         string? model = null, authFile = null, catalog = null, connection = null, llmLog = null;
@@ -179,6 +181,10 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
                 case "--play": play = true; break;
                 case "--survival": survival = true; break;
                 case "--duo": duo = true; break;
+                case "--characters":
+                    characterCount = Positive(Value(), option);
+                    if (characterCount > 3) { throw new ArgumentException("--characters 必须为 1、2 或 3。"); }
+                    break;
                 case "--llm": llm = true; break;
                 case "--branch": branch = Value(); break;
                 case "--actor": actor = Value(); break;
@@ -228,7 +234,11 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
             try { branch = CycleDurableHistory.FormatBranchId(CycleDurableHistory.ParseBranchId(branch)); }
             catch (FormatException error) { throw new ArgumentException("--branch 必须为有效分支 ID。", error); }
         }
-        if (!help && (play && (survival || duo) || survival && duo)) { throw new ArgumentException("--play、--survival、--duo 请选择一种。"); }
+        if (!help && (play && (survival || duo) || duo && (survival || characterCount is not null))) {
+            throw new ArgumentException("--play、--survival、--duo 请选择一种；--duo 不能与 --characters 混用。");
+        }
+        if (!help && characterCount is not null && !survival) { throw new ArgumentException("--characters 必须配合 --survival。"); }
+        if (duo) { survival = true; characterCount = 2; }
         if (!help && llm && !survival && !duo) { throw new ArgumentException("--llm 必须配合 --survival 或 --duo。"); }
         if (!help && !llm && seen.Any(option => option is "--model" or "--auth-file" or "--catalog" or "--connection" or
             "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log")) {
@@ -242,7 +252,7 @@ internal sealed record Options(string? Store, ModelTime Until, int Steps, bool F
         if (!help && hour < 16) { throw new ArgumentException("--until-hour 必须不早于初始时刻 16。"); }
         return new(store, new ModelTime(checked(hour * 3_600_000)), steps, full, trace, snapshot, help, play, survival,
             llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog,
-                gym || feedback, feedback, branch) : null, duo, branch, management);
+                gym || feedback, feedback, branch) : null, characterCount, branch, management);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

@@ -20,6 +20,7 @@ internal static class ContextHistoryPlayView {
             Quote(text, advance.RawInput);
             if (advance.OriginPlaceName is { } origin) { text.AppendLine($"出发位置：{origin}。"); }
             text.AppendLine(opening.ActivityState switch {
+                CycleOutcomeActivityState.Ongoing when observation.FollowingLeaderId is not null => "**本段推进已返回，仍在跟随领队**；处理提醒后 continue 可继续同行。",
                 CycleOutcomeActivityState.Ongoing => "**本段推进已返回，原活动仍在进行**；继续不会新建活动或重置期限。",
                 CycleOutcomeActivityState.Completed => "原活动已结束。",
                 _ => "旅程已终止；未完成的活动不再推进。"
@@ -84,6 +85,8 @@ internal static class ContextHistoryPlayView {
         if (kinds.Contains(CycleObservedEventKind.MoveArrived)) { reasons.Add("抵达"); }
         if (kinds.Contains(CycleObservedEventKind.WaitCompleted)) { reasons.Add("活动完成"); }
         if (kinds.Contains(CycleObservedEventKind.GatherFinished)) { reasons.Add("采集停止"); }
+        if (opening.Observation.FollowingLeaderId is null && kinds.Any(kind =>
+            kind is CycleObservedEventKind.FollowEnded or CycleObservedEventKind.FollowersDismissed)) { reasons.Add("跟随结束"); }
         if (opening.Experiences.Any(experience => experience.Event.Communication is { } communication &&
             communication.RecipientId == opening.Observation.Actor.Id)) { reasons.Add("收到通信"); }
         if (kinds.Contains(CycleObservedEventKind.SurvivalWarning)) {
