@@ -22,6 +22,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+[Playground development practices and naming handoff](research/playground-development-practices.md) records sourced examples from game and engine development, recommendations for small experiments and an integrated world, and the approved next-turn ResourceCycle-to-Playground rename. The code still uses ResourceCycle; Hillside remains the integrated scenario name.
+
 [Living world: town and mountains](codex-goals/living-world/README.md) has completed its C1–C8 milestone: Hillside is one continuous, resumable world for Human Console players (including Coding Agents) and LLM characters. The [acceptance and handover](codex-goals/living-world/acceptance.md) indexes the implementation, engineering checks, a 72-hour same-history three-model run, and two independent free-play sessions including mixed Human/LLM control. Current scope is recorded in the [work plan](codex-goals/living-world/work-plan.md); further gameplay or UI work requires a new task.
 
 [Character following](design/character-following.md) is implemented: two or three survival characters can voluntarily follow one leader, travel through ordinary movement commands, split up to work, and regroup. Hillside `--characters 2|3` exposes the same rules to Console and LLM controllers, with atomic departure, personal reminders and recoverable per-character arrivals. See [implementation and playtest evidence](experiments/character-following-acceptance.md).

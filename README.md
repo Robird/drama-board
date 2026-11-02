@@ -111,7 +111,7 @@ Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令�
 
 Microtown 的生产、现金、有限市场与居民报价已融入山野镇；旧源码、三个测试项目及专属 smoke 脚本已从主线移除，由 [Microtown 归档](docs/archive/microtown.md)中的固定 Git tag 保留。历史设计与实验记录继续保留，旧证据不能替代融合验收。新增世界玩法与玩家入口统一在山野镇推进。
 
-山野镇继续使用 `ResourceCycle.*` 项目、namespace 与 `Cycle*` 类型名。这些是实现身份，保留它们不代表存在另一款并行产品；不为产品收敛机械重命名持久类型或 Schema。
+当前代码仍使用 `ResourceCycle.*` 项目、namespace 与 `Cycle*` 类型名。用户已确定下一轮统一命名为 `Playground`，表达开发期机制实验应用的用途；山野镇 / Hillside 保留为综合场景名。依据及命名交接见[开发实践参照](docs/research/playground-development-practices.md)，启动命令在实际迁移完成前仍以上文为准。
 
 ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。历史 Smoke 脚本若包含旧参数，不作为当前启动入口；复验使用上文 `Smoke-Hillside.ps1` 和 `Smoke-HillsideContent.ps1`。历史实现与验证仍可查阅：
 

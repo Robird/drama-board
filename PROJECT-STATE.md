@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点**：Microtown 与 ResourceCycle 已融合为山野镇连续生活世界，支持 Human Console（真人或 Coding Agent 操作）与多个 LLM 角色，无强制主线。原定[愿景与完成条件](docs/codex-goals/living-world/README.md)已通过[逐项验收与交接](docs/codex-goals/living-world/acceptance.md)；专题状态只在[工作计划](docs/codex-goals/living-world/work-plan.md)维护。两场自由游玩共同指出重复帮助的阅读负担，属于后续可选体验改进，不自动启动新目标或无限扩充本阶段。
+**当前焦点与下一步**：用户已选择将开发期机制实验应用命名为 Playground，山野镇 / Hillside 保留为综合场景；[实践参照与命名交接](docs/research/playground-development-practices.md)记录依据和范围。本轮仅完成文档，下一轮将 ResourceCycle 三个项目及配套测试、namespace 和相关类型统一重命名，分别核对持久身份与 Schema；验收要求为构建、Schema Verify、受影响回归及新入口启动/冷开。当前代码仍使用 ResourceCycle / Cycle 名称。融合阶段的 [C1–C8 已完成](docs/codex-goals/living-world/acceptance.md)，自由试玩发现的重复帮助负担仍属可选体验改进，不随重命名自动施工。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
