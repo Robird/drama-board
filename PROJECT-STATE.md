@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：已制定[预测式时间模型的角色推理并行研究方案](docs/research/predictive-time-parallelism/README.md)，研究尚未启动，等待用户后续 Goal。研究有限时域影响包络、向内失效边界、规则约束及有界提前推理，先保留唯一 Kernel 的串行提交；五个问题、实验协议与完成条件见专题，下一轮入口只在[工作计划](docs/research/predictive-time-parallelism/work-plan.md)维护。不得把方案当作已有并行能力或性能结论。
+**当前焦点与下一步**：已制定[预测式时间模型的角色推理并行研究方案](docs/research/predictive-time-parallelism/README.md)，用户已于 2026-11-03 启动 Goal，当前进行基线核验与实验原型施工。研究有限时域影响包络、向内失效边界、规则约束及有界提前推理，先保留唯一 Kernel 的串行提交；五个问题、实验协议与完成条件见专题，下一轮入口只在[工作计划](docs/research/predictive-time-parallelism/work-plan.md)维护。不得把方案当作已有并行能力或性能结论。
 
 [home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 

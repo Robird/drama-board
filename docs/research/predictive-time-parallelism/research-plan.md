@@ -26,7 +26,7 @@
 | [PlaygroundDecisionContext](../../../src/Playground/PlaygroundObservation.cs) | Observation 来自已保存 Context，但 Check/Warning 委托捕获构造时 world；不能把陈旧委托当成采用时的权威校验。 |
 | [PlaygroundObservationEquality](../../../src/Playground/PlaygroundObservationEquality.cs) | 时间是观察的一部分。地理隔离不意味着目标时刻输入与当前输入相同。 |
 | [LlmCharacterController](../../../src/Playground.Completion/LlmCharacterController.cs)、[LlmDecisionLoop](../../../src/CharacterControl.Completion/LlmDecisionLoop.cs) | 渲染与工具循环要求顺序调用；共享调用/失败预算，feedback 实际保存后才构造工具回执。不能直接 Task.WhenAll 整个现有控制器。 |
-| [LlmConnectionPool](../../../src/CharacterControl.Completion/LlmConnectionPool.cs) | 当前按连接缓存客户端；是否可安全并发借用及 provider 吞吐需要实测，不能只因使用 HTTP 就假定可并行。 |
+| [LlmConnectionPool](../../../src/CharacterControl.Completion/LlmConnectionPool.cs) | 当前按连接缓存客户端；当前 Completion 接口要求同实例重叠调用隔离，允许内部串行；provider 吞吐仍需实测。 |
 | [PlaygroundHost](../../../src/Playground.Cli/PlaygroundHost.cs)、[HostSession](../../../src/Playground.Cli/PlaygroundHostSession.cs)、[RawAudit](../../../src/Playground.Cli/LlmRawAudit.cs) | raw→主日志→呈现及操作接收有既定顺序；新工作池不能并发直写顺序 writer。 |
 | [PlaygroundBranchBoundary](../../../src/Playground/Persistence/PlaygroundBranchBoundary.cs) | 实际请求边界只接受当前可服务角色与已开启 Context；预测请求必须分开记录来源 S、预测目标和之后的采用边界。 |
 
