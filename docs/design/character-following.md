@@ -1,33 +1,33 @@
-# ResourceCycle 角色跟随设计
+# Playground 角色跟随设计
 
 状态：已实施；工程验证与试玩证据见[实施验收](../experiments/character-following-acceptance.md)。2026-11-01。
 
-本文保留经辩证审阅收敛的功能与实现合同。用户认可“主动集合—持续同行—到点解散—分头工作—重新集合”的方向，并明确没有旧存档或 API 兼容负担；当前 ResourceCycle 已按此合同接通领域、Context、持久化与 Console/LLM 入口，GameRevision 为 17。
+本文保留经辩证审阅收敛的功能与实现合同。用户认可“主动集合—持续同行—到点解散—分头工作—重新集合”的方向，并明确没有旧存档或 API 兼容负担；当前 Playground 已按此合同接通领域、Context、持久化与 Console/LLM 入口，GameRevision 为 17。
 
 ## 1. 需求账本与证据边界
 
 | 编号 | 必须保留的要求 | 来源与当前消费者 |
 | --- | --- | --- |
-| R1 | 两人或三人，领队照常移动；队员主动跟随，期间不能自己移动或开始其他耗时动作 | 用户当前故事；ResourceCycle 生存角色 |
+| R1 | 两人或三人，领队照常移动；队员主动跟随，期间不能自己移动或开始其他耗时动作 | 用户当前故事；Playground 生存角色 |
 | R2 | 抵达工作地点后显式结束跟随，分头工作；完成或取消活动后主动重新加入 | 用户故事与已认可建议 |
 | R3 | Console 与 LLM 使用相同玩法规则；跟随不能靠控制器反复提交 go 实现 | 用户要求控制器无关；现有共享 parser / Check / Plan 路径 |
 | R4 | 直属、无环关系；同地加入；到达保留关系；允许补给与原有即时操作；普通同行不反复唤醒 | 用户认可的上一轮建议；本轮明确其操作细节 |
 | R5 | 同行出发全部成功或全部不发生；个人身体、背包、发现与终局独立；所有同刻到达完成后才能输入 | 用户认可的建议；现有单根 E/S 与确定性仲裁 |
-| R6 | 途中不可取消移动；关系失效不取消已开始路段；角色材料不自动共享私有知识 | 现有 `CycleActions`、`CyclePlanning`、`CycleObservation`；已认可边界 |
-| R7 | 保存、冷开和 pending E 恢复保持跟随事实，不重做控制器调用或计划 | 现有 `CycleDurableHistory`、`CycleEngine` 合同 |
-| R8 | 没有兼容包袱；首版游戏内实现，不引入通用队伍、网络或异步输入框架 | 用户明确决定；当前只有 ResourceCycle 消费本功能 |
+| R6 | 途中不可取消移动；关系失效不取消已开始路段；角色材料不自动共享私有知识 | 现有 `PlaygroundActions`、`PlaygroundPlanning`、`PlaygroundObservation`；已认可边界 |
+| R7 | 保存、冷开和 pending E 恢复保持跟随事实，不重做控制器调用或计划 | 现有 `PlaygroundDurableHistory`、`PlaygroundEngine` 合同 |
+| R8 | 没有兼容包袱；首版游戏内实现，不引入通用队伍、网络或异步输入框架 | 用户明确决定；当前只有 Playground 消费本功能 |
 
 真实运行模型：单个宿主串行服务角色；等待控制器输入时模型时间暂停；即时操作可在同一模型时刻轮转；Kernel 按预测选择 occurrence。发布为独立 E/S，Fold 应用记录事实，Complete 维护派生预测，成功保存后安装。不是多人联网实时竞态模型。
 
 当前证据入口（代码优先于既有设计）：
 
-- [CycleActions](../../src/ResourceCycle/CycleActions.cs)：动作校验、`NeedsDecision`、途中限制。
-- [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs)、[CycleFollowingRules](../../src/ResourceCycle/CycleFollowingRules.cs)：全员原子出发、逐实体到达、关系校验与终局清理。
-- [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)、[预测类别](../../src/ResourceCycle/CycleModels.cs)：同刻死亡优先，全部空间到达先于天气、活动完成、警告和输入；不改变现有顺序。
-- [CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)：动作身份和事实形状验证。
-- [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs)、[验证](../../src/ResourceCycle/CycleInteractionValidation.cs)、[CharacterContext](../../src/ResourceCycle/CharacterContext.cs)：关闭 Context、PendingAdvance 与重新唤醒。
-- [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs)、[CycleExpedition](../../src/ResourceCycle/CycleExpedition.cs)：支持 1–3 个生存角色；三角色采集 demo 仍是独立的无空间场景。
-- [FollowingRulesTests](../../tests/ResourceCycle.Tests/FollowingRulesTests.cs)、[FollowingMovementTests](../../tests/ResourceCycle.Tests/FollowingMovementTests.cs)、[FollowingContextTests](../../tests/ResourceCycle.Tests/FollowingContextTests.cs)、[FollowingRecoveryTests](../../tests/ResourceCycle.Tests/FollowingRecoveryTests.cs)：规则、同行、决策和真实磁盘恢复边界。实际执行结果集中在实施验收。
+- [PlaygroundActions](../../src/Playground/PlaygroundActions.cs)：动作校验、`NeedsDecision`、途中限制。
+- [PlaygroundPlanning](../../src/Playground/PlaygroundPlanning.cs)、[PlaygroundFollowingRules](../../src/Playground/PlaygroundFollowingRules.cs)：全员原子出发、逐实体到达、关系校验与终局清理。
+- [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs)、[预测类别](../../src/Playground/PlaygroundModels.cs)：同刻死亡优先，全部空间到达先于天气、活动完成、警告和输入；不改变现有顺序。
+- [PlaygroundFactApplication](../../src/Playground/PlaygroundFactApplication.cs)：动作身份和事实形状验证。
+- [PlaygroundInteractionRules](../../src/Playground/PlaygroundInteractionRules.cs)、[验证](../../src/Playground/PlaygroundInteractionValidation.cs)、[CharacterContext](../../src/Playground/CharacterContext.cs)：关闭 Context、PendingAdvance 与重新唤醒。
+- [PlaygroundGameFactory](../../src/Playground/PlaygroundGameFactory.cs)、[PlaygroundExpedition](../../src/Playground/PlaygroundExpedition.cs)：支持 1–3 个生存角色；三角色采集 demo 仍是独立的无空间场景。
+- [FollowingRulesTests](../../tests/Playground.Tests/FollowingRulesTests.cs)、[FollowingMovementTests](../../tests/Playground.Tests/FollowingMovementTests.cs)、[FollowingContextTests](../../tests/Playground.Tests/FollowingContextTests.cs)、[FollowingRecoveryTests](../../tests/Playground.Tests/FollowingRecoveryTests.cs)：规则、同行、决策和真实磁盘恢复边界。实际执行结果集中在实施验收。
 
 邻接设计仅用于理解既有合同：[角色 Context](character-context-model.md)、[控制器边界](stateless-character-controller.md)、[E/S](durablegraph-occurrence-persistence.md)、[分层与组合](layering-and-composition.md)。它们不是本需求的独立证明。
 
@@ -35,7 +35,7 @@
 
 ### 2.1 角色关系与操作
 
-跟随（Following）是持续的移动授权关系，不占用采集/等待 Activity，没有预设截止时间。首版只在 ResourceCycle 生存探索场景启用：以存在 Expedition 为能力边界，纯采集 `--play` 和 Microtown 不提供这些命令。
+跟随（Following）是持续的移动授权关系，不占用采集/等待 Activity，没有预设截止时间。首版只在 Playground 生存探索场景启用：以存在 Expedition 为能力边界，纯采集 `--play` 和 Microtown 不提供这些命令。
 
 | 命令 | 接受条件 | 结果 |
 | --- | --- | --- |
@@ -114,31 +114,31 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 
 ### 3.1 最小权威状态
 
-给 `CycleCharacter` 增加可空的 `FollowingLeaderId`。领队的队员集合通过扫描角色派生；当前 2–3 人无需索引。任何 Change / WithSurvival / End / 恢复路径都必须显式保留或清理该字段。
+给 `PlaygroundCharacter` 增加可空的 `FollowingLeaderId`。领队的队员集合通过扫描角色派生；当前 2–3 人无需索引。任何 Change / WithSurvival / End / 恢复路径都必须显式保留或清理该字段。
 
 不增加 Party 实体、关系 ID、版本时钟、队伍 Activity 或持久成员列表。关系变化沿用角色 `DecisionGeneration` 使预测失效；位置与运动身份仍属于 Spatial。
 
 世界验证：有关系者活跃、无 Activity；目标存在且活跃、不是自己、目标无上级；自己不得同时拥有队员。平常双方同地，途中双方同路线、同起止时刻与速度。各实体 MovementGeneration 是各自的历史身份，不要求它们数值相等。逐实体到达引起的短暂混合状态见 3.3，不能简单要求所有发布边界都具有完全相等的位置类型。
 
-游戏内 `CycleFollowingRules` 共享成员枚举和纯关系谓词。`CycleActions.Check` 仍为公开合法性入口，`CyclePlanning` 仍为事实规划入口，验证器检查记录的转换，不增加第二套状态机、执行器或队伍服务。
+游戏内 `PlaygroundFollowingRules` 共享成员枚举和纯关系谓词。`PlaygroundActions.Check` 仍为公开合法性入口，`PlaygroundPlanning` 仍为事实规划入口，验证器检查记录的转换，不增加第二套状态机、执行器或队伍服务。
 
 ### 3.2 出发：一个决定、多人的事实
 
 `go` 的执行对象是领队和其当前直属队员，按既有 Characters 顺序稳定枚举。
 
 1. 在同一个 before world 上检查成员身份、关系、无 Activity、同地点、通路与数值边界；对所有人检查 Spatial 可否开始移动。
-2. 准备完整的 `TraversalStartedFact` 序列和成员变化；全部成功才构造一个 `CycleFact.MoveStarted`，包含所有 spatial facts / changed characters。
+2. 准备完整的 `TraversalStartedFact` 序列和成员变化；全部成功才构造一个 `PlaygroundFact.MoveStarted`，包含所有 spatial facts / changed characters。
 3. 仅领队具有此次 go 的 ToolCallId / OperationRecordId；队员的移动是这个决定产生的领域效果，不伪造队员操作。
 4. 每个实际移动者记录自己的出发经历、环境/需求速率变化和可见材料。队员原来 PendingAdvance 不被改写成领队的 go；其待确认事项保持不变。
 5. Fold 只应用已记录的多角色变化，不能扫描“当前队员”重新扩展动作。验证记录中的参与者恰好匹配 before 的领队关系，不允许漏带或夹带角色。
 
-`CycleFact` 沿用多角色 / 多空间事实容器；`CycleFactApplication` 校验精确成员集合，`CycleObservedEvents`、Observe 的出发快照和交互验证区分个人操作与实际移动。`CycleSurvivalRules.Enrich` 枚举实际 changed characters 计算速率，并按 2.2 的确认白名单处理提醒。
+`PlaygroundFact` 沿用多角色 / 多空间事实容器；`PlaygroundFactApplication` 校验精确成员集合，`PlaygroundObservedEvents`、Observe 的出发快照和交互验证区分个人操作与实际移动。`PlaygroundSurvivalRules.Enrich` 枚举实际 changed characters 计算速率，并按 2.2 的确认白名单处理提醒。
 
 观察规划局部区分三个判定，不新增持久身份：`subjectSelf` 表示事实主体是本人；`ownOperation = subjectSelf && OperationRecordId != null` 表示本人的主动操作；`movedSelf` 从已记录出发/到达 SpatialFacts 的实体 ID 派生。回执、草稿消费、主动确认与 Context 闭合只属于 ownOperation；个人移动经历和出发快照属于 movedSelf；自然到达、收获和死亡仍按各自事件主体解释。不能全局替换现有 own，也不能把所有 changed characters 当发令者。
 
 ### 3.3 到达：优先保留逐实体事件
 
-现有 `CycleRule.Forecast` 已使同一时刻的 Spatial occurrence 先于警告/输入；首选复用逐实体到达，不创建队伍到达调度器或把多条自然事实强行合成一个新事件。
+现有 `PlaygroundRule.Forecast` 已使同一时刻的 Spatial occurrence 先于警告/输入；首选复用逐实体到达，不创建队伍到达调度器或把多条自然事实强行合成一个新事件。
 
 必须满足：第一人抵达至最后一人抵达之间，不允许任何控制器插入 go / unfollow 等操作；S/E 恢复可以落在其中任一已有提交边界，并继续完成剩余到达。
 
@@ -148,7 +148,7 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 2. 全部 Traversing：相同通路、方向、起止时刻、运动锚点与速度。
 3. AtPlace / Traversing 混合：所有仍在途者保持同一行程，ArrivalDue 等于当前模型时间，全部已到者位于该行程目标地点。
 
-不保存新的“到达中”标记，不在关系校验器中查询或重建预测。`CycleEngine.Rebuild` 本来就先验证 Business 再重建预测；[SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs) 从每个 TraversingLocation 直接派生 arrival，预测与时间有效性由现有 Spatial/Engine 负责。剩余 arrival 有效且先于输入是组合验收要求，不是第二份到达权威。
+不保存新的“到达中”标记，不在关系校验器中查询或重建预测。`PlaygroundEngine.Rebuild` 本来就先验证 Business 再重建预测；[SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs) 从每个 TraversingLocation 直接派生 arrival，预测与时间有效性由现有 Spatial/Engine 负责。剩余 arrival 有效且先于输入是组合验收要求，不是第二份到达权威。
 
 同刻死亡优先级保持不变。到出口时先完成个人终局者可以触发关系解除；其余人的已启动行程仍独立存在，继续完成。不能要求一组人永远共同存活或共同终局。
 
@@ -156,7 +156,7 @@ Console 两种布局、full/delta、纯 Context 输出与 LLM 材料都消费冻
 
 ### 3.4 决策与 Context 生命周期
 
-以 `CycleActions.NeedsDecision` 为唯一决策需求谓词，已删除 `CycleCharacter.NeedsDecision` 这个不含空间状态的同名局部属性；局部条件并入前者，[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) 同样使用统一入口，无兼容转发。
+以 `PlaygroundActions.NeedsDecision` 为唯一决策需求谓词，已删除 `PlaygroundCharacter.NeedsDecision` 这个不含空间状态的同名局部属性；局部条件并入前者，[PlaygroundDiagnostics](../../src/Playground/PlaygroundDiagnostics.cs) 同样使用统一入口，无兼容转发。
 
 该谓词对活跃角色的规则改为：
 
@@ -190,7 +190,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 关系变化以角色替换作为唯一权威数据。仅在规划时构造已录制经历；关系接收者根据 before/after 关系差异及关联领队确定。尤其 A 死亡解除 B 的关系时，B 收到“领队终局导致跟随结束”，不能沿现有按 fact.Kind 转换观察类别的方式误记为“B 死亡”。关系清理适用于连续生存耗尽、天气死亡和出口获救的所有终局路径，附在原终局事实内，保留每人的真实原因。
 
-终局清理、多人出发的接收者与 effects 必须经 `CycleObservedEventValidation` 验证。界面状态键加入跟随身份/队员集合，Observation equality、visible endpoint changes、Context 校验同时覆盖。新的 Follow target 同时接入 parser/command/fact 参数校验，不沿用“只有 say/give 才可携 TargetActorId”的旧限制。
+终局清理、多人出发的接收者与 effects 必须经 `PlaygroundObservedEventValidation` 验证。界面状态键加入跟随身份/队员集合，Observation equality、visible endpoint changes、Context 校验同时覆盖。新的 Follow target 同时接入 parser/command/fact 参数校验，不沿用“只有 say/give 才可携 TargetActorId”的旧限制。
 
 受影响角色的 attention、survival、activity 等 owner 使用现有 dirty 维护；不要仅按 `fact.ActorId` 使领队失效而漏掉队员。新事件加入相关 bindings。以 Rebuild/oracle 验证增量结果，无新持久预测缓存。
 
@@ -200,7 +200,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 增加 `--survival --characters 1|2|3` 入口；新局默认 1。`--duo` 只在参数解析处归一到显式 count=2，不在内部继续传播 duo 布尔模式；与 --survival 或 --characters 同用时拒绝歧义组合。--characters 只适用于 --survival。恢复时，未显式给人数就使用存档角色数；显式数量与存档不符要报错。
 
-具体检查 [Program](../../src/ResourceCycle.Cli/Program.cs)、[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[LlmConsole](../../src/ResourceCycle.Cli/LlmConsole.cs)、[SurvivalHost](../../src/ResourceCycle.Cli/SurvivalHost.cs) 与 Gym 场景信息，包含两次模式校验、退出/续局提示和实际绑定审计；不能只放开工厂人数。不增加通用 roster 配置。
+具体检查 [Program](../../src/Playground.Cli/Program.cs)、[PlayConsole](../../src/Playground.Cli/PlayConsole.cs)、[LlmConsole](../../src/Playground.Cli/LlmConsole.cs)、[宿主接线](../../src/Playground.Cli/PlayConsole.cs) 与 Gym 场景信息，包含两次模式校验、退出/续局提示和实际绑定审计；不能只放开工厂人数。不增加通用 roster 配置。
 
 多人默认共用 Human Console；带 `--llm` 时保持 a 为 Human，其他角色使用现有角色路由绑定 LLM；单人 --survival --llm 继续由 LLM 控制 a。绑定从实际 Characters 构造，不能漏掉 c；继续复用无状态控制器与既有宿主调用预算，不按队员人数隐式增加预算。允许 LLM 或 Human 任一角色担当领队；不按控制器类型写玩法分支。
 
@@ -208,11 +208,11 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 沿用现有单根 E/S；新增字段、命令/事件枚举、观察及 PendingAdvance 语义需要更新 Durable schema 与 GameRevision。没有旧开发存档兼容要求：提升当前修订并拒绝旧修订，不写迁移、双读或 fallback。
 
-实现时同步更新 `CycleDurableModels` / 事件序列化与复制路径、操作恢复、Gym 导出所依赖的现有 material，不建立单独的队伍日志。E 已提交但 S 未完成时只重放已记录事实，不重新访问控制器或发起新的 LLM 调用。
+实现时同步更新 `PlaygroundDurableModels` / 事件序列化与复制路径、操作恢复、Gym 导出所依赖的现有 material，不建立单独的队伍日志。E 已提交但 S 未完成时只重放已记录事实，不重新访问控制器或发起新的 LLM 调用。
 
 ## 4. 最小实施切片与验收
 
-一次贯通 ResourceCycle，不先搭共享框架：
+一次贯通 Playground，不先搭共享框架：
 
 1. 领域与决策闭环：关系字段、三命令、动作限制、多人出发、到达边界、终局清理、Context/PendingAdvance 与预测校验；使用现有 scripted controller 完整跑集合到再集合。
 2. 同一闭环持久化与呈现：修订/schema、冷开/pending 恢复、冻结观察、Console/LLM 命令材料、三人入口。
@@ -251,7 +251,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 | 裁决 | 议题与最小结论 | 决定性证据 / 删除失败 |
 | --- | --- | --- |
-| merge / delete | 决策需求统一到 CycleActions，移除角色同名局部属性 | 原诊断读局部属性，不知道空间/跟随；直接消费者只有 Actions、Diagnostics |
+| merge / delete | 决策需求统一到 PlaygroundActions，移除角色同名局部属性 | 原诊断读局部属性，不知道空间/跟随；直接消费者只有 Actions、Diagnostics |
 | simplify | 关系只做 Business 形状验证，arrival 仍由 Spatial 派生 | Rebuild 先验证 Business；读取运行时预测将倒置依赖；窄混合边界仍须保留 |
 | simplify | 明确操作拥有者、实际移动者及关系接收者，无新持久名单 | 队员不能获得领队 ToolCallId，领队死亡不能记成队员死亡；自然事件也不能因无操作 ID 被漏掉 |
 | simplify | Follow 确认本人；unfollow/dismiss 保留所有提醒 | 最小架构师最初类比 Cancel，交叉质询后撤回：忙碌领队 dismiss 清唯一警告会留下无法继续服务的 Open Context |

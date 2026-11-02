@@ -1,14 +1,16 @@
 # ResourceCycle：运行时预测缓存验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-10-27。按[缓存方案第 9 节](../design/runtime-derived-predictions.md#9-resourcecycle-单角色迁移)完成单角色迁移，保留批处理和单角色等待/即时采集玩法。多角色化独立推进，没有旧存档兼容负担。
 
 ## 状态与完成边界
 
-- [CycleBusinessState / CycleWorld](../../src/ResourceCycle/CycleModels.cs)：持久 Business 包含时间、光照、植物、脚本、可选角色；角色和背包仍为独立业务子图。World 是普通不可变运行时包装，包含 Business 和 Forecasts。
+- [CycleBusinessState / CycleWorld](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs)：持久 Business 包含时间、光照、植物、脚本、可选角色；角色和背包仍为独立业务子图。World 是普通不可变运行时包装，包含 Business 和 Forecasts。
 - 预测、固定订阅、订阅索引都能由业务身份和代码重建，不落盘。暂停植物即使没有成熟预测，订阅仍存在。没有新增动态订阅机制。
-- [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)：Plan 只生成业务 facts；Fold 应用业务并暂留旧缓存；Complete 顺序读取 facts 收集 dirty、补入已消费 owner，针对最终业务状态每个 owner 重算一次。Full 模式绕过路由、独立枚举全部 owner。
+- [CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)：Plan 只生成业务 facts；Fold 应用业务并暂留旧缓存；Complete 顺序读取 facts 收集 dirty、补入已消费 owner，针对最终业务状态每个 owner 重算一次。Full 模式绕过路由、独立枚举全部 owner。
 - Complete 核对最终时间和业务子图引用，保留调用方传入的 folded.Business；不改变已记录事实，不调用 Player。Validate 检查业务、边界时间和已有缓存项的身份/结构，不通过完整重预测掩盖维护遗漏。
-- [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs)：S 只保存 Business/Cursor，E 只保存已决定的业务变化。冷开 Rebuild 一次后 State 返回稳定实例；S 成功后才安装传入的同一 wrapper。pending 恢复执行 Fold → Complete → Validate → S，不重新仲裁或规划。
+- [CycleDurableHistory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs)：S 只保存 Business/Cursor，E 只保存已决定的业务变化。冷开 Rebuild 一次后 State 返回稳定实例；S 成功后才安装传入的同一 wrapper。pending 恢复执行 Fold → Complete → Validate → S，不重新仲裁或规划。
 
 同刻仍按成熟、光照、脚本销毁、等待完成、决策的顺序执行；只有相同 Due/Kind 内才使用 Kernel 仲裁。等待截止、RequiredTicks、generation、背包和最后行动结果仍是业务真相，不因删除预测而隐式改变。
 
@@ -16,13 +18,13 @@
 
 | 合同 | 可复核证据 |
 | --- | --- |
-| 预测完整性、增量与重建等价 | [CycleTestSupport](../../tests/ResourceCycle.Tests/CycleTestSupport.cs) 从业务直接枚举独立公式 oracle，不调用 Owners/Predict 或路由；每个完成边界比较缓存及 Rebuild。另有缺缓存负例证明可检出遗漏 |
-| 暂停、销毁、同刻优先级与局部重算 | [CycleBehaviorTests](../../tests/ResourceCycle.Tests/CycleBehaviorTests.cs) 保留手算预期和多组完整 Full/Incremental 轨迹对照；无输出植物可被日出/日落唤醒，无关植物不重算 |
-| Complete 与快照不变 | [CycleCompletionTests](../../tests/ResourceCycle.Tests/CycleCompletionTests.cs) 覆盖同批多 facts、dirty 去重、保存 folded.Business 引用、未知事实拒绝、额外时间/光照/角色变化拒绝、due-now 保留、过期预测拒绝；候选读取不重算或替换缓存 |
-| 单角色完整轨迹与决策 | [PlayableCycleTests](../../tests/ResourceCycle.Tests/PlayableCycleTests.cs) 每个 S 都 fresh open 后继续，逐事件比较状态、游标、事实及输入次数；等待途中不问新动作，等待完成/采集后再次决策 |
-| E-only 恢复 | [CyclePersistenceTests](../../tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 保留八处批处理 E-only 中断；PlayableCycleTests 覆盖等待开始、等待完成、采集 E-only。纯 Complete 可重复，Player/Plan 零次；另以 Forecast/Plan 抛错探针验证 pending 不重新调度 |
+| 预测完整性、增量与重建等价 | [CycleTestSupport](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleTestSupport.cs) 从业务直接枚举独立公式 oracle，不调用 Owners/Predict 或路由；每个完成边界比较缓存及 Rebuild。另有缺缓存负例证明可检出遗漏 |
+| 暂停、销毁、同刻优先级与局部重算 | [CycleBehaviorTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleBehaviorTests.cs) 保留手算预期和多组完整 Full/Incremental 轨迹对照；无输出植物可被日出/日落唤醒，无关植物不重算 |
+| Complete 与快照不变 | [CycleCompletionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleCompletionTests.cs) 覆盖同批多 facts、dirty 去重、保存 folded.Business 引用、未知事实拒绝、额外时间/光照/角色变化拒绝、due-now 保留、过期预测拒绝；候选读取不重算或替换缓存 |
+| 单角色完整轨迹与决策 | [PlayableCycleTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/PlayableCycleTests.cs) 每个 S 都 fresh open 后继续，逐事件比较状态、游标、事实及输入次数；等待途中不问新动作，等待完成/采集后再次决策 |
+| E-only 恢复 | [CyclePersistenceTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 保留八处批处理 E-only 中断；PlayableCycleTests 覆盖等待开始、等待完成、采集 E-only。纯 Complete 可重复，Player/Plan 零次；另以 Forecast/Plan 抛错探针验证 pending 不重新调度 |
 | 发布引用边界 | CyclePersistenceTests 检查 E 前后和 S 前仍为旧 wrapper；S 成功返回后为传入同实例。S 前注入失败、非法 S cursor 后重开，pending 均可恢复，旧快照不变 |
-| 真正不落盘 | [CycleStorageShapeTests](../../tests/ResourceCycle.Tests/CycleStorageShapeTests.cs) 绕过 adapter，直接加载磁盘 S/E，检查 durable 字段、可达对象图及生成模型目录：不含 World/Forecasts/Prediction/Binding/PredictionKind |
+| 真正不落盘 | [CycleStorageShapeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleStorageShapeTests.cs) 绕过 adapter，直接加载磁盘 S/E，检查 durable 字段、可达对象图及生成模型目录：不含 World/Forecasts/Prediction/Binding/PredictionKind |
 | 冷开只信业务真相 | 同上：缺失/过期预测和空路由在真实保存、冷开后丢弃并重建；真正业务成熟时刻已经过期的存档在 Open 被拒绝 |
 
 恢复计量口径随之调整：`PredictionChecks` 仍为 Plan 的执行前检查；`Recalculations`/路由计数包含当前 Kernel 的 pending Complete，不包括 genesis 或冷开 Rebuild。它们是诊断，不是持久世界状态。

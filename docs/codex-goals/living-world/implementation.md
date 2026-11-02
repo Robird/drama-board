@@ -1,5 +1,7 @@
 # 山野镇实施合同
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。产品名 **山野镇 / Hillside**。本文件记录实现选择与切片边界，不单独宣告阶段完成；C1–C8 状态只在[工作计划](work-plan.md)维护。
 
 ## 唯一世界与命名

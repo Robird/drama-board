@@ -1,5 +1,7 @@
 # 语义空间连接与大喊：实现验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，落实[设计合同](../design/spatial-relations-and-shout.md)。Spatial 提供独立于移动的静态语义连接和一跳实体查询；ResourceCycle 的 `shout <text>` 已贯通 Human Console、Completion、冻结 Context、多人事实及磁盘恢复。
 
 ## 实现边界
@@ -45,13 +47,13 @@ dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1 --logger trx
 | --- | --- |
 | 无向规范化、位保留、重复/坏端点、零能力 | [PlaceRelationDefinitionTests](../../tests/Spatial.Tests/Definitions/PlaceRelationDefinitionTests.cs) |
 | 本地含自己、双向一跳、不传播二跳、全部位、途中排除、普通实体与只读确定结果 | [OneHopQueryTests](../../tests/Spatial.Tests/Queries/OneHopQueryTests.cs) |
-| 0/1/2 听众、独立地图关系、途中/终止排除、活动/跟随/自定义速率保留、完整参与者校验、容量原子拒绝 | [ShoutRulesTests](../../tests/ResourceCycle.Tests/ShoutRulesTests.cs) |
-| Human/LLM 共同 parser、空白保真、2000 Unicode scalar 边界、坏参数拒绝 | [ShoutInputTests](../../tests/ResourceCycle.Tests/ShoutInputTests.cs) |
-| 原文、署名、个人编号、无听众泄漏、重复接收、Open/Closed 交付、畸形材料拒绝 | [ShoutContextTests](../../tests/ResourceCycle.Tests/ShoutContextTests.cs) |
-| say/give 的交付载荷被替换时拒绝 | [CommunicationDeliveryIntegrityTests](../../tests/ResourceCycle.Tests/CommunicationDeliveryIntegrityTests.cs) |
-| 正常 S 与 E-only 冷开、不调用 Plan/控制器、不重复交付、预测 oracle、同刻到达先于输入 | [ShoutRecoveryTests](../../tests/ResourceCycle.Tests/ShoutRecoveryTests.cs) |
-| 两种布局、full/delta、特殊字面量、个人材料与额度回执 | [ShoutViewTests](../../tests/ResourceCycle.Cli.Tests/ShoutViewTests.cs)、[CommunicationViewTests](../../tests/ResourceCycle.Cli.Tests/CommunicationViewTests.cs) |
-| 实际宿主＋离线 Completion fixture：shout 提交、磁盘冷开、下一次模型材料保真 | [LlmHostTests](../../tests/ResourceCycle.Cli.Tests/LlmHostTests.cs)、[LlmCharacterControllerTests](../../tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs) |
+| 0/1/2 听众、独立地图关系、途中/终止排除、活动/跟随/自定义速率保留、完整参与者校验、容量原子拒绝 | [ShoutRulesTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ShoutRulesTests.cs) |
+| Human/LLM 共同 parser、空白保真、2000 Unicode scalar 边界、坏参数拒绝 | [ShoutInputTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ShoutInputTests.cs) |
+| 原文、署名、个人编号、无听众泄漏、重复接收、Open/Closed 交付、畸形材料拒绝 | [ShoutContextTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ShoutContextTests.cs) |
+| say/give 的交付载荷被替换时拒绝 | [CommunicationDeliveryIntegrityTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationDeliveryIntegrityTests.cs) |
+| 正常 S 与 E-only 冷开、不调用 Plan/控制器、不重复交付、预测 oracle、同刻到达先于输入 | [ShoutRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ShoutRecoveryTests.cs) |
+| 两种布局、full/delta、特殊字面量、个人材料与额度回执 | [ShoutViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ShoutViewTests.cs)、[CommunicationViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/CommunicationViewTests.cs) |
+| 实际宿主＋离线 Completion fixture：shout 提交、磁盘冷开、下一次模型材料保真 | [LlmHostTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/LlmHostTests.cs)、[LlmCharacterControllerTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs) |
 
 独立审查发现接收者选择曾跟随业务列表顺序，现已保留 Spatial 的 ID 顺序；事实记录继续遵循业务顺序，二者职责明确。另补齐发声者经历计数耗尽的前置拒绝，并以真实 Kernel 操作验证拒绝可以保存。终止角色测试通过真实离场事实建立合法夹具。
 

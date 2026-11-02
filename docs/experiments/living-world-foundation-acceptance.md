@@ -1,5 +1,7 @@
 # 山野镇首片：连续世界与宿主验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，Windows / .NET SDK 10.0.201。来源为基线 `fd8e3ea` 上、本文件所属提交的首片工作树；GameRevision 19，ScenarioId `hillside-v1`。这是融合的第一片，不是 C1–C8 总验收。
 
 ## 已验证的变化
@@ -20,9 +22,9 @@
 | ResourceCycle.Cli.Tests | 原完整组 368 通过；之后新增 pending 预算交叉用例单独 1 通过 | `cli-final.log`、`cli-final/*.trx`、`pending-budget-final.log`、`pending-budget-final/*.trx` |
 | ResourceCycle.Completion.Tests | 45 通过，零失败/跳过，离线 fixture | `completion-tests.log`、`completion-results/*.trx`；过滤 LiveE2E / LocalE2E |
 
-新增领域证据见 [HillsideFoundationTests](../../tests/ResourceCycle.Tests/HillsideFoundationTests.cs)：普通命令完成两次镇山往返，中间磁盘冷开，保留身份、身体、补给、探索和材料；每步比较 Rebuild 预测。两次都开启需求与天气。旧出口测试改为活着抵达/返回；原死亡冻结、隐私、E-only、天气和同刻边界覆盖保留。
+新增领域证据见 [HillsideFoundationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideFoundationTests.cs)：普通命令完成两次镇山往返，中间磁盘冷开，保留身份、身体、补给、探索和材料；每步比较 Rebuild 预测。两次都开启需求与天气。旧出口测试改为活着抵达/返回；原死亡冻结、隐私、E-only、天气和同刻边界覆盖保留。
 
-新增宿主证据见 [LivingWorldHostTests](../../tests/ResourceCycle.Cli.Tests/LivingWorldHostTests.cs)：真实宿主配离线 Completion fixture，验证三角色绑定、选择 b、冷开重绑定、预算和隐私。pending 用例通过普通采水构造只发布 E 的中断窗口，事件时刻在 Until 之后，核对水/井库存、游标、预测与 Gym 恢复记录，零模型调用；第二次冷开完成提交 ID 不变。
+新增宿主证据见 [LivingWorldHostTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/LivingWorldHostTests.cs)：真实宿主配离线 Completion fixture，验证三角色绑定、选择 b、冷开重绑定、预算和隐私。pending 用例通过普通采水构造只发布 E 的中断窗口，事件时刻在 Until 之后，核对水/井库存、游标、预测与 Gym 恢复记录，零模型调用；第二次冷开完成提交 ID 不变。
 
 最初两组测试各有一条旧文案断言失败，修正为新背景或实际世界/人数校验后通过。新增 pending 用例首次编译触发 xUnit2029，按分析器改为 DoesNotContain 后通过；没有通过跳过测试掩盖失败。
 

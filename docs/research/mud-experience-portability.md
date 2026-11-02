@@ -1,5 +1,7 @@
 # 从 Mud 借鉴玩家体验：DramaBoard DemoApp 可行性调查
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。调查基线：DramaBoard `7594237`、durable-graph-mud `66e12a7`；LLM 储备参照 atelia-console-agent `3c013fe`。
 > 本文是源码调查和候选实施顺序，不是已经批准的施工契约。没有移植代码、解冻旧应用或重新运行这些仓库的构建与测试。
 
@@ -132,7 +134,7 @@ Mud [GameEngine.ApplyCore/AdvanceTime](../../../durable-graph-mud/src/Mud.Engine
 - 等待：创建明确的等待完成时刻，让昼夜/生长事件在此之前照常发生，完成后重新请求输入。
 - 后续再增加耗时采集：持久行动状态记录目标、完成预测和 generation；明确开始时还是完成时扣体力、占用资源，以及取消是否退款。
 
-同刻语义必须写成业务规则。现有 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs)的确定性排序按 Due、种子排名、候选键决胜，不自动保证“天黑先于行动”或“行动结果先于再次输入”。[CycleEngine](../../src/ResourceCycle/CycleEngine.cs)在应用内部筛选最早时刻和成熟→光照→销毁优先级；把新规则加成另一个 rule 并不会自动继承这个跨系统优先级。小 Demo 可以在应用组合层统一筛候选，不必马上增加全引擎优先级框架。
+同刻语义必须写成业务规则。现有 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs)的确定性排序按 Due、种子排名、候选键决胜，不自动保证“天黑先于行动”或“行动结果先于再次输入”。[CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)在应用内部筛选最早时刻和成熟→光照→销毁优先级；把新规则加成另一个 rule 并不会自动继承这个跨系统优先级。小 Demo 可以在应用组合层统一筛候选，不必马上增加全引擎优先级框架。
 
 `StepAsync(notAfter)` 的上限只是候选执行边界，没有事件时不会将世界时间自动推进到该上限；因此“等待一小时”需要前述完成事件，不能仅调用一次带未来上限的 Step 就宣布时间已到。
 
@@ -142,7 +144,7 @@ Mud [GameEngine.ApplyCore/AdvanceTime](../../../durable-graph-mud/src/Mud.Engine
 
 可在新 DemoWorld 下放置独立的角色、背包、资源、空间等子图，以稳定 ID 相互引用，通过一笔业务变化生成相关事实。采集成功同时改变植物与背包，应在同一世界发布边界校验数量守恒；“拆成子图”不意味着各子图各自提交。
 
-[CycleDurableRoot](../../src/ResourceCycle/Persistence/CycleDurableRoot.cs)已经展示 world/cursor 单根；[CycleFact 和 Fold](../../src/ResourceCycle/CycleEngine.cs)展示只替换变化部分、保留其他不可变子图。新增类、生成定义与 schema、根注册和组合校验属于正常应用开发。
+[CycleDurableRoot](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableRoot.cs)已经展示 world/cursor 单根；[CycleFact 和 Fold](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)展示只替换变化部分、保留其他不可变子图。新增类、生成定义与 schema、根注册和组合校验属于正常应用开发。
 
 不过 ResourceCycle 的 `CycleRule` 为私有类，`CycleFact`、`CycleWorld` 都面向当前两种植物和脚本；它是可验证的模式参考，**还不是可把任意世界挂进去的资源系统插件**。可按新实例需要局部提取业务函数或重写小块代码，不建议先泛化所有预测者/订阅生命周期。
 
@@ -176,7 +178,7 @@ Mud 的 [MainWindow](../../../durable-graph-mud/src/Mud.Desktop/MainWindow.xaml)
 
 ### 7.2 单根续玩可行；历史分支尚需新 adapter
 
-[CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs)可以创建/打开单根分支、记录 E/S、检查 pending、在失败后废弃实例。它明确拒绝多分支和 fork，且根与事实类型写死为 ResourceCycle。可复用流程和测试思路，新游戏仍需自己的根/注册/adapter。
+[CycleDurableHistory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs)可以创建/打开单根分支、记录 E/S、检查 pending、在失败后废弃实例。它明确拒绝多分支和 fork，且根与事实类型写死为 ResourceCycle。可复用流程和测试思路，新游戏仍需自己的根/注册/adapter。
 
 Mud [GameSession](../../../durable-graph-mud/src/Mud.Engine/Session/GameSession.cs)封装了 tag、历史查找、fork、切线与恢复；DG 的这些原语不需要从零开发。但是产品层还要完成：
 

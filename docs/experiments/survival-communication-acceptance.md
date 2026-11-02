@@ -1,5 +1,7 @@
 # 生存 2C：交流与赠与工程验收、模型预演
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：领域、Context、Console 和持久化已实施；真实模型交流预演已运行。**尚未完成实际人类与模型的完整合作逃离，不能据此宣布二期完成。** 目标见[里程碑 §3.4](../design/survival-demo-milestone.md#34-2c交流赠与与合作试玩)，规则见[交流合同](../implementation/survival-communication-plan.md)。
 
 ## 实施与验证范围
@@ -16,14 +18,14 @@
 | 边界 | 当前证据 |
 | --- | --- |
 | 一次增加多份库存、整批拒绝、整数与总容量上限 | [ItemInventoryTests](../../tests/Inventory.Tests/ItemInventoryTests.cs) |
-| 活动期间说话/赠水、回复/use/continue 保持期限；已有身体警告共存 | [CommunicationRulesTests](../../tests/ResourceCycle.Tests/CommunicationRulesTests.cs) |
+| 活动期间说话/赠水、回复/use/continue 保持期限；已有身体警告共存 | [CommunicationRulesTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationRulesTests.cs) |
 | 已确认低水警告并开始等待后，同刻首次赠水可唤醒，结果从死亡变为存活 | 同一规则测试中的救命水对照 |
 | 双方最多 8 次成功交流后仍能放行时间；跨 Context 不退款、下一时刻纯查询恢复额度 | 同一规则测试中的实际 Kernel 序列，每步比较增量预测与全量 Rebuild |
-| 第四次说话/赠与 E 写成但 S 前中断，禁止再 Plan/调用控制器；再冷开后双方库存及经历不重复 | [CommunicationRecoveryTests](../../tests/ResourceCycle.Tests/CommunicationRecoveryTests.cs)，逐提交对照无中断轨迹及预测 oracle |
-| Open 收件人追加 Item、Closed 收件人正常唤醒，署名/effect 校验与私有地图/交接隔离 | [CommunicationContextTests](../../tests/ResourceCycle.Tests/CommunicationContextTests.cs)及恢复测试 |
-| 文本内部空白与 2000/2001 个 Unicode 字符边界、非法数量形成持久拒绝 | [CommunicationInputTests](../../tests/ResourceCycle.Tests/CommunicationInputTests.cs) |
-| 通信保持合法自定义身体速率来源 | [CommunicationRateTests](../../tests/ResourceCycle.Tests/CommunicationRateTests.cs) |
-| 两种布局、help、差分、空域、额度和带控制字符的对白 | [CommunicationViewTests](../../tests/ResourceCycle.Cli.Tests/CommunicationViewTests.cs) |
+| 第四次说话/赠与 E 写成但 S 前中断，禁止再 Plan/调用控制器；再冷开后双方库存及经历不重复 | [CommunicationRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationRecoveryTests.cs)，逐提交对照无中断轨迹及预测 oracle |
+| Open 收件人追加 Item、Closed 收件人正常唤醒，署名/effect 校验与私有地图/交接隔离 | [CommunicationContextTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationContextTests.cs)及恢复测试 |
+| 文本内部空白与 2000/2001 个 Unicode 字符边界、非法数量形成持久拒绝 | [CommunicationInputTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationInputTests.cs) |
+| 通信保持合法自定义身体速率来源 | [CommunicationRateTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CommunicationRateTests.cs) |
+| 两种布局、help、差分、空域、额度和带控制字符的对白 | [CommunicationViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/CommunicationViewTests.cs) |
 
 首次测试的三处 UI 失败已处理：一处旧 continue 文案期望；两处是文化相关字符串比较把 ESC 当作可忽略字符，实际渲染字面量没有原始 ESC。改为 Ordinal 安全断言，保留恶意标题与控制字符检查。独立源码审查另发现通信会重建身体速率来源，已修为只投影数值并保留来源，回归覆盖说话及赠与。
 

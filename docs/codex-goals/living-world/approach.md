@@ -1,5 +1,7 @@
 # 融合思路与设计起点
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 本文是可修订的实施依据。愿景与完成条件见 [README](README.md)，这里的架构倾向、默认内容和依赖顺序允许基于源码与实验调整；不得把建议当成已经存在的 API。
 
 ## 起点与现有证据

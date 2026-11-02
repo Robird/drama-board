@@ -1,5 +1,7 @@
 # ResourceCycle：多人有限批次采集规则草案
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。基于 `0a5bd72` 的源码调查及玩法、Player 体验、预测与恢复三方评审。
 > 用户已授权按本文实施；库存再生、三角色有限采集及加入/耗尽感知已落地。实现范围与实际验证见[多人采集验收](../experiments/resource-cycle-multiplayer-acceptance.md)；题材扩展和规则包抽取仍为后续方向。
 
@@ -228,9 +230,9 @@ Player 服务采用应用层持久轮转游标，按固定角色顺序选择下�
 
 ## 8. 当前源码落点与实施切片
 
-当前源码：[CycleResource](../../src/ResourceCycle/CycleResource.cs) 保存库存和再生锚点；[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) 保存独立活动、感知及背包；[CycleModels](../../src/ResourceCycle/CycleModels.cs) 管理角色集合与轮转游标。[CycleActions](../../src/ResourceCycle/CycleActions.cs) 校验动作，[CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) 产生原子业务效果，[CycleFact](../../src/ResourceCycle/CycleFact.cs) 支持多角色替换；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 维护独立 activity/attention owner。[PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) 按传入 actorId 渲染。
+当前源码：[CycleResource](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleResource.cs) 保存库存和再生锚点；[CycleCharacter](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleCharacter.cs) 保存独立活动、感知及背包；[CycleModels](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs) 管理角色集合与轮转游标。[CycleActions](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleActions.cs) 校验动作，[CyclePlanning](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CyclePlanning.cs) 产生原子业务效果，[CycleFact](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFact.cs) 支持多角色替换；[CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs) 维护独立 activity/attention owner。[PlayConsole](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayConsole.cs) 按传入 actorId 渲染。
 
-复用 [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的单根 E/S 与 S 成功后安装，以及 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs) 的同 Due 确定性仲裁；没有修改 Kernel/Spatial 或 DurableGraph。技能首片只支持 herbalism，产出为单一物品；资源 ID 与物品 ID 分离。默认参数使用第 2 节配置。
+复用 [CycleDurableHistory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的单根 E/S 与 S 成功后安装，以及 [OccurrenceScheduler](../../src/Kernel/Scheduling/OccurrenceScheduler.cs) 的同 Due 确定性仲裁；没有修改 Kernel/Spatial 或 DurableGraph。技能首片只支持 herbalism，产出为单一物品；资源 ID 与物品 ID 分离。默认参数使用第 2 节配置。
 
 实施按以下职责分片，实际验收另记，不以这份分工代替运行证据：
 

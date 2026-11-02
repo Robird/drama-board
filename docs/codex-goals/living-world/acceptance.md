@@ -1,5 +1,7 @@
 # 山野镇阶段验收与交接
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。[原定 C1–C8](README.md#完成条件)全部具备实现、工程和实际运行证据。产品为 **山野镇 / Hillside**，唯一推荐入口 `src/ResourceCycle.Cli`；没有强制主线或固定天数的世界终局。Microtown 在本次验收时停止独立产品演进；2026-11-02 其实现与测试已从主线移除并由 [Git tag](../../archive/microtown.md)归档，历史证据继续保留。
 
 生产规则以 `ea87f55` 为最终源码基线，GameRevision 22；本文件所属交付提交只补充入口说明、验收脚本和实际证据，未改变这些规则。操作平台为 Windows、.NET SDK 10.0.201；未宣称完成 Linux 或整仓 solution 回归。

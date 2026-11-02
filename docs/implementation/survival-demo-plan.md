@@ -1,5 +1,7 @@
 # 生存逃离一期实施方案
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：一期 A–D 已通过[工程与独立试玩验收](../experiments/survival-demo-acceptance.md)。目标与完成标准以[两期里程碑](../design/survival-demo-milestone.md)为准；本文保留实际组合合同与实施切片，不替代目标。二期尚未启动。
 
 ## 1. 实施顺序

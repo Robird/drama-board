@@ -1,5 +1,7 @@
 # 山林求生独立负向试玩：故意不补给
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-28。结论：本次原地等待、不补给的故意失败可由玩家界面完整解释；两次身体警告均在终局前给出输入机会，终局冷开保持冻结。没有发现阻碍本次失败理解的问题。本报告不代表普通玩家失误率、整体难度或平衡评测。
 
 ## 方法与证据边界
@@ -8,7 +10,7 @@
 - 使用已构建 Release 可执行文件，不重新构建，不修改产品代码。入口：`dotnet src/ResourceCycle.Cli/bin/Release/net10.0/DramaBoard.ResourceCycle.Cli.dll --survival --store artifacts/blind-failure-5e0515eeea48429aae18c11a9e31ea99/store`。
 - 试玩二进制 SHA256：`B4D116145B14585AB0D4AB404CEF5F0C81305FC6B14D8D9E142777FCDBA75744`。
 - [完整输入输出](survival-playtest-failure-console.txt)包含 `first`（初始 EOF 退出）、`play`（交互试玩）、`reopen`（终局输入尝试）、`recheck`（再次冷开）四阶段。每阶段记录实际命令、Console 输出、代理 stdin 输入及退出码。
-- 本地[原始证据目录](../../artifacts/blind-failure-5e0515eeea48429aae18c11a9e31ea99/)保留 driver、分阶段 stdin/stdout、组合 transcript 和存档。driver 仅重定向 Console 的输入输出，没有读取内部状态。
+- 本地原始证据目录（历史本地工件：`artifacts/blind-failure-5e0515eeea48429aae18c11a9e31ea99/`，当前检出不含该工件）保留 driver、分阶段 stdin/stdout、组合 transcript 和存档。driver 仅重定向 Console 的输入输出，没有读取内部状态。
 - 初次使用非交互管道，应用因 EOF 在初始画面退出，世界仍为第 0 天 15:00；随后以交互终端重开进行实际试玩。
 
 ## 选择与警告时的理解

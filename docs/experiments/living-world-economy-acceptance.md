@@ -1,5 +1,7 @@
 # 山野镇生产与市场验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，基于 `85f82cd` 后的本提交工作树，Windows / SDK 10.0.201 / Release，GameRevision 20。本文证明生产与市场纵切，不宣称 [C1–C8](../codex-goals/living-world/README.md) 全部完成。居民报价交易、内容指纹、最终产品归档及真实模型生活仍见[工作计划](../codex-goals/living-world/work-plan.md)。
 
 ## 实现与不变量
@@ -10,7 +12,7 @@
 - 通信、补给、赠钱不改变进行中的生产期限，不隐式解散跟随。日市场更新由固定预测 owner 负责，冷开重建，不累积旧日未用额度。
 - 独立审查发现并修复两个事实校验缺口：伪造 Visit 不能借市场刷新获取远处地点知识；ItemUsed 不能凭守恒正确就附带超量恢复或错误属性变化。新增反例测试覆盖这些情况。
 
-实现入口：[经济规则](../../src/ResourceCycle/CycleEconomyRules.cs)、[经济校验](../../src/ResourceCycle/CycleEconomyValidation.cs)、[事实应用](../../src/ResourceCycle/CycleFactApplication.cs)、[内容](../../src/ResourceCycle/LivingWorldEconomyContent.cs)、[呈现](../../src/ResourceCycle.Cli/EconomyView.cs)。设计合同见[经济迁入](../codex-goals/living-world/economy.md)。
+实现入口：[经济规则](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEconomyRules.cs)、[经济校验](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEconomyValidation.cs)、[事实应用](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFactApplication.cs)、[内容](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/LivingWorldEconomyContent.cs)、[呈现](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/EconomyView.cs)。设计合同见[经济迁入](../codex-goals/living-world/economy.md)。
 
 ## 工程验证
 
@@ -24,7 +26,7 @@
 | ResourceCycle.Cli.Tests | 最终完整运行 384 项全部通过。 |
 | ResourceCycle.Completion.Tests | 排除 LiveE2E/LocalE2E 后 45 项全部通过；属于离线证据。 |
 
-独立[经济验收测试](../../tests/ResourceCycle.Tests/HillsideEconomyAcceptanceTests.cs)使用普通领域命令覆盖重复出行、守恒、生产 pending 恢复、市场同刻竞争与容量；[领域测试](../../tests/ResourceCycle.Tests/HillsideEconomyTests.cs)补充拒绝与伪造事实反例。CLI 的经济视图与宿主测试验证局部材料、隐私和活动保持。
+独立[经济验收测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideEconomyAcceptanceTests.cs)使用普通领域命令覆盖重复出行、守恒、生产 pending 恢复、市场同刻竞争与容量；[领域测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideEconomyTests.cs)补充拒绝与伪造事实反例。CLI 的经济视图与宿主测试验证局部材料、隐私和活动保持。
 
 复验命令（先构建，再串行运行各测试项目）：
 

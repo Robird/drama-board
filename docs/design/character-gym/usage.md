@@ -1,6 +1,6 @@
 # 山野镇 Character Gym 使用说明
 
-更新：2026-11-01。本文说明山野镇当前入口，按 [CLI 参数](../../../src/ResourceCycle.Cli/Program.cs)、[管理命令](../../../src/ResourceCycle.Cli/Gym/GymCommands.cs)与 [LLM 宿主](../../../src/ResourceCycle.Cli/LlmConsole.cs)编写。Gym 一期的[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)属于原型阶段证据；山野镇的完成条件与新证据以[专题工作计划](../../codex-goals/living-world/work-plan.md)为准。命令可用性不等于所有融合体验已验收。
+更新：2026-11-01。本文说明山野镇当前入口，按 [CLI 参数](../../../src/Playground.Cli/Program.cs)、[管理命令](../../../src/Playground.Cli/Gym/GymCommands.cs)与 [LLM 宿主](../../../src/Playground.Cli/LlmConsole.cs)编写。Gym 一期的[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)属于原型阶段证据；山野镇的完成条件与新证据以[专题工作计划](../../codex-goals/living-world/work-plan.md)为准。命令可用性不等于所有融合体验已验收。
 
 ## 1. 创建或继续山野镇实验
 
@@ -9,10 +9,10 @@
 ```powershell
 $gymStore = "artifacts/hillside-gym-first-run"
 # 新建两角色世界，Console 控制 a，模型控制 b：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --characters 2 --llm --human a --feedback --store $gymStore --max-calls 16
+dotnet run --project src/Playground.Cli -c Release -- --characters 2 --llm --human a --feedback --store $gymStore --max-calls 16
 
 # 恢复同一世界，人数与内容沿用保存定义：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --feedback --store $gymStore --max-calls 16
+dotnet run --project src/Playground.Cli -c Release -- --llm --human a --feedback --store $gymStore --max-calls 16
 ```
 
 角色 `a` 由当前 Console 的人类操控，`b` 由模型操控；轮到哪个角色决定就暂停世界等其操作。人类输入以当前画面列出的合法行动为准；`Ctrl+C` 可暂停，已提交的游戏进度保留。调用预算耗尽也会暂停，不会替模型选择行动。此例的 `16` 是本次宿主运行预算，续局重新计算。
@@ -38,8 +38,8 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --feedb
 以下是独立管理命令，不运行游戏，也不需要模型配置。一次只选一种管理操作，不与 `--llm`、`--human`、`--feedback`、`--characters`、`--content` 等游戏配置混用。
 
 ```powershell
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --branches
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym-feedbacks
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --branches
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --gym-feedbacks
 ```
 
 分支列表给出 `BranchId` 等信息；**复制 ID，不用显示名称代替 ID**。反馈列表给出 `Payload.FeedbackId`、`Payload.RequestId`、角色、分支及决定前边界等定位信息。
@@ -48,7 +48,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym
 
 ```powershell
 $sourceBranch = "替换为实际 BranchId"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym-feedbacks --branch $sourceBranch --actor b
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --gym-feedbacks --branch $sourceBranch --actor b
 ```
 
 `--gym-feedbacks` 不指定分支表示查询所有分支；`--branches` 本身不接受 `--branch`。但**打开游戏和导出轨迹**需要选定一个分支，存档有多个分支时不能省略 `--branch`。`--actor` 是查询/导出的角色筛选，不改变控制器绑定。
@@ -56,7 +56,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym
 ## 4. 导出角色轨迹
 
 ```powershell
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym-export "gym-b-source.md" --actor b --branch $sourceBranch
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --gym-export "gym-b-source.md" --actor b --branch $sourceBranch
 ```
 
 目标目录须已存在，目标文件须尚不存在。导出使用 `CreateNew`，不会覆盖旧文件；再次导出请换文件名。导出对游戏存档与实验日志只读，只创建指定的 Markdown 文件；不会恢复 pending 事件、调用模型或修改日志末尾的不完整记录。
@@ -71,14 +71,14 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym
 
 ```powershell
 $feedbackId = "替换为实际 FeedbackId"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym-fork $feedbackId --fork-label "核对采集反馈"
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --gym-fork $feedbackId --fork-label "核对采集反馈"
 ```
 
 没有反馈也可从已记录的模型请求分叉。在导出轨迹的 `request` 记录中找到 `Payload.RequestId`：
 
 ```powershell
 $requestId = "替换为实际 RequestId"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym-fork-request $requestId --fork-label "重看这次决定"
+dotnet run --project src/Playground.Cli -c Release -- --store $gymStore --gym-fork-request $requestId --fork-label "重看这次决定"
 ```
 
 两种 fork 方式选其一。它们由原记录定位来源分支，**不接受额外的 `--branch` 或 `--actor`**。命令会核对记录与真实存档中的决定前完整 S 边界，随后注册新分支；不会打开新分支，也不会运行模型或回放那次行动。来源是世界整体的已完成状态，不是只复制一个角色，也不是恢复某次 API 调用执行栈。
@@ -87,7 +87,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --store $gymStore --gym
 
 ```powershell
 $forkBranch = "替换为刚注册的新 BranchId"
-dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --feedback --store $gymStore --branch $forkBranch --max-calls 16
+dotnet run --project src/Playground.Cli -c Release -- --llm --human a --feedback --store $gymStore --branch $forkBranch --max-calls 16
 ```
 
 回到源分支时改用 `--branch $sourceBranch`。新分支与来源共享已有历史，后续各自推进；不要把新分支的 ID 当成新的 `--store` 路径。模型会基于该分支重新构造输入、重新作答，不承诺复现原输出。新分支的反馈与导出仍按第 3、4 节查询，只需改选分支 ID。

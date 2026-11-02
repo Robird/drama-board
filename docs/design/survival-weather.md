@@ -1,6 +1,6 @@
 # 生存环境风险：可预告窗口与持久随机结果
 
-状态：生存一期已验收，见[生存验收](../experiments/survival-demo-acceptance.md)。二期按[双角色合同](../implementation/survival-duo.md)扩展为一次世界抽样、按活跃角色结算；机制仍留在 ResourceCycle 应用层，不建立通用天气或效果框架。
+状态：生存一期已验收，见[生存验收](../experiments/survival-demo-acceptance.md)。二期按[双角色合同](../implementation/survival-duo.md)扩展为一次世界抽样、按活跃角色结算；机制仍留在 Playground 应用层，不建立通用天气或效果框架。
 
 ## 1. 玩法与信息
 

@@ -1,5 +1,7 @@
 # 经济融合编码起点
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。C2／C4 的生产、市场与现金纵切已经验收；居民报价按下述合同实施。当前施工状态只维护在 [work-plan](work-plan.md)。
 
 ## 保持的合同
@@ -47,15 +49,15 @@
 
 | 位置 | 集成必须核对的事项 |
 | --- | --- |
-| [CycleCharacter](../../../src/ResourceCycle/CycleCharacter.cs) | Change、WithSurvival、WithFollowing、End 等手动构造角色；新增 Money 必须全部保留。死亡清活动前先结算退料。 |
-| [CycleModels](../../../src/ResourceCycle/CycleModels.cs)、[CycleFact](../../../src/ResourceCycle/CycleFact.cs) | 根 Replace／Validate、Fact 的所有 With 方法及 schema 修订必须包含新状态。 |
-| [CycleFactApplication](../../../src/ResourceCycle/CycleFactApplication.cs) | raw input→kind、payload 限制、合法角色集合、原子资产变化和无关字段保留都需扩展；无关事实不得任意改钱或账。 |
+| [CycleCharacter](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleCharacter.cs) | Change、WithSurvival、WithFollowing、End 等手动构造角色；新增 Money 必须全部保留。死亡清活动前先结算退料。 |
+| [CycleModels](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs)、[CycleFact](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFact.cs) | 根 Replace／Validate、Fact 的所有 With 方法及 schema 修订必须包含新状态。 |
+| [CycleFactApplication](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFactApplication.cs) | raw input→kind、payload 限制、合法角色集合、原子资产变化和无关字段保留都需扩展；无关事实不得任意改钱或账。 |
 | 同上 ValidateFollowingChanges | SurvivalFailed 目前限定死者＋释放跟随者；死亡关闭报价可能通知远处对方。应纳入准确交易通知集合，不能宽放任意角色。 |
-| [CyclePredictionMaintenance](../../../src/ResourceCycle/CyclePredictionMaintenance.cs) | bindings、ConsumedOwner、Owners、Predict、ValidIdentity 与 oracle 同步；活动完成复用原 activity owner。 |
-| [CycleInteractionRules](../../../src/ResourceCycle/CycleInteractionRules.cs) | Produce 需要关闭当前决策并形成 PendingAdvance；OpenContext 可能承担报价交付／回收。保持现有个人序号与恢复合同。 |
-| [CycleObservedEvents](../../../src/ResourceCycle/CycleObservedEvents.cs) | 当前用 Enum.Parse 映射事实类型；新增 kind 必须有对应观察、接收集合及 typed payload。死亡通知不可冒充接收者本人死亡。 |
-| [CycleObservation](../../../src/ResourceCycle/CycleObservation.cs) | 自己的钱、当地市场／配方、本人报价；同步材料类型、相等性、投递校验、OperationResults、Console 与 Completion。 |
-| [CycleActions](../../../src/ResourceCycle/CycleActions.cs)、[CycleSurvival](../../../src/ResourceCycle/CycleSurvival.cs) | 当前 Use 将 item.food 以外的物品按水需求判断；新增口粮须同步供应效果、满值拒绝、名称和说明。 |
+| [CyclePredictionMaintenance](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CyclePredictionMaintenance.cs) | bindings、ConsumedOwner、Owners、Predict、ValidIdentity 与 oracle 同步；活动完成复用原 activity owner。 |
+| [CycleInteractionRules](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleInteractionRules.cs) | Produce 需要关闭当前决策并形成 PendingAdvance；OpenContext 可能承担报价交付／回收。保持现有个人序号与恢复合同。 |
+| [CycleObservedEvents](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleObservedEvents.cs) | 当前用 Enum.Parse 映射事实类型；新增 kind 必须有对应观察、接收集合及 typed payload。死亡通知不可冒充接收者本人死亡。 |
+| [CycleObservation](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleObservation.cs) | 自己的钱、当地市场／配方、本人报价；同步材料类型、相等性、投递校验、OperationResults、Console 与 Completion。 |
+| [CycleActions](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleActions.cs)、[CycleSurvival](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvival.cs) | 当前 Use 将 item.food 以外的物品按水需求判断；新增口粮须同步供应效果、满值拒绝、名称和说明。 |
 
 ## 当前实现
 
@@ -76,7 +78,7 @@
 
 当前市场每日刷新有限额度：卖食物 3 钱×36 份、饮水 1 钱×60 份；收口粮 5 钱×18 份、木器 14 钱×12 份、原木 3 钱×12 份。每人初始 12 钱。加工收益对应真实耗时，库存不无限累积；这些数值须由实际循环和三日运行校验，不是稳定性结论。
 
-当前实现见 [CycleEconomyRules](../../../src/ResourceCycle/CycleEconomyRules.cs)、[CycleEconomyValidation](../../../src/ResourceCycle/CycleEconomyValidation.cs) 和 [LivingWorldEconomyContent](../../../src/ResourceCycle/LivingWorldEconomyContent.cs)。生产订单记录原料、产出和批次快照。Fold 对精确资产变更、现金、累计账、订单和活动保留作独立校验；总账守恒本身不授权动作。地点记忆也必须来自本次真实位置与当地资源；消费必须产生所声明物品的准确身体增益。
+当前实现见 [CycleEconomyRules](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEconomyRules.cs)、[CycleEconomyValidation](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEconomyValidation.cs) 和 [LivingWorldEconomyContent](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/LivingWorldEconomyContent.cs)。生产订单记录原料、产出和批次快照。Fold 对精确资产变更、现金、累计账、订单和活动保留作独立校验；总账守恒本身不授权动作。地点记忆也必须来自本次真实位置与当地资源；消费必须产生所声明物品的准确身体增益。
 
 ## 实施顺序与文件分工
 

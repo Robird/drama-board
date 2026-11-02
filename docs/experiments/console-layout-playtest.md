@@ -1,13 +1,15 @@
 # Console 可切换布局与试玩
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-28。范围为 CLI 呈现、会话布局选择和只读元命令；没有改变游戏规则、存档 Schema 或修订号。接口与信息组织见[布局合同](../design/console-layouts.md)。
 
 ## 实现与验证边界
 
-- [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 只接收角色观察；[PlayPresentation](../../src/ResourceCycle.Cli/PlayPresentation.cs) 保存会话偏好。`decision` 为生存默认，`classic` 为多人采集默认；切换立即重绘，终局沿用当前选择。
-- 当时的 `PlayInputTests`（现拆为 [CycleCommandParserTests](../../tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs) 与 [ConsoleMetaCommandsTests](../../tests/ResourceCycle.Cli.Tests/ConsoleMetaCommandsTests.cs)）及 [PlayPresentationTests](../../tests/ResourceCycle.Cli.Tests/PlayPresentationTests.cs) 验证仅带冒号的元命令、拒绝无前缀旧入口及带冒号的游戏行动、未知布局、同份观察重绘、跨角色会话偏好、只读查询不提交行动。没有新增具体布局的整屏快照、精确措辞或位置断言；经典布局既有测试保留。
+- [IPlayLayout](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/IPlayLayout.cs) 只接收角色观察；[PlayPresentation](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayPresentation.cs) 保存会话偏好。`decision` 为生存默认，`classic` 为多人采集默认；切换立即重绘，终局沿用当前选择。
+- 当时的 `PlayInputTests`（现拆为 [CycleCommandParserTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs) 与 [ConsoleMetaCommandsTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ConsoleMetaCommandsTests.cs)）及 [PlayPresentationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/PlayPresentationTests.cs) 验证仅带冒号的元命令、拒绝无前缀旧入口及带冒号的游戏行动、未知布局、同份观察重绘、跨角色会话偏好、只读查询不提交行动。没有新增具体布局的整屏快照、精确措辞或位置断言；经典布局既有测试保留。
 - `dotnet test tests/ResourceCycle.Cli.Tests -c Release -warnaserror -p:DurableGraphSchemaHistoryMode=Verify --nologo`：110 项通过；相关项目与 Schema Verify 通过。清屏测试只验证时间/角色变化的触发边界及先清后渲染，不约束具体布局。
-- [生存工程 smoke](../../scripts/Smoke-ResourceCycleSurvival.ps1) 改为读取新默认布局的语义信息，去掉原来的资源章节切片、标题位置与表格列依赖，并加入初始和途中警告时的布局切换、详情与帮助查询。真实存档 SHA-256 比较证明这些操作不写游戏历史；两条成功路线、失败、消费和连续/冷续局一致性仍覆盖。打磨后完整运行通过，最终证据目录 `artifacts/resource-cycle-survival-smoke/d74cfa984a7149b282b10de4df765efd/`。
+- [生存工程 smoke](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCycleSurvival.ps1) 改为读取新默认布局的语义信息，去掉原来的资源章节切片、标题位置与表格列依赖，并加入初始和途中警告时的布局切换、详情与帮助查询。真实存档 SHA-256 比较证明这些操作不写游戏历史；两条成功路线、失败、消费和连续/冷续局一致性仍覆盖。打磨后完整运行通过，最终证据目录 `artifacts/resource-cycle-survival-smoke/d74cfa984a7149b282b10de4df765efd/`。
 - 多人采集工程 smoke 通过，证据目录 `artifacts/resource-cycle-play-smoke/cc41fdadce25438c90cf7f8dd3ceb98d/`；主线程另以实际 CLI 切换至 classic 后运行到脱水失败，确认终局沿用选择，证据在 `artifacts/console-layout-playtest/main-2910cebf04b74cb4a96d87141a804da9/`。
 
 ## 独立试玩

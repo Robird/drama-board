@@ -1,5 +1,7 @@
 # 微型小镇与多游戏共享代码库：总验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
 
 2026-10-31，[本轮六项完成条件](../codex-goals/microtown/README.md)均已有工程与运行证据。生产代码基线为 `d5a9b89`；最后一片只增加真实试玩证据和交付文档，没有为通过试玩临时改变规则。Town 接受 GameRevision 3，ResourceCycle 接受 16，旧开发存档不迁移。

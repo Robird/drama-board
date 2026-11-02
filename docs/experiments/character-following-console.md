@@ -1,5 +1,7 @@
 # 角色跟随：真实 Console 进程验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。独立验收代理操作真实 Human Console 入口；不是用户本人试玩，不涉及真实 LLM 调用。本记录验证[角色跟随设计](../design/character-following.md)的三人产品闭环，模型试玩和领域恢复测试由各自证据覆盖。
 
 ## 运行来源与证据

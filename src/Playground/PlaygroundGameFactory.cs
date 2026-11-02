@@ -1,0 +1,102 @@
+using DramaBoard.Kernel.Simulation;
+using DramaBoard.Kernel.Time;
+using DramaBoard.Spatial;
+using DramaBoard.Inventory;
+
+namespace DramaBoard.Playground;
+
+/// <summary>Constructs validated new-game boundaries for either memory or durable histories.</summary>
+/// <remarks>Does not load, revise or publish saves. Default mutable subgraphs belong to each
+/// invocation. Supplied entity instances are retained, not cloned; callers must not mutate
+/// them after handing the world to a history. Input sequences are copied.</remarks>
+public static class PlaygroundGameFactory {
+    /// <summary>Creates an effective authored world. All initialization overrides have already contributed to its fingerprint.</summary>
+    public static (PlaygroundWorld World, KernelCursor Cursor) Create(PlaygroundWorldDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+        definition.Validate();
+        if (definition.InitialCharacters.Count == 0) { throw new ArgumentException("A living world requires at least one initial character.", nameof(definition)); }
+        ModelTime time = definition.StartTime;
+        PlaygroundCharacter[] characters = definition.InitialCharacters.Select(actor => new PlaygroundCharacter(actor.Id, actor.Name, actor.SkillLevel,
+            new ItemInventory(actor.Backpack, actor.UnitCapacity), survival: definition.NeedsEnabled
+                ? PlaygroundSurvival.Create(definition, time, actor.Food, actor.Water, actor.Warmth, definition.GetPlace(actor.PlaceId).Sheltered) : null,
+            money: actor.Money)).ToArray();
+        PlaygroundResource[] resources = definition.Resources.Select(resource => resource.Create(time)).ToArray();
+        GraphSpatialState spatial = GraphSpatialState.Create(definition.Runtime.Graph,
+            definition.InitialCharacters.Select(actor => new EntityPlacement(new(actor.Id), new(actor.PlaceId))));
+        var expedition = new PlaygroundExpedition(definition.ContentId, spatial,
+            definition.InitialCharacters.Select(actor => new PlaygroundVisit(actor.Id, actor.PlaceId, time,
+                resources.Where(resource => definition.GetResourcePlace(resource.Id) == actor.PlaceId))),
+            environment: definition.Weather.Enabled ? new(definition.Weather.Seed, 0,
+                time.Ticks > long.MaxValue - definition.Weather.IntervalTicks ? null : new(time.Ticks + definition.Weather.IntervalTicks)) : null);
+        PlaygroundEconomyState? economy = definition.EconomyEnabled ? new(
+            PlaygroundMarket.Fresh(definition, new(checked(time.Ticks / definition.MarketRefreshTicks * definition.MarketRefreshTicks + definition.MarketRefreshTicks))),
+            new PlaygroundEconomicTotals(characters.Sum(actor => actor.Money), definition.Items.Keys.ToDictionary(
+                item => item, item => characters.Sum(actor => (long)actor.Backpack.Count(item)), StringComparer.Ordinal))) : null;
+        return Prepare(new(time, new(PlaygroundTime.IsDay(time), PlaygroundTime.NextLightChange(time)), resources,
+            new([]), characters, expedition: expedition, economy: economy, definition: definition));
+    }
+
+    /// <summary>Normalizes the default preset's initial overrides before constructing its saved identity.</summary>
+    public static (PlaygroundWorld World, KernelCursor Cursor) CreateLivingWorld(ModelTime? start = null, int characterCount = 3,
+        bool enableNeeds = true, bool enableWeather = true, ulong weatherSeed = PlaygroundEnvironmentRules.DefaultSeed) =>
+        Create(PlaygroundWorldDefinitions.LivingWorld(start, characterCount, enableNeeds, enableWeather, weatherSeed));
+
+    /// <summary>Legacy test setup with scarce supplies on the same Hillside map; reaching a former exit does not retire a character.</summary>
+    public static (PlaygroundWorld World, KernelCursor Cursor) CreateSurvival(ModelTime? start = null, bool enableNeeds = true,
+        bool enableWeather = true, ulong weatherSeed = PlaygroundEnvironmentRules.DefaultSeed, int characterCount = 1) {
+        if (characterCount is < 1 or > 3) { throw new ArgumentOutOfRangeException(nameof(characterCount)); }
+        ModelTime time = start ?? new ModelTime(15 * PlaygroundTime.Hour);
+        PlaygroundResource[] resources = [
+            new("berries", "野浆果", "item.food", true, 3 * PlaygroundTime.Hour, 6, 6, harvestTicks: PlaygroundTime.Hour / 2),
+            new("water", "溪水", "item.water", true, PlaygroundTime.Hour, 12, 12, harvestTicks: PlaygroundTime.Hour / 4),
+            new("wood", "干木", "item.wood", true, 6 * PlaygroundTime.Hour, 6, 6, harvestTicks: PlaygroundTime.Hour / 2),
+            new("ridge-herbs", "山脊野菜", "item.food", true, 4 * PlaygroundTime.Hour, 4, 4, harvestTicks: PlaygroundTime.Hour / 2)
+        ];
+        PlaygroundCharacter[] characters = Enumerable.Range(0, characterCount).Select(index => new PlaygroundCharacter(new[] { "a", "b", "c" }[index],
+            new[] { "阿青", "阿白", "阿岚" }[index], backpack: enableNeeds ? new ItemInventory(new Dictionary<string, int> {
+                ["item.water"] = 1
+            }) : null, survival: enableNeeds ? PlaygroundSurvival.Create(time, food: 30, water: 45, warmth: 60) : null)).ToArray();
+        GraphSpatialState spatial = GraphSpatialState.Create(PlaygroundExpeditionMap.Graph, characters.Select(c => new EntityPlacement(new(c.Id), new("camp"))));
+        var expedition = new PlaygroundExpedition(PlaygroundExpeditionMap.ScenarioId, spatial, characters.Select(c => new PlaygroundVisit(c.Id, "camp", time, [])),
+            environment: enableNeeds && enableWeather ? new(weatherSeed, 0,
+                time.Ticks > long.MaxValue - PlaygroundEnvironmentRules.IntervalTicks ? null : new(time.Ticks + PlaygroundEnvironmentRules.IntervalTicks)) : null);
+        return Prepare(new(time, new(PlaygroundTime.IsDay(time), PlaygroundTime.NextLightChange(time)), resources,
+            new([]), characters, expedition: expedition));
+    }
+
+    /// <summary>Creates the scripted Playground experiment and its initial cursor.</summary>
+    public static (PlaygroundWorld World, KernelCursor Cursor) CreateBatch(ModelTime? start = null,
+        IEnumerable<PlaygroundDestruction>? script = null) {
+        ModelTime time = start ?? PlaygroundWorld.DefaultStart;
+        var entries = (script ?? DefaultScript(time)).OrderBy(e => e.Due).ThenBy(e => e.ResourceId, StringComparer.Ordinal);
+        return Prepare(new(time, new(PlaygroundTime.IsDay(time), PlaygroundTime.NextLightChange(time)),
+            DefaultResources(time), new(entries)));
+    }
+
+    /// <summary>Creates the gathering scenario and its initial cursor.</summary>
+    public static (PlaygroundWorld World, KernelCursor Cursor) CreatePlayable(ModelTime? start = null,
+        IEnumerable<PlaygroundCharacter>? characters = null, IEnumerable<PlaygroundResource>? resources = null) {
+        ModelTime time = start ?? PlaygroundWorld.DefaultStart;
+        return Prepare(new(time, new(PlaygroundTime.IsDay(time), PlaygroundTime.NextLightChange(time)),
+            resources ?? DefaultResources(time), new([]), characters ?? [new("a", "阿青"), new("b", "阿白", 1), new("c", "阿岚", 2)]));
+    }
+
+    private static (PlaygroundWorld World, KernelCursor Cursor) Prepare(PlaygroundBusinessState business) {
+        PlaygroundWorld world = PlaygroundEngine.Rebuild(business, business.Time);
+        var cursor = new KernelCursor(new WorldVersion(1, 0), world.Time, null, null);
+        return (world, cursor);
+    }
+
+    private static IEnumerable<PlaygroundResource> DefaultResources(ModelTime time) => [
+        new("sunflower", "太阳花", "item.sunflower", true, 3 * PlaygroundTime.Hour, 5, 3, PlaygroundTime.IsDay(time) ? time : null),
+        new("moongrass", "月光草", "item.moongrass", false, 4 * PlaygroundTime.Hour, 5, 3, PlaygroundTime.IsDay(time) ? null : time)
+    ];
+
+    private static IEnumerable<PlaygroundDestruction> DefaultScript(ModelTime start) {
+        yield return new("sunflower", new(checked(start.Ticks + 7 * PlaygroundTime.Hour)));
+        yield return new("moongrass", new(checked(start.Ticks + 14 * PlaygroundTime.Hour)));
+        yield return new("sunflower", new(checked(start.Ticks + 17 * PlaygroundTime.Hour)));
+        yield return new("moongrass", new(checked(start.Ticks + 30 * PlaygroundTime.Hour)));
+        yield return new("sunflower", new(checked(start.Ticks + 47 * PlaygroundTime.Hour)));
+    }
+}

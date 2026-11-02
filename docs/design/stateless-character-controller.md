@@ -1,6 +1,6 @@
 # 设计决策：共享无状态角色控制器与游戏维护的动态上下文
 
-状态：用户已采纳的架构方向；ResourceCycle 已实现共享持久 Context、原始操作封套、按角色隔离的经历交付与共用呈现，已接入 Completion 驱动的独立 LLM 决策调用。目标管理及配套决策规约待实施，长期经历召回与完整原生模型工具会话恢复仍延期。
+状态：用户已采纳的架构方向；Playground 已实现共享持久 Context、原始操作封套、按角色隔离的经历交付与共用呈现，已接入 Completion 驱动的独立 LLM 决策调用。目标管理及配套决策规约待实施，长期经历召回与完整原生模型工具会话恢复仍延期。
 
 ## 决策与动机
 
@@ -32,7 +32,7 @@ CharacterController（亦称 Player）负责为指定角色产生决策，**不�
 
 角色自己的猜测、错误记忆或不确定判断也属于角色状态；不能在上下文构造时悄悄用全知真相替换。若标注事件与状态的因果联系，联系本身也需符合已选定的感知规则。
 
-Doc UI 与工具必须遵守同一可见性边界，不能只裁剪文本，却允许展开工具读取全部世界。当前已收敛为指定角色的 `CycleDecisionContext`：观察结果与只读命令校验；后续工具协议仍按实际需求设计。
+Doc UI 与工具必须遵守同一可见性边界，不能只裁剪文本，却允许展开工具读取全部世界。当前已收敛为指定角色的 `PlaygroundDecisionContext`：观察结果与只读命令校验；后续工具协议仍按实际需求设计。
 
 ### 无状态不等于确定性或无副作用
 
@@ -46,7 +46,7 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 ## 一次决策的概念流程
 
-1. 世界产生某角色的决策请求；当前 ResourceCycle 在服务输入期间暂停模型时间。
+1. 世界产生某角色的决策请求；当前 Playground 在服务输入期间暂停模型时间。
 2. 游戏根据角色身份、当前可见状态、相关经历、目标和笔记构造上下文，并绑定该角色可用的工具。
 3. 共享控制器执行本次局部交互，返回行动意图。查询、非法输入不等于接受行动。
 4. 游戏校验并按规则形成具体事实，沿现有转换与发布协议提交。
@@ -56,11 +56,11 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 ## 当前实现与后续范围
 
-- [ICycleCharacterController](../../src/ResourceCycle/CycleActions.cs) 的 `ChooseCommandAsync` 接收 [CycleDecisionContext](../../src/ResourceCycle/CycleObservation.cs)，返回 `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`。上下文包含已保存 Context、角色最新观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
-- [ConsoleCharacterController](../../src/ResourceCycle.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出以及按角色/上下文隔离的临时消费游标，不保存角色的跨决策语义记忆。每次调用读取该角色保存的材料并等待非空行动提交；冒号元命令在 Console 本地处理，游戏解析/合法性拒绝由共享应用层提交。
-- [Human Console 边界](console-command-boundary.md)已将纯行动解析、共享游戏文档和 Console 管理能力分开。`ConsoleMetaCommands.HumanDefault` / `None` 在会话构造时同时控制元命令解析和提示；退出只由 Console 所有者处理。[LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs) 通过同一原始行动 submission 入口提交，不复用 Console 输入循环；每次以完整角色材料构造新请求，返回一个 `act` 操作，仅保留运行计数器，不保留 assistant 历史。
-- [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。成功操作沿用现有服务轮转；纯拒绝保持原服务机会，只递增请求版本，不确认通知或身体警告。
-- Business 根下的 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 保存当前 Context、草稿、待推进关联与待交付经历；`DecisionContextOpened` 通过现有请求仲裁冻结 Opening，再交付控制器。合法零耗时操作追加持久 Item，放行后的经历进入下一 Opening；旧 Continuity 已替换。原始输入与纯拒绝同样持久化，纯拒绝只保留最近 3 次本角色本轮操作的窗口；[CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 从 Opening 与保留 Items 生成完整角色材料，Console 增量仅追加新条目；最新状态预览是独立只读入口，旧滚动文字不参与后续 Context 构造。宿主操作记录不等于完整模型会话；长期笔记和旧经历召回尚未接入。
+- [IPlaygroundCharacterController](../../src/Playground/PlaygroundActions.cs) 的 `ChooseCommandAsync` 接收 [PlaygroundDecisionContext](../../src/Playground/PlaygroundObservation.cs)，返回 `PlaygroundControllerOperation(ToolCallId, RawInput, OperationRecordId)`。上下文包含已保存 Context、角色最新观察与纯 `Check`，不公开完整世界；一个实例仍可服务多个角色。该 API 边界不等于同进程恶意代码隔离。
+- [ConsoleCharacterController](../../src/Playground.Cli/PlayConsole.cs) 可轮流服务多个角色；现有实例保存布局、输入输出以及按角色/上下文隔离的临时消费游标，不保存角色的跨决策语义记忆。每次调用读取该角色保存的材料并等待非空行动提交；冒号元命令在 Console 本地处理，游戏解析/合法性拒绝由共享应用层提交。
+- [Human Console 边界](console-command-boundary.md)已将纯行动解析、共享游戏文档和 Console 管理能力分开。`ConsoleMetaCommands.HumanDefault` / `None` 在会话构造时同时控制元命令解析和提示；退出只由 Console 所有者处理。[LlmCharacterController](../../src/Playground.Completion/LlmCharacterController.cs) 通过同一原始行动 submission 入口提交，不复用 Console 输入循环；每次以完整角色材料构造新请求，返回一个 `act` 操作，仅保留运行计数器，不保留 assistant 历史。
+- [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) 的请求调度与角色 Activity 独立；唤醒不取消活动。成功操作沿用现有服务轮转；纯拒绝保持原服务机会，只递增请求版本，不确认通知或身体警告。
+- Business 根下的 [CharacterInteractionState](../../src/Playground/CharacterContext.cs) 保存当前 Context、草稿、待推进关联与待交付经历；`DecisionContextOpened` 通过现有请求仲裁冻结 Opening，再交付控制器。合法零耗时操作追加持久 Item，放行后的经历进入下一 Opening；旧 Continuity 已替换。原始输入与纯拒绝同样持久化，纯拒绝只保留最近 3 次本角色本轮操作的窗口；[CharacterContextRenderer](../../src/Playground.Cli/CharacterContextRenderer.cs) 从 Opening 与保留 Items 生成完整角色材料，Console 增量仅追加新条目；最新状态预览是独立只读入口，旧滚动文字不参与后续 Context 构造。宿主操作记录不等于完整模型会话；长期笔记和旧经历召回尚未接入。
 
 后续实现可用以下行为验收本决策：A/B 角色交替使用同一控制器不串记忆；替换控制器实例后显式角色记忆仍可用；文本与工具都不泄漏未授权信息；中断后的 pending E 恢复不再次调用控制器。更换 LLM 后得到完全相同的行动不属于验收要求。
 
@@ -70,16 +70,16 @@ LLM 调用仍是外部操作，重试可能产生不同结果。尚未记录的�
 
 | 声明位置 | 旧标识符 | 当前标识符 |
 | --- | --- | --- |
-| `src/ResourceCycle/CycleActions.cs` 接口 | `ICycleDecisionSource` | `ICycleCharacterController` |
+| `src/Playground/PlaygroundActions.cs` 接口 | `ICycleDecisionSource` | `IPlaygroundCharacterController` |
 | 上述接口方法及其实现 | `ChooseAsync` | `ChooseCommandAsync` |
-| `src/ResourceCycle.Cli/PlayConsole.cs` 嵌套类 | `ConsoleDecisionSource` | `ConsoleCharacterController` |
-| `src/ResourceCycle/CycleEngine.cs` 的 `CreateKernel` 参数 | `decisionSource` | `characterController` |
-| 同文件 `CycleRule` 主构造参数 | `decisionSource` | `characterController` |
-| `tests/ResourceCycle.Tests/CycleTestSupport.cs` 嵌套类 | `Source` | `StubCharacterController` |
-| `tests/ResourceCycle.Tests/CycleStorageShapeTests.cs` 嵌套类 | `WaitSource` | `WaitingCharacterController` |
-| `tests/ResourceCycle.Tests/CyclePersistenceTests.cs` 嵌套类 | `WaitSource` | `WaitingCharacterController` |
-| `tests/ResourceCycle.Tests/PlayableCycleTests.cs` 嵌套类 | `GatedSource` | `GatedCharacterController` |
-| `tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs` 嵌套类 | `GatedContinue` | `GatedContinueCharacterController` |
+| `src/Playground.Cli/PlayConsole.cs` 嵌套类 | `ConsoleDecisionSource` | `ConsoleCharacterController` |
+| `src/Playground/PlaygroundEngine.cs` 的 `CreateKernel` 参数 | `decisionSource` | `characterController` |
+| 同文件 `PlaygroundRule` 主构造参数 | `decisionSource` | `characterController` |
+| `tests/Playground.Tests/PlaygroundTestSupport.cs` 嵌套类 | `Source` | `StubCharacterController` |
+| `tests/Playground.Tests/PlaygroundStorageShapeTests.cs` 嵌套类 | `WaitSource` | `WaitingCharacterController` |
+| `tests/Playground.Tests/PlaygroundPersistenceTests.cs` 嵌套类 | `WaitSource` | `WaitingCharacterController` |
+| `tests/Playground.Tests/PlayableCycleTests.cs` 嵌套类 | `GatedSource` | `GatedCharacterController` |
+| `tests/Playground.Tests/MultiplayerRecoveryTests.cs` 嵌套类 | `GatedContinue` | `GatedContinueCharacterController` |
 
 两个 `WaitSource` 和两个 `decisionSource` 是独立声明，均已分别改名。`actorId`、`NeedsDecision`、`DecisionGeneration` 等保留其准确含义，无需为统一词根而改名。
 

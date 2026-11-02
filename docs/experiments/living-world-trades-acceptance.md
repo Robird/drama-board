@@ -1,5 +1,7 @@
 # 山野镇居民报价验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，基于 `44ddf70` 后的本提交工作树，Windows / SDK 10.0.201 / Release，GameRevision 21。本片补齐 [C2/C4](../codex-goals/living-world/README.md) 的居民交易，未完成整个 Goal；剩余内容绑定、产品归档、Gym 与真实模型运行见[工作计划](../codex-goals/living-world/work-plan.md)。
 
 ## 实现范围
@@ -10,7 +12,7 @@
 
 只有参与者能看到条款；内部交付标记不进入角色材料。可见候选检查不探测对方私产，实际提交才全量检查。终态在实际 Opening 交付后保留至后续回收；若回收改变另一方仍打开的材料，同一事实追加非操作观察项，不伪造操作、经历或决策代次。
 
-源码入口：[交易状态](../../src/ResourceCycle/CycleTradeState.cs)、[规则](../../src/ResourceCycle/CycleTradeRules.cs)、[独立事实校验](../../src/ResourceCycle/CycleTradeValidation.cs)、[材料交付](../../src/ResourceCycle/CycleInteractionRules.cs)、[Console](../../src/ResourceCycle.Cli/TradeView.cs)。完整合同见[经济设计](../codex-goals/living-world/economy.md)。
+源码入口：[交易状态](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleTradeState.cs)、[规则](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleTradeRules.cs)、[独立事实校验](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleTradeValidation.cs)、[材料交付](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleInteractionRules.cs)、[Console](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/TradeView.cs)。完整合同见[经济设计](../codex-goals/living-world/economy.md)。
 
 ## 工程验证与独立审查
 
@@ -22,7 +24,7 @@
 | ResourceCycle.Cli.Tests 完整运行 | 396 通过，0 失败/跳过 |
 | ResourceCycle.Completion.Tests，排除 LiveE2E/LocalE2E | 45 通过，0 失败/跳过；离线证据 |
 
-新领域测试 16 项来自[独立验收](../../tests/ResourceCycle.Tests/HillsideTradeAcceptanceTests.cs)与[规则/反例回归](../../tests/ResourceCycle.Tests/HillsideTradeTests.cs)：普通操作成交、E-only 不重 Plan/控制器、重复提交、旁观者拒绝、无预留与完整支付、生产双结局容量、到期优先、远方死亡、跨 Context 身份、伪造条款/交付/额外资产、途中限制、完整终态回收、天气同时两人死亡和批量到期。每步对照增量预测与 Rebuild，独立核对资产账。
+新领域测试 16 项来自[独立验收](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideTradeAcceptanceTests.cs)与[规则/反例回归](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideTradeTests.cs)：普通操作成交、E-only 不重 Plan/控制器、重复提交、旁观者拒绝、无预留与完整支付、生产双结局容量、到期优先、远方死亡、跨 Context 身份、伪造条款/交付/额外资产、途中限制、完整终态回收、天气同时两人死亡和批量到期。每步对照增量预测与 Rebuild，独立核对资产账。
 
 新 CLI 测试 12 项覆盖双布局条款/方向/终态/私有资产、真实宿主配离线 Completion fixture 的报价与接受、生产中接受、精确冻结材料冷开。它们不代表真实模型合作。
 

@@ -24,13 +24,13 @@ Console 展示更新（2026-10-29）：本文原定的清屏已替换为带角�
 
 | 当前入口 | 事实与改动原因 |
 | --- | --- |
-| [CycleActions](../../src/ResourceCycle/CycleActions.cs) | `ChooseCommandAsync` 返回一条 `CycleCommand`；`NeedsDecision` 依据活动、移动和待确认感知，不存在回合对象。 |
-| [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | `go / wait / gather` 在当前模型时刻接受并启动过程，时间由后续发生项推进；`use / cancel` 是即时效果。 |
-| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 请求决策在 Plan 中调用控制器；同刻自然事件和活动结算先于输入，已有按角色轮转规则。 |
-| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) | `DecisionGeneration` 是预测请求版本；`LastResult` 是会被后续操作覆盖的文本，不能承担稳定的跨回合因果记录。 |
-| [CycleObservation](../../src/ResourceCycle/CycleObservation.cs) | 运行时角色观察和纯命令校验，不公开完整世界；目前没有结构化的上次行动结果包。 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) | 按观察时间变化或切换角色清屏；首次展示不清屏；这只是现有启发式，不能代表新回合身份。 |
-| [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 单根 E/S 发布，pending E 恢复不重做 Plan 或控制器；本方案沿用该路径。 |
+| [PlaygroundActions](../../src/Playground/PlaygroundActions.cs) | `ChooseCommandAsync` 返回一条 `PlaygroundCommand`；`NeedsDecision` 依据活动、移动和待确认感知，不存在回合对象。 |
+| [PlaygroundPlanning](../../src/Playground/PlaygroundPlanning.cs) | `go / wait / gather` 在当前模型时刻接受并启动过程，时间由后续发生项推进；`use / cancel` 是即时效果。 |
+| [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) | 请求决策在 Plan 中调用控制器；同刻自然事件和活动结算先于输入，已有按角色轮转规则。 |
+| [PlaygroundCharacter](../../src/Playground/PlaygroundCharacter.cs) | `DecisionGeneration` 是预测请求版本；`LastResult` 是会被后续操作覆盖的文本，不能承担稳定的跨回合因果记录。 |
+| [PlaygroundObservation](../../src/Playground/PlaygroundObservation.cs) | 运行时角色观察和纯命令校验，不公开完整世界；目前没有结构化的上次行动结果包。 |
+| [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) | 按观察时间变化或切换角色清屏；首次展示不清屏；这只是现有启发式，不能代表新回合身份。 |
+| [PlaygroundDurableHistory](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) | 单根 E/S 发布，pending E 恢复不重做 Plan 或控制器；本方案沿用该路径。 |
 
 ## 3. 交互合同
 
@@ -80,10 +80,10 @@ Console 展示更新（2026-10-29）：本文原定的清屏已替换为带角�
 
 ### 4.1 数据归属
 
-每角色保存一个 `CycleDecisionContinuity`，挂在 `CycleCharacter` 下，随现有 Business 根发布；不另建领域存储、不修改 Kernel 时间模型。形状：
+每角色保存一个 `PlaygroundDecisionContinuity`，挂在 `PlaygroundCharacter` 下，随现有 Business 根发布；不另建领域存储、不修改 Kernel 时间模型。形状：
 
 ```text
-CycleDecisionContinuity
+PlaygroundDecisionContinuity
   ContextSequence             当前/最近一次上下文的角色内递增编号
   Incoming                    当前回合固定继承的上次结果，可空
   DraftHandoff                本回合准备交给下次的文字，可空
@@ -94,7 +94,7 @@ CycleDecisionContinuity
 
 `Incoming` 是封存结果；本轮补给、取消、编辑交接文字都不能重算或覆盖它。接受下一次放行行动后旧 Incoming 从当前图移除，以新 Pending 替换；不存在跨回合无限增长的链表。活动自身继续保存在原领域模型。
 
-Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 ToolCallId/操作记录引用，便于验收关联和避免错误串用；新游戏编号从 1 开始。它们只保留相关来源，不复制整个操作记录流。实现时所有 `CycleCharacter` 构造、Change、WithSurvival、Notify 路径必须保留或显式替换连续性对象，遵守现有不可变快照约定，不能在已发布对象上就地编辑草稿或累计字段。
+Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 ToolCallId/操作记录引用，便于验收关联和避免错误串用；新游戏编号从 1 开始。它们只保留相关来源，不复制整个操作记录流。实现时所有 `PlaygroundCharacter` 构造、Change、WithSurvival、Notify 路径必须保留或显式替换连续性对象，遵守现有不可变快照约定，不能在已发布对象上就地编辑草稿或累计字段。
 
 ### 4.2 Pending 与封存结果
 
@@ -103,7 +103,7 @@ Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 To
 结果包包含：
 
 - 行动记录及接受时的有限基线：身体需求值、背包物品数量、已知位置与活动进度。
-- 本段期间固定白名单的结构化汇总：自身采集所得、已感知天气次数及实际保暖损失、昼夜变化次数；不保存逐事件列表、整个 `CycleFact`、角色对象或 World 引用。
+- 本段期间固定白名单的结构化汇总：自身采集所得、已感知天气次数及实际保暖损失、昼夜变化次数；不保存逐事件列表、整个 `PlaygroundFact`、角色对象或 World 引用。
 - 交付时刻、唤醒原因集合（允许同刻多个原因）、交付时身体/背包/位置与活动进度，以及活动仍在进行/已结束/终局状态。
 - 提交行动时附带的交接文字，明确标记为角色的主观记录。
 
@@ -111,7 +111,7 @@ Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 To
 
 摘要采用确定性规则，不调用 LLM。第一版只实现下表的固定字段；不建设近期事件队列、省略计数、可配置订阅或通用日志摘要器。采集只累计本段关联活动的物品与数量；天气分类使用当前有限枚举。计数/累计量使用非负 long，溢出饱和并附 `IsSaturated`，展示为下界；身份编号使用 checked 递增、达到上限拒绝新的放行行动，不绕回重复。身体端点保存原领域精度。固定类别及有界背包键确保数据不随运行时长线性增长；新玩法需要新信息时再显式扩充。
 
-首片收集白名单如下。读取顺序为行动/自然规划 → 生存补全 → 地点观察 → 连续性补全；连续性补全读取最终具体效果和规划分支已知的原因，写入同一事实。这里没有现成的通用“角色事件过滤器”，不把 `CyclePlanning.Observe` 当成它。
+首片收集白名单如下。读取顺序为行动/自然规划 → 生存补全 → 地点观察 → 连续性补全；连续性补全读取最终具体效果和规划分支已知的原因，写入同一事实。这里没有现成的通用“角色事件过滤器”，不把 `PlaygroundPlanning.Observe` 当成它。
 
 | 事实/分支 | 可写入的角色及摘要 | 是否形成返回原因 |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 To
 | `SurvivalWarning` | 仅对应角色的警告指标集合 | `SurvivalWarning`；同刻可合并多个指标。 |
 | `WeatherResolved` | 仅该事实对应角色的天气次数、实际已结算的保暖损失；庇护免损失如实记零 | 普通天气本身不唤醒；若死亡则含 `Terminal`。 |
 | `LightChanged` | 已启用且原事实已替换身体状态的角色，记录昼夜变化次数 | 本身不唤醒；后续身体警告另记。 |
-| 已记录给本角色的 `CycleNotice` | 仅原事实已通知的角色，收集 `CollectorJoined / ResourceDepleted` 原因；不镜像他人私有行动 | 按现有 NeedsDecision 语义唤醒；保留现有通知的去重身份。 |
+| 已记录给本角色的 `PlaygroundNotice` | 仅原事实已通知的角色，收集 `CollectorJoined / ResourceDepleted` 原因；不镜像他人私有行动 | 按现有 NeedsDecision 语义唤醒；保留现有通知的去重身份。 |
 | `SurvivalFailed` 或逃离/死亡结果 | 终局状态与已记录原因 | `Terminal`，封存结果，不再开可行动回合。 |
 | 资源再生、远处库存及其他不在表中的变化 | 不收录过程摘要；当前可见状态仍由正常观察显示 | 不新增唤醒。 |
 
@@ -137,7 +137,7 @@ Pending/Incoming 都记录源上下文编号、角色身份与放行操作的 To
 
 编辑文字不确认警告、不改变活动/身体基线、不触发随机抽样。实现时不能直接套用当前“除 ItemUsed 外所有角色决定确认身体警告”的规则；必须明确将交接编辑排除。文字只是数据，不能当成系统指令、游戏事实或可执行命令。
 
-领域合法性同时要求连续性功能已启用、旅程未结束、角色已有决策机会；途中警告暂停时允许编辑，须扩展当前仅 `Continue / Use` 的途中白名单。功能未启用时在 `CycleActions.Check` 拒绝，不能仅靠布局隐藏。编辑不会让原本正在自动模拟的角色主动获得决策机会。帮助、命令校验与两种布局使用同一启用条件。
+领域合法性同时要求连续性功能已启用、旅程未结束、角色已有决策机会；途中警告暂停时允许编辑，须扩展当前仅 `Continue / Use` 的途中白名单。功能未启用时在 `PlaygroundActions.Check` 拒绝，不能仅靠布局隐藏。编辑不会让原本正在自动模拟的角色主动获得决策机会。帮助、命令校验与两种布局使用同一启用条件。
 
 长期笔记和召回不是 DraftHandoff 的扩容版本，本切片不提供；以后按独立需求设计。
 
@@ -156,7 +156,7 @@ ToolCallId 是一次控制器操作的关联标识，按不透明字符串处理
 
 #### 操作封套与记录范围
 
-控制器边界返回 `CycleControllerOperation(ToolCallId, Command, OperationRecordId)`，不将 ID 填进每种玩法命令参数；命令合法性查询仍只读。宿主记录同时携带 ActorId、可选的上下文身份、来源调用批次及原操作内容，用 OperationRecordId 定位具体发生的那一次；ToolCallId 不假定在所有端点、所有会话间全局唯一。调用批次/操作记录身份由宿主生成并保存，不占用游戏随机流，不用裸 ToolCallId 做全局业务主键。
+控制器边界返回 `PlaygroundControllerOperation(ToolCallId, Command, OperationRecordId)`，不将 ID 填进每种玩法命令参数；命令合法性查询仍只读。宿主记录同时携带 ActorId、可选的上下文身份、来源调用批次及原操作内容，用 OperationRecordId 定位具体发生的那一次；ToolCallId 不假定在所有端点、所有会话间全局唯一。调用批次/操作记录身份由宿主生成并保存，不占用游戏随机流，不用裸 ToolCallId 做全局业务主键。
 
 同一调用批次中重复 ID、同一已登记操作引用却改变工具名或参数，作为协议冲突拒绝，不能覆盖旧记录或重新执行。传输重送/恢复已登记操作时沿用原记录和结果；来自一次新的模型生成的调用，哪怕参数相同，也不是旧调用的重送。跨批次重号由宿主记录作用域区分；若要把这些历史拼到同一端点请求，格式与冲突映射由 Completion 处理，DramaBoard 不给旧 ToolCallId 擅加前缀。
 
@@ -191,11 +191,11 @@ ToolCallId 是一次控制器操作的关联标识，按不透明字符串处理
 
 ### 5.1 保留逐事件提交，不在控制器内部推进 Kernel
 
-保留控制器逐条返回意图的边界，但按 §4.4 将返回值扩为携带 ToolCallId 的操作封套，并扩展 `CycleCommandKind` 支持交接编辑；不能继续只返回会丢失来源 ID 的裸命令。不为整回合创建可执行 Kernel 的控制器接口。零耗时操作提交后，宿主以同一个上下文身份再次请求操作。未来 LLM 适配器可据此组织局部 tool-loop，本片不实现端点会话管理器。
+保留控制器逐条返回意图的边界，但按 §4.4 将返回值扩为携带 ToolCallId 的操作封套，并扩展 `PlaygroundCommandKind` 支持交接编辑；不能继续只返回会丢失来源 ID 的裸命令。不为整回合创建可执行 Kernel 的控制器接口。零耗时操作提交后，宿主以同一个上下文身份再次请求操作。未来 LLM 适配器可据此组织局部 tool-loop，本片不实现端点会话管理器。
 
 每次接受放行行动，应用层同时规划行动效果与新的 Pending；白名单内的发生项同时规划 Pending 的固定摘要更新。E 已包含具体的新业务状态，Fold 只应用记录，Complete 只维护派生预测，观察和布局均只读。不能在渲染、控制器查询或冷开加载时顺便生成/消费交接状态。
 
-纯交接编辑与 ContextOpened 使用独立事实分支，绕过通用 `CycleSurvivalRules.Enrich` 和 `CyclePlanning.Observe`，不刷新身体锚点、确认通知或重写地点记忆。新增事实校验限制变化为连续性对象与请求代数；交接编辑沿合法角色命令的既有 LastServedActorId 更新规则，ContextOpened 不改服务游标。世界时间、活动、库存、空间、身体、通知、LastResult 及其他业务字段保持原值。编辑成功的显示反馈来自该事实的 Result/当前草稿，不覆盖角色的上次玩法结果。
+纯交接编辑与 ContextOpened 使用独立事实分支，绕过通用 `PlaygroundSurvivalRules.Enrich` 和 `PlaygroundPlanning.Observe`，不刷新身体锚点、确认通知或重写地点记忆。新增事实校验限制变化为连续性对象与请求代数；交接编辑沿合法角色命令的既有 LastServedActorId 更新规则，ContextOpened 不改服务游标。世界时间、活动、库存、空间、身体、通知、LastResult 及其他业务字段保持原值。编辑成功的显示反馈来自该事实的 Result/当前草稿，不覆盖角色的上次玩法结果。
 
 ### 5.2 交付边界
 
@@ -244,9 +244,9 @@ E 与 S 仍是两个磁盘边界；“同时保存”指一个发生项的具体
 
 | 切片 | 主要文件/职责 | 验收出口 |
 | --- | --- | --- |
-| A：领域数据与规划 | 新增连续性/行动结果值模型、操作封套及事实来源 ID；`CycleCharacter`、`CycleActions`、`CyclePlanning`、`CycleSurvivalRules`、`CycleFact`、`CycleFactApplication` | 放行分类、草稿生命周期、固定摘要、操作/结果配对、可见性与事实形状合同；不改玩法数值。 |
-| B：交付与持久恢复 | `CycleEngine`、`CyclePredictionMaintenance`、工厂、持久模型注册、GameRevision、Schema 历史 | 同刻排序、ContextOpened 恰好一个已提交身份；真实 S-only / pending E 恢复与 oracle 对照。 |
-| C：操作入口、观察与 Console | `CycleObservation`、`PlayInput`、`PlayConsole`、最小宿主操作记录、两种 layout 与帮助 | Console 隐式 ID、接收/结果保存、记录缺口与领域提交对照、手动交接、按身份清屏；不锁排版。 |
+| A：领域数据与规划 | 新增连续性/行动结果值模型、操作封套及事实来源 ID；`PlaygroundCharacter`、`PlaygroundActions`、`PlaygroundPlanning`、`PlaygroundSurvivalRules`、`PlaygroundFact`、`PlaygroundFactApplication` | 放行分类、草稿生命周期、固定摘要、操作/结果配对、可见性与事实形状合同；不改玩法数值。 |
+| B：交付与持久恢复 | `PlaygroundEngine`、`PlaygroundPredictionMaintenance`、工厂、持久模型注册、GameRevision、Schema 历史 | 同刻排序、ContextOpened 恰好一个已提交身份；真实 S-only / pending E 恢复与 oracle 对照。 |
+| C：操作入口、观察与 Console | `PlaygroundObservation`、`PlayInput`、`PlayConsole`、最小宿主操作记录、两种 layout 与帮助 | Console 隐式 ID、接收/结果保存、记录缺口与领域提交对照、手动交接、按身份清屏；不锁排版。 |
 | D：验收与状态收敛 | 针对性测试、既有 smoke、独立 Console 试玩、更新状态与合同 | 机械连续性及无回归；明确没有 LLM 效果证据。 |
 
 A/B 是同一最小可运行领域切片的施工拆分，不能发布只有数据字段却没有恢复合同的半成品。建议不动 Kernel/Spatial/DurableGraph 核心，不引入通用消息总线、组件框架或持久工具运行时。新语义升级应用 GameRevision 和受影响 Schema；沿用当前开发存档无兼容要求的政策，实施说明要求新存档，不顺带建设旧存档迁移。
@@ -283,11 +283,11 @@ A/B 是同一最小可运行领域切片的施工拆分，不能发布只有数�
 
 | 职责 | 实现 |
 | --- | --- |
-| 角色连续性与固定值模型（原切片） | 原 `CycleDecisionContinuity` 仅包含本次 Pending 或固定 Incoming、草稿及身份；现由 [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) 替换。 |
-| 规划与封存（原切片） | 原 `CycleContinuityRules` 已由 [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs) 替换；[CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 仍在 RequestDecision 分支先提交 ContextOpened，再服务控制器。 |
-| 来源身份与事实校验 | [CycleActions](../../src/ResourceCycle/CycleActions.cs)、[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)，元数据事实与跨图字段比较独立于呈现。 |
-| 宿主记录与修复 | [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs)；[ReadCommittedOperations](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 从已完成 S 覆盖的 E 中查询缺结果记录，不把 pending 当已完成。允许从非零模拟版本的快照建新仓库，只扫描本仓库已有历史。 |
-| 展示（现行接线） | [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[ContextHistoryPlayView](../../src/ResourceCycle.Cli/ContextHistoryPlayView.cs)；历史改读冻结 Opening 和经历，完整呈现边界仍按新方案实施。 |
+| 角色连续性与固定值模型（原切片） | 原 `PlaygroundDecisionContinuity` 仅包含本次 Pending 或固定 Incoming、草稿及身份；现由 [CharacterInteractionState](../../src/Playground/CharacterContext.cs) 替换。 |
+| 规划与封存（原切片） | 原 `PlaygroundContinuityRules` 已由 [PlaygroundInteractionRules](../../src/Playground/PlaygroundInteractionRules.cs) 替换；[PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) 仍在 RequestDecision 分支先提交 ContextOpened，再服务控制器。 |
+| 来源身份与事实校验 | [PlaygroundActions](../../src/Playground/PlaygroundActions.cs)、[PlaygroundFactApplication](../../src/Playground/PlaygroundFactApplication.cs)，元数据事实与跨图字段比较独立于呈现。 |
+| 宿主记录与修复 | [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs)；[ReadCommittedOperations](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) 从已完成 S 覆盖的 E 中查询缺结果记录，不把 pending 当已完成。允许从非零模拟版本的快照建新仓库，只扫描本仓库已有历史。 |
+| 展示（现行接线） | [PlayConsole](../../src/Playground.Cli/PlayConsole.cs)、[ContextHistoryPlayView](../../src/Playground.Cli/ContextHistoryPlayView.cs)；历史改读冻结 Opening 和经历，完整呈现边界仍按新方案实施。 |
 
 本片保留完整 Doc UI 追加输出；没有增量渲染、`:end` 或动作后收尾阶段。试玩只证明 Console 流程、可理解性与持久恢复，不证明真实 LLM 决策效果、端点映射或 prompt-cache 命中。
 

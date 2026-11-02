@@ -4,7 +4,7 @@
 
 ## 1. 一次提交一项操作
 
-沿用 `ICycleCharacterController` 返回原始 `CycleControllerOperation`、Completion 单 `act(command)` 的入口。首版使用**固定命令名 + 一个严格 JSON 对象**，不再设计 shell quoting、批处理数组、条件表达式、JSON Patch 或可执行脚本。Human Console 使用相同文本；帮助提供可复制示例。
+沿用 `IPlaygroundCharacterController` 返回原始 `PlaygroundControllerOperation`、Completion 单 `act(command)` 的入口。首版使用**固定命令名 + 一个严格 JSON 对象**，不再设计 shell quoting、批处理数组、条件表达式、JSON Patch 或可执行脚本。Human Console 使用相同文本；帮助提供可复制示例。
 
 ```text
 create-goal {"title":"给同伴两份水","criteria":"同伴实际收到两份水","nextStep":"先去溪流补水","focus":true}
@@ -55,7 +55,7 @@ Fact 保存完整已决定效果及冻结材料，Fold 按既有方式核验与�
 
 ## 3. 交互元数据与世界时间
 
-[CycleInteractionRules](../../../src/ResourceCycle/CycleInteractionRules.cs)、[CycleActions](../../../src/ResourceCycle/CycleActions.cs) 和 [CycleFactApplication](../../../src/ResourceCycle/CycleFactApplication.cs) 已为 handoff 提供所需参照：
+[PlaygroundInteractionRules](../../../src/Playground/PlaygroundInteractionRules.cs)、[PlaygroundActions](../../../src/Playground/PlaygroundActions.cs) 和 [PlaygroundFactApplication](../../../src/Playground/PlaygroundFactApplication.cs) 已为 handoff 提供所需参照：
 
 | 情况 | 目标/物理状态 | 交互和服务 |
 | --- | --- | --- |
@@ -65,22 +65,22 @@ Fact 保存完整已决定效果及冻结材料，Fold 按既有方式核验与�
 
 因此 show 是**目标与世界只读、交互有记录**的查询。纯详情投影函数无副作用，但提交 show 不等于无 E/S 写入。这样下一次独立模型调用、S 冷开和 E-only 恢复都能获得同一次查询材料，不需要额外本地 tool-loop。
 
-所有目标操作只在角色已有合法输入机会时可用，不能主动唤醒正忙且无感知的角色。[CycleActions.Check](../../../src/ResourceCycle/CycleActions.cs) 已将目标操作纳入途中输入白名单；移动仍不可取消。编辑/show 不推进 ModelTime、不释放模拟、不清除身体/通信/资源待响应警告、不改变活动期限、库存或随机流；其他角色可在同 tick 获得轮流输入，不等于自动推进时间。
+所有目标操作只在角色已有合法输入机会时可用，不能主动唤醒正忙且无感知的角色。[PlaygroundActions.Check](../../../src/Playground/PlaygroundActions.cs) 已将目标操作纳入途中输入白名单；移动仍不可取消。编辑/show 不推进 ModelTime、不释放模拟、不清除身体/通信/资源待响应警告、不改变活动期限、库存或随机流；其他角色可在同 tick 获得轮流输入，不等于自动推进时间。
 
 沿用宿主调用/连续协议失败预算与 Kernel 同刻转换护栏，不把瞬时目标操作算作通信发送额度，也不因 show、拒绝或 no-op 返还预算。宿主调用计数与角色业务状态是不同层次，不将现有每进程预算夸大为跨冷开持久预算；Kernel 的既有同刻护栏仍按当前恢复合同工作。
 
 ## 4. 当前实现入口与边界
 
-局部模型与规则为 [GoalModel / GoalLimits](../../../src/Goals/GoalModel.cs)、[GoalRules](../../../src/Goals/GoalRules.cs) 和 [GoalReceipt](../../../src/Goals/GoalReceipt.cs)；[CycleGoalInteractionRules](../../../src/ResourceCycle/CycleGoalInteractionRules.cs) 组合角色私有替换、冻结观察与原操作身份，并对记录效果作纯规则比对。
+局部模型与规则为 [GoalModel / GoalLimits](../../../src/Goals/GoalModel.cs)、[GoalRules](../../../src/Goals/GoalRules.cs) 和 [GoalReceipt](../../../src/Goals/GoalReceipt.cs)；[PlaygroundGoalInteractionRules](../../../src/Playground/PlaygroundGoalInteractionRules.cs) 组合角色私有替换、冻结观察与原操作身份，并对记录效果作纯规则比对。
 
 | 当前入口 | 接线职责 |
 | --- | --- |
-| [CycleCommandParser](../../../src/ResourceCycle/CycleCommandParser.cs)、[CycleEngine](../../../src/ResourceCycle/CycleEngine.cs) | 严格语法、角色权威校验、目标交互分派；按操作形状组织代码，不无限增加互斥可选参数 |
-| [CharacterInteractionState](../../../src/ResourceCycle/CharacterContext.cs) 与应用工厂 | 独立目标集合/计数及不可变材料，创建/冷开/新 Context 均一致 |
-| CycleFact / CycleFactApplication / CycleInteractionValidation | 目标替换与操作摘要、状态/容量/Focus/世界不变校验；pending 恢复只用记录效果 |
-| [CycleOperationResults](../../../src/ResourceCycle/CycleOperationResults.cs)、[ReadCommittedOperations](../../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 目标操作优先投影 typed receipt，覆盖没有 ObservedEvents 的成功/show/no-op；同源用于日志冷开补录 |
-| [CycleObservation](../../../src/ResourceCycle/CycleObservation.cs)、观察相等比较与冻结验证 | 只观察本人目标，快照不原地变异，覆盖无变化和其他角色隔离 |
-| [CharacterContextRenderer](../../../src/ResourceCycle.Cli/CharacterContextRenderer.cs)、布局与 delta | 实现目标单次当前投影、有限回执及最近有效 show；见容量文档，不把视图窗口当存储回收 |
-| [LlmCharacterController](../../../src/ResourceCycle.Completion/LlmCharacterController.cs) | 继续单 act；能力可用时替换长期 handoff 提示，保留实际系统提示词和模型材料证据 |
+| [PlaygroundCommandParser](../../../src/Playground/PlaygroundCommandParser.cs)、[PlaygroundEngine](../../../src/Playground/PlaygroundEngine.cs) | 严格语法、角色权威校验、目标交互分派；按操作形状组织代码，不无限增加互斥可选参数 |
+| [CharacterInteractionState](../../../src/Playground/CharacterContext.cs) 与应用工厂 | 独立目标集合/计数及不可变材料，创建/冷开/新 Context 均一致 |
+| PlaygroundFact / PlaygroundFactApplication / PlaygroundInteractionValidation | 目标替换与操作摘要、状态/容量/Focus/世界不变校验；pending 恢复只用记录效果 |
+| [PlaygroundOperationResults](../../../src/Playground/PlaygroundOperationResults.cs)、[ReadCommittedOperations](../../../src/Playground/Persistence/PlaygroundDurableHistory.cs) | 目标操作优先投影 typed receipt，覆盖没有 ObservedEvents 的成功/show/no-op；同源用于日志冷开补录 |
+| [PlaygroundObservation](../../../src/Playground/PlaygroundObservation.cs)、观察相等比较与冻结验证 | 只观察本人目标，快照不原地变异，覆盖无变化和其他角色隔离 |
+| [CharacterContextRenderer](../../../src/Playground.Cli/CharacterContextRenderer.cs)、布局与 delta | 实现目标单次当前投影、有限回执及最近有效 show；见容量文档，不把视图窗口当存储回收 |
+| [LlmCharacterController](../../../src/Playground.Completion/LlmCharacterController.cs) | 继续单 act；能力可用时替换长期 handoff 提示，保留实际系统提示词和模型材料证据 |
 
 局部目标数据与规则不依赖具体地图/植物/角色名，先在应用中形成边界；本轮不为此增加 Kernel 概念、通用规划器或新的公共程序集。生产类如何拆文件由实现者决定；原子性、恢复、权限及材料合同不能因文件组织改变。

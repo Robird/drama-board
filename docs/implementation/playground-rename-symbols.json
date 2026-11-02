@@ -1,0 +1,1399 @@
+{
+  "baseline": "8401bf0",
+  "symbols": [
+    {
+      "old": "CycleActions",
+      "new": "PlaygroundActions",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActions.cs",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "old": "CycleActivity",
+      "new": "PlaygroundActivity",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "old": "CycleActivityKind",
+      "new": "PlaygroundActivityKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleActorObservation",
+      "new": "PlaygroundActorObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "old": "CycleAttributeForecast",
+      "new": "PlaygroundAttributeForecast",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleAttributeForecast.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleAttributeView",
+      "new": "PlaygroundAttributeView",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleAttributeView.cs",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "old": "CycleBackground",
+      "new": "PlaygroundBackground",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleBackground.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleBackgroundTests",
+      "new": "PlaygroundBackgroundTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleBackgroundTests.cs",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "old": "CycleBehaviorTests",
+      "new": "PlaygroundBehaviorTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleBehaviorTests.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleBinding",
+      "new": "PlaygroundBinding",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleForecasts.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleBodyDefinition",
+      "new": "PlaygroundBodyDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "old": "CycleBranchForkResult",
+      "new": "PlaygroundBranchForkResult",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleBranchBoundary.cs",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "old": "CycleBranchInfo",
+      "new": "PlaygroundBranchInfo",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleBranchBoundary.cs",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "old": "CycleBusinessState",
+      "new": "PlaygroundBusinessState",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "old": "CycleCharacter",
+      "new": "PlaygroundCharacter",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 108
+        }
+      ]
+    },
+    {
+      "old": "CycleCharacterEnding",
+      "new": "PlaygroundCharacterEnding",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacterEnding.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleCommand",
+      "new": "PlaygroundCommand",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActions.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleCommandCheck",
+      "new": "PlaygroundCommandCheck",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "old": "CycleCommandKind",
+      "new": "PlaygroundCommandKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActions.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleCommandParser",
+      "new": "PlaygroundCommandParser",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCommandParser.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleCommandParserTests",
+      "new": "PlaygroundCommandParserTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "old": "CycleCommittedOperation",
+      "new": "PlaygroundCommittedOperation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleCommittedOperation.cs",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "old": "CycleCommunicationObservation",
+      "new": "PlaygroundCommunicationObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 185
+        }
+      ]
+    },
+    {
+      "old": "CycleCommunicationRules",
+      "new": "PlaygroundCommunicationRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCommunicationRules.cs",
+          "line": 26
+        }
+      ]
+    },
+    {
+      "old": "CycleCommunicationState",
+      "new": "PlaygroundCommunicationState",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCommunicationRules.cs",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "old": "CycleCompletionTests",
+      "new": "PlaygroundCompletionTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleCompletionTests.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleContextDiagnostics",
+      "new": "PlaygroundContextDiagnostics",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleContextDiagnostics.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleControllerOperation",
+      "new": "PlaygroundControllerOperation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActions.cs",
+          "line": 57
+        }
+      ]
+    },
+    {
+      "old": "CycleDecisionBoundary",
+      "new": "PlaygroundDecisionBoundary",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleBranchBoundary.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleDecisionContext",
+      "new": "PlaygroundDecisionContext",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleDefinitionRuntime",
+      "new": "PlaygroundDefinitionRuntime",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 299
+        }
+      ]
+    },
+    {
+      "old": "CycleDestruction",
+      "new": "PlaygroundDestruction",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 41
+        }
+      ]
+    },
+    {
+      "old": "CycleDiagnosticRecord",
+      "new": "PlaygroundDiagnosticRecord",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleContextDiagnostics.cs",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "old": "CycleDiagnostics",
+      "new": "PlaygroundDiagnostics",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleDiagnostics.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleDurableEvent",
+      "new": "PlaygroundDurableEvent",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleDurableEvent.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleDurableHistory",
+      "new": "PlaygroundDurableHistory",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleDurableHistory.cs",
+          "line": 13
+        },
+        {
+          "file": "src/ResourceCycle/Persistence/CycleBranchBoundary.cs",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "old": "CycleDurableModels",
+      "new": "PlaygroundDurableModels",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleDurableModels.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleDurableRoot",
+      "new": "PlaygroundDurableRoot",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleDurableRoot.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleEconomicTotals",
+      "new": "PlaygroundEconomicTotals",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyState.cs",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "old": "CycleEconomyObservation",
+      "new": "PlaygroundEconomyObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyObservation.cs",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "old": "CycleEconomyRules",
+      "new": "PlaygroundEconomyRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyRules.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleEconomyState",
+      "new": "PlaygroundEconomyState",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyState.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleEconomyValidation",
+      "new": "PlaygroundEconomyValidation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyValidation.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleEngine",
+      "new": "PlaygroundEngine",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEngine.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleEnvironment",
+      "new": "PlaygroundEnvironment",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEnvironment.cs",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "old": "CycleEnvironmentRules",
+      "new": "PlaygroundEnvironmentRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEnvironment.cs",
+          "line": 73
+        }
+      ]
+    },
+    {
+      "old": "CycleEventKind",
+      "new": "PlaygroundEventKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleExpedition",
+      "new": "PlaygroundExpedition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpedition.cs",
+          "line": 29
+        }
+      ]
+    },
+    {
+      "old": "CycleExpeditionMap",
+      "new": "PlaygroundExpeditionMap",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpeditionMap.cs",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "old": "CycleExpeditionOutcome",
+      "new": "PlaygroundExpeditionOutcome",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpedition.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleExpeditionSummary",
+      "new": "PlaygroundExpeditionSummary",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacterEnding.cs",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "old": "CycleExperienceAssociation",
+      "new": "PlaygroundExperienceAssociation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleContextDiagnostics.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleFact",
+      "new": "PlaygroundFact",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleFact.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleFactApplication",
+      "new": "PlaygroundFactApplication",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleFactApplication.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleFollowingRules",
+      "new": "PlaygroundFollowingRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleFollowingRules.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleForecasts",
+      "new": "PlaygroundForecasts",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleForecasts.cs",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "old": "CycleGameFactory",
+      "new": "PlaygroundGameFactory",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleGameFactory.cs",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "old": "CycleGameRevision",
+      "new": "PlaygroundGameRevision",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleGameRevision.cs",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "old": "CycleGatherStopReason",
+      "new": "PlaygroundGatherStopReason",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActionOutcomes.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleGoalInteractionRules",
+      "new": "PlaygroundGoalInteractionRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleGoalInteractionRules.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleHistoryEntry",
+      "new": "PlaygroundHistoryEntry",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/Persistence/CycleBranchBoundary.cs",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "old": "CycleInitialCharacterDefinition",
+      "new": "PlaygroundInitialCharacterDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 54
+        }
+      ]
+    },
+    {
+      "old": "CycleInitializationTests",
+      "new": "PlaygroundInitializationTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleInitializationTests.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleInteractionRules",
+      "new": "PlaygroundInteractionRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleInteractionRules.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleInteractionValidation",
+      "new": "PlaygroundInteractionValidation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleInteractionValidation.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleJourneyObservation",
+      "new": "PlaygroundJourneyObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleJourneyObservation.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleLight",
+      "new": "PlaygroundLight",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 31
+        }
+      ]
+    },
+    {
+      "old": "CycleMaintenanceBoundaryTests",
+      "new": "PlaygroundMaintenanceBoundaryTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleMaintenanceBoundaryTests.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleMarket",
+      "new": "PlaygroundMarket",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyState.cs",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "old": "CycleMarketQuote",
+      "new": "PlaygroundMarketQuote",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEconomyObservation.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleMetrics",
+      "new": "PlaygroundMetrics",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleFact.cs",
+          "line": 115
+        }
+      ]
+    },
+    {
+      "old": "CycleNotice",
+      "new": "PlaygroundNotice",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 85
+        }
+      ]
+    },
+    {
+      "old": "CycleNoticeKind",
+      "new": "PlaygroundNoticeKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 81
+        }
+      ]
+    },
+    {
+      "old": "CycleNoticeObservation",
+      "new": "PlaygroundNoticeObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 52
+        }
+      ]
+    },
+    {
+      "old": "CycleObservation",
+      "new": "PlaygroundObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 71
+        }
+      ]
+    },
+    {
+      "old": "CycleObservationEquality",
+      "new": "PlaygroundObservationEquality",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservationEquality.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedCommunication",
+      "new": "PlaygroundObservedCommunication",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEffect",
+      "new": "PlaygroundObservedEffect",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 86
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEvent",
+      "new": "PlaygroundObservedEvent",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 98
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEventKind",
+      "new": "PlaygroundObservedEventKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 51
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEvents",
+      "new": "PlaygroundObservedEvents",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvents.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEventSource",
+      "new": "PlaygroundObservedEventSource",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleViewUpdate.cs",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "old": "CycleObservedEventValidation",
+      "new": "PlaygroundObservedEventValidation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEventValidation.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationCommit",
+      "new": "PlaygroundOperationCommit",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationDisposition",
+      "new": "PlaygroundOperationDisposition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleFact.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationEntry",
+      "new": "PlaygroundOperationEntry",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationJournal",
+      "new": "PlaygroundOperationJournal",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationReceipt",
+      "new": "PlaygroundOperationReceipt",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationResult",
+      "new": "PlaygroundOperationResult",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationResults",
+      "new": "PlaygroundOperationResults",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleOperationResults.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleOperationStatus",
+      "new": "PlaygroundOperationStatus",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleOperationJournal.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleOtherCharacterObservation",
+      "new": "PlaygroundOtherCharacterObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 26
+        }
+      ]
+    },
+    {
+      "old": "CycleOutcomeActivityState",
+      "new": "PlaygroundOutcomeActivityState",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActionOutcomes.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CyclePassageDefinition",
+      "new": "PlaygroundPassageDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpeditionMap.cs",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "old": "CyclePassageObservation",
+      "new": "PlaygroundPassageObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 35
+        }
+      ]
+    },
+    {
+      "old": "CyclePersistenceTests",
+      "new": "PlaygroundPersistenceTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CyclePersistenceTests.cs",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "old": "CyclePlaceDefinition",
+      "new": "PlaygroundPlaceDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpeditionMap.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CyclePlaceMemory",
+      "new": "PlaygroundPlaceMemory",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservation.Material.cs",
+          "line": 42
+        }
+      ]
+    },
+    {
+      "old": "CyclePlanning",
+      "new": "PlaygroundPlanning",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CyclePlanning.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CyclePrediction",
+      "new": "PlaygroundPrediction",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleForecasts.cs",
+          "line": 15
+        }
+      ]
+    },
+    {
+      "old": "CyclePredictionKind",
+      "new": "PlaygroundPredictionKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "old": "CyclePredictionMaintenance",
+      "new": "PlaygroundPredictionMaintenance",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CyclePredictionMaintenance.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleProductionOrder",
+      "new": "PlaygroundProductionOrder",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleCharacter.cs",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "old": "CycleRecipe",
+      "new": "PlaygroundRecipe",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/LivingWorldEconomyContent.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleRelationDefinition",
+      "new": "PlaygroundRelationDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleResource",
+      "new": "PlaygroundResource",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleResource.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleResourceDefinition",
+      "new": "PlaygroundResourceDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "old": "CycleRevisionTests",
+      "new": "PlaygroundRevisionTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleRevisionTests.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleRule",
+      "new": "PlaygroundRule",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEngine.cs",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "old": "CycleScript",
+      "new": "PlaygroundScript",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 51
+        }
+      ]
+    },
+    {
+      "old": "CycleStateKey",
+      "new": "PlaygroundStateKey",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleStorageShapeTests",
+      "new": "PlaygroundStorageShapeTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleStorageShapeTests.cs",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "old": "CycleSurvival",
+      "new": "PlaygroundSurvival",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleSurvival.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleSurvivalObservation",
+      "new": "PlaygroundSurvivalObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleSurvivalRules.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleSurvivalRules",
+      "new": "PlaygroundSurvivalRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleSurvivalRules.cs",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "old": "CycleTestSupport",
+      "new": "PlaygroundTestSupport",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/CycleTestSupport.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleTime",
+      "new": "PlaygroundTime",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeAsset",
+      "new": "PlaygroundTradeAsset",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeState.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeOffer",
+      "new": "PlaygroundTradeOffer",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeState.cs",
+          "line": 31
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeRules",
+      "new": "PlaygroundTradeRules",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeRules.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeState",
+      "new": "PlaygroundTradeState",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeState.cs",
+          "line": 100
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeStatus",
+      "new": "PlaygroundTradeStatus",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeState.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleTradeValidation",
+      "new": "PlaygroundTradeValidation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleTradeValidation.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleUpdateRenderer",
+      "new": "PlaygroundUpdateRenderer",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleUpdateRenderer.cs",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "old": "CycleViewSnapshot",
+      "new": "PlaygroundViewSnapshot",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleViewSnapshot.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "CycleViewUpdate",
+      "new": "PlaygroundViewUpdate",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle.Cli/CycleViewUpdate.cs",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "old": "CycleVisibleEndpointChanges",
+      "new": "PlaygroundVisibleEndpointChanges",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleVisibleEndpointChanges.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleVisibleValue",
+      "new": "PlaygroundVisibleValue",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "old": "CycleVisibleValueKind",
+      "new": "PlaygroundVisibleValueKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleObservedEvent.cs",
+          "line": 15
+        }
+      ]
+    },
+    {
+      "old": "CycleVisit",
+      "new": "PlaygroundVisit",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleExpedition.cs",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "old": "CycleWeatherDefinition",
+      "new": "PlaygroundWeatherDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 27
+        }
+      ]
+    },
+    {
+      "old": "CycleWeatherEffect",
+      "new": "PlaygroundWeatherEffect",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEnvironment.cs",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "old": "CycleWeatherKind",
+      "new": "PlaygroundWeatherKind",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEnvironment.cs",
+          "line": 60
+        }
+      ]
+    },
+    {
+      "old": "CycleWeatherObservation",
+      "new": "PlaygroundWeatherObservation",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleEnvironment.cs",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "old": "CycleWorld",
+      "new": "PlaygroundWorld",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleModels.cs",
+          "line": 171
+        }
+      ]
+    },
+    {
+      "old": "CycleWorldDefinition",
+      "new": "PlaygroundWorldDefinition",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinition.cs",
+          "line": 99
+        }
+      ]
+    },
+    {
+      "old": "CycleWorldDefinitions",
+      "new": "PlaygroundWorldDefinitions",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleWorldDefinitions.cs",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "old": "ICycleCharacterController",
+      "new": "IPlaygroundCharacterController",
+      "declarations": [
+        {
+          "file": "src/ResourceCycle/CycleActions.cs",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "old": "PlayableCycleTests",
+      "new": "PlayablePlaygroundTests",
+      "declarations": [
+        {
+          "file": "tests/ResourceCycle.Tests/PlayableCycleTests.cs",
+          "line": 8
+        }
+      ]
+    }
+  ]
+}

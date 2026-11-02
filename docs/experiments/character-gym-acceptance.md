@@ -1,17 +1,19 @@
 # Character Gym 一期工程验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-31；实现提交 `d42fc8b`。范围为[一期里程碑](../design/character-gym/milestone.md)的轨迹、反馈及完成 S 分叉续跑。真实模型的独立运行证据见[串联试玩](character-gym-playtest.md)，操作入口见[使用说明](../design/character-gym/usage.md)。本文件区分确定性测试、真实模型试用与尚未证明的能力。
 
 ## 实现与权威边界
 
 | 交付 | 实现与可复查证据 |
 | --- | --- |
-| 稳定现场定位 | [CycleBranchBoundary](../../src/ResourceCycle/Persistence/CycleBranchBoundary.cs) 捕获当前待服务角色的完成 S，检查历史祖先、版本、游标及可服务条件；[GymBranchTests](../../tests/ResourceCycle.Tests/GymBranchTests.cs) 验证精确旧 S、源分支不变、冷开、保留 lineage/随机坐标及不支持边界拒绝 |
+| 稳定现场定位 | [CycleBranchBoundary](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleBranchBoundary.cs) 捕获当前待服务角色的完成 S，检查历史祖先、版本、游标及可服务条件；[GymBranchTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GymBranchTests.cs) 验证精确旧 S、源分支不变、冷开、保留 lineage/随机坐标及不支持边界拒绝 |
 | 持久轨迹 | [GymJournal](../../src/CharacterGym/GymJournal.cs) 提供全局序号、格式版本、校验链及落盘刷新；[测试](../../tests/CharacterGym.Tests/GymJournalTests.cs) 覆盖读开不修改、不完整尾部、完整行损坏、未知格式、写入/刷新失败后退休 |
 | 真实材料导出 | [GymMessageProjection](../../src/CharacterGym/GymMessageProjection.cs) 保留嵌套原始消息及原生 replay 字段；[投影测试](../../tests/CharacterGym.Tests/GymMessageProjectionTests.cs) 与[导出测试](../../tests/CharacterGym.Tests/GymTraceExporterTests.cs) 检查角色隔离、分支截点、完整 Payload、Markdown fence、缺口及 Interrupted 不冒充游戏提交 |
-| 反馈工具 | [LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs) 先保存再返回收据，携原始 assistant/tool-result 临时续问；[LlmFeedbackTests](../../tests/ResourceCycle.Completion.Tests/LlmFeedbackTests.cs) 覆盖关闭、持久失败、取消、不完整响应、多工具拒绝、字符/反馈/调用预算及 Responses 原生消息映射 |
-| 管理与恢复 | [GymCommands](../../src/ResourceCycle.Cli/Gym/GymCommands.cs) 提供查询、导出、按反馈/请求 fork；[命令测试](../../tests/ResourceCycle.Cli.Tests/GymCommandsTests.cs) 检查准确边界、大小写归一化、只读行为、分支已注册而来源日志失败的报告 |
-| 宿主端到端 | [GymIntegrationTests](../../tests/ResourceCycle.Cli.Tests/GymIntegrationTests.cs) 使用真实磁盘和 CLI 宿主、夹具 Completion，检查反馈前后同 S、无反馈对照、双方经历不变、父未来隔离、父 pending E/操作日志不被子冷开修改及反馈 Tail 不跨冷开恢复 |
+| 反馈工具 | [LlmCharacterController](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Completion/LlmCharacterController.cs) 先保存再返回收据，携原始 assistant/tool-result 临时续问；[LlmFeedbackTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Completion.Tests/LlmFeedbackTests.cs) 覆盖关闭、持久失败、取消、不完整响应、多工具拒绝、字符/反馈/调用预算及 Responses 原生消息映射 |
+| 管理与恢复 | [GymCommands](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/Gym/GymCommands.cs) 提供查询、导出、按反馈/请求 fork；[命令测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/GymCommandsTests.cs) 检查准确边界、大小写归一化、只读行为、分支已注册而来源日志失败的报告 |
+| 宿主端到端 | [GymIntegrationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/GymIntegrationTests.cs) 使用真实磁盘和 CLI 宿主、夹具 Completion，检查反馈前后同 S、无反馈对照、双方经历不变、父未来隔离、父 pending E/操作日志不被子冷开修改及反馈 Tail 不跨冷开恢复 |
 
 反馈和轨迹是宿主证据，不授权重放游戏操作。分支在 DG 中独立注册；源 S 的领域状态和 KernelCursor 原样继承，没有为了分支 ID 新增游戏提交。子分支独立操作日志防止父未来待完成操作在子分支被补录。
 

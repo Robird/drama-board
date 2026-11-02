@@ -150,11 +150,11 @@ show 是目标图/物理世界只读的**记录式查询**：交互结果与身�
 
 ## 6. 状态归属与工程接线
 
-角色私有 [CharacterInteractionState.Goals](../../../src/ResourceCycle/CharacterContext.cs) 保存独立目标集合及计数，不仅附着于 CurrentContext 或控制器字段。目标操作走现有原始提交、校验、Fact、E/S 路径；恢复已发布编辑不再次调用模型，不重新生成目标 ID。初始化、能力启用和具体源码接线见[操作合同](operations.md)。
+角色私有 [CharacterInteractionState.Goals](../../../src/Playground/CharacterContext.cs) 保存独立目标集合及计数，不仅附着于 CurrentContext 或控制器字段。目标操作走现有原始提交、校验、Fact、E/S 路径；恢复已发布编辑不再次调用模型，不重新生成目标 ID。初始化、能力启用和具体源码接线见[操作合同](operations.md)。
 
 目标编辑不耗模型时间，不改变活动、身体、库存、随机序列或确认待响应警告。成功编辑/show/no-op 与 handoff 一样轮转服务，拒绝不轮转；均保存交互元数据，Context 保持 Open。只在已有合法输入机会执行，移动中有输入机会也可使用。模型调用预算和既有同刻护栏继续有效，不允许靠编辑清零；不新增通信发送额度。
 
-局部目标规则和数据应避免依赖 ResourceCycle 的具体植物、地图与 NPC；游戏组合负责关联行动、Context、控制器和发布。先在应用中形成清楚边界，之后按证据提取模块；不向 Kernel 填入目标解释器，不复活归档可执行程序系统。
+局部目标规则和数据应避免依赖 Playground 的具体植物、地图与 NPC；游戏组合负责关联行动、Context、控制器和发布。先在应用中形成清楚边界，之后按证据提取模块；不向 Kernel 填入目标解释器，不复活归档可执行程序系统。
 
 ## 7. 剩余问题与重开条件
 

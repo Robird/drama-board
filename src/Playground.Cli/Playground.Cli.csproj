@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DramaBoard.Playground.Cli.Tests" />
+    <ProjectReference Include="../Playground/Playground.csproj" />
+    <ProjectReference Include="../CharacterGym/CharacterGym.csproj" />
+    <ProjectReference Include="../Playground.Completion/Playground.Completion.csproj" />
+    <ProjectReference Include="$(CompletionSourceRoot)/src/Completion/Completion.csproj" />
+  </ItemGroup>
+</Project>

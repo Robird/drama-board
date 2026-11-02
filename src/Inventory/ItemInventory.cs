@@ -7,8 +7,8 @@ namespace DramaBoard.Inventory;
 public enum InventoryAdmission { Allowed, ItemQuantityLimit, CapacityLimit }
 
 /// <summary>An immutable item-count snapshot with an optional total-unit capacity.</summary>
-/// <remarks>The persistent identity predates this module; moving the CLR type does not change stored graphs.</remarks>
-[DurableType("DramaBoard.ResourceCycle.Backpack", 3)]
+/// <remarks>The Inventory module owns this persistent identity; prior development identities are unsupported.</remarks>
+[DurableType("DramaBoard.Inventory.ItemInventory", 1)]
 public sealed partial class ItemInventory : IDurableObject {
     [DurableField(1)] private Dictionary<string, int> _items;
     [DurableField(2)] private long? _unitCapacity;

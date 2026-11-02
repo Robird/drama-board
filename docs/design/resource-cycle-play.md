@@ -1,5 +1,7 @@
 # ResourceCycle：单地点采集 Console 切片
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。用户已选择就地增强 `src/ResourceCycle`，同时独立研究预测对象核心重构。本片不增加移动，不依赖该重构完成。
 > 历史单角色切片：当前实现已采用[多人有限采集规则](resource-cycle-multiplayer-gathering.md)，本文的即时采集与单株成熟机制不再描述现行玩法。
 

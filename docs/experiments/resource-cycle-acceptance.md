@@ -1,15 +1,17 @@
 # ResourceCycle 原型与试运行
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 本文保留首片实际验收。预测/绑定持久化与恢复零重算的结论属于旧实现，当前已改为运行时缓存，见[后续验收](resource-cycle-runtime-cache-acceptance.md)。本页测试数量与计量不代表当前构建。
 
 日期：2026-10-27。范围为应用层预测失效实验，无角色、物品、空间重构或模型 API 调用。设计见[资源周期](../design/resource-cycle-demo.md)，本轮规则见[施工契约](../implementation/resource-cycle-prototype.md)。
 
 ## 交付与关键裁决
 
-- [ResourceCycle](../../src/ResourceCycle/CycleEngine.cs)：昼夜、植物、脚本销毁；声明事件依赖，用事件类型/目标索引粗筛、状态变化细筛、dirty 去重后重算。成熟植物可收到光照通知但跳过重算；已消费预测的 owner 必须重算以撤销旧结果。
-- [模型](../../src/ResourceCycle/CycleModels.cs)：持久预测与订阅、数据化行为种类/目标/代次；暂停预测者没有到期结果但仍保持订阅。未变子对象共享，不逐 tick 递减、不深拷贝世界。
-- [持久化](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs)：单根包含完整世界与 KernelCursor，E 保存具体变化，S 替换完整根；pending 恢复不广播、不重新预测。只支持一个根分支，拒绝 S/E/E 尾部和错误游标；提交异常后须丢弃当前会话重开。
-- [Console](../../src/ResourceCycle.Cli/Program.cs)：事件流与状态诊断、进程内计数、保存/继续、步数/时间上界、文件快照、全量重算对照。
+- [ResourceCycle](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)：昼夜、植物、脚本销毁；声明事件依赖，用事件类型/目标索引粗筛、状态变化细筛、dirty 去重后重算。成熟植物可收到光照通知但跳过重算；已消费预测的 owner 必须重算以撤销旧结果。
+- [模型](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs)：持久预测与订阅、数据化行为种类/目标/代次；暂停预测者没有到期结果但仍保持订阅。未变子对象共享，不逐 tick 递减、不深拷贝世界。
+- [持久化](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs)：单根包含完整世界与 KernelCursor，E 保存具体变化，S 替换完整根；pending 恢复不广播、不重新预测。只支持一个根分支，拒绝 S/E/E 尾部和错误游标；提交异常后须丢弃当前会话重开。
+- [Console](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/Program.cs)：事件流与状态诊断、进程内计数、保存/继续、步数/时间上界、文件快照、全量重算对照。
 - 同刻采用成熟→光照→销毁；昼夜暂停保留进度，销毁清零重长。这些是本实例选用的业务语义，不是新引擎全局协议。
 - Kernel、Spatial、Host 和上游 DG/Storage 代码均未修改。新模型按当前 DG 规范使用显式存储字段与持久枚举声明；生成并验收应用的 12 份 schema history。
 
@@ -17,7 +19,7 @@
 
 Release solution 构建使用 `-m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify`，零警告/错误。完整 solution 测试 198 项通过、零跳过：原核心 176 项，新实例 22 项。日志为 `artifacts/resource-cycle-build.log`、`artifacts/resource-cycle-tests.log`，TRX 在 `artifacts/resource-cycle-tests/`。
 
-[业务测试](../../tests/ResourceCycle.Tests/CycleBehaviorTests.cs) 独立固定以下预期，而非仅比较同一实现：
+[业务测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleBehaviorTests.cs) 独立固定以下预期，而非仅比较同一实现：
 
 - 无脚本从 16:00 开始，月光草当日 22:00 成熟，太阳花经过暂停后次日 07:00 成熟。
 - 17:00 销毁未成熟太阳花后，次日 08:00 成熟，旧 19:00/20:00 预测不会执行。
@@ -25,11 +27,11 @@ Release solution 构建使用 `-m:1 -warnaserror -p:DurableGraphSchemaHistoryMod
 - 针对太阳花的销毁不通知/重算月光草；已成熟植物对光照变化通过细筛跳过重算。
 - 四组开始时刻和脚本对照增量/全量模式，完整事实序列、持久字段与 Cursor 一致；已发布快照不被后来事件原位修改。
 
-[持久化测试](../../tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 在每个完成 S 边界关闭/重开并继续；另在八个位置真正发布 E 后注入异常再重开，验证 pending 只应用一次、恢复的预测/路由计数为零、继续轨迹等同正常执行。错误 S 游标被拒绝后，已发布 E 仍可恢复。此为协议阶段中断验证，不是断电/磁盘损坏测试。
+[持久化测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 在每个完成 S 边界关闭/重开并继续；另在八个位置真正发布 E 后注入异常再重开，验证 pending 只应用一次、恢复的预测/路由计数为零、继续轨迹等同正常执行。错误 S 游标被拒绝后，已发布 E 仍可恢复。此为协议阶段中断验证，不是断电/磁盘损坏测试。
 
 ## 真实进程试运行与计量
 
-[Smoke-ResourceCycle.ps1](../../scripts/Smoke-ResourceCycle.ps1) 启动五个 Console 进程，分别执行增量连续、全量连续、存档前五步、重开续跑、完成后再开。比较完整可见事件序列与最终诊断文件；完成后再次打开没有重复事件。
+[Smoke-ResourceCycle.ps1](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCycle.ps1) 启动五个 Console 进程，分别执行增量连续、全量连续、存档前五步、重开续跑、完成后再开。比较完整可见事件序列与最终诊断文件；完成后再次打开没有重复事件。
 
 默认 D0 16:00 至绝对小时 88 的脚本产生 17 次转换，最后事件在 D3 06:00；上界内没有后续事件时不凭空推进时钟。五次销毁脚本已消费，两个植物成熟。
 

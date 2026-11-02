@@ -1,5 +1,7 @@
 # 山野镇 Gym 实际运行与入口收敛
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。领域源码基线 `ea87f55`，GameRevision 22；本片只调整说明和验收脚本，不改变游戏规则。C1 的唯一入口采用山野镇 `ResourceCycle.Cli`，Microtown 明确停止独立产品演进，保留源码、测试和历史证据；内部 `Cycle*` 命名不要求机械迁移。
 
 ## 真实模型探路

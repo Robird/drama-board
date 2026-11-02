@@ -18,14 +18,14 @@
 
 | 当前入口 | 事实 | 重构方向 |
 | --- | --- | --- |
-| [CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) / [CharacterInteractionState](../../src/ResourceCycle/CharacterContext.cs) | 物理角色与交互状态已分开；Business.InteractionStates 保存 Opening、Items 和待交付经历 | 成功与拒绝共用操作身份及提交边界；旧 Continuity 不再作为第二套权威 |
-| [CycleFact](../../src/ResourceCycle/CycleFact.cs) / [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
-| [CycleObservation](../../src/ResourceCycle/CycleObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/成功 Items；拒绝不保存重复观察，CycleDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
-| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) | Console 从已提交 Context 消费新材料，管理反馈位于带外块；世界事实只进入可选诊断 sink | 完整与增量经同一渲染器，消费游标不成为角色知识权威 |
-| [CycleOperationJournal](../../src/ResourceCycle.Cli/CycleOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
+| [PlaygroundCharacter](../../src/Playground/PlaygroundCharacter.cs) / [CharacterInteractionState](../../src/Playground/CharacterContext.cs) | 物理角色与交互状态已分开；Business.InteractionStates 保存 Opening、Items 和待交付经历 | 成功与拒绝共用操作身份及提交边界；旧 Continuity 不再作为第二套权威 |
+| [PlaygroundFact](../../src/Playground/PlaygroundFact.cs) / [PlaygroundObservedEvent](../../src/Playground/PlaygroundObservedEvent.cs) | E 保存角色可感知事件与实际效果，含观察者、时段和局部序号 | 复用事件/效果语义，加入角色持久经历及来源绑定 |
+| [PlaygroundObservation](../../src/Playground/PlaygroundObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/成功 Items；拒绝不保存重复观察，PlaygroundDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
+| [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
+| [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/Playground.Cli/PlayPresentationSession.cs) | Console 从已提交 Context 消费新材料，管理反馈位于带外块；世界事实只进入可选诊断 sink | 完整与增量经同一渲染器，消费游标不成为角色知识权威 |
+| [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
 
-`CycleNotice` 的待确认通知和 `CycleVisit` 的历史观察仍有独立玩法含义，不因新增 Context 删除。Context 是它们在一次决策中的材料记录，不反向承担警告确认、世界库存或地点记忆的权威。
+`PlaygroundNotice` 的待确认通知和 `PlaygroundVisit` 的历史观察仍有独立玩法含义，不因新增 Context 删除。Context 是它们在一次决策中的材料记录，不反向承担警告确认、世界库存或地点记忆的权威。
 
 启用 Context 不等于启用所有角色工具。保持场景原有行动能力，例如普通采集不因有交互状态就自动开启生存场景的 handoff；命令目录与校验应读取明确的场景能力，不再借“Continuity 是否为空”推断功能开关。
 
@@ -46,11 +46,11 @@
 Context Model → 共用渲染 → Human Console / 未来 LLM
 ```
 
-图中的层次是职责，不要求每层新建程序集、接口或独立服务。第一版留在 ResourceCycle 应用组合内。世界效果与感知/上下文替换先规划并校验，再记录到 E，Fold 安装替换值，S 成功后才能交付。诊断输出不参与决定感知，也不作为恢复输入。
+图中的层次是职责，不要求每层新建程序集、接口或独立服务。第一版留在 Playground 应用组合内。世界效果与感知/上下文替换先规划并校验，再记录到 E，Fold 安装替换值，S 成功后才能交付。诊断输出不参与决定感知，也不作为恢复输入。
 
-持久布局选择 **Business 根下按 actorId 索引的 InteractionStates**，逻辑上由角色拥有，但不再嵌入物理 `CycleCharacter`。事实分别记录物理 `ChangedCharacters` 与 `InteractionChanges`；前者沿用具体玩法的效果约束，后者只安装按角色归属的交互替换。这样资源再生可以有零个物理角色变化、多个交互接收者，不必放宽原事件的物理形状。根表验证受控角色一对一归属，无跨角色条目、无重复替换；不新建独立发布根或异步写入器。
+持久布局选择 **Business 根下按 actorId 索引的 InteractionStates**，逻辑上由角色拥有，但不再嵌入物理 `PlaygroundCharacter`。事实分别记录物理 `ChangedCharacters` 与 `InteractionChanges`；前者沿用具体玩法的效果约束，后者只安装按角色归属的交互替换。这样资源再生可以有零个物理角色变化、多个交互接收者，不必放宽原事件的物理形状。根表验证受控角色一对一归属，无跨角色条目、无重复替换；不新建独立发布根或异步写入器。
 
-规划顺序固定为：业务/空间/生存及既有通知 → 候选业务状态 → 各角色感知与可见观察 → 交互替换 → E。投影读取候选业务状态和必要的交互标量（如草稿、状态），不回指完整 Context；Fold/Complete 校验并安装已记录替换，不再次运行这条规划链。删除 `CycleCharacter.Continuity` 后，核心玩法字段仍只有一个写入来源。
+规划顺序固定为：业务/空间/生存及既有通知 → 候选业务状态 → 各角色感知与可见观察 → 交互替换 → E。投影读取候选业务状态和必要的交互标量（如草稿、状态），不回指完整 Context；Fold/Complete 校验并安装已记录替换，不再次运行这条规划链。删除 `PlaygroundCharacter.Continuity` 后，核心玩法字段仍只有一个写入来源。
 
 爆炸伤害和机关触发是世界规则；听见爆炸、看见火光、识别施放者是感知规则；是否打断活动、请求决策是玩法/交互规则。它们可共用空间查询，但“追加 Context Item”不能代替伤害或机关执行。当前先使用自身、同地点和明确指定接收者的规则；距离、遮挡、传播时延及索引优化以后独立设计。
 
@@ -156,7 +156,7 @@ Opening 包含：角色身份与回合号、游戏内背景/目标与规则材�
 
 Human 与未来 LLM 共用纯行动字符串入口，第一版不要求每个行动一个工具。Console 先单独分派冒号元命令；其他非空输入在解析前固定 ToolCallId 和 OperationRecordId，然后由共享入口解析、按角色校验并提交。
 
-`ChooseCommandAsync` 返回 `CycleControllerOperation(ToolCallId, RawInput, OperationRecordId)`；游戏组合层使用共享 [CycleCommandParser](../../src/ResourceCycle/CycleCommandParser.cs) 解析，经角色可见性限定的校验后提交成功或 `OperationRejected`，再请求本轮下一次输入。Console 管理命令仍在自己的输入循环中，不返回给游戏；其他控制器直接提交 `:exit` 只会得到游戏语法拒绝。成功 Item、拒绝 Item、放行 PendingAdvance 均保留精确原始输入，规范化命令只用于脚本/目录显示，不改写输入。
+`ChooseCommandAsync` 返回 `PlaygroundControllerOperation(ToolCallId, RawInput, OperationRecordId)`；游戏组合层使用共享 [PlaygroundCommandParser](../../src/Playground/PlaygroundCommandParser.cs) 解析，经角色可见性限定的校验后提交成功或 `OperationRejected`，再请求本轮下一次输入。Console 管理命令仍在自己的输入循环中，不返回给游戏；其他控制器直接提交 `:exit` 只会得到游戏语法拒绝。成功 Item、拒绝 Item、放行 PendingAdvance 均保留精确原始输入，规范化命令只用于脚本/目录显示，不改写输入。
 
 拒绝使用明确的交互记录事实：模型时间不变，世界业务字段不变，只更新当前角色交互子图并递增 DecisionGeneration，使已消费的 RequestDecision 不重用旧 key；LastServedActorId、活动/期限、通知、身体警告和 ContextSequence 保持。保留 LastServedActorId 使同刻下次仍轮到原角色；合法零耗时操作的既有仲裁规则不顺手修改。
 
@@ -164,7 +164,7 @@ Human 与未来 LLM 共用纯行动字符串入口，第一版不要求每个行
 
 DecisionGeneration 暂保留现有调度用途；拒绝、开轮等消费 RequestDecision 的记录更新相应候选版本并标 dirty，被动接收感知不自动轮转、确认警告或改身体预测版本。不能以整张 InteractionState 的替换次数代替 DecisionGeneration。涉及唤醒的通知仍按既有玩法规则处理。
 
-所有角色反馈从已提交语义记录得到（零耗时/拒绝在 Context Item，放行的接受结论在推进记录），再完成操作日志 Result 和实际输出；对已关闭旧上下文不交付放行结果。E 必须携带可恢复的成功/拒绝结论和反馈材料，正常完成与 ReadCommittedOperations 使用同一结果投影。`CycleFact.OperationDisposition` 和 `CycleCommittedOperation.Disposition` 明确保留成功/拒绝；`CompleteOperations / Reconcile` 使用同一映射，不能把持久化的拒绝补录成成功。
+所有角色反馈从已提交语义记录得到（零耗时/拒绝在 Context Item，放行的接受结论在推进记录），再完成操作日志 Result 和实际输出；对已关闭旧上下文不交付放行结果。E 必须携带可恢复的成功/拒绝结论和反馈材料，正常完成与 ReadCommittedOperations 使用同一结果投影。`PlaygroundFact.OperationDisposition` 和 `PlaygroundCommittedOperation.Disposition` 明确保留成功/拒绝；`CompleteOperations / Reconcile` 使用同一映射，不能把持久化的拒绝补录成成功。
 
 先有游戏 E/S、后有日志/屏幕；日志故障不能回滚已提交游戏或重新执行命令。冷开根据 E 补齐匹配结果，未进入 E 的 Received 标为未完成，不假称已执行。Console 元命令仍使用宿主日志，不往角色图写 Item。恢复生成的文字不冒称上次实际写出的原始字节，语义结果与实际终端投递是两个层次。
 
@@ -172,7 +172,7 @@ DecisionGeneration 暂保留现有调度用途；拒绝、开轮等消费 Reques
 
 ## 7. 可见性与跨回合摘要收敛
 
-感知先确定接收者，再生成该接收者可知的内容。筛选覆盖正文、结构化键、名称、因果、风险和元数据；不把完整 CycleFact 或可展开世界引用放进 Item，再期待渲染时删掉秘密。
+感知先确定接收者，再生成该接收者可知的内容。筛选覆盖正文、结构化键、名称、因果、风险和元数据；不把完整 PlaygroundFact 或可展开世界引用放进 Item，再期待渲染时删掉秘密。
 
 第一版保留现有玩法可见性：自身物品/活动/身体，当前可见地点与通路，合法公开环境变化，已有规则明确发送的通知。一次其他角色的秘密提交导致自己身体随时间变化时，可以记录自身消耗，不能把秘密动作作为可见原因。
 
@@ -184,7 +184,7 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 当前 Context 的纯拒绝采用 §4.4 的最近 3 次角色操作窗口；成功记录、实际经历和待交付集合不因此裁剪。单回合大量成功操作或大量感知仍可能增长，第一版不声称硬内存有界。上线 LLM 长循环或多角色事件广播前，仍需单独裁决其他材料的容量/封存策略；超限不得造成世界提交成功而感知丢失。该限制不阻碍当前有限 Human Demo 验证。
 
-另有必须显式接受的运行限制：当前 `CycleEngine` 使用每模型时刻最多 1024 次转换的 Kernel 护栏，零耗时成功操作原本已消耗预算，持久拒绝现在也消耗。首版保留此护栏；耗尽时停止宿主并明确报告，不能自动推进时间、丢 Item 或静默重置。冷开不会重置持久因果序号，耗尽后也无法继续接收下一条放行命令；因此本片不保证任意长同轮 tool-loop。临界与冷开行为由 [CharacterContextRejectionPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs) 覆盖；消除此限制是接入长循环前独立裁决，不能隐含地改 Kernel 时序协议。
+另有必须显式接受的运行限制：当前 `PlaygroundEngine` 使用每模型时刻最多 1024 次转换的 Kernel 护栏，零耗时成功操作原本已消耗预算，持久拒绝现在也消耗。首版保留此护栏；耗尽时停止宿主并明确报告，不能自动推进时间、丢 Item 或静默重置。冷开不会重置持久因果序号，耗尽后也无法继续接收下一条放行命令；因此本片不保证任意长同轮 tool-loop。临界与冷开行为由 [CharacterContextRejectionPersistenceTests](../../tests/Playground.Tests/CharacterContextRejectionPersistenceTests.cs) 覆盖；消除此限制是接入长循环前独立裁决，不能隐含地改 Kernel 时序协议。
 
 按保留规则移除旧拒绝，不撤销已经完成的转换，也不返还上述预算；上下文长度与调度预算分别处理。
 
@@ -209,7 +209,7 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 终局只读材料带开始/结束标记但不显示可输入；EOF/exit 正常结束展示时用带外“会话关闭”，不能写成领域 Context 已放行。冷开同一 Open Context 可重绘其保存材料，回合号不递增；意外中断可能留下不完整终端文本，恢复依赖 Model。
 
-开发者诊断独立于正常角色输出。第一版可提供显式 TextWriter/回调接收已提交世界事实、角色投影关联及上下文变更，不默认为玩家打印全世界日志。记录提交身份和结构化种类/必要字段，不把 `CycleFact.ToString()` 宣称为完整轨迹。诊断写出故障不得重新执行已提交事件；应停止当前宿主交互并报告，冷开依 E/S 恢复。完整耐久诊断日志、轮转及历史导出后续独立实施。
+开发者诊断独立于正常角色输出。第一版可提供显式 TextWriter/回调接收已提交世界事实、角色投影关联及上下文变更，不默认为玩家打印全世界日志。记录提交身份和结构化种类/必要字段，不把 `PlaygroundFact.ToString()` 宣称为完整轨迹。诊断写出故障不得重新执行已提交事件；应停止当前宿主交互并报告，冷开依 E/S 恢复。完整耐久诊断日志、轮转及历史导出后续独立实施。
 
 ## 9. 实施分片
 
@@ -217,21 +217,21 @@ Incoming 不再独立累积一份天气次数、背包差异与身体变化。�
 
 共享观察与背景直接进入持久 Context，具体集合在构造/init 时复制且公开只读，不另建持久 DTO。Business.InteractionStates 与 Fact.InteractionChanges 已替换 Character.Continuity；合法操作、首次开轮、关闭后待交付、下一 Opening 和终局通过同一 E/S 边界发布。GameRevision 9；Business Schema 4、Character Schema 5、Fact Schema 9、PendingAdvance Schema 2，不兼容旧开发存档。
 
-证据集中在 [CharacterContextLifecycleTests](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 的合法路径、角色隔离、仅快照更新及错误端点拒绝，以及 [CharacterContextPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 的真实 S 冷开和瞬时/放行/开轮/终局 E-only 恢复。恢复比较独立 E/S 图的语义前缀并安装记录对象，不重跑观察、背景、感知或编号分配；直接业务端点检查也不重新预测风险菜单。共享材料冷开和全部角色事件的基础证据仍分别见 [VisibleMaterialPersistenceTests](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[AllActorObservedEventTests](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs)。
+证据集中在 [CharacterContextLifecycleTests](../../tests/Playground.Tests/CharacterContextLifecycleTests.cs) 的合法路径、角色隔离、仅快照更新及错误端点拒绝，以及 [CharacterContextPersistenceTests](../../tests/Playground.Tests/CharacterContextPersistenceTests.cs) 的真实 S 冷开和瞬时/放行/开轮/终局 E-only 恢复。恢复比较独立 E/S 图的语义前缀并安装记录对象，不重跑观察、背景、感知或编号分配；直接业务端点检查也不重新预测风险菜单。共享材料冷开和全部角色事件的基础证据仍分别见 [VisibleMaterialPersistenceTests](../../tests/Playground.Tests/VisibleMaterialPersistenceTests.cs)、[AllActorObservedEventTests](../../tests/Playground.Tests/AllActorObservedEventTests.cs)。
 
-原始 submission、共享 parser、持久拒绝/窗口及日志状态配对已经接通；拒绝只改变自身交互材料和请求版本。证据见 [拒绝与保留窗口](../../tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)、[S/E-only 拒绝恢复与同刻预算](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)及[宿主结果修复](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)。恢复安装已记录条目及窗口，不重做合法性判断；纯语法解析仅检查成功事实与保存输入的一致性。
+原始 submission、共享 parser、持久拒绝/窗口及日志状态配对已经接通；拒绝只改变自身交互材料和请求版本。证据见 [拒绝与保留窗口](../../tests/Playground.Tests/CharacterContextRejectionTests.cs)、[S/E-only 拒绝恢复与同刻预算](../../tests/Playground.Tests/CharacterContextRejectionPersistenceTests.cs)及[宿主结果修复](../../tests/Playground.Cli.Tests/OperationRecoveryIntegrationTests.cs)。恢复安装已记录条目及窗口，不重做合法性判断；纯语法解析仅检查成功事实与保存输入的一致性。
 
-呈现统一由 [CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 消费 Opening/Items，Console 不再从 Fact 直出角色信息；[呈现会话](../../src/ResourceCycle.Cli/PlayPresentationSession.cs)只维护输出游标和带外管理。[诊断 sink](../../src/ResourceCycle.Cli/CycleContextDiagnostics.cs)在提交后提供强类型世界材料与经历关联。下表保留实施边界，最终源码、测试和独立试玩证据统一见[验收记录](../experiments/character-context-model-acceptance.md)。终端滚动历史不等于当前完整 Model。
+呈现统一由 [CharacterContextRenderer](../../src/Playground.Cli/CharacterContextRenderer.cs) 消费 Opening/Items，Console 不再从 Fact 直出角色信息；[呈现会话](../../src/Playground.Cli/PlayPresentationSession.cs)只维护输出游标和带外管理。[诊断 sink](../../src/Playground.Cli/PlaygroundContextDiagnostics.cs)在提交后提供强类型世界材料与经历关联。下表保留实施边界，最终源码、测试和独立试玩证据统一见[验收记录](../experiments/character-context-model-acceptance.md)。终端滚动历史不等于当前完整 Model。
 
 | 分片 | 交付与范围 | 验收门槛 |
 | --- | --- | --- |
-| 1. 拆出共享可见材料 | 从 CycleObservation 拆出不含连续性/委托的观察数据；建立背景材料入口；整理世界→感知→交互组合顺序；保留现有行为 | 隐藏地点/私人物品不可达；两种布局信息仍齐全；核心规则不依赖 Console；不预先堆持久空类型 |
+| 1. 拆出共享可见材料 | 从 PlaygroundObservation 拆出不含连续性/委托的观察数据；建立背景材料入口；整理世界→感知→交互组合顺序；保留现有行为 | 隐藏地点/私人物品不可达；两种布局信息仍齐全；核心规则不依赖 Console；不预先堆持久空类型 |
 | 2. 持久 Context 垂直闭环 | 新模型、角色经历身份、统一 submission、拒绝记录、放行/待交付/新轮/终局；替换原连续性权威；全量上下文渲染；操作恢复接线 | use→handoff→go→抵达/警告→新轮；S 冷开与 E-only 恢复一致；拒绝同轮；两角色隔离；最后放行不向旧 Model 追加反馈 |
 | 3. Console 交付与验收 | 接通 Model 消费、增量/full、带外块、开始/结束、纯输出及诊断 sink；删除旧逐提交直出路径 | 实录对照、layout/once 不污染、终局/退出/输出失败；独立 Human 试玩，检查每轮纯上下文自足 |
 
 分片 2 是最小一致的领域替换，分为两个内部检查点：2A 先证明合法操作、生命周期、投影与 S/E 恢复；2B 再接入 raw submission、共享 parser、持久拒绝及其保留窗口、日志状态及拒绝仲裁。两者一起验收，不把 2A 宣称为完整 Context 交付，也不在上线状态中留下“恢复以后再补”的中间合同。施工前核对具体 Schema 注册、结构化 observation 的可持久化字段；新 GameRevision / Schema 依据最终字段统一更新，无旧存档兼容义务。
 
-预计触及 ResourceCycle 的角色/连续性、观察、事件、规划/校验、模型注册与持久化；CLI 的操作入口、日志配对、呈现会话及共享渲染；相应测试。Kernel 和 Spatial 算法不因本片改变。若实现发现需要修改其提交协议或引入独立跨根事务，先回到本设计寻求更小方案。
+预计触及 Playground 的角色/连续性、观察、事件、规划/校验、模型注册与持久化；CLI 的操作入口、日志配对、呈现会话及共享渲染；相应测试。Kernel 和 Spatial 算法不因本片改变。若实现发现需要修改其提交协议或引入独立跨根事务，先回到本设计寻求更小方案。
 
 ## 10. 验收不变量与文档整合
 

@@ -1,5 +1,7 @@
 # 角色目标管理：真实模型试玩
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-31，本轮试玩结束。6 个世界、7 个进程共完成 80 次真实模型调用；包含一次正常存档冷开和一次合作逃离。此文记录实际操作与未覆盖边界，不替代工程测试或主线程验收。目标见[里程碑](../design/goal-management/milestone.md)，故事见[用户故事](../design/goal-management/user-stories.md)。
 
 ## 操作者与证据边界

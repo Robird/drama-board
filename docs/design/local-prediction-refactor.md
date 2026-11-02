@@ -1,5 +1,7 @@
 # 局部预测重构方案
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 后续裁决（2026-10-27）：纯派生预测现已改为[运行时缓存](runtime-derived-predictions.md)，见[缓存验收](../experiments/runtime-derived-predictions-acceptance.md)。本文记录 `21379a1` 基线，其中持久 Contacts、预测替换 facts、恢复禁止派生计算及原 S3 执行次序已被替代。通道局部发现、数学时序与发布不变量仍保留。
 
 > 2026-10-27。经两轮辩证审阅后，S1/S2 空间首阶段已实施；入口与验证边界见[验收记录](../experiments/local-prediction-acceptance.md)。S3 ResourceCycle 共同维护接缝与 API 收敛仍待协调其多角色分支，S4 为可选优化。以下保留设计职责与验收契约；背景见[算法综述](../research/prediction-discovery/README.md)，取舍见[审阅裁决](../research/local-prediction-design-review.md)。
@@ -172,6 +174,6 @@ S1、S2 是本次重构首阶段的完成边界；S3 是达成跨系统统一的
 - [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs)：已实现 genesis 全量发现、通道 dirty 维护、组合根 Fold/Validate 与工厂接线。
 - [SpatialContactOccurrenceRule](../../src/Spatial/Simulation/SpatialContactOccurrenceRule.cs)：已改为持久 Contacts 投影，保留稳定 candidate key 与选中项复核。
 - [SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs)：arrival/schedule 已有 Due 的投影与消费。
-- [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)：持久输出、应用优先级、批内维护；属于第二消费者证据，不是空间设计的独立需求来源。
+- [CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)：持久输出、应用优先级、批内维护；属于第二消费者证据，不是空间设计的独立需求来源。
 - [空间模型持久化资格测试](../../tests/Spatial.Tests/Acceptance/DurableModelQualificationTests.cs)：保留低层类型资格；实际单根恢复证据另见 [SpatialPredictionPersistenceTests](../../tests/Spatial.Tests/Persistence/SpatialPredictionPersistenceTests.cs)。
 - [源码约束与反例](../research/prediction-discovery/dramaboard-constraints.md)：时间量化、同刻候选与旧/新关系寿命。

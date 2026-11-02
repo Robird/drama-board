@@ -1,5 +1,7 @@
 # 角色实验环境一期：真实模型串联试玩
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-31，完成本轮正常路径实证。对应[一期里程碑](../design/character-gym/milestone.md)的记录、反馈、冷开、定位分叉及子分支续跑；不验证反馈质量、修复效果或一般规划可靠性。
 
 ## 操作者、配置与证据

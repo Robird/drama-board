@@ -1,5 +1,7 @@
 # 角色跟随实施验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，Windows / .NET SDK `10.0.201`。对应[角色跟随合同](../design/character-following.md)，实现提交 `ebdecebc4dfa8a6c1aa9ad0eff080e6a5d95d32d`。本记录区分自动测试、代理操作真实 Console 和真实模型试玩；没有以代理代操冒充真人体验。
 
 ## 实现范围
@@ -46,12 +48,12 @@ dotnet test tests/ResourceCycle.Completion.Tests/ResourceCycle.Completion.Tests.
 
 | 合同边界 | 具体证据 |
 | --- | --- |
-| 关系与命令 | [FollowingRulesTests](../../tests/ResourceCycle.Tests/FollowingRulesTests.cs)：parser 往返、场景边界、自环/链/未知/远处目标、队员权限、忙碌领队、本人提醒确认、解散与退出保留提醒 |
-| 出发、到达和终局 | [FollowingMovementTests](../../tests/ResourceCycle.Tests/FollowingMovementTests.cs)：精确全员出发、不同 MovementGeneration、单人无法出发全员拒绝、领队 go 的提醒所有权、个人死亡/天气死亡/出口、三人完整采集再集合；逐步 Validate 与 Rebuild 对照 |
-| 个人可见性 | [FollowingObservationTests](../../tests/ResourceCycle.Tests/FollowingObservationTests.cs)：队员移动经历及未知目的地、忙碌领队的成员材料、解散、领队死亡不是队员死亡；漏记队员经历的事实拒绝 |
-| Context 生命周期 | [FollowingContextTests](../../tests/ResourceCycle.Tests/FollowingContextTests.cs)：多段路不调用队员控制器、say→follow 休眠、原地 continue、保留队员已打开 Context 与草稿 |
-| 磁盘恢复 | [FollowingRecoveryTests](../../tests/ResourceCycle.Tests/FollowingRecoveryTests.cs)：原地跟随、途中、三人到达中间、解散后四处 S 冷开及四处 E-only/pending；禁止恢复调用控制器或 Plan，继续完成剩余同刻到达 |
-| 宿主/呈现 | [DuoHostTests](../../tests/ResourceCycle.Cli.Tests/DuoHostTests.cs)、[FollowingViewTests](../../tests/ResourceCycle.Cli.Tests/FollowingViewTests.cs)：三人实际路由、共享调用预算、保存人数恢复与冲突、两布局冻结材料、终局/非生存边界 |
+| 关系与命令 | [FollowingRulesTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/FollowingRulesTests.cs)：parser 往返、场景边界、自环/链/未知/远处目标、队员权限、忙碌领队、本人提醒确认、解散与退出保留提醒 |
+| 出发、到达和终局 | [FollowingMovementTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/FollowingMovementTests.cs)：精确全员出发、不同 MovementGeneration、单人无法出发全员拒绝、领队 go 的提醒所有权、个人死亡/天气死亡/出口、三人完整采集再集合；逐步 Validate 与 Rebuild 对照 |
+| 个人可见性 | [FollowingObservationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/FollowingObservationTests.cs)：队员移动经历及未知目的地、忙碌领队的成员材料、解散、领队死亡不是队员死亡；漏记队员经历的事实拒绝 |
+| Context 生命周期 | [FollowingContextTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/FollowingContextTests.cs)：多段路不调用队员控制器、say→follow 休眠、原地 continue、保留队员已打开 Context 与草稿 |
+| 磁盘恢复 | [FollowingRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/FollowingRecoveryTests.cs)：原地跟随、途中、三人到达中间、解散后四处 S 冷开及四处 E-only/pending；禁止恢复调用控制器或 Plan，继续完成剩余同刻到达 |
+| 宿主/呈现 | [DuoHostTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/DuoHostTests.cs)、[FollowingViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/FollowingViewTests.cs)：三人实际路由、共享调用预算、保存人数恢复与冲突、两布局冻结材料、终局/非生存边界 |
 
 ## 真实运行
 

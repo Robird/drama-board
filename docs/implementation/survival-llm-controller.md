@@ -1,5 +1,7 @@
 # 生存 2A：独立 Context 调用与 LLM 控制器
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 对应[二期目标 §3.2](../design/survival-demo-milestone.md#32-2a单角色-llm-接线)。2A 接通单角色；[2B 双角色宿主](survival-duo.md)复用本适配器和配置，将 `--survival --llm` 换为 `--duo --llm` 即选择 a=Human、b=LLM。交流赠与仍属于 2C。
 
 ## 运行
@@ -19,8 +21,8 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --survival --llm `
 
 ## 分层和调用顺序
 
-- [ResourceCycle.Completion](../../src/ResourceCycle.Completion/LlmCharacterController.cs) 只实现 `ICycleCharacterController`：借用 `ICompletionClient`，接收模型 ID、纯 Context 投影函数、运行限额和宿主 trace 回调。它不执行游戏命令、不持久化客户端、不私藏角色历史。
-- [LlmConsole](../../src/ResourceCycle.Cli/LlmConsole.cs) 负责连接目录、客户端生命周期、旁观输出和审计；直接注入现有 `CharacterContextRenderer.RenderFull`。因此不需要把 CLI 渲染库整体搬迁，也不让领域库依赖 Completion。
+- [ResourceCycle.Completion](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Completion/LlmCharacterController.cs) 只实现 `ICycleCharacterController`：借用 `ICompletionClient`，接收模型 ID、纯 Context 投影函数、运行限额和宿主 trace 回调。它不执行游戏命令、不持久化客户端、不私藏角色历史。
+- [LlmConsole](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/LlmConsole.cs) 负责连接目录、客户端生命周期、旁观输出和审计；直接注入现有 `CharacterContextRenderer.RenderFull`。因此不需要把 CLI 渲染库整体搬迁，也不让领域库依赖 Completion。
 - 每次请求由系统说明、单个 `act` 工具定义和当前角色完整保留材料构成。协议纠错时另附简短的宿主纠错消息；不伪造工具执行结果。上一模型的 assistant/reasoning 消息不续接。
 - 仅接受 `Completed` 中恰好一个 `act({command:string})`；工具选择为 Codex 可表达的 Auto，但本地仍严格检查数量、名称和参数形状。空字符串和游戏语法错误由游戏持久拒绝，畸形工具 envelope 则不进入游戏。
 - 原样保留 ToolCallId，独立生成 OperationRecordId。模型返回后先保存宿主 receipt，游戏经共享 parser/校验发布 E/S，只有 Step 提交成功后才显示 committed。不能把 response 日志当作执行收据。

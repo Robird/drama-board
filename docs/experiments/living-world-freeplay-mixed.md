@@ -1,5 +1,7 @@
 # 山野镇独立自由游玩：Console 阿青与两名真实模型居民
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。本场是 Coding Agent 通过 Human Console 扮演阿青（a），与真实 `gpt-6.1-sol` 控制的阿白（b）、阿岚（c）一起生活的短场自由游玩。它不是人类玩家验收，也不是三日长跑或预编路线 smoke。
 
 ## 范围、预算与原始证据

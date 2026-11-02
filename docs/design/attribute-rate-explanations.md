@@ -14,21 +14,21 @@
 | 无旧存档或 API 兼容负担；仍须处理同一新修订内的 S/E 恢复 | 会话已定方向与当前仓库协议 |
 | 先设计审查，后端到端实施 | 方案审查后用户已授权实施；LLM 端点、通用 Buff 执行系统仍不在本片 |
 
-实际运行由单宿主按模型时间串行提交；等待输入时暂停，Plan 记录具体事实，E/S 发布后消费。当前消费者是物理积分/阈值预测、持久角色观察、两种 layout 和 Console full/delta；没有 GUI、LlmCharacterController 或通用状态效果实例。新设计先落 ResourceCycle，用具体垂直切片检验可复用合同，再决定是否提取程序集。
+实际运行由单宿主按模型时间串行提交；等待输入时暂停，Plan 记录具体事实，E/S 发布后消费。当前消费者是物理积分/阈值预测、持久角色观察、两种 layout 和 Console full/delta；没有 GUI、LlmCharacterController 或通用状态效果实例。新设计先落 Playground，用具体垂直切片检验可复用合同，再决定是否提取程序集。
 
 本方案选择锚点保存已求值贡献、总值派生、同一角色观察内共享来源语义键。裁决依据与可行替代见 §8；无需用户另行裁决玩法。非加法过程和部分可见原因明确延期，不把当前解释结构宣称为任意游戏规则的完整模型。
 
 ## 2. 改造前的基线与缺口
 
-- [CycleSurvival](../../src/ResourceCycle/CycleSurvival.cs) 持久化三个整数速率；积分、阈值和补给沿用这些标量。达到 0/100 会夹断实际变化。
-- [CycleSurvivalRules](../../src/ResourceCycle/CycleSurvivalRules.cs) 的 `WarmthRate` 按庇护优先、再昼夜选择 +12/+6/−12；`Enrich` 和 `Forecast` 使用它，初始化另有昼夜选择。食水为构造默认 −5/−8。没有当前 Buff 集合。
-- `CycleSurvivalObservation` 只保存总速率和 Sheltered 等字段。两种布局显示总速率，[CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs) 也只投影三个 rate 键；仅加原因字符串无法支持可靠分组或同总值下的来源变更。
-- [CycleObservationEquality](../../src/ResourceCycle/CycleObservationEquality.cs)、[CycleVisibleEndpointChanges](../../src/ResourceCycle/CycleVisibleEndpointChanges.cs) 和 [CycleInteractionValidation](../../src/ResourceCycle/CycleInteractionValidation.cs) 都按现有数值材料比较/校验，新增来源必须贯穿这些边界。
-- [CycleEnvironmentRules](../../src/ResourceCycle/CycleEnvironment.cs) 的寒风是一次实际扣减；[CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) 已保存事件与实际效果。不能把这个瞬时效果再挂成持续负速率。
+- [PlaygroundSurvival](../../src/Playground/PlaygroundSurvival.cs) 持久化三个整数速率；积分、阈值和补给沿用这些标量。达到 0/100 会夹断实际变化。
+- [PlaygroundSurvivalRules](../../src/Playground/PlaygroundSurvivalRules.cs) 的 `WarmthRate` 按庇护优先、再昼夜选择 +12/+6/−12；`Enrich` 和 `Forecast` 使用它，初始化另有昼夜选择。食水为构造默认 −5/−8。没有当前 Buff 集合。
+- `PlaygroundSurvivalObservation` 只保存总速率和 Sheltered 等字段。两种布局显示总速率，[PlaygroundViewSnapshot](../../src/Playground.Cli/PlaygroundViewSnapshot.cs) 也只投影三个 rate 键；仅加原因字符串无法支持可靠分组或同总值下的来源变更。
+- [PlaygroundObservationEquality](../../src/Playground/PlaygroundObservationEquality.cs)、[PlaygroundVisibleEndpointChanges](../../src/Playground/PlaygroundVisibleEndpointChanges.cs) 和 [PlaygroundInteractionValidation](../../src/Playground/PlaygroundInteractionValidation.cs) 都按现有数值材料比较/校验，新增来源必须贯穿这些边界。
+- [PlaygroundEnvironmentRules](../../src/Playground/PlaygroundEnvironment.cs) 的寒风是一次实际扣减；[PlaygroundObservedEvent](../../src/Playground/PlaygroundObservedEvent.cs) 已保存事件与实际效果。不能把这个瞬时效果再挂成持续负速率。
 
 这里有三个不同问题：现在是多少、为什么以此速率变化、某段时间实际变了多少。当前值、速率解释、历史事件分别回答，不能互相替代。
 
-现有数值合同可对照 [SurvivalValueTests](../../tests/ResourceCycle.Tests/SurvivalValueTests.cs) 的旧段积分、任意 tick 重锚与限幅，以及 [ObservedEventTests](../../tests/ResourceCycle.Tests/ObservedEventTests.cs) 的黄昏先记录旧速率身体变化、再记录新速率；[SurvivalForecastTests](../../tests/ResourceCycle.Tests/SurvivalForecastTests.cs) 约束预测行为。设计审查时只核对源码，实施阶段已运行这些测试，结果见验收。
+现有数值合同可对照 [SurvivalValueTests](../../tests/Playground.Tests/SurvivalValueTests.cs) 的旧段积分、任意 tick 重锚与限幅，以及 [ObservedEventTests](../../tests/Playground.Tests/ObservedEventTests.cs) 的黄昏先记录旧速率身体变化、再记录新速率；[SurvivalForecastTests](../../tests/Playground.Tests/SurvivalForecastTests.cs) 约束预测行为。设计审查时只核对源码，实施阶段已运行这些测试，结果见验收。
 
 ## 3. 最小可复用模型
 
@@ -63,9 +63,9 @@ RateBreakdown
 
 ### 3.2 单位、限幅与瞬时效果
 
-- 贡献是持续速率；`CycleObservedEffect` 仍记录已发生的实际前后值。不得将一次饮水 +45 或寒风 −10 写成每小时贡献。
+- 贡献是持续速率；`PlaygroundObservedEffect` 仍记录已发生的实际前后值。不得将一次饮水 +45 或寒风 −10 写成每小时贡献。
 - 总速率是边界限幅前的规则结果，当前达到上限时可以显示“回暖 +6/小时，已达上限”；不再持久化第二个有效速率或把贡献全改成 0。
-- 上下限作为可见属性材料披露，视图以当前值、速率方向与边界显示限幅提示，不预测未来事件。本片在 `CycleSurvivalObservation` 保存三项共用的 Minimum/Maximum（当前 0/100），由领域定义填入；不为相同范围再建三个独立配置或通用属性元模型。限幅标志不另存，按保存数值派生。
+- 上下限作为可见属性材料披露，视图以当前值、速率方向与边界显示限幅提示，不预测未来事件。本片在 `PlaygroundSurvivalObservation` 保存三项共用的 Minimum/Maximum（当前 0/100），由领域定义填入；不为相同范围再建三个独立配置或通用属性元模型。限幅标志不另存，按保存数值派生。
 - 同一新数据结构内要求贡献量纲一致、来源键唯一、整数求和不溢出；空列表表示确实没有持续作用，正负抵消的非空列表不能折叠为空。
 
 ## 4. 生成、可见性、保存与恢复
@@ -88,17 +88,17 @@ RateBreakdown
 
 不为每条来源新增持久事件或 UI 生命周期；历史事件存在时继续先显示事件/实际效果，之后显示更新的解释。不从“来源消失”推断未经记录的治愈、破坏或物品消耗，也不杜撰数值未变的加减事件。
 
-可在瞬时 `CycleViewSnapshot` 增加以现有 rate key 索引的解释投影；更新选择器同时比较数值与解释，并以同一属性键合并成一次最新值。该投影不是第二套持久属性字典。完整 Context、最新状态预览与增量消费均只读取保存的观察。
+可在瞬时 `PlaygroundViewSnapshot` 增加以现有 rate key 索引的解释投影；更新选择器同时比较数值与解释，并以同一属性键合并成一次最新值。该投影不是第二套持久属性字典。完整 Context、最新状态预览与增量消费均只读取保存的观察。
 
 同总值变更的贯穿点如下，不能只在 renderer 补比较：
 
 | 入口 | 必须保持的合同 |
 | --- | --- |
-| `CycleFactApplication.SameSurvival` | 需要身体完全不变的事实不能偷偷替换来源，即便三个总值相同 |
-| `CycleObservationEquality.SameSurvival` | 原因变化产生新的可见观察；纯输入排列变化不产生 Item |
-| `CycleVisibleEndpointChanges.SameBody` | 原因改变属于必要交付，不能因标量相同漏检 |
-| `CycleInteractionValidation.ValidateBodyAndWeather` | 保存的解释与已记录的物理结果一致；不能接受总值相同而来源错误的观察 |
-| `CycleViewUpdate.Create` | 比较解释并合并属性级依赖，保证 delta 不漏报原因或限幅变化 |
+| `PlaygroundFactApplication.SameSurvival` | 需要身体完全不变的事实不能偷偷替换来源，即便三个总值相同 |
+| `PlaygroundObservationEquality.SameSurvival` | 原因变化产生新的可见观察；纯输入排列变化不产生 Item |
+| `PlaygroundVisibleEndpointChanges.SameBody` | 原因改变属于必要交付，不能因标量相同漏检 |
+| `PlaygroundInteractionValidation.ValidateBodyAndWeather` | 保存的解释与已记录的物理结果一致；不能接受总值相同而来源错误的观察 |
+| `PlaygroundViewUpdate.Create` | 比较解释并合并属性级依赖，保证 delta 不漏报原因或限幅变化 |
 
 按属性呈现：温暖 60/100；总速率 +6/小时；原因：白天野外回暖 +6/小时。按来源呈现：基础代谢——食物 −5/小时，饮水 −8/小时。后者是这些贡献的分组视图，不宣称已经存在可驱散、可过期的 Buff 实例；没有作用于速率的状态也不因此被自动纳入。新 layout 可自由决定位置，不能丢总速率或把不完整数据当完整因果。
 

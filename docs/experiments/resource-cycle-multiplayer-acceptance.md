@@ -1,5 +1,7 @@
 # ResourceCycle 多角色有限采集验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。对应[多人采集规则](../design/resource-cycle-multiplayer-gathering.md)。本记录区分当前实现、实际执行证据和延期能力；旧单角色实验的测试结果不作为本轮证据。
 
 ## 实现边界
@@ -34,17 +36,17 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1
 
 | 合同 | 测试入口与区分力 |
 | --- | --- |
-| 再生与采摘独立 | [CycleBehaviorTests](../../tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[PlayableCycleTests](../../tests/ResourceCycle.Tests/PlayableCycleTests.cs)：昼夜保留进度、满仓停产、未满仓采摘不重置、补货/切光/采集同刻顺序 |
+| 再生与采摘独立 | [CycleBehaviorTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[PlayableCycleTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/PlayableCycleTests.cs)：昼夜保留进度、满仓停产、未满仓采摘不重置、补货/切光/采集同刻顺序 |
 | 有限批次与通知 | PlayableCycleTests：1/n/all、快速再生不扩大目标、提前耗尽唤醒、本人采空提醒、continue 保持 Activity 与预测引用、取消换行动 |
-| 竞争及失效候选 | [MultiplayerEdgeTests](../../tests/ResourceCycle.Tests/MultiplayerEdgeTests.cs)：同 Due 最后一份只给一人，感知确认和无关完成不改变胜负，取消重启后旧候选被拒绝 |
-| 完成与冷开等价 | [CycleTestSupport](../../tests/ResourceCycle.Tests/CycleTestSupport.cs) 独立业务公式 oracle；PlayableCycleTests 对照 100 个增量/全量边界、50 个真实磁盘逐 S 冷开边界和请求顺序 |
-| 多角色 E-only 恢复 | [MultiplayerRecoveryTests](../../tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs)：加入、耗尽、确认的真实磁盘 pending；恢复使用禁止 Forecast/Plan 的探针；未提交确认冷开仍保留感知 |
-| 发布及纯派生边界 | [CyclePersistenceTests](../../tests/ResourceCycle.Tests/CyclePersistenceTests.cs)、[CycleCompletionTests](../../tests/ResourceCycle.Tests/CycleCompletionTests.cs)、[CycleStorageShapeTests](../../tests/ResourceCycle.Tests/CycleStorageShapeTests.cs)：E/S 失败、旧快照不可变、多事实折叠一致、实际存档无缓存/路由类型 |
-| 数值及消息边界 | [GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)：大时长百分比不因中间乘积溢出、满背包初始拒绝/途中停止、通知聚合、启动新活动消费旧感知；MultiplayerEdgeTests 验证续周期溢出保留本次产出 |
+| 竞争及失效候选 | [MultiplayerEdgeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/MultiplayerEdgeTests.cs)：同 Due 最后一份只给一人，感知确认和无关完成不改变胜负，取消重启后旧候选被拒绝 |
+| 完成与冷开等价 | [CycleTestSupport](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleTestSupport.cs) 独立业务公式 oracle；PlayableCycleTests 对照 100 个增量/全量边界、50 个真实磁盘逐 S 冷开边界和请求顺序 |
+| 多角色 E-only 恢复 | [MultiplayerRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs)：加入、耗尽、确认的真实磁盘 pending；恢复使用禁止 Forecast/Plan 的探针；未提交确认冷开仍保留感知 |
+| 发布及纯派生边界 | [CyclePersistenceTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CyclePersistenceTests.cs)、[CycleCompletionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleCompletionTests.cs)、[CycleStorageShapeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleStorageShapeTests.cs)：E/S 失败、旧快照不可变、多事实折叠一致、实际存档无缓存/路由类型 |
+| 数值及消息边界 | [GatheringBoundaryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)：大时长百分比不因中间乘积溢出、满背包初始拒绝/途中停止、通知聚合、启动新活动消费旧感知；MultiplayerEdgeTests 验证续周期溢出保留本次产出 |
 
 ## Console 运行与试玩
 
-[可玩 smoke](../../scripts/Smoke-ResourceCyclePlay.ps1) 实际启动多个 CLI 进程并检查输出及存档文件哈希，首轮全部通过：
+[可玩 smoke](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCyclePlay.ps1) 实际启动多个 CLI 进程并检查输出及存档文件哈希，首轮全部通过：
 
 - A/B 同采太阳花，C 等待；B 于 D0 17:36 取走最后一份，世界当时即请求感知响应，A/B 原截止时刻保持。
 - 在待响应处退出、冷开；look、非法命令、EOF 不改变存档字节。连续运行和分段续玩最终观察完全一致。
@@ -52,7 +54,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1
 - 三人等待跨越昼夜的连续/冷开对照，以及批处理/可玩存档误用拒绝均通过。
 - 正式其他角色栏目不泄漏技能、未来 Due 或背包。
 
-[批处理 smoke](../../scripts/Smoke-ResourceCycle.ps1) 同样实际启动多个进程：连续、全量重算、分段续跑的事件轨迹和最终诊断相同；首轮轨迹 29 个事件，重开已完成存档不重复事件。
+[批处理 smoke](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCycle.ps1) 同样实际启动多个进程：连续、全量重算、分段续跑的事件轨迹和最终诊断相同；首轮轨迹 29 个事件，重开已完成存档不重复事件。
 
 额外 UI 试玩使用另一条实际输入路线：三人同点采集，A 一屏收到 B/C 两条加入感知；A 取消重开、C 取消再选 all，会按真实新活动再次提醒。D0 17:00 三人各取得 1 份后 A 取空；C 此时被唤醒但 Due 仍为 17:20。保存、冷开后分别继续/取消，A 保留所得转等待，C/B 分别于 17:20/17:36 无货结束。该轮发现并修复了历史结果“当前余量”与真实当前库存混淆的文案，另消除重复句号、压缩 wait 参数范围并补明耗尽先提醒。
 

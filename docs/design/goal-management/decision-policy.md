@@ -6,7 +6,7 @@
 
 让独立模型调用持续关注同一组重要问题：当前处境、既有目标、需要保存的变化以及下一项行动。固定的是决策检查与语义边界，不保证模型给出相同判断或相同行动，也不替代游戏权威校验。
 
-当前 [LlmCharacterController](../../../src/ResourceCycle.Completion/LlmCharacterController.cs) 的 `SystemPrompt` 保存共同协议与信息边界，`PromptFor` 按观察能力选择 `GoalGuidance` 或原有 `HandoffGuidance`。目标能力可用时，长期事项由目标记录承载，handoff 保留一次性交接用途。每次请求由完整角色材料重新构造；同一决策回合可有多次请求，控制器不保留 assistant 历史。
+当前 [LlmCharacterController](../../../src/Playground.Completion/LlmCharacterController.cs) 的 `SystemPrompt` 保存共同协议与信息边界，`PromptFor` 按观察能力选择 `GoalGuidance` 或原有 `HandoffGuidance`。目标能力可用时，长期事项由目标记录承载，handoff 保留一次性交接用途。每次请求由完整角色材料重新构造；同一决策回合可有多次请求，控制器不保留 assistant 历史。
 
 首版在这个入口整理并补充行为指引，不建立固定用户消息问答流程，不把 LLM 拆成代码管线中的分析、规划、审查节点，不新增“思考到第几步”的持久状态机。
 

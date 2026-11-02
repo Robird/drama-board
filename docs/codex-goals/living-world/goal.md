@@ -1,5 +1,7 @@
 # Goal 启动文本
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 供用户在 DramaBoard 仓库启动持续工作时使用。这里只提供项目任务文本，不规定 `/goal` 的产品语法或预算参数；编辑文档不启动 Goal。实际执行遵守当前用户指令、平台约束及仓库协作规则。
 
 ```text

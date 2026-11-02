@@ -1,5 +1,7 @@
 # 局部预测方案：辩证审阅裁决
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。对[局部预测重构方案](../design/local-prediction-refactor.md)执行 dialectical-simplification。三位审阅者分别承担需求质疑、最小架构、语义防守；先独立阅读同一需求账本与源码，再交叉质询。主线程核对源证据并修订文档。两轮后关键不变量与机制已收敛，无需第三轮；未修改或测试产品代码。
 
 ## 最小模型
@@ -24,7 +26,7 @@
 | §2：每种过程必须另建持久对象 | arrival/schedule 的 Due 已在 [SpatialOccurrenceRule](../../src/Spatial/Simulation/SpatialOccurrenceRule.cs) 所读业务记录中；新增 registry 没有当前消费者 | 用业务身份解释 owner；仅 Contacts 新增输出存储 | **defer** 通用过程注册表；**merge** 身份与已有业务记录 |
 | §3：组合根/事实包装是否多余 | [GraphSpatialReducer.Apply](../../src/Spatial/Facts/GraphSpatialReducer.cs) 每条 fact 前后校验；若业务子图同时强校验预测，Reverse 后旧 generation 会在替换前误报 | Business 与 Contacts 两子图，同根批末校验；包装只区分业务与预测结果 | **keep**：有真实中间状态边界 |
 | §3/§7：把 Contacts 改成纯缓存、取消恢复片 | E-only 若没有记录预测结果，就必须重新预测或留下陈旧状态；[模型资格测试](../../tests/Spatial.Tests/Acceptance/DurableModelQualificationTests.cs) 明确不是 history adapter | 保留接触输出与整通道替换事实；测试用单根 history，暂不做通用存档产品 | **keep**：持久状态与 S2 有当前故障模型依据 |
-| §6：S3 只改 Forecast 名称 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 维护藏在当前赢家 rule 中；只改名无法保证将来别的发生源也维护 | 真正迁到同一个 Complete 时机；保留业务事实形状、私有通知和应用优先级 | **simplify** 共用执行契约；**defer** 泛型过程/通知框架 |
+| §6：S3 只改 Forecast 名称 | [CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs) 维护藏在当前赢家 rule 中；只改名无法保证将来别的发生源也维护 | 真正迁到同一个 Complete 时机；保留业务事实形状、私有通知和应用优先级 | **simplify** 共用执行契约；**defer** 泛型过程/通知框架 |
 | 可选空间索引、邻域证书、对级负记录 | 当前通道全配对已覆盖新关系，尚无密集通道测量 | 保留重开条件和独立参考，不进入首片 | **defer**：当前无新增机制的必要证据 |
 
 以上裁决对当前源码证据的信心高；具体 DG 类型和字段命名、后续多人 Cycle 的消费映射仍须实施时验证。未对性能作测量推断。

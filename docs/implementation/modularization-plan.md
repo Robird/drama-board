@@ -1,5 +1,7 @@
 # 模块化重构方案：从 ResourceCycle 的真实协作边界开始
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 状态：A–D 已实施并完成集成验收；依据 2026-10-27 当前源码，证据见[验收](../experiments/modularization-acceptance.md)。分层与组合原则已采纳，见[设计决策](../design/layering-and-composition.md)。
 
 ## 1. 目标与范围
@@ -13,18 +15,18 @@
 | 当前入口 | 已承担职责与可用边界 | 后续整理时的重点 |
 | --- | --- | --- |
 | [Kernel](../../src/Kernel/Simulation/SimulationKernel.cs)、[Spatial](../../src/Spatial/Simulation/SpatialSimulation.cs)、[Host](../../src/Host/SimulationHost.cs) | 通用发生项执行、可选空间机制、驱动循环；已有独立程序集 | 保留分界；不把采集顺序、昼夜规则或控制器轮转提升为 Kernel 默认政策。 |
-| [ItemInventory](../../src/Inventory/ItemInventory.cs)、[CycleCharacter](../../src/ResourceCycle/CycleCharacter.cs) | Inventory 独立承载物品数量与单份接纳查询，不读取整个世界；角色文件保留活动、感知和角色 | 库存仅依赖 DG；角色的活动、感知与服务代数仍是本游戏组合的一部分，没有随背包一起提走。 |
-| [CycleResource](../../src/ResourceCycle/CycleResource.cs) | 资源定义与运行状态同对象；包含余量、容量、单项产出、光照约束、进度和采集要求 | 不预设“定义/实例”必须分图；当前只接受 `herbalism`，不能直接宣称为通用资源框架。 |
-| [CycleActions](../../src/ResourceCycle/CycleActions.cs) | 命令形状、控制器入口、接受条件、采集时长公式；受阻结果是中文字符串 | 区分局部规则检查与本游戏命令组合；保留“接受时合法”和“到期能否取得资源”的不同检查时点。 |
-| [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | 同时确定资源替换、背包增加、活动续接、感知与结果文字 | 这是明确存在的跨模块编排；可调用局部能力，但仍由它决定一整个发生项的结果。 |
-| [CycleFact](../../src/ResourceCycle/CycleFact.cs) 与 [CycleBusinessState](../../src/ResourceCycle/CycleModels.cs) | 前者记录跨对象替换事实；后者是具体游戏的业务根，校验跨对象引用 | 当前事实和根保留应用归属；不要求一个模块对应一类通用 Fact 或一个独立提交。 |
-| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs)、[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs)、[CyclePredictionMaintenance](../../src/ResourceCycle/CyclePredictionMaintenance.cs) | Engine 保留接线/候选政策/Complete 编排，事实应用与预测维护只接收 Business 及必要缓存 | 三者均为当前游戏职责，不把 same-tick 优先级和角色公平轮转提升成通用调度公理。 |
-| [CycleForecasts](../../src/ResourceCycle/CycleForecasts.cs)、[CycleDiagnostics](../../src/ResourceCycle/CycleDiagnostics.cs) | 运行时预测/绑定及诊断；缓存不落盘 | 保留冷开 Rebuild、增量 Complete 与全量对照，避免模块提取后各自维护世界时间或发布。 |
-| [CycleGameFactory](../../src/ResourceCycle/CycleGameFactory.cs) | 具体场景对象图、默认资源/角色/脚本、起始游标 | 作为组合入口保留；模块工厂最多返回其负责的子图，不另造全世界根。 |
-| [Persistence](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](../../src/ResourceCycle.Cli/PlayView.cs)、当时的 `PlayInput`（后按 [Console 边界合同](../design/console-command-boundary.md)拆分） | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；此阶段控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
+| [ItemInventory](../../src/Inventory/ItemInventory.cs)、[CycleCharacter](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleCharacter.cs) | Inventory 独立承载物品数量与单份接纳查询，不读取整个世界；角色文件保留活动、感知和角色 | 库存仅依赖 DG；角色的活动、感知与服务代数仍是本游戏组合的一部分，没有随背包一起提走。 |
+| [CycleResource](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleResource.cs) | 资源定义与运行状态同对象；包含余量、容量、单项产出、光照约束、进度和采集要求 | 不预设“定义/实例”必须分图；当前只接受 `herbalism`，不能直接宣称为通用资源框架。 |
+| [CycleActions](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleActions.cs) | 命令形状、控制器入口、接受条件、采集时长公式；受阻结果是中文字符串 | 区分局部规则检查与本游戏命令组合；保留“接受时合法”和“到期能否取得资源”的不同检查时点。 |
+| [CyclePlanning](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CyclePlanning.cs) | 同时确定资源替换、背包增加、活动续接、感知与结果文字 | 这是明确存在的跨模块编排；可调用局部能力，但仍由它决定一整个发生项的结果。 |
+| [CycleFact](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFact.cs) 与 [CycleBusinessState](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs) | 前者记录跨对象替换事实；后者是具体游戏的业务根，校验跨对象引用 | 当前事实和根保留应用归属；不要求一个模块对应一类通用 Fact 或一个独立提交。 |
+| [CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs)、[CycleFactApplication](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFactApplication.cs)、[CyclePredictionMaintenance](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CyclePredictionMaintenance.cs) | Engine 保留接线/候选政策/Complete 编排，事实应用与预测维护只接收 Business 及必要缓存 | 三者均为当前游戏职责，不把 same-tick 优先级和角色公平轮转提升成通用调度公理。 |
+| [CycleForecasts](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleForecasts.cs)、[CycleDiagnostics](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleDiagnostics.cs) | 运行时预测/绑定及诊断；缓存不落盘 | 保留冷开 Rebuild、增量 Complete 与全量对照，避免模块提取后各自维护世界时间或发布。 |
+| [CycleGameFactory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleGameFactory.cs) | 具体场景对象图、默认资源/角色/脚本、起始游标 | 作为组合入口保留；模块工厂最多返回其负责的子图，不另造全世界根。 |
+| [Persistence](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs) | 当前游戏根、版本化 E、加载修订、正常提交与恢复 | 已独立逻辑分区但仍在 ResourceCycle 程序集；不因此立即抽通用存档框架。 |
+| [PlayConsole](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayConsole.cs)、[PlayView](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayView.cs)、当时的 `PlayInput`（后按 [Console 边界合同](../design/console-command-boundary.md)拆分） | Console 驱动、纯角色视图、纯语法解析已分开；世界资格检查仍用 `CycleActions.Check` | CLI 独立测试验证可见文本与语法；此阶段控制器仍接收完整 `CycleWorld`，不宣称已具备信息隔离 API。 |
 
-当前项目引用也提供了边界：[ResourceCycle](../../src/ResourceCycle/ResourceCycle.csproj) 引用 Inventory、Kernel 与 DG Persistence；[Inventory](../../src/Inventory/Inventory.csproj) 只引用 DG；[CLI](../../src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
+当前项目引用也提供了边界：[ResourceCycle](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/ResourceCycle.csproj) 引用 Inventory、Kernel 与 DG Persistence；[Inventory](../../src/Inventory/Inventory.csproj) 只引用 DG；[CLI](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/ResourceCycle.Cli.csproj) 引用 ResourceCycle；[Host](../../src/Host/Host.csproj) 只引用 Kernel。ResourceCycle 没有接入 Spatial，也没有经 Host 驱动交互循环；本轮方向不要求为统一入口强行改接。
 
 需要特别保留的事实：
 
@@ -52,7 +54,7 @@
 
 **目标**：以一个实际重复的规则为起点，明确“库存表示及接纳结果”与“采集后如何改变世界”的分工。把背包从角色相关大文件中分离只是附属整理，主要收益是接受与结算复用同一个接纳规则，以及局部规则能够单独测试。
 
-**入口**：`ItemInventory`（原 `CycleBackpack`）、`CycleActions.Check` 的 Gather 分支、`CyclePlanning.CompleteGather`，以及 [GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)。没有引入 `IInventory`、策略注册表或统一结果泛型。
+**入口**：`ItemInventory`（原 `CycleBackpack`）、`CycleActions.Check` 的 Gather 分支、`CyclePlanning.CompleteGather`，以及 [GatheringBoundaryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GatheringBoundaryTests.cs)。没有引入 `IInventory`、策略注册表或统一结果泛型。
 
 **保留合同**：开始前检查与结算时检查都存在；背包拒收时资源不扣减、无物品增加；成功后产生新背包，原快照不变；批次停止/续接及通知仍由采集编排决定。当前所谓无限背包仍有整数表示上限。
 
@@ -64,7 +66,7 @@
 
 这一步可以按实际改动点分为独立小提交，不要求同时完成三处，也不以建立三套框架为目标。
 
-**Console 分片：已实施并验收。** `PlayView` 承担完整观察、命令列表与公共变化；`PlayInput` 只解析语法，IO/EOF/重试和世界合法性检查留在 `PlayConsole`。两个类型仍是 CLI 内部类型，独立 [CLI.Tests](../../tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj) 经单一友元访问，不让领域测试反向引用 exe。文本与现有命令行为保持；没有改变持久历史文字或增加信息隔离 API。行为测试和真实 Console 试玩见[验收](../experiments/modularization-acceptance.md)。
+**Console 分片：已实施并验收。** `PlayView` 承担完整观察、命令列表与公共变化；`PlayInput` 只解析语法，IO/EOF/重试和世界合法性检查留在 `PlayConsole`。两个类型仍是 CLI 内部类型，独立 [CLI.Tests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj) 经单一友元访问，不让领域测试反向引用 exe。文本与现有命令行为保持；没有改变持久历史文字或增加信息隔离 API。行为测试和真实 Console 试玩见[验收](../experiments/modularization-acceptance.md)。
 
 **事实应用与派生预测维护：已实施并验收。** 两个应用内部静态职责均不成为通用引擎模块：
 
@@ -76,7 +78,7 @@
 
 这避免预测维护反调 Engine.Fold 的循环依赖，并让局部规则无需 Kernel/控制器即可验证。必须按**每条事实的前后业务态**收集 dirty，去重后针对最终态各计算一次；保留 consumed owner、没有当前输出的 owner 订阅、Activity/角色两级引用判断和相同预测的实例复用。冷开重建与增量更新继续分开；oracle 仍使用独立公式，不调用新 Predict 来生成期望。当前不支持动态增删角色/资源，生产 Validate 也不承担全量缓存完整性证明；本片不扩大这些合同。内嵌 CycleRule 体量小，暂不另抽一层。
 
-新增 [CycleMaintenanceBoundaryTests](../../tests/ResourceCycle.Tests/CycleMaintenanceBoundaryTests.cs) 验证无需 World/controller 的事实应用与预测协作，以及批内恢复原引用仍逐事实收集 dirty、最终只重算一次。没有给中间 Business 增加完整校验；Kernel 公共入口、候选政策及独立 oracle 保留。
+新增 [CycleMaintenanceBoundaryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleMaintenanceBoundaryTests.cs) 验证无需 World/controller 的事实应用与预测协作，以及批内恢复原引用仍逐事实收集 dirty、最终只重算一次。没有给中间 Business 增加完整校验；Kernel 公共入口、候选政策及独立 oracle 保留。
 
 **已形成的边界**：
 
@@ -88,7 +90,7 @@
 
 **非目标**：通用事件总线、通用效果语言、独立 RuleSuite 程序集、强制所有规则一个接口、一次改完所有文本。尤其不自动把持久 `Result/LastResult/Reason` 改成临时字符串或新的历史消息 schema。
 
-**验收与推进条件**：根据所改职责选跑 [CycleCompletionTests](../../tests/ResourceCycle.Tests/CycleCompletionTests.cs)、[CycleBehaviorTests](../../tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[PlayableCycleTests](../../tests/ResourceCycle.Tests/PlayableCycleTests.cs) 与对应恢复测试；Console 拆分需增加行为性视图/解析检查并做真实脚本试玩。若分拆只能通过共享可变全局状态或层层透传整个世界成立，先保持显式应用编排；不为了目录对称而继续拆。
+**验收与推进条件**：根据所改职责选跑 [CycleCompletionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleCompletionTests.cs)、[CycleBehaviorTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[PlayableCycleTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/PlayableCycleTests.cs) 与对应恢复测试；Console 拆分需增加行为性视图/解析检查并做真实脚本试玩。若分拆只能通过共享可变全局状态或层层透传整个世界成立，先保持显式应用编排；不为了目录对称而继续拆。
 
 文本进一步结构化是后续设计点：先区分历史事件描述、角色持久感知与当前观察，再确定哪些内容应在 Plan 记录、哪些由展示生成；不得借“展示无关”之名让恢复重新解释历史事实。
 
@@ -102,7 +104,7 @@
 
 **入口**：A 整理出的局部能力、测试夹具与具体游戏组合代码。探针不要求另建 Console 或存档入口，也不凭一个测试夹具宣称已证明完整第二游戏复用。
 
-验收分两层：[独立库存测试](../../tests/Inventory.Tests/ItemInventoryTests.cs) 验证跨物品共享容量、0/无限/单项上限和快照隔离；[真实采集探针](../../tests/ResourceCycle.Tests/CapacityGatheringTests.cs) 通过现有工厂注入有容量角色，验证“容量 2、目标 3，只取得并扣资源 2 份”、开始已满拒绝、已有另一物品占用容量，以及连续/S 冷开/E-only 恢复一致。库存与容量随根和记录替换一起保存，恢复不重新判断接纳政策。
+验收分两层：[独立库存测试](../../tests/Inventory.Tests/ItemInventoryTests.cs) 验证跨物品共享容量、0/无限/单项上限和快照隔离；[真实采集探针](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CapacityGatheringTests.cs) 通过现有工厂注入有容量角色，验证“容量 2、目标 3，只取得并扣资源 2 份”、开始已满拒绝、已有另一物品占用容量，以及连续/S 冷开/E-only 恢复一致。库存与容量随根和记录替换一起保存，恢复不重新判断接纳政策。
 
 **Schema/修订裁决**：Backpack 升为 v3，field 1 保留数量字典，field 2 为 nullable long 容量；历史 v1/v2 保留，新增 v3 经 Publish/Verify。DG 没有缺字段自动补 null 的 editable upgrade，本片不新增转换，**包含旧 v1/v2 背包的开发存档不受支持**。实际用修改前二进制生成的 v2 存档验证了拒绝，CLI 返回 1、简短错误且不改变存档字节。`GameRevision` 保持 1：原有可表达的无限状态规则不变，不制造空的全图语义迁移；相同 GameRevision 不代表 Schema 兼容。
 
@@ -132,7 +134,7 @@ CLR 命名/项目归属与持久身份分开：保留 `DurableType("DramaBoard.R
 
 **实际边界**：移出的模块拥有其局部状态与规则；具体游戏引用模块并组合根、事实与工厂。模块不引用 `ResourceCycle`、CLI 或具体游戏持久化 adapter，也不拥有独立世界提交入口。[InventoryDurableModels.Register](../../src/Inventory/InventoryDurableModels.cs) 仅注册本模块，由游戏统一接线；不使用友元绕过程序集边界。
 
-**入口**：候选模块源码、`ResourceCycle.csproj`、[CycleDurableModels.Register](../../src/ResourceCycle/Persistence/CycleDurableModels.cs)、[DG 源码接线](../source-dependencies.md)、[solution](../../DramaBoard.slnx)、相关测试项目。
+**入口**：候选模块源码、`ResourceCycle.csproj`、[CycleDurableModels.Register](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableModels.cs)、[DG 源码接线](../source-dependencies.md)、[solution](../../DramaBoard.slnx)、相关测试项目。
 
 **保留合同**：游戏继续拥有根、初始组合、跨模块编排和 GameRevision；全部子图仍经同一个根保存。源码 mod 可以作为共同编译的组合消费者，不要求动态加载、沙箱或二进制稳定 API。
 
@@ -151,10 +153,10 @@ CLR 命名/项目归属与持久身份分开：保留 `DurableType("DramaBoard.R
 
 | 风险 | 当前测试入口 |
 | --- | --- |
-| 不变快照、增量/全量轨迹、同刻自然事件 | [CycleBehaviorTests](../../tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[CycleCompletionTests](../../tests/ResourceCycle.Tests/CycleCompletionTests.cs) |
-| 采集原子效果、轮转、感知、同刻竞争 | [PlayableCycleTests](../../tests/ResourceCycle.Tests/PlayableCycleTests.cs)、[MultiplayerEdgeTests](../../tests/ResourceCycle.Tests/MultiplayerEdgeTests.cs)、[GatheringBoundaryTests](../../tests/ResourceCycle.Tests/GatheringBoundaryTests.cs) |
-| 真实 E-only、失败提交与运行视图安装 | [CyclePersistenceTests](../../tests/ResourceCycle.Tests/CyclePersistenceTests.cs)、[MultiplayerRecoveryTests](../../tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs) |
-| 根/事件真实字段、缓存不落盘、工厂、内存修订 | [CycleStorageShapeTests](../../tests/ResourceCycle.Tests/CycleStorageShapeTests.cs)、[CycleInitializationTests](../../tests/ResourceCycle.Tests/CycleInitializationTests.cs)、[CycleRevisionTests](../../tests/ResourceCycle.Tests/CycleRevisionTests.cs) |
+| 不变快照、增量/全量轨迹、同刻自然事件 | [CycleBehaviorTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleBehaviorTests.cs)、[CycleCompletionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleCompletionTests.cs) |
+| 采集原子效果、轮转、感知、同刻竞争 | [PlayableCycleTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/PlayableCycleTests.cs)、[MultiplayerEdgeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/MultiplayerEdgeTests.cs)、[GatheringBoundaryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GatheringBoundaryTests.cs) |
+| 真实 E-only、失败提交与运行视图安装 | [CyclePersistenceTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CyclePersistenceTests.cs)、[MultiplayerRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs) |
+| 根/事件真实字段、缓存不落盘、工厂、内存修订 | [CycleStorageShapeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleStorageShapeTests.cs)、[CycleInitializationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleInitializationTests.cs)、[CycleRevisionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleRevisionTests.cs) |
 
 影响项目引用、公共模型或生成器时，串行构建以免相邻 DG 共享输出竞争，并执行当前 solution 的 Schema Verify 构建与测试；涉及 Console 则补内存运行、磁盘新建及续局脚本。每片记录实际运行结果，不把上片或文档中的历史测试数量作为新基线。
 

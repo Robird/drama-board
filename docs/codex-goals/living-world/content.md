@@ -1,10 +1,12 @@
 # 世界内容定义与存档绑定
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。游戏修订 22 实施 C6：不可变内容随世界保存，运行规则与恢复读取保存定义。完成条件见 [README](README.md)，施工状态只在 [work-plan](work-plan.md) 维护，工程与实际 Console 证据见[内容验收](../../experiments/living-world-content-acceptance.md)。
 
 ## 内容入口
 
-[CycleWorldDefinitions](../../../src/ResourceCycle/CycleWorldDefinitions.cs) 是普通 C# 创作入口，`LivingWorld(...)` 建立默认内容，`Named("hillside" | "gentle", ...)` 提供 CLI 预设。[CycleWorldDefinition](../../../src/ResourceCycle/CycleWorldDefinition.cs) 保存完整有效定义；`Change(...)` 返回新定义。人数、开始时刻、需求/天气开关和种子在指纹计算前归一化。`CycleGameFactory.Create(definition)` 校验后建立初始图，不改变 Kernel。
+[CycleWorldDefinitions](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleWorldDefinitions.cs) 是普通 C# 创作入口，`LivingWorld(...)` 建立默认内容，`Named("hillside" | "gentle", ...)` 提供 CLI 预设。[CycleWorldDefinition](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleWorldDefinition.cs) 保存完整有效定义；`Change(...)` 返回新定义。人数、开始时刻、需求/天气开关和种子在指纹计算前归一化。`CycleGameFactory.Create(definition)` 校验后建立初始图，不改变 Kernel。
 
 定义包括地点名称、描述与庇护，通路耗时及双向描述，独立的 64-bit 语义关系；资源位置、初始库存、容量、产物、再生/采集周期与技能要求；按服务顺序保留的初始居民、位置、技能、现金、身体、背包与容量；物品名称、配方、市场供需/价格/刷新周期及市场/工坊地点；补给效果、五种身体速率和天气参数。
 

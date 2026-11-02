@@ -1,5 +1,7 @@
 # 生存 2B：双角色规则、观察与宿主验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-29。对应[里程碑 §3.3](../design/survival-demo-milestone.md#33-2b双角色生存与控制器路由)和[实施合同](../implementation/survival-duo.md)。本片不包含对白、赠与或真实人类合作，2C 仍待完成。
 
 ## 工程与恢复

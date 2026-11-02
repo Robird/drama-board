@@ -2,7 +2,7 @@
 
 2026-11-02。本文整理前述开发经验调查，记录可追溯的来源、对 DramaBoard 的启发及用户已选定的命名方向。外部实践与本项目建议分别陈述；示例工程的当前组织方式，不用于推断引擎最初就是这样开发的。
 
-本轮交付为文档。用户已决定下一轮将 `ResourceCycle` 系列重命名为 `Playground` 系列；当前项目、namespace、类型和启动命令仍使用原名。动态执行状态统一见 [PROJECT-STATE](../../PROJECT-STATE.md)。
+本文保留命名决策的调查依据；ResourceCycle → Playground 重命名已实施并通过验收，当前入口与持久身份契约见[重命名说明](../implementation/playground-rename.md)。动态执行状态统一见 [PROJECT-STATE](../../PROJECT-STATE.md)。
 
 ## 1. 已确定的项目定位
 
@@ -105,9 +105,9 @@ Lyra 官方定位是模块化示例游戏与学习资源，组合核心系统、
 
 不追求游戏性，仍应让角色处境、可选行动和行动后果容易理解；这决定人类与 LLM 能否有效参与实验。调试视图可提供全局事实，但角色材料必须继续遵守可见性边界。观察和渲染不应偷偷推进世界或消费待交付事件。
 
-## 6. 下一轮命名交接
+## 6. 命名决策与实施交接
 
-用户已选择 `Playground`；本轮仅记录，下一轮实施。项目级目标映射为：
+用户已选择 `Playground`。以下保留原始项目映射；实施及验收状态见[重命名说明](../implementation/playground-rename.md)：
 
 | 当前项目 | 目标项目 |
 | --- | --- |
@@ -118,7 +118,7 @@ Lyra 官方定位是模块化示例游戏与学习资源，组合核心系统、
 | `ResourceCycle.Cli.Tests` | `Playground.Cli.Tests` |
 | `ResourceCycle.Completion.Tests` | `Playground.Completion.Tests` |
 
-`DramaBoard.ResourceCycle*` 的程序集与 namespace 随项目身份统一。`CycleWorld` → `PlaygroundWorld`、`CycleEngine` → `PlaygroundEngine`、`CycleGameFactory` → `PlaygroundGameFactory` 是代表性类型映射；完整声明符号清单需在下一轮结合源码建立，避免对 `Cycle` 字样做无差别文本替换。优先使用语义重命名，再逐类处理配置、脚本和字符串。
+`DramaBoard.ResourceCycle*` 的程序集与 namespace 随项目身份统一。`CycleWorld` → `PlaygroundWorld`、`CycleEngine` → `PlaygroundEngine`、`CycleGameFactory` → `PlaygroundGameFactory` 是代表性类型映射；完整声明符号清单由实施说明记录，避免对 `Cycle` 字样做无差别文本替换。优先使用语义重命名，再逐类处理配置、脚本和字符串。
 
 实施时需分别核对项目/文件路径、CLR 符号、持久类型身份、Schema 历史、游戏身份、内容指纹及日志协议字段。已有“无旧开发存档兼容负担”的范围继续有效；如何处理持久身份及历史 Schema 要明确记录，不能仅凭项目改名就宣称完成。Hillside 仍表示场景内容，不要求跟着改名。
 

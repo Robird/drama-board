@@ -1,16 +1,18 @@
 # 属性阈值预测验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-29。对应[设计](../design/attribute-threshold-forecasts.md)。工程验证与四次独立实际 Console 会话通过；未接入 LLM。
 
 ## 实现与工程证据
 
 | 合同 | 实现与证据 |
 | --- | --- |
-| 属性独立的警戒／耗尽时刻，数值预测不等于通知 | [CycleAttributeForecast](../../src/ResourceCycle/CycleAttributeForecast.cs)、[CycleSurvivalRules](../../src/ResourceCycle/CycleSurvivalRules.cs)；[SurvivalForecastTests](../../tests/ResourceCycle.Tests/SurvivalForecastTests.cs) 覆盖三属性、跨昼夜、上限、另一属性先耗尽、补给、已通知／确认、正零速率和时间表示边界。 |
+| 属性独立的警戒／耗尽时刻，数值预测不等于通知 | [CycleAttributeForecast](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleAttributeForecast.cs)、[CycleSurvivalRules](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvivalRules.cs)；[SurvivalForecastTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalForecastTests.cs) 覆盖三属性、跨昼夜、上限、另一属性先耗尽、补给、已通知／确认、正零速率和时间表示边界。 |
 | 行动只补充改变条件的例外 | `ActionWarning` 仅对从庇护出发的移动给出途中暴露及段内温暖时刻；同测试文件覆盖段内外目标、已有暴露和不读取未知目的地。 |
-| 保存材料贯穿语义比较与历史恢复 | [CycleObservationEquality](../../src/ResourceCycle/CycleObservationEquality.cs)、[CharacterContext](../../src/ResourceCycle/CharacterContext.cs)；[RateExplanationContextTests](../../tests/ResourceCycle.Tests/RateExplanationContextTests.cs) 检查同值仅预测不同与实际磁盘历史预测破坏拒绝。 |
-| S／pending E 恢复不重新决定，旧 Opening 保持原值 | [CharacterContextPersistenceTests](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 在既有多来源 fixture 上加入水分补给前后逐项预测断言；中断 E→S、冷开、无控制器恢复、再次冷开均保留冻结材料。 |
-| 两布局与增量共享属性材料，删除空风险行 | [CycleAttributeView](../../src/ResourceCycle.Cli/CycleAttributeView.cs)、[CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs)；[AttributeForecastViewTests](../../tests/ResourceCycle.Cli.Tests/AttributeForecastViewTests.cs) 覆盖预测单独改变、旧／新 Context、低值与历史通知、终局及行动例外撤销，不锁定具体呈现位置。 |
+| 保存材料贯穿语义比较与历史恢复 | [CycleObservationEquality](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleObservationEquality.cs)、[CharacterContext](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CharacterContext.cs)；[RateExplanationContextTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/RateExplanationContextTests.cs) 检查同值仅预测不同与实际磁盘历史预测破坏拒绝。 |
+| S／pending E 恢复不重新决定，旧 Opening 保持原值 | [CharacterContextPersistenceTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs) 在既有多来源 fixture 上加入水分补给前后逐项预测断言；中断 E→S、冷开、无控制器恢复、再次冷开均保留冻结材料。 |
+| 两布局与增量共享属性材料，删除空风险行 | [CycleAttributeView](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/CycleAttributeView.cs)、[CycleViewSnapshot](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/CycleViewSnapshot.cs)；[AttributeForecastViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/AttributeForecastViewTests.cs) 覆盖预测单独改变、旧／新 Context、低值与历史通知、终局及行动例外撤销，不锁定具体呈现位置。 |
 
 生产 GameRevision 为 **11**；`SurvivalObservation` Schema 3 删除独立 `FatalAt` 字段并保存三项预测及阈值，`AttributeForecast` Schema 1。`FatalAt` 仅派生；物理 `Survival` 仍为 Schema 2。没有旧开发存档兼容，试玩须使用新的 `--store`。
 

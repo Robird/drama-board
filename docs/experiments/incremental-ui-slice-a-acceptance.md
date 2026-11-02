@@ -1,5 +1,7 @@
 # 增量 UI 切片 A 验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-28。依据[切片 A 合同](../design/incremental-ui-slice-a.md)实施；领域与 CLI 分包施工，另设独立源码审查、Console 试玩与 PTY 试玩。主线程核对关键源码、运行集成构建/全套测试、比较输出轨迹并验收修复。
 
 ## 交付范围
@@ -23,10 +25,10 @@ dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 
 | 合同 | 证据入口与实际覆盖 |
 | --- | --- |
-| 真实效果与顺序 | [ObservedEventTests](../../tests/ResourceCycle.Tests/ObservedEventTests.cs)：90→100 补水实际 +10、最后一份扣减、自然变化/寒风分离、黄昏旧速率积分、最终采集产出与结束分离、隐式确认、草稿交付消费、远处资源隔离；篡改材料、伪造中间值及不同状态键事件换序被拒绝。 |
-| 磁盘恢复与操作答复 | 同上及 [OperationRecoveryIntegrationTests](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)：真实 pending E、已完成 S 但缺宿主结果、后续身体已改变；恢复仍使用原实际收益和原操作身份，不重复执行。 |
-| 快照和更新 | [IncrementalProjectionTests](../../tests/ResourceCycle.Cli.Tests/IncrementalProjectionTests.cs)：语义重建、净零事件、物品归零一次、视野离开/返回、风险撤回、警告上下文、其他角色隔离、提交来源不重编号；历史撤回保留全部语义键且不伪装成当前身体消失。 |
-| 输出会话 | [IncrementalSessionTests](../../tests/ResourceCycle.Cli.Tests/IncrementalSessionTests.cs)：写入失败不安装基线、提交不冒充输入、两个布局零耗时操作不全量重绘、重同步、mode 帮助与多人回退、全量等待风险、Pending 说明、无变化答复、终局完整尾部。 |
+| 真实效果与顺序 | [ObservedEventTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ObservedEventTests.cs)：90→100 补水实际 +10、最后一份扣减、自然变化/寒风分离、黄昏旧速率积分、最终采集产出与结束分离、隐式确认、草稿交付消费、远处资源隔离；篡改材料、伪造中间值及不同状态键事件换序被拒绝。 |
+| 磁盘恢复与操作答复 | 同上及 [OperationRecoveryIntegrationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)：真实 pending E、已完成 S 但缺宿主结果、后续身体已改变；恢复仍使用原实际收益和原操作身份，不重复执行。 |
+| 快照和更新 | [IncrementalProjectionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/IncrementalProjectionTests.cs)：语义重建、净零事件、物品归零一次、视野离开/返回、风险撤回、警告上下文、其他角色隔离、提交来源不重编号；历史撤回保留全部语义键且不伪装成当前身体消失。 |
+| 输出会话 | [IncrementalSessionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/IncrementalSessionTests.cs)：写入失败不安装基线、提交不冒充输入、两个布局零耗时操作不全量重绘、重同步、mode 帮助与多人回退、全量等待风险、Pending 说明、无变化答复、终局完整尾部。 |
 | 原玩法回归 | 既有 Survival/Weather/Continuity/Spatial 测试同轮通过，包含庇护抵达、同刻仲裁、出口/死亡边界、终局与 E-only 恢复。 |
 
 没有新增整屏快照、章节位置或精确缩进断言。语义撤回允许在文本层按历史摘要分组，测试仍核对各状态键的值。

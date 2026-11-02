@@ -3,7 +3,7 @@ param([string]$Configuration = 'Release', [string]$OutputDirectory)
 # Ordinary Console engineering smoke. No online model calls or free-play claim.
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$cliPath = Join-Path $repoRoot "src/ResourceCycle.Cli/bin/$Configuration/net10.0/DramaBoard.ResourceCycle.Cli.dll"
+$cliPath = Join-Path $repoRoot "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 if (-not (Test-Path -LiteralPath $cliPath)) { throw "Build the CLI first: $cliPath" }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repoRoot ('artifacts/hillside-content/' + [Guid]::NewGuid().ToString('N')) }
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)

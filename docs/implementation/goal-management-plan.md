@@ -1,5 +1,7 @@
 # 角色目标管理：首版施工入口
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-31，A1/A2/B 已实现并通过工程验证，C 的核心场景试用已完成，模型自发行为与明确引导试验分别留证。范围以[里程碑](../design/goal-management/milestone.md)为准，本文保留实施切片与源码入口，不新增目标或代替真实模型验收。实际工程结果统一见[工程验收](../experiments/goal-management-acceptance.md)，模型行为见[试玩记录](../experiments/goal-management-playtest.md)。
 
 ## 合同与推进顺序
@@ -15,7 +17,7 @@
 
 A1/A2/B 已形成可编辑、持久化及跨回合呈现的闭环并通过工程验证；C 已保留真实模型自行调用目标操作、跨 Context 行动和磁盘续局证据。显式分目标/共享关系的引导试验与模型自发选择分别报告，不能把机制可用扩大为一般自主规划可靠。
 
-当前源码入口：局部模型/额度在 [GoalModel](../../src/Goals/GoalModel.cs)，语法与转换在 [GoalCommandParser](../../src/Goals/GoalCommandParser.cs) / [GoalRules](../../src/Goals/GoalRules.cs)，持久交互组合在 [CycleGoalInteractionRules](../../src/ResourceCycle/CycleGoalInteractionRules.cs)，当前材料投影在 [GoalView](../../src/ResourceCycle.Cli/GoalView.cs)，能力对应的固定提示词在 [LlmCharacterController](../../src/ResourceCycle.Completion/LlmCharacterController.cs)。
+当前源码入口：局部模型/额度在 [GoalModel](../../src/Goals/GoalModel.cs)，语法与转换在 [GoalCommandParser](../../src/Goals/GoalCommandParser.cs) / [GoalRules](../../src/Goals/GoalRules.cs)，持久交互组合在 [CycleGoalInteractionRules](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleGoalInteractionRules.cs)，当前材料投影在 [GoalView](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/GoalView.cs)，能力对应的固定提示词在 [LlmCharacterController](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Completion/LlmCharacterController.cs)。
 
 ## 必须守住的接线点
 

@@ -1,5 +1,7 @@
 # 语义空间连接与大喊：真实 Console 进程验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。独立验收代理操作实际 Human Console 入口，验证[空间连接与大喊](../design/spatial-relations-and-shout.md)的召集闭环。这不是用户本人试玩，本记录没有真实 LLM 调用。全部场景由普通游戏命令创建，不编辑存档，不关闭需求或天气。
 
 ## 运行与证据

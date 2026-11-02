@@ -1,5 +1,7 @@
 # 生存逃离一期验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：一期验收完成；二期尚未启动。目标见[里程碑](../design/survival-demo-milestone.md)，组合合同见[实施方案](../implementation/survival-demo-plan.md)。本文件区分代码能力、自动化证据与玩家试玩，不以局部测试代替完整目标。
 
 ## 1. 覆盖表
@@ -36,9 +38,9 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 - 最终 Verify 构建零警告/错误；ResourceCycle 17 个当前模型、28 条历史记录，新增 6 条历史。Business/Fact 为 v3、EventKind v4，新增 Expedition/Visit/Outcome v1。应用 GameRevision 为 2，旧开发存档不兼容。
 - 全 solution **435 项测试通过，无跳过**：Host 2、Inventory 27、Kernel 131、ResourceCycle 125、CLI 59、Spatial 91。
-- [ExpeditionTests](../../tests/ResourceCycle.Tests/ExpeditionTests.cs) 验证移动期限与互斥、同刻昼夜→到达→输入、双出口终态停止、远处 ID 探针、离场后资源记忆不更新、incremental/full 轨迹一致。直接比较空间对象图、空间事实内容和 Contacts，避免只依赖诊断字符串。
+- [ExpeditionTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ExpeditionTests.cs) 验证移动期限与互斥、同刻昼夜→到达→输入、双出口终态停止、远处 ID 探针、离场后资源记忆不更新、incremental/full 轨迹一致。直接比较空间对象图、空间事实内容和 Contacts，避免只依赖诊断字符串。
 - 同一测试组使用真实 CycleDurableHistory：移动中 S-only 冷开保留期限；MoveStarted、普通 MoveArrived、最终出口 MoveArrived 的 E-only 冷恢复均只应用一次。禁止 Forecast/Plan/Controller 的夹具证明恢复未重新决定。
-- [ExpeditionRecoveryValidationTests](../../tests/ResourceCycle.Tests/ExpeditionRecoveryValidationTests.cs) 将结构可还原而业务未就绪的图实际落盘：异地采集、未到出口就逃离、逃离仍有工作、当前应用不支持的通路变化计划。正常构造与 Open 都拒绝，拒绝不改写磁盘边界。
+- [ExpeditionRecoveryValidationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ExpeditionRecoveryValidationTests.cs) 将结构可还原而业务未就绪的图实际落盘：异地采集、未到出口就逃离、逃离仍有工作、当前应用不支持的通路变化计划。正常构造与 Open 都拒绝，拒绝不改写磁盘边界。
 - CLI 测试证明初始未知地点不泄漏、观察/命令按可见域裁剪、旧记录带时间，获救后无下一行动提示。单人文案、空资源表和空其他角色章节已按实际输出润色，旧采集表现保留。
 
 真实 Console 工件（忽略目录，重新运行脚本会生成新目录）：
@@ -57,13 +59,13 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 ### B 生存取舍：2026-10-28
 
-源码入口：[CycleSurvival](../../src/ResourceCycle/CycleSurvival.cs)、[CycleSurvivalRules](../../src/ResourceCycle/CycleSurvivalRules.cs)、`CycleActions`、`CyclePlanning` 和 CLI `PlayView`。实现合同见[生存需求](../design/survival-needs.md)。
+源码入口：[CycleSurvival](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvival.cs)、[CycleSurvivalRules](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvivalRules.cs)、`CycleActions`、`CyclePlanning` 和 CLI `PlayView`。实现合同见[生存需求](../design/survival-needs.md)。
 
 每角色锚定三项余量和变化率，以定点积分推导最近阈值；不增加每分钟扣值循环。身体变化与消费、昼夜、到达事实同根提交。低值已提醒和历史待确认分开，补给不会重启原空间行程。生产场景从下午开始且需要采集食物；木材尚无燃料用途，保暖通过庇护停留。
 
 主线程独立复核实现与实际画面，修复了满值消费仍扣物品的遗漏，以及终局仍使用“预计到达”等未来动作描述的问题。死亡保留结束时的未完成活动和空间快照，UI 明示冻结记录。独立审阅未发现剩余阻塞。
 
-自动化边界见 [SurvivalValueTests](../../tests/ResourceCycle.Tests/SurvivalValueTests.cs)、[SurvivalTests](../../tests/ResourceCycle.Tests/SurvivalTests.cs) 与 [SurvivalNeedsViewTests](../../tests/ResourceCycle.Cli.Tests/SurvivalNeedsViewTests.cs)：
+自动化边界见 [SurvivalValueTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalValueTests.cs)、[SurvivalTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalTests.cs) 与 [SurvivalNeedsViewTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/SurvivalNeedsViewTests.cs)：
 
 - 手算分段积分、任意 tick 分割、上限饱和、长时长与阈值 ceil；严格超过警告线才重新武装。
 - 途中饮水不改变 Spatial 对象与到达时刻；昼夜/庇护切换先按旧率结算，回暖仍耗食水。
@@ -95,11 +97,11 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 ### C 随机天气：2026-10-28
 
-源码入口：[CycleEnvironment](../../src/ResourceCycle/CycleEnvironment.cs)、`CycleExpedition.Environment`、`CyclePredictionMaintenance`、`CycleFactApplication` 与 [天气 UI 测试](../../tests/ResourceCycle.Cli.Tests/SurvivalWeatherViewTests.cs)。[天气合同](../design/survival-weather.md)明确到达先于天气、连续耗尽最先、天气致死同事实，以及随机只在选中 Plan 时计算。
+源码入口：[CycleEnvironment](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEnvironment.cs)、`CycleExpedition.Environment`、`CyclePredictionMaintenance`、`CycleFactApplication` 与 [天气 UI 测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/SurvivalWeatherViewTests.cs)。[天气合同](../design/survival-weather.md)明确到达先于天气、连续耗尽最先、天气致死同事实，以及随机只在选中 Plan 时计算。
 
 复用 Kernel `DeterministicRandom`，持久 seed/sequence/NextDue 与最近个人影响。每两小时二元结果，寒风使暴露者损失 10 点温暖，庇护免损；平静或庇护窗口仍推进序号。最近记录保存当时的实际损失和庇护状态，不按新位置重算。独立审阅发现并修正了普通时刻 `NextDue=null` 会静默停天气的漏洞，现在仅允许时间或序号耗尽时停止预测。
 
-[WeatherTests](../../tests/ResourceCycle.Tests/WeatherTests.cs) 的实际运行证据包括：
+[WeatherTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/WeatherTests.cs) 的实际运行证据包括：
 
 - 固定 seed 0 的四窗向量为寒风/平静/平静/寒风，seed 1 首窗平静；庇护与暴露抽到相同结果，效果不同。
 - 观察、重建、校验与非法命令不推进随机地址；同一输入的增量/full 轨迹、cursor 和空间一致。
@@ -148,9 +150,9 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1
 
 没有改变资源数值、地图、天气概率或胜负规则。GameRevision 仍为 4，Schema 无变化。
 
-定向补证见 [SurvivalRegenerationTests](../../tests/ResourceCycle.Tests/SurvivalRegenerationTests.cs)：生产需求与天气均开启，8 点出发至溪流、两次采集、消费、等待；9:30 首次减少库存，10 点第二份不重置再生时钟，经过 10/12 点天气后 12:30 自然恢复一份。断言资源 4→5、角色食物仍为已采两份减已吃一份；真实 S-only 冷开比较完整状态、Spatial 和 cursor，继续至 13 点等待完成与连续路径一致。
+定向补证见 [SurvivalRegenerationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalRegenerationTests.cs)：生产需求与天气均开启，8 点出发至溪流、两次采集、消费、等待；9:30 首次减少库存，10 点第二份不重置再生时钟，经过 10/12 点天气后 12:30 自然恢复一份。断言资源 4→5、角色食物仍为已采两份减已吃一份；真实 S-only 冷开比较完整状态、Spatial 和 cursor，继续至 13 点等待完成与连续路径一致。
 
-[SurvivalForecastTests](../../tests/ResourceCycle.Tests/SurvivalForecastTests.cs) 比较日落估计与真实无天气 Kernel 死亡，检查残夜→白天→完整夜、庇护下食水耗尽、零温暖不复活，以及重复查询不改变身体、预测或天气状态。CLI 回归检查估计条件与干木/低温提示的可见性。
+[SurvivalForecastTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalForecastTests.cs) 比较日落估计与真实无天气 Kernel 死亡，检查残夜→白天→完整夜、庇护下食水耗尽、零温暖不复活，以及重复查询不改变身体、预测或天气状态。CLI 回归检查估计条件与干木/低温提示的可见性。
 
 主线程实际运行 A 所列 Verify 构建、全 solution 测试和三组 smoke。构建零警告/错误；**511 项测试通过，无跳过**（Host 2、Inventory 27、Kernel 131、ResourceCycle 181、CLI 79、Spatial 91），含上述新增组合及查询测试。ResourceCycle 仍为 19 个当前模型、36 条历史。SDK 与 DG/Storage 源码版本与 C 一致，上游工作树干净、未修改。
 

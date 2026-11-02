@@ -1,5 +1,7 @@
 # 预测对象：方向与实施入口
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 2026-10-27。早期草稿已经由[局部预测重构](local-prediction-refactor.md)及后续[运行时缓存方案](runtime-derived-predictions.md)取代；此页仅保留方向与导航，不维护第二份切片清单。
 
 当前空间实现：运行中局部维护，纯派生预测冷开重建，不再持久化 Contacts；见[缓存验收](../experiments/runtime-derived-predictions-acceptance.md)。下一步协调 ResourceCycle 第二消费者，保留应用优先级与角色唤醒。

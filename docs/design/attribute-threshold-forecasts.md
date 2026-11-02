@@ -10,7 +10,7 @@
 
 ## 最小共享模型
 
-新增持久值 `CycleAttributeForecast(WarningAt?, DepletionAt?)`，分别表示数值到达警戒阈值和零点的最早模型时刻。`CycleSurvivalObservation` 必填保存 `FoodForecast`、`WaterForecast`、`WarmthForecast` 与共享 `WarningThreshold`（当前 25）。原 `FatalAt` 不再独立保存，仅由三项耗尽时刻取最小值派生。
+新增持久值 `PlaygroundAttributeForecast(WarningAt?, DepletionAt?)`，分别表示数值到达警戒阈值和零点的最早模型时刻。`PlaygroundSurvivalObservation` 必填保存 `FoodForecast`、`WaterForecast`、`WarmthForecast` 与共享 `WarningThreshold`（当前 25）。原 `FatalAt` 不再独立保存，仅由三项耗尽时刻取最小值派生。
 
 - **数值预测不是通知预测**：`WarningAt` 不受 `WarnedMask` 或确认消息影响。当前已低于或等于阈值时取观察时刻；视图依据当前值显示“已处于警戒区”，不声称将再次发出警告。`PendingWarningMask` 仍表示历史通知待确认，补给不会清除它。
 - 当前已为零时显示“已耗尽”。无时刻表示按本片假设在可表示时间内不触及该目标，不表示尚未计算或信息不可见。
@@ -41,7 +41,7 @@
 
 属性的当前值、速率构成、限幅与两个预测在同一个展示单元中；精确位置、换行与表格形式由 layout 自由决定。共同预测假设每份完整观察说明一次。终局展示冻结值，不误称仍在推进。
 
-`CycleAttributeView` 消费保存的预测，语义比较含预测。值未变但预测变化也应更新；饮水补给只更新饮水及实际受影响材料，不刷等待时长风险。历史警告依旧独立保留。行动无例外不输出“风险：无”；已有例外解除时增量仍须让读者知道旧提示失效。
+`PlaygroundAttributeView` 消费保存的预测，语义比较含预测。值未变但预测变化也应更新；饮水补给只更新饮水及实际受影响材料，不刷等待时长风险。历史警告依旧独立保留。行动无例外不输出“风险：无”；已有例外解除时增量仍须让读者知道旧提示失效。
 
 ## 实施与验收
 

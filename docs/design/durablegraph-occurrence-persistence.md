@@ -9,7 +9,7 @@
 
 ## 1. 保留什么，改变什么
 
-跨游戏版本的职责补充：ResourceCycle 的 State/Event 已各自记录 `GameRevision`，加载时协调升级内存表示，保留 pending 工作交给正常执行流程；升级不结算事件、不推进游标、不写盘。下文普通恢复合同适用于与当前 callbacks 语义兼容的输入。加载编排及旧 S/新 E 的恢复边界见[初始化与游戏修订决策](game-initialization-and-revision.md)；生产目前只接受当前修订，跨版本由真实磁盘夹具验证，不据此宣称支持旧无版本存档。
+跨游戏版本的职责补充：Playground 的 State/Event 已各自记录 `GameRevision`，加载时协调升级内存表示，保留 pending 工作交给正常执行流程；升级不结算事件、不推进游标、不写盘。下文普通恢复合同适用于与当前 callbacks 语义兼容的输入。加载编排及旧 S/新 E 的恢复边界见[初始化与游戏修订决策](game-initialization-and-revision.md)；生产目前只接受当前修订，跨版本由真实磁盘夹具验证，不据此宣称支持旧无版本存档。
 
 保留统一 Forecast、确定性单 winner、1ms 时间、同刻因果序号、可信 rule 规划和 Game + Spatial 完整提交。Spatial 的运动、接触、导航与 Player 信息边界不变。
 

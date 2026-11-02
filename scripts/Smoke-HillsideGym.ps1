@@ -8,7 +8,7 @@ param(
 # edits stored data, or builds. Only ordinary CLI fork and Human commands mutate the store.
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$cliPath = Join-Path $repoRoot "src/ResourceCycle.Cli/bin/$Configuration/net10.0/DramaBoard.ResourceCycle.Cli.dll"
+$cliPath = Join-Path $repoRoot "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 $storePath = [IO.Path]::GetFullPath($Store)
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 if (-not (Test-Path -LiteralPath $cliPath -PathType Leaf)) { throw "Build the CLI first: $cliPath" }

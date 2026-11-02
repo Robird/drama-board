@@ -1,5 +1,7 @@
 # 局部预测重构：空间首阶段验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 历史记录：本文对应 `21379a1` 的持久预测实现。当前已改为[运行时预测缓存](../design/runtime-derived-predictions.md)，见[新验收记录](runtime-derived-predictions-acceptance.md)；下文“恢复不运行 Complete”和“E 保存预测替换”仅为旧基线证据，源码链接指向继续演化后的文件。
 
 本记录对应[实施方案](../design/local-prediction-refactor.md)的 S1/S2。空间候选读取已改为持久接触输出的投影；业务变化通过 Kernel 的唯一 Complete 接缝重算受影响通道，并把结果与业务事实一起发布。ResourceCycle 本轮仅适配共享签名；其预测维护迁入 Complete 和 Forecast 命名收敛仍是 S3。

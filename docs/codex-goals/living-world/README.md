@@ -1,5 +1,7 @@
 # 小镇与山野：可持续模拟的小世界
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。融合 Microtown 与 ResourceCycle 的本阶段 Goal 已完成 C1–C8，交付可供人类和 LLM 驱动角色生活的连续世界。本目录保留愿景、原定完成条件与实施依据。产品名“山野镇 / Hillside”；证据与使用交接见[阶段验收](acceptance.md)，当前状态统一见[工作计划](work-plan.md)。
 
 ## 愿景

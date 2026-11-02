@@ -1,25 +1,27 @@
 # 角色上下文 Model 验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-29 已完成工程与独立 Console 试玩验收。范围对应[完整设计](../design/character-context-model.md)，包含所有受控角色的持久材料、原始操作与拒绝、Console 呈现和开发者诊断；不是 LLM 端点验收。
 
 ## 合同与证据
 
 | 合同 | 实现与可复验的证据 |
 | --- | --- |
-| 世界规则、感知、交互分别组织，同一 E/S 发布 | [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) 在业务/访问/身体事实之后组合感知与交互；[CycleFactApplication](../../src/ResourceCycle/CycleFactApplication.cs) 校验并安装记录替换，单根 Business.InteractionStates 不形成第二个发布事务。 |
-| 冻结背景、完整观察与有序 Items；没有 live world 引用 | [持久材料测试](../../tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[Context 模型](../../src/ResourceCycle/CharacterContext.cs)、[纯渲染测试](../../tests/ResourceCycle.Cli.Tests/CharacterContextRenderingTests.cs)；后者分别验证保存背景和早期草稿，不从最新状态反写历史。 |
-| use/handoff 等同轮；放行关闭；新 Opening 继承过程 | [生命周期测试](../../tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 验证原身份、交接、实际经历与冻结旧条目；放行接受结果不追加旧 Items。 |
-| 各角色自己的公开/私有材料；无事件文案也交付快照变化 | [全角色事件测试](../../tests/ResourceCycle.Tests/AllActorObservedEventTests.cs) 与生命周期测试覆盖同地公开变化、私有物品隔离、未服务角色积累、两个 Open 角色的快照更新；纯渲染测试覆盖切回另一角色后的消费。经历只使用接收者局部顺序。 |
-| Terminal 新序号、末次经历不丢，不自动请求控制器 | 生命周期及[持久恢复测试](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs)；[呈现会话测试](../../tests/ResourceCycle.Cli.Tests/IncrementalSessionTests.cs)检查新的只读起止范围、无输入提示。 |
-| 原始行动、成功或拒绝、原 ToolCallId 成组保存 | [共享 parser](../../src/ResourceCycle/CycleCommandParser.cs)、[拒绝测试](../../tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)覆盖空白原文、非法语法、非法目标、角色可见拒绝与直接提交 `:exit`；Console 元命令仍是本地管理操作。 |
+| 世界规则、感知、交互分别组织，同一 E/S 发布 | [CycleEngine](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs) 在业务/访问/身体事实之后组合感知与交互；[CycleFactApplication](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFactApplication.cs) 校验并安装记录替换，单根 Business.InteractionStates 不形成第二个发布事务。 |
+| 冻结背景、完整观察与有序 Items；没有 live world 引用 | [持久材料测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/VisibleMaterialPersistenceTests.cs)、[Context 模型](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CharacterContext.cs)、[纯渲染测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/CharacterContextRenderingTests.cs)；后者分别验证保存背景和早期草稿，不从最新状态反写历史。 |
+| use/handoff 等同轮；放行关闭；新 Opening 继承过程 | [生命周期测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextLifecycleTests.cs) 验证原身份、交接、实际经历与冻结旧条目；放行接受结果不追加旧 Items。 |
+| 各角色自己的公开/私有材料；无事件文案也交付快照变化 | [全角色事件测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/AllActorObservedEventTests.cs) 与生命周期测试覆盖同地公开变化、私有物品隔离、未服务角色积累、两个 Open 角色的快照更新；纯渲染测试覆盖切回另一角色后的消费。经历只使用接收者局部顺序。 |
+| Terminal 新序号、末次经历不丢，不自动请求控制器 | 生命周期及[持久恢复测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs)；[呈现会话测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/IncrementalSessionTests.cs)检查新的只读起止范围、无输入提示。 |
+| 原始行动、成功或拒绝、原 ToolCallId 成组保存 | [共享 parser](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleCommandParser.cs)、[拒绝测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextRejectionTests.cs)覆盖空白原文、非法语法、非法目标、角色可见拒绝与直接提交 `:exit`；Console 元命令仍是本地管理操作。 |
 | 最近 3 次操作只裁剪纯拒绝；不改变玩法或轮转 | 拒绝测试覆盖连续 4 次、成功交错、放行清理、其他角色/自然事件不计数、稳定条目与工具身份；拒绝保持活动、身体、通知、时间和服务游标，只递增请求版本。 |
-| S 冷开、E-only 恢复安装原材料，不重新规划 | 持久恢复测试覆盖瞬时、放行、开轮与终局；[拒绝恢复测试](../../tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)验证裁剪后的计数/集合和继续分配；纯渲染测试比较恢复前后完整角色输出。 |
-| 审计补录保持拒绝，不重新执行或复活已删条目 | [操作恢复集成测试](../../tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)覆盖 E-only、S 已写/宿主结果缺失、未提交 Received、已清理拒绝及原 ID 配对。 |
+| S 冷开、E-only 恢复安装原材料，不重新规划 | 持久恢复测试覆盖瞬时、放行、开轮与终局；[拒绝恢复测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextRejectionPersistenceTests.cs)验证裁剪后的计数/集合和继续分配；纯渲染测试比较恢复前后完整角色输出。 |
+| 审计补录保持拒绝，不重新执行或复活已删条目 | [操作恢复集成测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/OperationRecoveryIntegrationTests.cs)覆盖 E-only、S 已写/宿主结果缺失、未提交 Received、已清理拒绝及原 ID 配对。 |
 | 1024 同刻转换护栏不因清理或冷开返还 | 拒绝恢复测试推进全部预算、检查下一控制器未被调用并真实冷开；进程实录另保留预算耗尽与冷开立即失败证据。该限制仍存在。 |
-| 完整 Context 和增量显示同源 | [CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 从 Opening 和保留 Items 生成完整正文，增量从相同条目及相邻观察生成。会话测试检查重复消费、写出失败不推进游标，角色输出不再接收 Fact。 |
-| 宿主提示、元命令、退出与角色范围分开 | [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 使用带外块；开始/结束带 actor 与 ContextSequence。look/layout/once/mode 只读保存材料；切换仍 Open 的角色不伪造领域关闭。 |
+| 完整 Context 和增量显示同源 | [CharacterContextRenderer](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/CharacterContextRenderer.cs) 从 Opening 和保留 Items 生成完整正文，增量从相同条目及相邻观察生成。会话测试检查重复消费、写出失败不推进游标，角色输出不再接收 Fact。 |
+| 宿主提示、元命令、退出与角色范围分开 | [PlayPresentationSession](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayPresentationSession.cs) 使用带外块；开始/结束带 actor 与 ContextSequence。look/layout/once/mode 只读保存材料；切换仍 Open 的角色不伪造领域关闭。 |
 | 数据不获得 Console 权限或伪造结构 | 纯渲染测试覆盖多行、Markdown、`:exit` 与终端控制字符；原文在 Model 中保持，渲染为转义数据字面量。不是对同进程恶意 Controller 的隔离沙箱。 |
-| 开发者诊断可选，提交后调用，失败不重做 | [CycleContextDiagnostics](../../src/ResourceCycle.Cli/CycleContextDiagnostics.cs) 保留强类型 completion 与角色经历关联；[诊断测试](../../tests/ResourceCycle.Cli.Tests/ContextDiagnosticsTests.cs)通过实际宿主比较启用/禁用、故障后的已提交状态、日志修复及 pending 恢复不重发。 |
+| 开发者诊断可选，提交后调用，失败不重做 | [CycleContextDiagnostics](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/CycleContextDiagnostics.cs) 保留强类型 completion 与角色经历关联；[诊断测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ContextDiagnosticsTests.cs)通过实际宿主比较启用/禁用、故障后的已提交状态、日志修复及 pending 恢复不重发。 |
 
 ## 呈现约定
 

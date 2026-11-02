@@ -13,7 +13,7 @@
 - [SpatialSimulation](../../src/Spatial/Simulation/SpatialSimulation.cs) 通过 Rebuild 全量发现，Complete 保留逐 fact 旧/新范围收集与局部维护。
 - [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的 Complete 在业务 Fold 后返回准备好的运行时世界。
 - [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs) 要求 State 返回已安装实例；不能把 State getter 改为每次创建 wrapper。
-- Kernel/Spatial 首片仅机械适配 ResourceCycle；随后单角色实例已迁移，见第 9 节。多角色化不构成缓存拆分的技术前置条件。
+- Kernel/Spatial 首片仅机械适配 Playground；随后单角色实例已迁移，见第 9 节。多角色化不构成缓存拆分的技术前置条件。
 
 ## 2. 哪些保存，哪些重建
 
@@ -101,7 +101,7 @@ Replay 每批同样 Fold → Complete → Validate；其初始输入必须已经
 
 不保存缓存减少派生格式的兼容负担，并让重建自然使用新的预测实现；**它不会自动改变仍保存在业务状态中的参数快照**。
 
-当前 [TraversingLocation](../../src/Spatial/State/SpatialLocation.cs) 保存 `SpeedSnapshot` 和 `ArrivalDue`，`ArrivalDue` 可由 anchor、目标、速度和 passage 长度算出，但现在同时进入验证与候选键。修改“默认移动速度”不会改变已开始的段。当前 [CyclePlant](../../src/ResourceCycle/CycleModels.cs) 保存 `RequiredTicks`，所以修改创建植物的默认值也不会改变已有植物。
+当前 [TraversingLocation](../../src/Spatial/State/SpatialLocation.cs) 保存 `SpeedSnapshot` 和 `ArrivalDue`，`ArrivalDue` 可由 anchor、目标、速度和 passage 长度算出，但现在同时进入验证与候选键。修改“默认移动速度”不会改变已开始的段。当前 [PlaygroundPlant](../../src/Playground/PlaygroundModels.cs) 保存 `RequiredTicks`，所以修改创建植物的默认值也不会改变已有植物。
 
 建议参数更新另按下列具体业务问题处理，**不随缓存移除隐式实施**：
 
@@ -116,18 +116,18 @@ Replay 每批同样 Fold → Complete → Validate；其初始输入必须已经
 
 ## 7. 实施顺序与委派边界
 
-以下为本片的实施分工。后续迁移 ResourceCycle 时重新读取 PROJECT-STATE、工作树与应用现状，确认另一会话变更；旧方案的 S3 不再按“预测结果继续落盘”推进。
+以下为本片的实施分工。后续迁移 Playground 时重新读取 PROJECT-STATE、工作树与应用现状，确认另一会话变更；旧方案的 S3 不再按“预测结果继续落盘”推进。
 
-1. **Kernel 接缝**：把 Complete 移至 Fold 后并返回运行时世界；normal/pending/replay/conformance/fork 统一调用；Host、测试与 ResourceCycle 先机械接线。验证 E/S 失败、取消、重入、同 tick 和带时间校验不退化。
+1. **Kernel 接缝**：把 Complete 移至 Fold 后并返回运行时世界；normal/pending/replay/conformance/fork 统一调用；Host、测试与 Playground 先机械接线。验证 E/S 失败、取消、重入、同 tick 和带时间校验不退化。
 2. **Spatial 运行时模型**：保留局部发现，移除持久预测及替换事实；提供 Rebuild/Complete/Validate，候选只读；迁移所有真实调用点。同步删除旧测试适配中多余包装。
 3. **持久化闭环**：测试 adapter 的磁盘根仅保存 Business/cursor，稳定缓存运行时 wrapper；S 冷开和 E-only 恢复实际重建。更新生成定义与 schema，禁止为通过旧读档测试保留双格式。
 4. **验收与文档**：独立审查业务/缓存边界；更新原方案和原验收记录的适用范围，PROJECT-STATE 改为新的下一步。
 
 Kernel 与 Spatial 可在签名确认后并行；持久化支撑与现有测试迁移分配独立文件；主线程负责集成构建、Schema Verify、最终验证。必要的上游修改以真实阻塞为依据，当前没有发现必须改 DurableGraph 的证据。
 
-ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原则，把预测维护移出 Plan，移除 E/S 中的派生 Forecasts。Bindings 是否也是代码/业务对象可重建的索引应单独分类：固定路由可重建，显式动态订阅若承载业务决定则保存决定。用户已选择先在单角色版本完成迁移，再独立扩展多角色；原协调要求针对同文件并行编辑，不是架构依赖。必须保留 Due/Kind 优先级、已消费 owner 的重算、无输出过程的订阅和角色唤醒。
+Playground 后续片采用同一“运行时 wrapper + durable Business”原则，把预测维护移出 Plan，移除 E/S 中的派生 Forecasts。Bindings 是否也是代码/业务对象可重建的索引应单独分类：固定路由可重建，显式动态订阅若承载业务决定则保存决定。用户已选择先在单角色版本完成迁移，再独立扩展多角色；原协调要求针对同文件并行编辑，不是架构依赖。必须保留 Due/Kind 优先级、已消费 owner 的重算、无输出过程的订阅和角色唤醒。
 
-本片完成边界是 **Kernel + Spatial 缓存/恢复闭环及其他消费者机械适配**；不夹带运动参数热更新、资源进度语义重设计、通用缓存框架或持久预测可选开关。之后再做 ResourceCycle 的实际迁移与候选读取命名收敛。
+本片完成边界是 **Kernel + Spatial 缓存/恢复闭环及其他消费者机械适配**；不夹带运动参数热更新、资源进度语义重设计、通用缓存框架或持久预测可选开关。之后再做 Playground 的实际迁移与候选读取命名收敛。
 
 ## 8. 验收清单
 
@@ -143,6 +143,8 @@ ResourceCycle 后续片采用同一“运行时 wrapper + durable Business”原
 实施与验证结果见[缓存验收记录](../experiments/runtime-derived-predictions-acceptance.md)。第 7 项采用缺失/陈旧运行时缓存重新落盘并冷开的定向实验，证明读取当前业务重新发现；没有为测试增设产品算法注入接口，也不声称验证了任意跨算法版本兼容。
 
 ## 9. ResourceCycle 单角色迁移
+
+> 本节保留当时的迁移记录与旧类型名；当前命名见[Playground 重命名说明](../implementation/playground-rename.md)。
 
 本后续片不等待多角色化，仍保留批处理与单角色采集两种入口。实现与证据见[ResourceCycle 缓存验收](../experiments/resource-cycle-runtime-cache-acceptance.md)。
 

@@ -60,7 +60,7 @@
 
 ## 4. 当前材料一次投影，历史仍冻结
 
-当前实现：[CharacterContextRenderer](../../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 保留 Opening 与有序 Items 的一般材料，通过 [GoalView](../../../src/ResourceCycle.Cli/GoalView.cs) 单次投影当前目标、有限回执及有效查询；[RetainItems](../../../src/ResourceCycle/CycleInteractionRules.cs) 仍只裁近期范围外的拒绝，成功 Item 保留。显示裁剪不等于持久历史回收。
+当前实现：[CharacterContextRenderer](../../../src/Playground.Cli/CharacterContextRenderer.cs) 保留 Opening 与有序 Items 的一般材料，通过 [GoalView](../../../src/Playground.Cli/GoalView.cs) 单次投影当前目标、有限回执及有效查询；[RetainItems](../../../src/Playground/PlaygroundInteractionRules.cs) 仍只裁近期范围外的拒绝，成功 Item 保留。显示裁剪不等于持久历史回收。
 
 首版对新增目标类别采用下面的局部投影，不改其他经历/警告/交流的保留规则：
 

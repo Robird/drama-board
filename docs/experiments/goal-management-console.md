@@ -1,5 +1,7 @@
 # 目标管理 Console 工程试玩
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-31。操作者为 Coding Agent，以脚本驱动真实 Human Console 入口；不是实际人类体验验收，也没有调用 LLM。本轮不构建、不改生产数据，使用主线程完成 Release 构建后的程序集。合同依据：[操作](../design/goal-management/operations.md)、[容量与 Context](../design/goal-management/capacity-and-context.md)。
 
 ## 复跑与证据
@@ -10,7 +12,7 @@
 pwsh -NoProfile -File scripts/Smoke-ResourceCycleGoals.ps1 -OutputDirectory artifacts/goal-console/my-fresh-run
 ```
 
-[脚本](../../scripts/Smoke-ResourceCycleGoals.ps1)逐次启动真实 `dotnet src/ResourceCycle.Cli/bin/Release/net10.0/DramaBoard.ResourceCycle.Cli.dll --survival --store ...`，通过 UTF-8 重定向输入提交普通命令。它不写世界对象、不覆写存档、不生成预置目标、不自动构建。每段保留 `.in.txt`、`.out.txt`、`.err.txt`；各存档的 `operations.jsonl` 保存实际收到的命令与持久回执，成功后写独立断言 `acceptance.json`。
+[脚本](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCycleGoals.ps1)逐次启动真实 `dotnet src/ResourceCycle.Cli/bin/Release/net10.0/DramaBoard.ResourceCycle.Cli.dll --survival --store ...`，通过 UTF-8 重定向输入提交普通命令。它不写世界对象、不覆写存档、不生成预置目标、不自动构建。每段保留 `.in.txt`、`.out.txt`、`.err.txt`；各存档的 `operations.jsonl` 保存实际收到的命令与持久回执，成功后写独立断言 `acceptance.json`。
 
 初次证据位于 `artifacts/goal-console/20261031-engineering-01/`；焦点回执修复后的全流程复验位于 `artifacts/goal-console/20261031-polish-02/`。这些本地原始工件不纳入 Git；脚本与本报告提供复跑入口。
 

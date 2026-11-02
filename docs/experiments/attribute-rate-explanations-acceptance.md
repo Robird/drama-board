@@ -1,16 +1,18 @@
 # 属性速率解释实施验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-29 已完成工程与独立 Console 试玩验收。范围对应[属性速率解释设计](../design/attribute-rate-explanations.md)：共享领域数据、持久角色观察、Context 交付、两种布局及增量输出；不改变现有生存数值，不建立 Buff 生命周期或通用属性执行引擎。
 
 ## 实现合同
 
 | 合同 | 实现与证据入口 |
 | --- | --- |
-| 一份来源贡献，唯一派生总值 | [RateBreakdown / RateContribution](../../src/ResourceCycle/RateBreakdown.cs) 复制并规范排序，拒绝重复键、非法名称与溢出；同一角色跨属性的同键来源名称必须一致。[模型测试](../../tests/ResourceCycle.Tests/RateBreakdownTests.cs)覆盖零和、不可变集合及结构比较。 |
-| 解释参与真实积分，先旧后新 | [CycleSurvival](../../src/ResourceCycle/CycleSurvival.cs) 持久保存三项分解，低层构造与 WithRates 要求显式来源；初始化工厂、昼夜、庇护与预测使用[同一规则](../../src/ResourceCycle/CycleSurvivalRules.cs)。既有[积分测试](../../tests/ResourceCycle.Tests/SurvivalValueTests.cs)、[预测测试](../../tests/ResourceCycle.Tests/SurvivalForecastTests.cs)与[事件测试](../../tests/ResourceCycle.Tests/ObservedEventTests.cs)继续约束数值、限幅及边界顺序。 |
-| 同总值换原因必须交付，排列等价不交付 | [上下文测试](../../tests/ResourceCycle.Tests/RateExplanationContextTests.cs)覆盖无数值事件的原因更新、遗漏交付拒绝、伪造旧解释拒绝、交接命令偷改身体拒绝；事实比较、观察比较与必要交付守卫均使用同一结构比较。 |
-| 冻结历史与 S/E 恢复 | [Context 持久测试](../../tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs)加入多来源夹具；旧 Opening 保留旧原因，pending E 安装记录的新原因，不调用控制器。Opening/Items 的结构校验不按当前环境重新求值。 |
-| 所有布局与增量共用材料 | [CycleAttributeView](../../src/ResourceCycle.Cli/CycleAttributeView.cs)只读取保存观察；[呈现测试](../../tests/ResourceCycle.Cli.Tests/AttributeRateViewTests.cs)覆盖 decision/classic、同总值换来源、旧 Opening 与最新状态、多来源分组消费者、来源名称字面量。没有整屏位置快照。 |
+| 一份来源贡献，唯一派生总值 | [RateBreakdown / RateContribution](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/RateBreakdown.cs) 复制并规范排序，拒绝重复键、非法名称与溢出；同一角色跨属性的同键来源名称必须一致。[模型测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/RateBreakdownTests.cs)覆盖零和、不可变集合及结构比较。 |
+| 解释参与真实积分，先旧后新 | [CycleSurvival](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvival.cs) 持久保存三项分解，低层构造与 WithRates 要求显式来源；初始化工厂、昼夜、庇护与预测使用[同一规则](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleSurvivalRules.cs)。既有[积分测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalValueTests.cs)、[预测测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/SurvivalForecastTests.cs)与[事件测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/ObservedEventTests.cs)继续约束数值、限幅及边界顺序。 |
+| 同总值换原因必须交付，排列等价不交付 | [上下文测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/RateExplanationContextTests.cs)覆盖无数值事件的原因更新、遗漏交付拒绝、伪造旧解释拒绝、交接命令偷改身体拒绝；事实比较、观察比较与必要交付守卫均使用同一结构比较。 |
+| 冻结历史与 S/E 恢复 | [Context 持久测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CharacterContextPersistenceTests.cs)加入多来源夹具；旧 Opening 保留旧原因，pending E 安装记录的新原因，不调用控制器。Opening/Items 的结构校验不按当前环境重新求值。 |
+| 所有布局与增量共用材料 | [CycleAttributeView](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/CycleAttributeView.cs)只读取保存观察；[呈现测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/AttributeRateViewTests.cs)覆盖 decision/classic、同总值换来源、旧 Opening 与最新状态、多来源分组消费者、来源名称字面量。没有整屏位置快照。 |
 | 受影响属性一次重绘，限幅依赖完整 | snapshot 按现有 rate key 索引瞬时解释，update 同时选择 value/rate，renderer 合并为一行当前值与完整构成；呈现测试覆盖 99→100、100→90、100 不变但 +6→−12，以及仅范围变化。 |
 | 一次性效果与持续速率分开 | 补给、寒风仍通过原事件/效果表达；模型测试验证这些操作保持贡献，既有天气测试约束实际扣减。终局展示冻结解释并说明不再推进。 |
 

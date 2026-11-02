@@ -63,7 +63,7 @@
 
 ### 2.5 代码落点与推进切片
 
-默认就地演进 ResourceCycle 和现有 Console，增加生存场景工厂及职责明确的规则文件。保留原采集场景和批处理作为轻量回归入口，不要求它们启用所有生存机制。若实际耦合证明新游戏程序集更合适，可以调整并记录收益；避免复制两套控制、持久化和规则代码后长期并行维护。
+默认就地演进 Playground 和现有 Console，增加生存场景工厂及职责明确的规则文件。保留原采集场景和批处理作为轻量回归入口，不要求它们启用所有生存机制。若实际耦合证明新游戏程序集更合适，可以调整并记录收益；避免复制两套控制、持久化和规则代码后长期并行维护。
 
 继续遵守[分层与组合设计](layering-and-composition.md)：新玩法先落在应用层，Inventory 的局部消费能力可在模块内增加；空间与生存的交互归游戏组合。不开工通用 Effect 总线、RuleSuite、动态 mod、通用存档框架或统一组件基类。必要的上游小改动以真实消费者与测试证明收益。
 
@@ -99,8 +99,8 @@
 2026-10-29 调查基线：DramaBoard `036f6ef`、相邻 atelia-completion `b91e0aa`。这些是调查时的设计依据，不要求后续固定版本；以下缺口不是完成状态表，当前 2A 实现见[实施说明](../implementation/survival-llm-controller.md)。每片开工仍核对最新源码。
 
 - [角色 Context](character-context-model.md) 已保存冻结 Opening、保留 Items、原始操作与结果、交接文字和待交付经历；复用现有按角色感知、共享 parser、校验和 E/S 恢复，不重造历史摘要或第二份角色知识权威。
-- [控制器接口](../../src/ResourceCycle/CycleActions.cs) 每次返回一个 `CycleControllerOperation`，游戏随后解析、校验并提交。一次方法调用不是一个完整决策回合；即时操作和拒绝之后可以继续服务同一 Context。
-- [纯 Context 渲染器](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 已有，但仍是 CLI exe 内部类型。按适配消费者需要提取必要的共享呈现边界；模型输入不得由截取混合 Console 字节或反解析 Markdown 操作记录来恢复。
+- [控制器接口](../../src/Playground/PlaygroundActions.cs) 每次返回一个 `PlaygroundControllerOperation`，游戏随后解析、校验并提交。一次方法调用不是一个完整决策回合；即时操作和拒绝之后可以继续服务同一 Context。
+- [纯 Context 渲染器](../../src/Playground.Cli/CharacterContextRenderer.cs) 已有，但仍是 CLI exe 内部类型。按适配消费者需要提取必要的共享呈现边界；模型输入不得由截取混合 Console 字节或反解析 Markdown 操作记录来恢复。
 - atelia-completion 已提供 Completion 请求、JSON 工具、连接配置、客户端工厂与生命周期管理；二期围绕它做薄映射，不重新实现 provider 协议或通用 Agent 框架。
 - 生存场景仍明确限制一个角色；天气效果保存单人结果，获救/死亡是全局终局。原 `--play` 的多人调度、各角色 Context 和背包可复用，但不能据此声称双角色生存已实现。
 
@@ -108,7 +108,7 @@
 
 **目标：** 让真实模型通过现有单角色生存场景完成连续决策，独立验证调用、配置和恢复边界。
 
-当前已由 ResourceCycle.Completion 与 CLI `--survival --llm` 实现；两次真实模型自主获救及自动化边界见[2A 验收](../experiments/survival-llm-acceptance.md)。下文继续保留合同与验收要求，不表示整期完成。
+当前已由 Playground.Completion 与 CLI `--survival --llm` 实现；两次真实模型自主获救及自动化边界见[2A 验收](../experiments/survival-llm-acceptance.md)。下文继续保留合同与验收要求，不表示整期完成。
 
 首版采用**游戏管理上下文的独立决策调用**：每次 `ChooseCommandAsync` 将当前持久 Context 的完整保留材料映射为新的 Completion 输入，不依赖控制器私藏历史，不续接上一请求的原生 assistant/tool 消息。历史操作反馈作为 Context 材料交付，不伪装成端点协议的 tool-result。同一决策回合仍可有多次调用；它不是“每调用一次就推进游戏时间”。
 
@@ -122,7 +122,7 @@
 
 - 复用 Completion 的连接目录、精确连接选择、客户端工厂及注册表；模型、端点、认证在宿主初始化，凭据与客户端对象不进入游戏图。
 - 控制器可共享客户端与运行设施；角色跨决策记忆仍由游戏保存。角色到 Human/LLM 配置的绑定归应用，2A 可只有一个角色，2B 补混合路由；重开时明确绑定，不静默换角色或连接。
-- 适配代码依赖 ResourceCycle 与 Completion，Kernel/Spatial 不依赖模型库。开发期优先相邻 Completion 源码引用，统一依赖身份；具体程序集拆分按最小可复用边界决定。
+- 适配代码依赖 Playground 与 Completion，Kernel/Spatial 不依赖模型库。开发期优先相邻 Completion 源码引用，统一依赖身份；具体程序集拆分按最小可复用边界决定。
 - 旁观输出区分实际模型输入、模型输出、已提交操作和宿主管理信息。模型自由文本不自动成为游戏对白、事实或角色记忆；需要延续的意图使用显式 handoff。
 
 恢复承诺：未发布 E 的请求或响应允许中断后重新调用，结果和计费可能不同；已发布 E 则按既有恢复完成，不再调用模型或重复业务效果。S 已提交但输出未显示时从保存材料继续；不承诺外部调用恰好一次，也不承诺恢复原生推理/完整协议会话。ToolCallId 是关联身份，不是全局执行去重键。

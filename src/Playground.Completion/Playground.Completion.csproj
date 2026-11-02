@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Playground/Playground.csproj" />
+    <ProjectReference Include="../CharacterControl.Completion/CharacterControl.Completion.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,7 @@
 # 运行时预测缓存：实施与验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-10-27。对应[运行时派生预测方案](../design/runtime-derived-predictions.md)，替代 `21379a1` 的[持久 Contacts 基线](local-prediction-acceptance.md)。本片完成 Kernel/Spatial 与其他消费者的机械接线，没有迁移 ResourceCycle 的实际预测维护。
 
 ## 实现边界与使用方式

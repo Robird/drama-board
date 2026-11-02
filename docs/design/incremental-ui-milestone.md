@@ -13,11 +13,11 @@
 
 当前实现已提供：
 
-- [CycleObservation](../../src/ResourceCycle/CycleObservation.cs)：角色范围内的观察、当前动作校验和风险，不向布局交付完整世界。
-- [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs)：两种可切换布局，共用事件/效果及尾部状态选择；`full` 与 `delta` 是独立的会话偏好。[Human Console 边界](console-command-boundary.md)将元命令及输入提示移到会话，布局只生成游戏内容，不改变 B 的历史窗口合同。
-- [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs)：按角色与 ContextSequence 管理上下文开始/结束，提交后从当前角色的 Items 追加反馈；消费游标在写出并 Flush 成功后推进，仅为绘制优化。宿主管理输出明确带外。
-- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/ResourceCycle/CycleOperationResults.cs)共用这些材料。GameRevision 9；事件材料覆盖普通采集与无生存需求角色，尚无最近 n 回合事件窗口。
-- [CycleInteractionRules](../../src/ResourceCycle/CycleInteractionRules.cs)：按接收者 Open/Closed 状态追加 Item 或收集待交付经历；新 Opening 冻结上次放行信息、经历与完整观察，替代独立累计 Incoming。[CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 统一从 Opening 与保留 Items 渲染；纯输出包含完整角色材料和范围标记，不含宿主提示、输入回显、ANSI 或诊断。Closed 后不向旧上下文输出结算。
+- [PlaygroundObservation](../../src/Playground/PlaygroundObservation.cs)：角色范围内的观察、当前动作校验和风险，不向布局交付完整世界。
+- [IPlayLayout](../../src/Playground.Cli/IPlayLayout.cs)：两种可切换布局，共用事件/效果及尾部状态选择；`full` 与 `delta` 是独立的会话偏好。[Human Console 边界](console-command-boundary.md)将元命令及输入提示移到会话，布局只生成游戏内容，不改变 B 的历史窗口合同。
+- [PlayPresentationSession](../../src/Playground.Cli/PlayPresentationSession.cs)：按角色与 ContextSequence 管理上下文开始/结束，提交后从当前角色的 Items 追加反馈；消费游标在写出并 Flush 成功后推进，仅为绘制优化。宿主管理输出明确带外。
+- [PlaygroundObservedEvent](../../src/Playground/PlaygroundObservedEvent.cs)：有序事件与实际效果随 E 保存；[正常及恢复答复](../../src/Playground/PlaygroundOperationResults.cs)共用这些材料。GameRevision 9；事件材料覆盖普通采集与无生存需求角色，尚无最近 n 回合事件窗口。
+- [PlaygroundInteractionRules](../../src/Playground/PlaygroundInteractionRules.cs)：按接收者 Open/Closed 状态追加 Item 或收集待交付经历；新 Opening 冻结上次放行信息、经历与完整观察，替代独立累计 Incoming。[CharacterContextRenderer](../../src/Playground.Cli/CharacterContextRenderer.cs) 统一从 Opening 与保留 Items 渲染；纯输出包含完整角色材料和范围标记，不含宿主提示、输入回显、ANSI 或诊断。Closed 后不向旧上下文输出结算。
 
 增量是呈现能力，不改变游戏时间、活动期限、警告确认或行动合法性。完整与增量模式应产生相同的游戏轨迹。
 
@@ -98,7 +98,7 @@ Mud 的局限也应保留在判断中：四个行动限制不了单次行动大�
 
 ## 4. 切片 B：跨回合最近事件历史
 
-在 A 可独立试玩后实施，复用 A 的 `CycleObservedEvent` / `CycleObservedEffect`，增加有界保留与历史列表。当前 E/S 已保存角色 Opening、保留 Items 与待交付经历，冷开可完整重绘本轮材料。B 要进一步保留最近 n 个完整回合，尤其是已经结束回合中的零耗时操作经历；不把每个 Kernel occurrence 都变成一条玩家日志。
+在 A 可独立试玩后实施，复用 A 的 `PlaygroundObservedEvent` / `PlaygroundObservedEffect`，增加有界保留与历史列表。当前 E/S 已保存角色 Opening、保留 Items 与待交付经历，冷开可完整重绘本轮材料。B 要进一步保留最近 n 个完整回合，尤其是已经结束回合中的零耗时操作经历；不把每个 Kernel occurrence 都变成一条玩家日志。
 
 ### 玩家可观察的行为
 

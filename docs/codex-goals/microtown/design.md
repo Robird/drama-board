@@ -1,5 +1,7 @@
 # 微型小镇：玩法与复用设计草案
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
 
 状态：2026-10-31，本轮设计已实施并通过[总验收](../../experiments/microtown-acceptance.md)。共享 Goals、Completion 调用循环和 Gym 已有山林与小镇两个消费者；小镇完成真实三居民经济日及反馈分叉。以下具体玩法仍可依据后续实验修订，不把当前配方/数值固定为跨游戏契约。
@@ -70,10 +72,10 @@
 | --- | --- |
 | Kernel / Spatial / Host / Inventory | 已有独立项目，优先直接使用；保持单一时间/发布权威 |
 | [GoalRules](../../../src/Goals/GoalRules.cs) 与 Goals 模型 | 局部图编辑不读世界；优先提取共享模块，游戏决定何时接受操作、如何发布与呈现 |
-| [CharacterContext](../../../src/ResourceCycle/CharacterContext.cs) | 生命周期、冻结材料和回执机制可复用，但保存 CycleObservation/经历/目标；拆分共同生命周期与游戏材料，不能只移动文件或抹掉强类型 |
-| [LlmCharacterController](../../../src/ResourceCycle.Completion/LlmCharacterController.cs) | 调用、预算、反馈 Tail 可共享；剥离 CycleDecisionContext 以及生存/交流行动提示，具体游戏提供材料与能力指引 |
-| [GymSession](../../../src/ResourceCycle.Cli/Gym/GymSession.cs) / GymJournal / GymTraceExporter | 记录机制与游戏定位分开；由游戏适配解释可恢复边界，保留请求身份、来源截点与只读导出合同 |
-| [CycleGameFactory](../../../src/ResourceCycle/CycleGameFactory.cs)、地图、规则、持久化适配 | 山林内容和游戏总根保持归属；小镇有自己的工厂/组合与明确存档选择，不以不断增长的 survival 开关实现 |
+| [CharacterContext](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CharacterContext.cs) | 生命周期、冻结材料和回执机制可复用，但保存 CycleObservation/经历/目标；拆分共同生命周期与游戏材料，不能只移动文件或抹掉强类型 |
+| [LlmCharacterController](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Completion/LlmCharacterController.cs) | 调用、预算、反馈 Tail 可共享；剥离 CycleDecisionContext 以及生存/交流行动提示，具体游戏提供材料与能力指引 |
+| [GymSession](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/Gym/GymSession.cs) / GymJournal / GymTraceExporter | 记录机制与游戏定位分开；由游戏适配解释可恢复边界，保留请求身份、来源截点与只读导出合同 |
+| [CycleGameFactory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleGameFactory.cs)、地图、规则、持久化适配 | 山林内容和游戏总根保持归属；小镇有自己的工厂/组合与明确存档选择，不以不断增长的 survival 开关实现 |
 | 采集、生存、交流与新制作/交易 | 以实际被两游戏使用的局部能力决定提取；跨模块结算由游戏或明确组合模块负责 |
 
 首片已采用以下物理边界，均不反向引用 ResourceCycle：

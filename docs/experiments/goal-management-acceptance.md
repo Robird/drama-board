@@ -1,5 +1,7 @@
 # 角色目标管理首版工程验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-31。局部规则、游戏 E/S 接线、Console 与 Completion 材料已实现，工程及核心模型场景验证完成。范围按[里程碑](../design/goal-management/milestone.md)，行为合同见[操作](../design/goal-management/operations.md)及[容量](../design/goal-management/capacity-and-context.md)。本文记录工程证据；模型效果另见[真实试玩](goal-management-playtest.md)，代理操作 Human 入口的文本体验见[Console 记录](goal-management-console.md)。
 
 ## 交付与边界
@@ -29,12 +31,12 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleSurvival.ps1 -OutputDirectory a
 
 | 证据 | 验证范围 |
 | --- | --- |
-| [GoalRulesTests](../../tests/ResourceCycle.Tests/GoalRulesTests.cs) | 十二种操作，原子失败，同文独立身份，共享 DAG，暂停/结束回退，解绑有效后缀，三条敏感修订，12/32/48 容量与清理出口，Unicode/JSON 严格性，公开 command 构造无法绕过规则，时序边界 |
-| [GoalIntegrationTests](../../tests/ResourceCycle.Tests/GoalIntegrationTests.cs) | 真实 Kernel 原始输入入口、角色私有隔离、轮转、拒绝、无物理效果，移动警告期间编辑、跨 Context 保留；篡改原输入/回执/身份/后态均被拒绝 |
-| [GoalRecoveryTests](../../tests/ResourceCycle.Tests/GoalRecoveryTests.cs) | create+parent+focus、reopen、show、forget × E/S 四个中断边界；真实磁盘恢复及身份不复用；低层写入未来 marker 后应用冷开拒绝 |
-| [GoalPresentationTests](../../tests/ResourceCycle.Cli.Tests/GoalPresentationTests.cs) | 两种布局、full/delta、历史前缀、一次投影、三回执、查询失效/续接、非 BMP 与控制字符、最大合法规模、S/E-only 恢复全文一致 |
-| [LlmCharacterControllerTests](../../tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs) | 同一控制器按每个角色的实际能力选择系统规约；目标路径不再要求重复 handoff，普通采集不获不存在的能力 |
-| [Console smoke](../../scripts/Smoke-ResourceCycleGoals.ps1) | 真实输入/输出及操作日志配对，12 未结束、32 保留目标、48 关联分别触顶和整理后恢复，不只验证模型类 |
+| [GoalRulesTests](https://github.com/Robird/drama-board/blob/42da30db4a8d5de7615774168667d01598d88e02/tests/ResourceCycle.Tests/GoalRulesTests.cs) | 十二种操作，原子失败，同文独立身份，共享 DAG，暂停/结束回退，解绑有效后缀，三条敏感修订，12/32/48 容量与清理出口，Unicode/JSON 严格性，公开 command 构造无法绕过规则，时序边界 |
+| [GoalIntegrationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GoalIntegrationTests.cs) | 真实 Kernel 原始输入入口、角色私有隔离、轮转、拒绝、无物理效果，移动警告期间编辑、跨 Context 保留；篡改原输入/回执/身份/后态均被拒绝 |
+| [GoalRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/GoalRecoveryTests.cs) | create+parent+focus、reopen、show、forget × E/S 四个中断边界；真实磁盘恢复及身份不复用；低层写入未来 marker 后应用冷开拒绝 |
+| [GoalPresentationTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/GoalPresentationTests.cs) | 两种布局、full/delta、历史前缀、一次投影、三回执、查询失效/续接、非 BMP 与控制字符、最大合法规模、S/E-only 恢复全文一致 |
+| [LlmCharacterControllerTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs) | 同一控制器按每个角色的实际能力选择系统规约；目标路径不再要求重复 handoff，普通采集不获不存在的能力 |
+| [Console smoke](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCycleGoals.ps1) | 真实输入/输出及操作日志配对，12 未结束、32 保留目标、48 关联分别触顶和整理后恢复，不只验证模型类 |
 
 US-04～US-08 的暂停/续接、同文身份、更正与世界真相、恢复、目录增长由上述测试和 Console 流程支撑；US-01～US-03 的模型理解不能以这些确定性测试代替。
 

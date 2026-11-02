@@ -1,5 +1,7 @@
 # 山野镇内容定义与存档身份验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01，Windows / .NET SDK 10.0.201 / Release。基于 `2f9a5826c3c0bbe7b34636efd40100d296716549` 加本片改动，GameRevision **22**。本片落实 [C6](../codex-goals/living-world/README.md)；[内容合同](../codex-goals/living-world/content.md)记录实际 API 和支持范围。C5 的 Gym 实际轨迹导出、C7 的真实模型与自由游玩仍未完成。
 
 ## 工程证据
@@ -21,16 +23,16 @@
 
 | 合同 | 可核对证据 |
 | --- | --- |
-| 普通 C# 内容入口与合法变体 | [定义测试](../../tests/ResourceCycle.Tests/HillsideContentDefinitionTests.cs)：`Named`/`Change`，覆盖参数归一化、集合复制/只读、重复 ID、坏引用、非法周期/配额/参数；不修改 Kernel。 |
+| 普通 C# 内容入口与合法变体 | [定义测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideContentDefinitionTests.cs)：`Named`/`Change`，覆盖参数归一化、集合复制/只读、重复 ID、坏引用、非法周期/配额/参数；不修改 Kernel。 |
 | 全字段确定身份 | 同上：无序输入及语义边方向规范后指纹相同；反向提示、身体、天气、补给、市场周期、背包容量改变指纹；角色顺序不被排序抹去。 |
-| 参数在真实规则中生效 | [独立行为验收](../../tests/ResourceCycle.Tests/HillsideContentAcceptanceTests.cs)用默认与自定义变体交错执行普通移动、采集、生产、买卖、消费，断言路线耗时、再生、配方投入/产出/期限、价格、初始资产、补给、代谢及天气差异；每步比对 Rebuild 预测和空间 Contacts。 |
-| 合法温和身体参数不会预测异常 | [身体内容测试](../../tests/ResourceCycle.Tests/BodyContentDefinitionTests.cs)覆盖舒缓三日稳定、零速率、缓慢负漂移第三夜耗尽、末 tick 及不同内容的天气/补给。它不是 C7 三日模型运行证据。 |
+| 参数在真实规则中生效 | [独立行为验收](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideContentAcceptanceTests.cs)用默认与自定义变体交错执行普通移动、采集、生产、买卖、消费，断言路线耗时、再生、配方投入/产出/期限、价格、初始资产、补给、代谢及天气差异；每步比对 Rebuild 预测和空间 Contacts。 |
+| 合法温和身体参数不会预测异常 | [身体内容测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/BodyContentDefinitionTests.cs)覆盖舒缓三日稳定、零速率、缓慢负漂移第三夜耗尽、末 tick 及不同内容的天气/补给。它不是 C7 三日模型运行证据。 |
 | 冷开及 pending 不改用默认、不重 Plan | 独立行为验收：变体生产完成 E-only 恢复使用禁止 Forecast/Plan 的规则，投入/产出仅结算一次；正常冷开继续保持定义。另建默认局不影响变体分支。 |
-| 保存内容与 S/E 绑定 | 独立行为验收和[绑定测试](../../tests/ResourceCycle.Tests/HillsideContentBindingTests.cs)：S 字段/指纹篡改、E/S 身份不符、显式期望定义不符均拒绝，逐文件 SHA-256 不变；正确身份仍可恢复 pending。 |
+| 保存内容与 S/E 绑定 | 独立行为验收和[绑定测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/HillsideContentBindingTests.cs)：S 字段/指纹篡改、E/S 身份不符、显式期望定义不符均拒绝，逐文件 SHA-256 不变；正确身份仍可恢复 pending。 |
 | 运行中不可更换定义 | 绑定测试：有效但不同定义的 nextState 配正确 cursor 仍在发布前拒绝，适配器 faulted，磁盘不变；重开仍保留原 pending，可完成一次。 |
 | 分叉继承且不洗白错配 | 绑定测试分别破坏 predecessor S 身份/指纹、E 身份、selected S 身份，保证 selected S 单独合法后仍拒绝注册，源文件不变；正向分叉冷开移动，父 head 和业务材料不变。 |
-| 修订不洗白错配 E | [修订测试](../../tests/ResourceCycle.Tests/CycleRevisionTests.cs)保持 S1/E2 成功中断合同，并新增错配 E 在进入 EventStep 前拒绝，不能靠转换重新贴标签。 |
-| Console/Completion 使用冻结内容 | [宿主内容测试](../../tests/ResourceCycle.Cli.Tests/ContentHostTests.cs)覆盖人数归一化、省略内容续局、两宿主 pending 不符零模型调用/零写入；两布局显示自定义 17 点补水与世界名称。Completion 完整离线回归同步冻结名称。 |
+| 修订不洗白错配 E | [修订测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleRevisionTests.cs)保持 S1/E2 成功中断合同，并新增错配 E 在进入 EventStep 前拒绝，不能靠转换重新贴标签。 |
+| Console/Completion 使用冻结内容 | [宿主内容测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ContentHostTests.cs)覆盖人数归一化、省略内容续局、两宿主 pending 不符零模型调用/零写入；两布局显示自定义 17 点补水与世界名称。Completion 完整离线回归同步冻结名称。 |
 
 ## 实际 Console
 

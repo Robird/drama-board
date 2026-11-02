@@ -1,21 +1,23 @@
 # Human Console 元命令边界验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-28。对应[实施合同](../design/console-command-boundary.md)，范围仅为 CLI 输入、呈现、会话组合及测试；领域、E/S、Schema、GameRevision 与操作恢复协议未修改。
 
 ## 实施结果
 
-- [CycleCommandParser](../../src/ResourceCycle/CycleCommandParser.cs) 只产生领域行动，混合 `PlayInput` 已删除；冒号输入只走 [ConsoleMetaCommands](../../src/ResourceCycle.Cli/ConsoleMetaCommands.cs)。
+- [CycleCommandParser](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleCommandParser.cs) 只产生领域行动，混合 `PlayInput` 已删除；冒号输入只走 [ConsoleMetaCommands](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/ConsoleMetaCommands.cs)。
 - `HumanDefault` / `None` 是会话构造时显式注入的不可变目录，同一实例控制解析与提示；没有新增 CLI 参数、热切换或 LLM 适配器。
-- [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 仅保留游戏观察、更新及 `RenderActionHelp`。提示符、阶段说明和元命令提示由 [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 组合；终局不广告后续输入。
+- [IPlayLayout](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/IPlayLayout.cs) 仅保留游戏观察、更新及 `RenderActionHelp`。提示符、阶段说明和元命令提示由 [PlayPresentationSession](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle.Cli/PlayPresentationSession.cs) 组合；终局不广告后续输入。
 - 布局/模式帮助来自实际注册选项；`--play` 仅列 full。重同步先组合完整答复，再记录日志并写出，保留成功 Flush 后安装基线的合同。
 
 ## 工程与独立审查
 
 - `dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify`：成功，0 警告、0 错误，Schema Verify 通过。
 - `dotnet test tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj -c Release --no-build --no-restore`：209 项通过，无失败/跳过，包括实际持久化操作恢复用例。本次未重跑全体领域测试。
-- [解析与目录测试](../../tests/ResourceCycle.Cli.Tests/ConsoleMetaCommandsTests.cs) 验证冒号唯一形式、全部命令/别名、非法参数、实际选项可发现性；[行动解析测试](../../tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs)保留语法与领域合法性分离。
-- [Controller 集成测试](../../tests/ResourceCycle.Cli.Tests/PlayControllerOperationTests.cs) 验证 None 下全部命令及带参数切换被同 ID 拒绝、偏好与基线不变、最终返回 `handoff :exit`；另覆盖读取后取消、精确重同步答复、查询/拒绝/退出不发布 E/S。
-- [共享视图边界测试](../../tests/ResourceCycle.Cli.Tests/SharedGameViewBoundaryTests.cs) 验证两布局的完整/增量/行动帮助与终局无 Console 指引，含 `:exit` 的正文保留，目录提示同源及完整日志回调。既有 session 测试继续覆盖清屏、查询、Flush 失败与基线恢复；没有新增具体排版位置或整屏快照合同。
+- [解析与目录测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/ConsoleMetaCommandsTests.cs) 验证冒号唯一形式、全部命令/别名、非法参数、实际选项可发现性；[行动解析测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/CycleCommandParserTests.cs)保留语法与领域合法性分离。
+- [Controller 集成测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/PlayControllerOperationTests.cs) 验证 None 下全部命令及带参数切换被同 ID 拒绝、偏好与基线不变、最终返回 `handoff :exit`；另覆盖读取后取消、精确重同步答复、查询/拒绝/退出不发布 E/S。
+- [共享视图边界测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/SharedGameViewBoundaryTests.cs) 验证两布局的完整/增量/行动帮助与终局无 Console 指引，含 `:exit` 的正文保留，目录提示同源及完整日志回调。既有 session 测试继续覆盖清屏、查询、Flush 失败与基线恢复；没有新增具体排版位置或整屏快照合同。
 - 独立审查者对照方案、源码与测试，未发现实质问题。主线程复核解析分派、日志时序、终局与写出边界，并独立完成上述构建和测试。
 
 ## 真实 CLI 试玩

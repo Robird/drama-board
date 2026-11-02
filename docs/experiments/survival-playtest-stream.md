@@ -1,5 +1,7 @@
 # 生存 Demo 独立盲试玩：溪水方向
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-28。结论：首局自然失温失败，第二局利用首局学到的时间成本调整补给后成功获救；两局都实际退出并重新打开同一存档，观察到途中状态与未确认警告恢复。
 
 ## 盲测边界与证据
@@ -66,7 +68,7 @@
 
 ## 修正后复查（已知路线，2026-10-28）
 
-主线程完成 D 修正并构建 Release DLL 后，另开临时存档，仅凭真实 Console 复查上述第 3、4 项反馈。这是已知路线的定向复查，不计作新增盲测；未读源码、未构建、未修改产品。完整输入输出：[独立日志](../../artifacts/stream-fix-recheck-254b2052d1df429bb31f9e1e87f4bcc3/transcript.txt)，同目录保留 driver 与 store。
+主线程完成 D 修正并构建 Release DLL 后，另开临时存档，仅凭真实 Console 复查上述第 3、4 项反馈。这是已知路线的定向复查，不计作新增盲测；未读源码、未构建、未修改产品。完整输入输出：独立日志（历史本地工件：`artifacts/stream-fix-recheck-254b2052d1df429bb31f9e1e87f4bcc3/transcript.txt`，当前检出不含该工件），同目录保留 driver 与 store。
 
 命令逐条执行：`go trail-1` → `gather berries 1` → `use item.food` → `go trail-3` → `use item.water` → `continue` → `go trail-4` → `continue`。
 

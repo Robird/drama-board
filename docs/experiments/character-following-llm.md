@@ -1,5 +1,7 @@
 # 角色跟随：真实模型协作预演
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-01。对应[角色跟随设计](../design/character-following.md)。两人场景已分别完成 Human 入口领队与真实 LLM 领队的“集合 → 至少两段同行 → 解散采集 → 再集合离开”闭环。**Human Console 的 a 由 coding agent 操作，不是用户本人；本报告不替代真人体验验收，也不宣称通关或模型自主探索能力。**
 
 ## 执行范围与来源

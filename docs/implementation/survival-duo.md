@@ -1,8 +1,10 @@
 # 双角色生存实施合同
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2026-10-29 已实施并通过[规则、恢复、宿主与真实模型接线验收](../experiments/survival-duo-acceptance.md)。承接[二期里程碑 §3.3](../design/survival-demo-milestone.md#33-2b双角色生存与控制器路由)；交流、赠与与真实合作仍属于 2C。
 
-2026-11-01：人数和路由已随[角色跟随](../design/character-following.md)扩展至 1–3 人。当前入口为 `--survival --characters 1|2|3`，`--duo` 仅是显式二人快捷参数；续局省略人数时读取存档，显式人数必须匹配。多人 LLM 模式中 a 为 Human，其余角色共享同一模型调用预算。下文保留最初双角色切片的领域合同，当前启动方式以[README](../../README.md#two-or-three-explorers-in-one-survival-world)为准。
+2026-11-01：人数和路由已随[角色跟随](../design/character-following.md)扩展至 1–3 人。当前入口为 `--survival --characters 1|2|3`，`--duo` 仅是显式二人快捷参数；续局省略人数时读取存档，显式人数必须匹配。多人 LLM 模式中 a 为 Human，其余角色共享同一模型调用预算。下文保留最初双角色切片的领域合同，当前启动方式以[README](../../README.md#启动山野镇)为准。
 
 ## 一个世界，两个独立角色
 

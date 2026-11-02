@@ -6,9 +6,9 @@
     <Project Path="src/Host/Host.csproj" />
     <Project Path="src/Inventory/Inventory.csproj" />
     <Project Path="src/Kernel/Kernel.csproj" />
-    <Project Path="src/ResourceCycle/ResourceCycle.csproj" />
-    <Project Path="src/ResourceCycle.Cli/ResourceCycle.Cli.csproj" />
-    <Project Path="src/ResourceCycle.Completion/ResourceCycle.Completion.csproj" />
+    <Project Path="src/Playground/Playground.csproj" />
+    <Project Path="src/Playground.Cli/Playground.Cli.csproj" />
+    <Project Path="src/Playground.Completion/Playground.Completion.csproj" />
     <Project Path="src/Spatial/Spatial.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -18,9 +18,9 @@
     <Project Path="tests/Host.Tests/Host.Tests.csproj" />
     <Project Path="tests/Inventory.Tests/Inventory.Tests.csproj" />
     <Project Path="tests/Kernel.Tests/Kernel.Tests.csproj" />
-    <Project Path="tests/ResourceCycle.Tests/ResourceCycle.Tests.csproj" />
-    <Project Path="tests/ResourceCycle.Cli.Tests/ResourceCycle.Cli.Tests.csproj" />
-    <Project Path="tests/ResourceCycle.Completion.Tests/ResourceCycle.Completion.Tests.csproj" />
+    <Project Path="tests/Playground.Tests/Playground.Tests.csproj" />
+    <Project Path="tests/Playground.Cli.Tests/Playground.Cli.Tests.csproj" />
+    <Project Path="tests/Playground.Completion.Tests/Playground.Completion.Tests.csproj" />
     <Project Path="tests/Spatial.Tests/Spatial.Tests.csproj" />
   </Folder>
   <Project Path="../atelia-storage/src/Binary/Binary.csproj" />

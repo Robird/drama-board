@@ -1,6 +1,6 @@
 # 设计决策：对象图初始化与游戏状态修订
 
-状态：首片已接入 ResourceCycle 的真实创建、保存与恢复路径。普通工厂构造新游戏，State/Event 各自记录 `GameRevision`；加载还原并协调升级内存表示，再交给正常执行流程。生产目前只接受修订 5（含[决策回合继承与操作身份](decision-context-handoff.md)），旧开发存档不兼容；跨版本语义通过测试夹具验证。升级本身不完成 pending 工作。加载机制验证见[验收记录](../experiments/game-revision-acceptance.md)，生存组合见[一期验收](../experiments/survival-demo-acceptance.md)。
+状态：首片已接入 Playground 的真实创建、保存与恢复路径。普通工厂构造新游戏，State/Event 各自记录 `GameRevision`；加载还原并协调升级内存表示，再交给正常执行流程。生产目前只接受修订 22（首片修订 5 包含[决策回合继承与操作身份](decision-context-handoff.md)），旧开发存档不兼容；跨版本语义通过测试夹具验证。升级本身不完成 pending 工作。加载机制验证见[验收记录](../experiments/game-revision-acceptance.md)，生存组合见[一期验收](../experiments/survival-demo-acceptance.md)。
 
 三方交叉审阅收敛的约束与源码依据见[审阅裁决](../research/game-revision-review.md)。
 
@@ -8,7 +8,7 @@
 
 新游戏工厂接收场景、角色设置及必要时的生成种子，组装初始领域对象图；校验业务约束并重建派生预测后，由持久化入口发布初始 S。工厂直接构造当前游戏修订的状态，不从最早版本逐步升级。
 
-[CycleGameFactory.CreateBatch / CreatePlayable](../../src/ResourceCycle/CycleGameFactory.cs) 集中组装场景并返回 `(World, Cursor)`，供内存运行及磁盘新游戏使用；[CycleWorld.Create / CreatePlayable](../../src/ResourceCycle/CycleModels.cs) 保留为薄委托。工厂不发布存档，不建立统一生成器接口。
+[PlaygroundGameFactory.CreateBatch / CreatePlayable](../../src/Playground/PlaygroundGameFactory.cs) 集中组装场景并返回 `(World, Cursor)`，供内存运行及磁盘新游戏使用；[PlaygroundWorld.Create / CreatePlayable](../../src/Playground/PlaygroundModels.cs) 保留为薄委托。工厂不发布存档，不建立统一生成器接口。
 
 - 地点、资源、角色等生成器可以是普通函数，各自构造子图，由上层连接引用、校验身份唯一性和引用完整性。
 - 每次新游戏的可变状态独立；外部传入子图的共享/转移约定应明确，不能默认工厂会深复制。配置文件可以成为可选输入，不是必经表示。
@@ -20,7 +20,7 @@
 | 概念 | 职责 | 当前状态 |
 | --- | --- | --- |
 | DurableGraph Schema 版本 | 将旧持久表示还原为可供应用处理的类型；State 与 Event 各自都可能需要 Schema Upgrade。 | 已有 DG 能力；`UpgradeContext` 不提供跨图访问和对象 ID 分配。 |
-| `GameRevision` | 表示该份 State 或 Event 的游戏语义修订版本，决定其内存升级路径。 | `CycleDurableRoot` / `CycleDurableEvent` 各自保存；`CycleGameRevision.Current` 为生产当前修订。 |
+| `GameRevision` | 表示该份 State 或 Event 的游戏语义修订版本，决定其内存升级路径。 | `PlaygroundDurableRoot` / `PlaygroundDurableEvent` 各自保存；`PlaygroundGameRevision.Current` 为生产当前修订。 |
 | `WorldVersion` | 标识模拟谱系与已完成的发生项转换次数。 | 现有 [WorldVersion](../../src/Kernel/Simulation/WorldVersion.cs)，不能兼作游戏修订号。 |
 
 Schema 升级解决“能否还原”，游戏修订解决“还原出的世界应如何变化”，Rebuild 只负责派生预测与索引。业务修订必须显式处理正在进行的活动：例如周期缩短时保留原到期时刻、完成比例还是重置进度，不能靠重建预测暗中选择。
@@ -47,18 +47,18 @@ S/E 各自带版本不意味着总能独立转换。例如旧 E 保存了“背�
 
 ## 4. 首片应用接口
 
-应用层持久根 [CycleDurableRoot](../../src/ResourceCycle/Persistence/CycleDurableRoot.cs) 保存 `GameRevision`，独立事件包装 [CycleDurableEvent](../../src/ResourceCycle/Persistence/CycleDurableEvent.cs) 保存自己的修订号及 `OccurrenceEvent<CycleFact>`。Root Schema 为 v2，Event Schema 为 v1；Kernel 不承担应用修订号。旧无版本根和原始 occurrence 存档不在支持范围内。
+应用层持久根 [PlaygroundDurableRoot](../../src/Playground/Persistence/PlaygroundDurableRoot.cs) 保存 `GameRevision`，独立事件包装 [PlaygroundDurableEvent](../../src/Playground/Persistence/PlaygroundDurableEvent.cs) 保存自己的修订号及 `OccurrenceEvent<PlaygroundFact>`。Playground 新持久身份的 Root / Event Schema 均为 v1（重命名前 Root v2 历史保存在 Git）；Kernel 不承担应用修订号。旧无版本根和原始 occurrence 存档不在支持范围内。
 
 ```csharp
-// CycleGameRevision 中的 internal 普通函数；生产目标使用 Current。
+// PlaygroundGameRevision 中的 internal 普通函数；生产目标使用 Current。
 /// <summary>Upgrades restored representations without executing pending work.</summary>
 /// <remarks>Preserve input snapshots, cursor, event identity and pending presence.
 /// State conversion is independent of pending Event presence or content.
 /// No publication, planning or controller calls; reject unsupported boundaries.</remarks>
-internal static (CycleDurableRoot State, CycleDurableEvent? PendingEvent) UpgradeLoadedBoundary(
-    CycleDurableRoot state, CycleDurableEvent? pending, int targetRevision,
-    Func<CycleDurableRoot, CycleDurableRoot>? upgradeState = null,
-    Func<CycleDurableRoot, CycleDurableRoot, CycleDurableEvent, CycleDurableEvent>? upgradeEvent = null);
+internal static (PlaygroundDurableRoot State, PlaygroundDurableEvent? PendingEvent) UpgradeLoadedBoundary(
+    PlaygroundDurableRoot state, PlaygroundDurableEvent? pending, int targetRevision,
+    Func<PlaygroundDurableRoot, PlaygroundDurableRoot>? upgradeState = null,
+    Func<PlaygroundDurableRoot, PlaygroundDurableRoot, PlaygroundDurableEvent, PlaygroundDurableEvent>? upgradeEvent = null);
 ```
 
 普通函数按下节顺序调用相邻转换；内部 `Open` 重载让测试夹具为同一加载和发布路径提供目标修订及转换函数，公开 `Open` 固定当前修订且不提供虚构历史步骤。后续 E/S 写入会话的目标修订。不建立同构的 Input/Result 类型、可替换管道接口、通用版本图或持久映射表。第二个真实消费者或实现替换需求出现后再提取接口。元数据与边界检查由编排负责，具体转换的正确性由修订代码及对应测试保证，不增加一套通用业务验证器。
@@ -72,7 +72,7 @@ internal static (CycleDurableRoot State, CycleDurableEvent? PendingEvent) Upgrad
 1. 打开工作副本，读取最近 S、head 和可选 pending E，完成 DG 还原；检查历史形状及原 E 与游标的边界关系，保留物理来源提交身份。
 2. 分别读取 S/E 的 `GameRevision`。有 E 时先将 S 升到 E 的版本，然后逐相邻修订一起推进：每步先转换 S，再用该步原/新 S 与映射转换 E。没有 E 则仅执行同一套 State 步骤。此时不提前套用最终版业务约束去否决合法旧数据。
 3. 检查版本、形状、pending 有无、事件身份/游标及具体修订必要的映射与引用条件，校验当前 S 并重建其预测；不提前 Fold 来证明 E 可执行，也不复制 Fold/Complete 的业务验证。将就绪 State 与仍 pending 的 E 交给正常运行流程；升级入口到此结束，不写盘。事件执行结果仍由正常 Fold → Complete → Validate 检查。
-4. 当前 ResourceCycle 继续通过显式 `RecoverPending` 完成 E；没有 E 则正常 Step。后续产生的 E 和 S 各自写入当前 `GameRevision`。只有正常执行完成后才推进游标、发布对应 S。
+4. 当前 Playground 继续通过显式 `RecoverPending` 完成 E；没有 E 则正常 Step。后续产生的 E 和 S 各自写入当前 `GameRevision`。只有正常执行完成后才推进游标、发布对应 S。
 
 首片支持正常协议可产生、且有明确升级路径的 `S_revision ≤ E_revision ≤ 当前修订`；S 比 E 更新的输入没有当前消费者，明确拒绝，待真实需求出现后再定义。对齐可以采用等价实现，不要求保留所有中间快照或建立阶段框架。
 
@@ -88,8 +88,8 @@ adapter 需要区分物理保存基线与升级后的运行视图：`State`/`Pen
 
 ## 6. 实施落点与验收合同
 
-- [CycleDurableHistory.Open](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 先还原 S/E 并检查历史边界，调用升级函数后才完整 Validate/Rebuild；加载不提前 Fold 事件。
-- `CycleDurableRoot` 普通构造仍完整 Validate；内部候选入口仅检查修订号、非空业务根、游标和世界时间对齐。候选交付运行及发布前必须完整验证。
+- [PlaygroundDurableHistory.Open](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) 先还原 S/E 并检查历史边界，调用升级函数后才完整 Validate/Rebuild；加载不提前 Fold 事件。
+- `PlaygroundDurableRoot` 普通构造仍完整 Validate；内部候选入口仅检查修订号、非空业务根、游标和世界时间对齐。候选交付运行及发布前必须完整验证。
 - adapter 的 `_readyRoot` / `_pending` 保存就绪视图，`State`、`Cursor`、`PendingEvent` 及正常提交使用同一语义边界；运行时 wrapper 与就绪根共享 Business。`WorkingCopy` 保留物理基线，只有提交成功才安装新根及 wrapper。
 - [SimulationKernel.RecoverPending](../../src/Kernel/Simulation/SimulationKernel.cs) 继续只处理兼容的输入，不识别游戏版本或挑选修订策略。`CommitState` 继续完成 pending E；本方案不要求新增独立升级发布入口。
 - 公共入口只接受当前游戏修订；首次真实业务修订出现时再提供步骤并声明支持范围，不增加旧无版本存档兼容承诺。

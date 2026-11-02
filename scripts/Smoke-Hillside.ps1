@@ -5,7 +5,7 @@ param([string]$Configuration = 'Release', [string]$OutputDirectory,
 # Uses ordinary Console commands and two processes against one fresh save.
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$cliPath = Join-Path $repoRoot "src/ResourceCycle.Cli/bin/$Configuration/net10.0/DramaBoard.ResourceCycle.Cli.dll"
+$cliPath = Join-Path $repoRoot "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 if (-not (Test-Path -LiteralPath $cliPath)) { throw "Build the CLI first: $cliPath" }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repoRoot ('artifacts/hillside-console/' + [Guid]::NewGuid().ToString('N')) }
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)

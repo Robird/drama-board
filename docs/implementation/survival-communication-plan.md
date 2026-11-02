@@ -1,5 +1,7 @@
 # 生存 2C：交流、赠与与合作实施方案
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：2C 的领域规则、感知与 Console 接线已实施，真实合作试玩仍待验收。对应[二期里程碑 §3.4](../design/survival-demo-milestone.md#34-2c交流赠与与合作试玩)。先验证最小规则，再以真实体验调整；工程证据与试玩范围见[验收记录](../experiments/survival-communication-acceptance.md)。
 
 ## 选择的最小规则

@@ -1,5 +1,7 @@
 # ResourceCycle 原型施工契约
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 状态：本切片已完成，结果与限制见[原型验收](../experiments/resource-cycle-acceptance.md)。以下保留实施契约，不作为新一轮派工清单。
 
 本轮目标：应用层昼夜/植物/固定销毁脚本，通过声明依赖、失效标记和统一重算维护显式预测；提供可运行 Console、单根 DG 冷恢复及增量/全量对照。不修改 Kernel/Spatial 的既有语义，不增加角色或通用事件框架。

@@ -2,7 +2,7 @@
 
 DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定性事件，**Spatial** 表达地点、通路、移动实体与相遇，**Host** 驱动 Kernel。核心不依赖 Player 或应用服务器。
 
-当前推荐游戏入口是 **山野镇 / Hillside**，使用 `src/ResourceCycle.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民之间也可报价交换资金和物品。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，本阶段已通过[逐项验收](docs/codex-goals/living-world/acceptance.md)，包含同一三模型历史 72h 与两次独立自由游玩；专题状态只在[工作计划](docs/codex-goals/living-world/work-plan.md)维护。
+当前推荐游戏入口是 **山野镇 / Hillside**，使用 `src/Playground.Cli` 项目路径。居民可以在同一世界中往返小镇与山林，采集、补给、探索、交流和结伴移动，在工坊加工口粮或木器，在市场买卖物品；抵达原来的出口不再结束角色生活。居民之间也可报价交换资金和物品。愿景与完成条件见 [living-world](docs/codex-goals/living-world/README.md)，本阶段已通过[逐项验收](docs/codex-goals/living-world/acceptance.md)，包含同一三模型历史 72h 与两次独立自由游玩；专题状态只在[工作计划](docs/codex-goals/living-world/work-plan.md)维护。
 
 跨会话状态见 [PROJECT-STATE](PROJECT-STATE.md)，文档导航见 [docs/README](docs/README.md)，协作约定见 [AGENTS](AGENTS.md)。
 
@@ -15,21 +15,21 @@ dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaH
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、ResourceCycle 系列及相应测试，也列入相邻源码项目供 IDE/LSP 导航。Microtown 已通过 [Git tag 归档](docs/archive/microtown.md)，不再参与构建或回归。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
+源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、Playground 系列及相应测试，也列入相邻源码项目供 IDE/LSP 导航。Microtown 已通过 [Git tag 归档](docs/archive/microtown.md)，不再参与构建或回归。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
 
 ## 启动山野镇
 
 ```powershell
 # 默认三名居民 a、b、c，共用 Human Console 轮流行动：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-hillside
+dotnet run --project src/Playground.Cli -c Release -- --store artifacts/my-hillside
 
 # 恢复同一存档；省略人数则沿用存档：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --store artifacts/my-hillside
+dotnet run --project src/Playground.Cli -c Release -- --store artifacts/my-hillside
 
 # 单人新局，最多提交 200 个转换、模拟不超过绝对小时 32：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --characters 1 --store artifacts/my-solo-hillside --steps 200 --until-hour 32
+dotnet run --project src/Playground.Cli -c Release -- --characters 1 --store artifacts/my-solo-hillside --steps 200 --until-hour 32
 
-dotnet run --project src/ResourceCycle.Cli -c Release -- --help
+dotnet run --project src/Playground.Cli -c Release -- --help
 ```
 
 新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、现金、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物、三份水和 12 钱；这些是有限初始资产，回镇不会自动补满。
@@ -44,13 +44,13 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --help
 
 ```powershell
 # 三名居民全由模型控制，所有角色共用本次调用预算：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --model gpt-6.1-sol --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
+dotnet run --project src/Playground.Cli -c Release -- --llm --model gpt-6.1-sol --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
 
 # Human Console 控制 b，模型控制 a 与 c；a/b/c 均可被选择：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human b --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
+dotnet run --project src/Playground.Cli -c Release -- --llm --human b --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
 
 # 恢复同一存档时改变绑定：
-dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
+dotnet run --project src/Playground.Cli -c Release -- --llm --human a --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
 ```
 
 `--llm` 默认控制所有角色；`--human ID` 必须与 `--llm` 同用，且 ID 必须属于当前存档。不带 `--llm` 时所有角色交给共享 Human Console。绑定在启动/恢复边界选择，保留原角色身份、背包、目标和个人材料；没有运行中热切换。模型控制器与 Human 使用同一领域行动及冻结角色材料。全模型观战输出属于宿主观察证据，不是任一角色的额外知识。
@@ -101,7 +101,7 @@ dotnet run --project src/ResourceCycle.Cli -c Release -- --llm --human a --model
 
 一个 DurableGraph 根保存业务子图与 Kernel 游标。派生预测在冷开时重建，在业务事实提交后增量维护。E 已提交、S 尚未完成的中断恢复只应用保存的事实及纯派生完成，不重新询问控制器或重新执行规划。机制见[运行时预测与恢复](docs/design/runtime-derived-predictions.md)。
 
-当前游戏修订为 22，不兼容旧开发档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
+当前游戏修订仍为 22；Playground 持久类型与 Inventory.ItemInventory 使用新的 Schema v1 身份，不兼容重命名前存档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
 
 每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 
@@ -111,9 +111,9 @@ Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令�
 
 Microtown 的生产、现金、有限市场与居民报价已融入山野镇；旧源码、三个测试项目及专属 smoke 脚本已从主线移除，由 [Microtown 归档](docs/archive/microtown.md)中的固定 Git tag 保留。历史设计与实验记录继续保留，旧证据不能替代融合验收。新增世界玩法与玩家入口统一在山野镇推进。
 
-当前代码仍使用 `ResourceCycle.*` 项目、namespace 与 `Cycle*` 类型名。用户已确定下一轮统一命名为 `Playground`，表达开发期机制实验应用的用途；山野镇 / Hillside 保留为综合场景名。依据及命名交接见[开发实践参照](docs/research/playground-development-practices.md)，启动命令在实际迁移完成前仍以上文为准。
+应用项目、namespace 与类型已统一为 `Playground` / `Playground*`，表达开发期机制实验应用的用途；山野镇 / Hillside 保留为综合场景名。依据见[开发实践参照](docs/research/playground-development-practices.md)，持久身份重建与验收见[重命名说明](docs/implementation/playground-rename.md)。
 
-ResourceCycle 早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。历史 Smoke 脚本若包含旧参数，不作为当前启动入口；复验使用上文 `Smoke-Hillside.ps1` 和 `Smoke-HillsideContent.ps1`。历史实现与验证仍可查阅：
+ResourceCycle（现 Playground）早期批处理、单地点采集与逃生玩法的命令模式已退出当前 CLI。历史 Smoke 脚本若包含旧参数，不作为当前启动入口；复验使用上文 `Smoke-Hillside.ps1` 和 `Smoke-HillsideContent.ps1`。历史实现与验证仍可查阅：
 
 - [昼夜资源设计](docs/design/resource-cycle-demo.md)、[原始验收](docs/experiments/resource-cycle-acceptance.md)、[运行时缓存验收](docs/experiments/resource-cycle-runtime-cache-acceptance.md)。
 - [多人采集设计](docs/design/resource-cycle-multiplayer-gathering.md)、[多人采集验收](docs/experiments/resource-cycle-multiplayer-acceptance.md)。

@@ -1,5 +1,7 @@
 # Microtown 历史归档
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 2026-11-02。Microtown 的经济、生产、市场与居民交易已融合到[山野镇 / Hillside](../codex-goals/living-world/README.md)。旧领域、Console、Completion 适配及配套测试从主线移除，不再参与 solution、CI 或共享模块回归。
 
 ## 固定归档

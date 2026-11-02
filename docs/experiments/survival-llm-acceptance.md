@@ -1,5 +1,7 @@
 # 生存二期 2A：LLM 接线验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 日期：2026-10-29。范围为[目标 §3.2](../design/survival-demo-milestone.md#32-2a单角色-llm-接线)，运行与恢复合同见[实施说明](../implementation/survival-llm-controller.md)。本片没有双角色生存、对话或赠与，不作为整个二期完成证据。
 
 ## 真实模型试玩
@@ -39,10 +41,10 @@ Release solution 构建及 Schema Verify 零警告/错误；本片未修改领�
 
 受影响和原有测试共 880 项通过、无跳过：Host 2、Inventory 27、Kernel 131、ResourceCycle 316、CLI 285、Completion adapter 28、Spatial 91。先运行全 solution，修正新增 SSE 夹具后复跑 adapter；宿主审计尾修后复跑完整 CLI suite。最后系统说明调整以第二局真实模型运行验证。命令和日志在 `artifacts/llm-build.log`、`llm-tests.log`、`llm-adapter-tests.log`、`llm-cli-tests.log` 与 `llm-final-build.log`，全量初跑日志如实保留夹具失败。
 
-- [适配测试](../../tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs)：Completed/exact-one、调用 ID 原样保留、零/多/错误工具、畸形/重复/额外参数、取消、预算、超大材料、游戏拒绝进入后续独立请求。
-- [HTTP/SSE 测试](../../tests/ResourceCycle.Completion.Tests/ResponsesWireTests.cs)：真正 public Responses 客户端投影 JSON 工具并解析 SSE；完整调用但缺 terminal 不交游戏。原夹具只提供终止快照，未提供普通 function call 的 `output_item.done`，修正夹具后通过；没有为夹具削弱生产校验。该夹具不测试 Codex 认证。
-- [领域中断测试](../../tests/ResourceCycle.Tests/LlmControllerRecoveryBoundaryTests.cs)：完整响应后 E 前中断允许改选；E-only 不询问控制器且效果恰一次；S 后展示前中断保留材料；拒绝反馈冷开仍可继续。使用真实磁盘和计数 fake controller，不能冒充端点中断实测。
-- [宿主测试](../../tests/ResourceCycle.Cli.Tests/LlmHostTests.cs)：预算暂停与重开、模型完整响应后展示故障不发布 E、E/S 恢复先于新请求、操作收据修复、取消、连接选择及工具 schema 的完整审计。只把 Step 提交后结果称为 committed。
+- [适配测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Completion.Tests/LlmCharacterControllerTests.cs)：Completed/exact-one、调用 ID 原样保留、零/多/错误工具、畸形/重复/额外参数、取消、预算、超大材料、游戏拒绝进入后续独立请求。
+- [HTTP/SSE 测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Completion.Tests/ResponsesWireTests.cs)：真正 public Responses 客户端投影 JSON 工具并解析 SSE；完整调用但缺 terminal 不交游戏。原夹具只提供终止快照，未提供普通 function call 的 `output_item.done`，修正夹具后通过；没有为夹具削弱生产校验。该夹具不测试 Codex 认证。
+- [领域中断测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/LlmControllerRecoveryBoundaryTests.cs)：完整响应后 E 前中断允许改选；E-only 不询问控制器且效果恰一次；S 后展示前中断保留材料；拒绝反馈冷开仍可继续。使用真实磁盘和计数 fake controller，不能冒充端点中断实测。
+- [宿主测试](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Cli.Tests/LlmHostTests.cs)：预算暂停与重开、模型完整响应后展示故障不发布 E、E/S 恢复先于新请求、操作收据修复、取消、连接选择及工具 schema 的完整审计。只把 Step 提交后结果称为 committed。
 
 实际模型证明 S-only 续局。E-only 与 E 前故障通过以上确定性夹具验证，本次没有刻意在真实网络响应期间杀进程。连接错误探针使用不存在的认证路径，退出 1 并安全报告 `AuthStorageUnavailable`，不打印凭据。
 

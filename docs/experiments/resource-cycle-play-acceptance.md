@@ -1,5 +1,7 @@
 # ResourceCycle Console 采集切片验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 本文保留采集首片验收；当前恢复为 Fold → Complete → S，允许重算派生预测，仍不重复输入。存储形状与本轮证据见[运行时缓存验收](resource-cycle-runtime-cache-acceptance.md)，本页旧 schema/测试数量不作为当前基线。
 
 > 2026-10-27。对应[可玩设计](../design/resource-cycle-play.md)。实现位于原 ResourceCycle 库与 CLI，没有修改 Kernel、Spatial 或上游仓库产品代码。
@@ -24,7 +26,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCyclePlay.ps1 -OutputDirectory artif
 pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1 -OutputDirectory artifacts/resource-cycle-batch-after-play
 ```
 
-结果：Release 构建零警告/错误；全量 **211/211** 通过，0 跳过（Host 2、Kernel 114、Spatial 60、ResourceCycle 35）。新增 13 个测试案例见 [PlayableCycleTests](../../tests/ResourceCycle.Tests/PlayableCycleTests.cs)。
+结果：Release 构建零警告/错误；全量 **211/211** 通过，0 跳过（Host 2、Kernel 114、Spatial 60、ResourceCycle 35）。新增 13 个测试案例见 [PlayableCycleTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/PlayableCycleTests.cs)。
 
 生成历史新增 8 份记录。World/Fact、两个枚举以及直接内联枚举的 Binding/Prediction 升为 v2，新角色/背包为 v1；最终 Schema Verify 通过。初次构建暴露 Binding/Prediction 的枚举形状随之改变，已同步升级声明，未手改生成历史。
 
@@ -47,7 +49,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycle.ps1 -OutputDirectory artifacts
 
 ### Console 跨进程脚本
 
-[Smoke-ResourceCyclePlay.ps1](../../scripts/Smoke-ResourceCyclePlay.ps1)执行实际 DLL 子进程：
+[Smoke-ResourceCyclePlay.ps1](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/scripts/Smoke-ResourceCyclePlay.ps1)执行实际 DLL 子进程：
 
 1. 建档后 `look/help/未成熟采集/wait 0/wait 25/未知命令/quit`，比较存档所有文件的 SHA256，内容不变。
 2. 第一进程等待 6 小时并采月光草，退出；第二进程继续等待 9 小时并采两种植物，与单进程相同命令的最终完整观察一致。

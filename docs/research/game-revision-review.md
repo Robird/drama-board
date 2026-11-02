@@ -1,5 +1,7 @@
 # 游戏初始化与修订：交叉审阅裁决
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 范围：对[设计稿](../design/game-initialization-and-revision.md)执行 dialectical-simplification。三位独立评审分别担任需求怀疑者、最小架构设计者、语义守护者；第一轮独立调查，第二轮交换最强反例，由主线程核对源码裁决。第二轮已收敛，无需第三轮。本轮仅完善文档，未实施迁移、未运行测试；下述测试均为阅读所得证据，不能当作新管道验收。
 
 后续状态：首片已实施，运行证据见[游戏修订验收](../experiments/game-revision-acceptance.md)。下文保留实施前的审阅语境，不作为当前未完成清单。
@@ -19,10 +21,10 @@ PROJECT-STATE、术语表与设计稿来自同一讨论，不能互相充当独�
 当前实现依据：
 
 - [IOccurrenceHistory](../../src/Kernel/Journal/IOccurrenceHistory.cs) 的单拥有者、E/S、稳定实例与失败合同。
-- [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的原始根读取、LoadPending、CommitEvent/CommitState；[Kernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的正常规划与 RecoverPending。
-- [CycleFact](../../src/ResourceCycle/CycleFact.cs) 存角色/资源替换子图；[CycleEngine.Fold/ValidateFact](../../src/ResourceCycle/CycleEngine.cs) 与 [ReplaceChildren](../../src/ResourceCycle/CycleModels.cs) 按领域 ID 应用它们。
+- [CycleDurableHistory](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/Persistence/CycleDurableHistory.cs) 的原始根读取、LoadPending、CommitEvent/CommitState；[Kernel](../../src/Kernel/Simulation/SimulationKernel.cs) 的正常规划与 RecoverPending。
+- [CycleFact](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleFact.cs) 存角色/资源替换子图；[CycleEngine.Fold/ValidateFact](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleEngine.cs) 与 [ReplaceChildren](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/src/ResourceCycle/CycleModels.cs) 按领域 ID 应用它们。
 - 相邻 DG 的 [WorkingCopy](../../../durable-graph/src/DurableGraph.Persistence/WorkingCopy.cs) 明确 Event 以局部对象身份独立捕获，CommitEvent 不推进 State 保存基线，CommitState 可发布新根。
-- [CyclePersistenceTests](../../tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 的 E-only、安装时机测试；[MultiplayerRecoveryTests](../../tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs) 的采集/感知恢复、控制器输入中断；[CycleStorageShapeTests](../../tests/ResourceCycle.Tests/CycleStorageShapeTests.cs) 的真实图形检查。它们证明目前合同的覆盖意图，不证明跨游戏版本升级已实现。
+- [CyclePersistenceTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CyclePersistenceTests.cs) 的 E-only、安装时机测试；[MultiplayerRecoveryTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/MultiplayerRecoveryTests.cs) 的采集/感知恢复、控制器输入中断；[CycleStorageShapeTests](https://github.com/Robird/drama-board/blob/8401bf0e781007a403d3382e4e5e3fa76fd18cc2/tests/ResourceCycle.Tests/CycleStorageShapeTests.cs) 的真实图形检查。它们证明目前合同的覆盖意图，不证明跨游戏版本升级已实现。
 
 ## 裁决与最小模型
 

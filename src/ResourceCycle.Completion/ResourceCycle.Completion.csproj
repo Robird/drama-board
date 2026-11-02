@@ -1,6 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="../ResourceCycle/ResourceCycle.csproj" />
-    <ProjectReference Include="../CharacterControl.Completion/CharacterControl.Completion.csproj" />
-  </ItemGroup>
-</Project>

@@ -1,16 +1,16 @@
 # 增量 UI 切片 A：事件、效果与当前状态汇总
 
-> 2026-10-28，切片 A 的设计与实现合同。功能约束以[阶段目标的三个已确认规则](incremental-ui-milestone.md#已确认的三个规则)为准。实现位于 ResourceCycle 应用层与 CLI，保持 Kernel 的发布模型和 CharacterController 的操作接口；验证证据见[切片 A 验收](../experiments/incremental-ui-slice-a-acceptance.md)。
+> 2026-10-28，切片 A 的设计与实现合同。功能约束以[阶段目标的三个已确认规则](incremental-ui-milestone.md#已确认的三个规则)为准。实现位于 Playground 应用层与 CLI，保持 Kernel 的发布模型和 CharacterController 的操作接口；验证证据见[切片 A 验收](../experiments/incremental-ui-slice-a-acceptance.md)。
 
-> 当前关系：本文保留切片 A 的原始设计与当时实施边界，不把下文的 Fact 直出、模拟中追加、清屏/回合分隔、`:look` 重建基线或提交来源地址当作现行 Console 合同。后续[角色上下文方案](character-context-model.md)已将 Opening + 当前保留 Items 作为唯一呈现材料；[CharacterContextRenderer](../../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 提供完整纯输出及同源增量，最新状态预览不推进消费游标。Closed 后结算进入下一 Opening；Console 带外与上下文起止标记见[布局合同](console-layouts.md)。切片 A 的事件顺序、实际效果、状态键与尾部最新值规则继续沿用，最近 n 回合窗口仍未实施。
+> 当前关系：本文保留切片 A 的原始设计与当时实施边界，不把下文的 Fact 直出、模拟中追加、清屏/回合分隔、`:look` 重建基线或提交来源地址当作现行 Console 合同。后续[角色上下文方案](character-context-model.md)已将 Opening + 当前保留 Items 作为唯一呈现材料；[CharacterContextRenderer](../../src/Playground.Cli/CharacterContextRenderer.cs) 提供完整纯输出及同源增量，最新状态预览不推进消费游标。Closed 后结算进入下一 Opening；Console 带外与上下文起止标记见[布局合同](console-layouts.md)。切片 A 的事件顺序、实际效果、状态键与尾部最新值规则继续沿用，最近 n 回合窗口仍未实施。
 
 ## 当前实现接点
 
-- [CycleObservedEvent](../../src/ResourceCycle/CycleObservedEvent.cs) 保存状态键、有限值类型、事件和效果；数值以 `Units / Scale` 精确记录。`CycleFact.ObservedEvents` 随 E 保存；后续[角色上下文重构](character-context-model.md)已扩展所有受控角色的材料及同根 InteractionChanges，当前 Fact Schema / GameRevision 为 9，不兼容旧开发存档。下文保留切片 A 的原始实施边界。
-- [CycleObservedEvents](../../src/ResourceCycle/CycleObservedEvents.cs) 在最终业务事实形成后，按明确的事实种类组装期间变化与直接效果；[校验器](../../src/ResourceCycle/CycleObservedEventValidation.cs) 核对归属、顺序、可见性及业务端点。恢复应用已记录材料，不重新规划效果。
-- [CycleOperationResults](../../src/ResourceCycle/CycleOperationResults.cs) 为正常提交及冷开补录提供同一语义答复。没有变化的成功操作仍有答复，不伪造经历事件。
-- [CycleViewSnapshot](../../src/ResourceCycle.Cli/CycleViewSnapshot.cs)、[CycleViewUpdate](../../src/ResourceCycle.Cli/CycleViewUpdate.cs) 是 CLI 内部的非持久呈现模型，由已提交 Context Item 和相邻保存观察生成；来源提交身份只属于独立诊断。尚未创建通用游戏库或最近 n 回合历史窗口。
-- [PlayPresentationSession](../../src/ResourceCycle.Cli/PlayPresentationSession.cs) 串行拥有输出与临时消费游标；[IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) 提供全量与更新入口，最新状态预览与完整 Context 渲染分开。下文接口草图表达职责，具体签名以源码为准。
+- [PlaygroundObservedEvent](../../src/Playground/PlaygroundObservedEvent.cs) 保存状态键、有限值类型、事件和效果；数值以 `Units / Scale` 精确记录。`PlaygroundFact.ObservedEvents` 随 E 保存；后续[角色上下文重构](character-context-model.md)已扩展所有受控角色的材料及同根 InteractionChanges，当前 Fact Schema / GameRevision 为 9，不兼容旧开发存档。下文保留切片 A 的原始实施边界。
+- [PlaygroundObservedEvents](../../src/Playground/PlaygroundObservedEvents.cs) 在最终业务事实形成后，按明确的事实种类组装期间变化与直接效果；[校验器](../../src/Playground/PlaygroundObservedEventValidation.cs) 核对归属、顺序、可见性及业务端点。恢复应用已记录材料，不重新规划效果。
+- [PlaygroundOperationResults](../../src/Playground/PlaygroundOperationResults.cs) 为正常提交及冷开补录提供同一语义答复。没有变化的成功操作仍有答复，不伪造经历事件。
+- [PlaygroundViewSnapshot](../../src/Playground.Cli/PlaygroundViewSnapshot.cs)、[PlaygroundViewUpdate](../../src/Playground.Cli/PlaygroundViewUpdate.cs) 是 CLI 内部的非持久呈现模型，由已提交 Context Item 和相邻保存观察生成；来源提交身份只属于独立诊断。尚未创建通用游戏库或最近 n 回合历史窗口。
+- [PlayPresentationSession](../../src/Playground.Cli/PlayPresentationSession.cs) 串行拥有输出与临时消费游标；[IPlayLayout](../../src/Playground.Cli/IPlayLayout.cs) 提供全量与更新入口，最新状态预览与完整 Context 渲染分开。下文接口草图表达职责，具体签名以源码为准。
 
 ## 1. 本片交付与边界
 
@@ -22,13 +22,13 @@
 
 | 当前源码 | 已核对事实 | 本片改动 |
 | --- | --- | --- |
-| [CyclePlanning](../../src/ResourceCycle/CyclePlanning.cs) | 决策与自然过程生成具体替换值；`ItemUsed.Result` 使用静态描述，不能表达上限裁剪后的实际收益 | 在结算处生成有语义的事件及效果，结果文本不作为数值来源 |
-| [CycleSurvivalRules](../../src/ResourceCycle/CycleSurvivalRules.cs)、[CycleEnvironment](../../src/ResourceCycle/CycleEnvironment.cs) | 时间积分、变更速率、确认警告、寒风扣除可以发生在同一事实里；天气已记录实际损失 | 区分期间变化、直接扣除、速率变化和通知效果 |
-| [CycleEngine](../../src/ResourceCycle/CycleEngine.cs) | 规划依次组合业务、Survival、Observe、Continuity；Handoff 与 ContextOpened 有独立路径 | 所有路径统一通过一次事件材料收尾；不要漏掉独立分支 |
+| [PlaygroundPlanning](../../src/Playground/PlaygroundPlanning.cs) | 决策与自然过程生成具体替换值；`ItemUsed.Result` 使用静态描述，不能表达上限裁剪后的实际收益 | 在结算处生成有语义的事件及效果，结果文本不作为数值来源 |
+| [PlaygroundSurvivalRules](../../src/Playground/PlaygroundSurvivalRules.cs)、[PlaygroundEnvironment](../../src/Playground/PlaygroundEnvironment.cs) | 时间积分、变更速率、确认警告、寒风扣除可以发生在同一事实里；天气已记录实际损失 | 区分期间变化、直接扣除、速率变化和通知效果 |
+| [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) | 规划依次组合业务、Survival、Observe、Continuity；Handoff 与 ContextOpened 有独立路径 | 所有路径统一通过一次事件材料收尾；不要漏掉独立分支 |
 | [SimulationKernel](../../src/Kernel/Simulation/SimulationKernel.cs) | S 保存并安装成功后才设置 `LastCompletion` | 保持不变；宿主只能在 Committed 后展示新事件和状态 |
-| [PlayConsole](../../src/ResourceCycle.Cli/PlayConsole.cs) | 操作完成、公共变化、完整观察分三处写出 | 收敛为一个输出协调者，消除重复与基线遗漏 |
-| [CycleDurableHistory](../../src/ResourceCycle/Persistence/CycleDurableHistory.cs) | `ReadCommittedOperations` 当前从 `fact.Result` 补录缺失的操作结果 | 与正常提交共用从 E 事件材料生成语义答复的逻辑，恢复不能退回静态收益描述 |
-| [IPlayLayout](../../src/ResourceCycle.Cli/IPlayLayout.cs) | 仅有全文、帮助和 prompt 的字符串接口 | 增加语义快照和更新输入；两个布局共享事件/汇总选择逻辑 |
+| [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) | 操作完成、公共变化、完整观察分三处写出 | 收敛为一个输出协调者，消除重复与基线遗漏 |
+| [PlaygroundDurableHistory](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) | `ReadCommittedOperations` 当前从 `fact.Result` 补录缺失的操作结果 | 与正常提交共用从 E 事件材料生成语义答复的逻辑，恢复不能退回静态收益描述 |
+| [IPlayLayout](../../src/Playground.Cli/IPlayLayout.cs) | 仅有全文、帮助和 prompt 的字符串接口 | 增加语义快照和更新输入；两个布局共享事件/汇总选择逻辑 |
 
 关键区别：**事件效果解释已经发生的结算，观察差异补齐现在需要更新的信息。** 两者通过状态键关联，但各自有明确来源。
 
@@ -38,15 +38,15 @@
 
 | 类型 | 内容与职责 | 所属层 |
 | --- | --- | --- |
-| `CycleStateKey` | 状态类别、对象 ID、字段；如角色水分、某物品数量、某活动期限 | 游戏观察/事件共用的语义身份 |
-| `CycleVisibleValue` | 数值及单位、布尔、文本/标识值，以及显式 `KnownAbsent` / `Unobserved`；有限封闭值类型，不用 `object` 或 Markdown 承载结构 | 游戏值类型 |
-| `CycleObservedEffect` | `Key, Before, After`；数字差值由两端计算，不另存一份可漂移的 Delta | 游戏记录 |
-| `CycleObservedEvent` | 事实内稳定序号、观察角色、事件种类、发生时刻/区间、必要对象参数、有序 Effects | 游戏记录，存入 E |
-| `CycleViewSnapshot` | 从角色观察投影的键值索引，以及全量布局所需的可见信息 | 非持久的呈现输入 |
-| `CycleViewUpdate` | 本批有序事件、尾部最新状态条目、必要上下文条目、交付阶段、是否用全量尾部 | 非持久的呈现输入 |
+| `PlaygroundStateKey` | 状态类别、对象 ID、字段；如角色水分、某物品数量、某活动期限 | 游戏观察/事件共用的语义身份 |
+| `PlaygroundVisibleValue` | 数值及单位、布尔、文本/标识值，以及显式 `KnownAbsent` / `Unobserved`；有限封闭值类型，不用 `object` 或 Markdown 承载结构 | 游戏值类型 |
+| `PlaygroundObservedEffect` | `Key, Before, After`；数字差值由两端计算，不另存一份可漂移的 Delta | 游戏记录 |
+| `PlaygroundObservedEvent` | 事实内稳定序号、观察角色、事件种类、发生时刻/区间、必要对象参数、有序 Effects | 游戏记录，存入 E |
+| `PlaygroundViewSnapshot` | 从角色观察投影的键值索引，以及全量布局所需的可见信息 | 非持久的呈现输入 |
+| `PlaygroundViewUpdate` | 本批有序事件、尾部最新状态条目、必要上下文条目、交付阶段、是否用全量尾部 | 非持久的呈现输入 |
 | `PlayPresentationSession` | 当前布局/模式、角色/回合身份、推进中/已进入控制器输入的交付阶段、上次成功写出的完整快照 | CLI 会话 |
 
-`CycleObservedEvent` 不保存尾部当前值汇总，不保存完整观察；事件拥有的只有当时事实及效果。显示名称如需脱离当前背包存在，应在可见事件参数中冻结，不能在输出时重新查询隐藏世界。事件种类和参数使用显式字段/有限记录，不能从 `Result` 或交接文字反向解析。
+`PlaygroundObservedEvent` 不保存尾部当前值汇总，不保存完整观察；事件拥有的只有当时事实及效果。显示名称如需脱离当前背包存在，应在可见事件参数中冻结，不能在输出时重新查询隐藏世界。事件种类和参数使用显式字段/有限记录，不能从 `Result` 或交接文字反向解析。
 
 事件不需要父子树：本片是一条有序事件列表，每条下挂效果。比如“一份采集产出”和“采集目标完成”可成为两条有序事件，库存转移只归第一条，活动结束只归第二条；不要在两个事件中重复记同一效果。
 
@@ -60,7 +60,7 @@
 
 ## 4. 事件和效果怎样形成
 
-`CycleFact` 增加有序的事件材料集合，并在其复制方法、模型注册、Schema 和事实校验中贯通。数据是业务替换值的解释性记录，不是第二套执行指令；Fold 仍只按既有业务字段替换状态，不把 Effects 再应用一次。
+`PlaygroundFact` 增加有序的事件材料集合，并在其复制方法、模型注册、Schema 和事实校验中贯通。数据是业务替换值的解释性记录，不是第二套执行指令；Fold 仍只按既有业务字段替换状态，不把 Effects 再应用一次。
 
 由各业务规划函数提供直接事件的语义；由一个应用层收尾函数补齐已知持续过程、观察过滤和结构校验。收尾在最终事实返回前执行一次，不能通过 UI 快照差分生成全部原因。一个事实可以对应零条、一条或多条呈现事件。
 
@@ -136,9 +136,9 @@ R = 理解这些变化必需的少量关联信息
 interface IPlayLayout {
     string Id { get; }
     string Name { get; }
-    string RenderFull(CycleViewSnapshot snapshot);
-    string RenderUpdate(CycleViewUpdate update);
-    string RenderActionHelp(CycleObservation observation);
+    string RenderFull(PlaygroundViewSnapshot snapshot);
+    string RenderUpdate(PlaygroundViewUpdate update);
+    string RenderActionHelp(PlaygroundObservation observation);
 }
 ```
 
@@ -163,7 +163,7 @@ prompt 收敛为角色/输入标记；[Human Console 边界重构](console-comma
 
 ## 7. 从输入到输出的实际调用顺序
 
-1. 控制器读取操作：按现有流程先记 Received 和 ToolCallId。查询/拒绝在本地完成并答复，合法操作返回 `CycleControllerOperation`。
+1. 控制器读取操作：按现有流程先记 Received 和 ToolCallId。查询/拒绝在本地完成并答复，合法操作返回 `PlaygroundControllerOperation`。
 2. 业务规划生成替换事实及事件效果，完成现有 Survival/Observe/Continuity 组合和事件校验。尚不输出成功事件。
 3. Kernel 发布 E、发布 S、安装世界；失败时不展示未提交成功的事件或新状态。
 4. CLI 收到 `StepStatus.Committed`，先保存该操作的结果记录，再将 completion 内的可见事件与当前观察交给输出会话。当前 `CompleteOperations` 取消直接 WriteLine，`PrintPublicChanges` 的职责合并到同一通道；提交完成本身不将会话标为可输入。
@@ -173,7 +173,7 @@ prompt 收敛为角色/输入标记；[Human Console 边界重构](console-comma
 
 操作日志仍是 receipt/result 审计，不在本片升级为可重放的完整 Console 会话。成功操作保存由事件结果材料产生的语义答复，避免沿用静态补给描述而记录错误收益；屏幕上的相关当前状态是额外观察，不能宣称日志已保存完整屏幕。查询答复仍先记结果后显示，既有 ToolCallId 配对和不重复执行恢复合同保持不变。
 
-正常 `CompleteOperations` 与冷开 `ReadCommittedOperations` 是同一个“已提交事实 → 语义操作答复”投影的消费者；该投影放在 ResourceCycle 应用层，不依赖布局或 CLI。两条路径都使用原 E 中的事件材料，不从当前状态反算，不新增另一份持久结果文本。`ExactResult=false` 允许恢复答复不逐字复现旧界面，不允许实际收益或来源 ID 不同。比如水分 90 → 100 的补给，S 成功后若操作结果尚未写入，冷开补录仍应是实际 +10，不能退回静态 +45 的描述。未接入事件呈现的 `--play` 可保留原有结果路径，生存模式不能因漏接材料而静默回退。
+正常 `CompleteOperations` 与冷开 `ReadCommittedOperations` 是同一个“已提交事实 → 语义操作答复”投影的消费者；该投影放在 Playground 应用层，不依赖布局或 CLI。两条路径都使用原 E 中的事件材料，不从当前状态反算，不新增另一份持久结果文本。`ExactResult=false` 允许恢复答复不逐字复现旧界面，不允许实际收益或来源 ID 不同。比如水分 90 → 100 的补给，S 成功后若操作结果尚未写入，冷开补录仍应是实际 +10，不能退回静态 +45 的描述。未接入事件呈现的 `--play` 可保留原有结果路径，生存模式不能因漏接材料而静默回退。
 
 ## 8. 验收与施工顺序
 
@@ -196,6 +196,6 @@ prompt 收敛为角色/输入标记；[Human Console 边界重构](console-comma
 
 ## 9. 已采用的边界与留给 B 的工作
 
-本片采用：事件材料写入事实 E；提交后统一输出；稳定状态键驱动最终值去重；布局共用语义消息；冷开全量。它修改 ResourceCycle 的事实 Schema，但不增加 Kernel 接口、CharacterController 回调或完整对话持久化。
+本片采用：事件材料写入事实 E；提交后统一输出；稳定状态键驱动最终值去重；布局共用语义消息；冷开全量。它修改 Playground 的事实 Schema，但不增加 Kernel 接口、CharacterController 回调或完整对话持久化。
 
 B 再决定历史集合位置、回合归组与 n、首次获知记录、持久提交身份绑定、窗口裁剪与可选注号。A 不创建这些空框架。若本片事件材料的具体序列化形状在编码前有调整，应保持三个已确认规则和上述可观察合同，而不是维护未发布的 API 形状。

@@ -1,5 +1,7 @@
 # 小镇首片：共享模块与内存经济验收
 
+> 历史命名说明：本文保留当时的 ResourceCycle / Cycle 类型、命令与验证记录。当前应用已重命名为 Playground；现行入口与持久身份边界见[重命名说明](../../docs/implementation/playground-rename.md)。旧名称源码链接固定到重命名前的 Git 版本。
+
 > 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
 
 日期：2026-10-31。范围仅为[小镇目标](../codex-goals/microtown/README.md)的第一实施片，**不是完整里程碑验收，也不是真实模型试玩**。
