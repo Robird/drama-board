@@ -11,6 +11,7 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 实验应用（Playground） | 用于组合、试验和验证世界模拟机制的开发期可交互游戏原型；不追求商业游戏的游戏性，不预设通用游戏框架。 | 应用项目与类型已按此名称统一；实施及验收见[重命名说明](implementation/playground-rename.md)。见[实践参照与命名交接](research/playground-development-practices.md)。 |
+| 运行实例目录（home） | 将宿主启动设置、连接配置与默认世界存档组织在一起的目录；不是操作系统用户目录，也不构成世界身份或恢复权威。 | [方案](design/playground-home.md)已完成辩证审阅，尚未实现；拟由 Playground.Cli 负责发现与解析。 |
 | 山野镇（Hillside） | 融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 由 Playground 项目和 Playground 类型承载；已融合生产、现金、市场、赠钱与居民报价；完成状态见专题工作计划。 |
 | 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | Playground 拥有山野镇的领域根和存档适配；独立 Microtown 实现已[归档](archive/microtown.md)，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `PlaygroundGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
