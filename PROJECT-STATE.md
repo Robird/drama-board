@@ -27,7 +27,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。[独立宿主反馈](docs/design/independent-feedback.md)已落地 Human/LLM 共用自由文本保存、刷盘后回执、完整决定前边界与独立反馈分叉，Gym 仅 off/record；Windows 工程、Completion fixture 与脚本实际 CLI 证据见[实施验收](docs/experiments/independent-feedback-acceptance.md)，该次独立反馈验收未覆盖在线 LLM 或真人自由试玩。[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)已落地：`host/events.jsonl` 合并操作/Gym并内联人物可读材料，模型 raw 懒创建、反馈独立；持久默认 record，off 仍保存必要操作。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。下一步按真实阅读与诊断需要改进体验，记忆回灌等延期边界不变。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
+**当前焦点与下一步**：已制定[预测式时间模型的角色推理并行研究方案](docs/research/predictive-time-parallelism/README.md)，研究尚未启动，等待用户后续 Goal。研究有限时域影响包络、向内失效边界、规则约束及有界提前推理，先保留唯一 Kernel 的串行提交；五个问题、实验协议与完成条件见专题，下一轮入口只在[工作计划](docs/research/predictive-time-parallelism/work-plan.md)维护。不得把方案当作已有并行能力或性能结论。
+
+[home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 

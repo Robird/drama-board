@@ -62,6 +62,7 @@ The previous [Spacetime engine TODO / task brief](implementation/spacetime-engin
 
 ## Application research
 
+- [Predictive-time character inference parallelism](research/predictive-time-parallelism/README.md): planned autonomous research into bounded influence, incoming invalidation, world-rule constraints and speculative model calls while retaining serial world commits. Includes experiment controls, completion criteria and a future Goal prompt; no parallel implementation or performance results yet.
 - [Goal management and behavior prediction](research/goal-management/README.md): four perspectives on military intent, commercial workflow, investigative hypotheses and AI planning/recognition; primary-source findings, transfer limits and small game experiments. Selected semantic and acceptance recommendations are incorporated into the goal-management design; remaining candidates do not automatically expand implementation scope.
 - [Game revision cross-review](research/game-revision-review.md): independent challenges and cross-examination of load-time State/Event upgrades; source-state stability, mixed-version alignment and a smaller application API.
 - [New-combination discovery and simulation algorithms](research/prediction-discovery/README.md): five parallel surveys, primary sources, current time-semantics counterexamples, and a staged local-discovery proposal; algorithm and API recommendations remain provisional.

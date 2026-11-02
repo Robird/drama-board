@@ -125,6 +125,14 @@
 | 待重算集合（Dirty set） | 本次转换中可能失效的单元/空间范围的去重集合；在最终业务态上更新。 | Playground 的 owner 集合、Spatial 的 passage 集合；实现层概念。 |
 | 全量重建（Rebuild） | 从业务真相和确定性规则重新构造完整派生缓存，用于初始状态、冷开及对照验证。 | `PlaygroundEngine.Rebuild`、`SpatialSimulation.Rebuild` |
 
+以下是[推理并行研究](research/predictive-time-parallelism/README.md)的候选概念，尚未实现，不表示已有框架 API：
+
+| 研究术语 | 含义与边界 |
+| --- | --- |
+| 提前推理候选（Speculative inference candidate） | 根据冻结或预计的完整模型输入提前取得的响应；只有在实际服务边界验证后才能采用，不等于 Kernel 的 Occurrence candidate、已接收操作或角色经历。 |
+| 影响包络（Influence envelope） | 声明的机制和有限时域内，某个行动或允许行动集合可能影响的实体/状态及最早到达时间下界的保守估计；空间按语义依赖表达。 |
+| 安全前瞻窗口（Safe lookahead window） | 在已覆盖的因果合同下，外部不确定影响尚不能改变预计输入或唤醒的区间；仍需正确投影自身和环境的已知演化，未知依赖不能当作安全。 |
+
 “倒计时条（Countdown）”只作为过程的展示比喻：记录进度锚点或已决定的到期时刻，并维护预测，不逐 tick 递减计数。目前没有统一 `LocalTimeline` / `Countdown` 类型。
 
 “回合（Turn）”不是 Kernel 的基础时间单位。新[信息继承方案](design/decision-context-handoff.md)使用上表的“决策回合”；讨论旧代码或其他机制时仍须明确是一次控制器调用、一次采集周期，还是一次发生项提交。世界并不等待所有角色各行动一次才统一推进。
