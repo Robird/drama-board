@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Atelia.Completion;
 using Atelia.Completion.Abstractions;
 using DramaBoard.CharacterControl.Completion;
 using DramaBoard.Kernel.Journal;
@@ -14,21 +15,23 @@ namespace DramaBoard.PlaygroundParallelism;
 
 internal static class Program {
     public static async Task<int> Main(string[] args) {
-        if (args.Length == 2 && args[0] == "--self-check") { return await SelfCheck.Run(Path.GetFullPath(args[1])); }
         try {
+            if (args.Length == 2 && args[0] == "--self-check") { return await SelfCheck.Run(Path.GetFullPath(args[1])); }
             Arguments options = Arguments.Parse(args);
             return options.Workload == "fixed-inputs" ? await FixedInputProbe.Execute(options) : await Execute(options);
         }
         catch (Exception error) { Console.Error.WriteLine(error.GetType().FullName + ": experiment did not complete; inspect its evidence directory."); return 1; }
     }
 
-    private static async Task<int> Execute(Arguments options) {
+    internal static async Task<int> Execute(Arguments options, RunnerFixture? fixture = null) {
+        if (fixture is not null && options.Mode != "fixture") throw new ArgumentException("Injected factories require explicit offline fixture mode.");
         if (Directory.Exists(options.Output) && Directory.EnumerateFileSystemEntries(options.Output).Any()) {
             throw new IOException("Use a fresh output directory.");
         }
         Directory.CreateDirectory(options.Output);
         using var evidence = new ProbeEvidence(Path.Combine(options.Output, "timeline.jsonl"));
-        using OnlineBudget? budget = options.Mode == "online" ? new(options.BudgetGrant!, options.Strategy) : null;
+        using OnlineBudget? budget = options.Mode == "online" || fixture is not null
+            ? new(fixture?.GrantPath ?? options.BudgetGrant!, options.Strategy) : null;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(budget?.Grant.TimeoutSeconds ?? 30));
         using var dispatcher = new ProviderDispatcher(evidence, budget, budget?.Grant.MaxInFlight ?? 2);
         LlmConnectionPool? pool = null;
@@ -41,6 +44,7 @@ internal static class Program {
         var boundaries = new List<PlaygroundDecisionBoundary>();
         var accepted = new HashSet<string>(StringComparer.Ordinal);
         var cleanupErrors = new List<string>();
+        var poolCleanupCauses = new List<string>();
         Exception? primary = null;
         double? workCompletedMilliseconds = null;
         double drainedAtMilliseconds;
@@ -49,13 +53,14 @@ internal static class Program {
         try {
             var bindings = new Dictionary<string, LlmDecisionBinding>(StringComparer.Ordinal);
             string configurationHash;
-            if (options.Mode == "online") {
-                LlmConnectionConfiguration configuration = LlmConnectionConfiguration.Load(options.Connections!);
-                configurationHash = ProbeEvidence.Hash(File.ReadAllText(options.Connections!));
-                pool = new(configuration);
-                LlmDecisionBinding binding = await pool.GetAsync(configuration.DefaultConnectionId, deadline.Token);
-                bindings.Add("a", binding);
-                bindings.Add("b", binding);
+            if (options.Mode == "online" || fixture is not null) {
+                string configurationPath = fixture?.Connections ?? options.Connections!;
+                LlmConnectionConfiguration configuration = LlmConnectionConfiguration.Load(configurationPath);
+                configurationHash = ProbeEvidence.Hash(File.ReadAllText(configurationPath));
+                pool = new(configuration, fixture?.Factory);
+                foreach (string actor in new[] { "a", "b" }) {
+                    bindings.Add(actor, await pool.GetAsync(fixture is null ? configuration.DefaultConnectionId : actor, deadline.Token));
+                }
             } else {
                 configurationHash = ProbeEvidence.Hash($"fixture-v1-input-keyed-delay-{options.DelayMilliseconds}");
                 foreach (string actor in new[] { "a", "b" }) {
@@ -89,7 +94,7 @@ internal static class Program {
                 PlaygroundWorld source = history.State;
                 KernelCursor sourceCursor = history.Cursor;
                 foreach (string actor in new[] { "a", "b" }) {
-                    PlaygroundDecisionContext projected = Project(source, actor);
+                    PlaygroundDecisionContext projected = evidence.Measure("predicted-context", () => Project(source, actor));
                     candidates.Add(actor, new(projected, sourceCommit, sourceBranch, bindings[actor], identities[actor], dispatcher, evidence, deadline.Token));
                 }
                 await Task.WhenAll(candidates.Values.Select(candidate => candidate.Captured.Task)).WaitAsync(deadline.Token);
@@ -104,7 +109,7 @@ internal static class Program {
                 candidates.TryGetValue(actor, out Candidate? candidate);
                 var gate = new DemandGate(actor, bindings[actor], identities[actor], candidate, dispatcher, evidence, actualInputs);
                 gates.Add(actor, gate);
-                controllers.Add(actor, ControllerFactory.Create(gate, bindings[actor], feedback.SaveLlm));
+                controllers.Add(actor, ControllerFactory.Create(gate, bindings[actor], feedback.SaveLlm, evidence));
             }
             var actual = new ActualController(history, controllers, gates, boundaries, evidence, options.Mode == "fixture");
             var recording = new RecordingHistory(history, evidence, facts, accepted);
@@ -132,7 +137,11 @@ internal static class Program {
             try { feedback?.Dispose(); } catch (Exception error) { cleanupErrors.Add(error.GetType().FullName!); }
             try { history?.Dispose(); } catch (Exception error) { cleanupErrors.Add(error.GetType().FullName!); }
             if (pool is not null) {
-                try { await pool.DisposeAsync(); } catch (Exception error) { cleanupErrors.Add(error.GetType().FullName!); }
+                try { await pool.DisposeAsync(); } catch (Exception error) {
+                    cleanupErrors.Add(error.GetType().FullName!);
+                    poolCleanupCauses.AddRange((error is AggregateException aggregate ? aggregate.Flatten().InnerExceptions : new[] { error }.AsEnumerable())
+                        .Select(cause => cause.GetType().FullName!));
+                }
             }
         }
         drainedAtMilliseconds = evidence.ElapsedMilliseconds;
@@ -165,7 +174,9 @@ internal static class Program {
             WorkCompletedMilliseconds = workCompletedMilliseconds, DrainedAndDisposedMilliseconds = drainedAtMilliseconds,
             TotalBeforeSummaryMilliseconds = evidence.ElapsedMilliseconds,
             AcceptedActors = accepted.Order().ToArray(), PrimaryError = primary?.GetType().FullName, CleanupErrors = cleanupErrors,
-            OnlineTrajectoryEqualityClaimed = false, C6CompleteClaimed = false
+            PoolCleanupCauses = poolCleanupCauses,
+            OnlineTrajectoryEqualityClaimed = false, C6CompleteClaimed = false,
+            SyntheticFactoryInjected = fixture is not null, Metrics = evidence.MetricsSnapshot()
         });
         Console.WriteLine(JsonSerializer.Serialize(new { outcome, dispatcher.Calls, dispatcher.PeakInFlight, Output = options.Output }));
         return outcome == "completed" ? 0 : 1;
@@ -206,6 +217,9 @@ internal static class Program {
         return output;
     }
 }
+
+// No CLI option can supply this. Self-check alone provides a non-network factory and synthetic ledger.
+internal sealed record RunnerFixture(ICompletionClientFactory Factory, string Connections, string GrantPath);
 
 internal sealed record Arguments(string Mode, string Strategy, string? Connections, string Output, string? BudgetGrant, int DelayMilliseconds, int MaxTransitions, string Workload) {
     public static Arguments Parse(string[] args) {
@@ -263,19 +277,19 @@ internal sealed class RecordingHistory(PlaygroundDurableHistory inner, ProbeEvid
     public KernelCursor Cursor => inner.Cursor;
     public OccurrenceEvent<PlaygroundFact>? PendingEvent => inner.PendingEvent;
     public void CommitEvent(OccurrenceEvent<PlaygroundFact> occurrence) {
-        JsonElement[] projected = occurrence.Facts.Select(ProbeEvidence.Fact).ToArray();
+        JsonElement[] projected = evidence.Measure("fact-projection", () => occurrence.Facts.Select(ProbeEvidence.Fact).ToArray());
         JsonElement transition = JsonSerializer.SerializeToElement(new {
             occurrence.CauseKey, occurrence.TargetInstant,
             nextCursor = inner.Cursor.Advance(occurrence.CauseKey, occurrence.TargetInstant), Facts = projected
         }, ProbeEvidence.Options);
         evidence.Write("world-event-planned", new { occurrence.CauseKey, occurrence.TargetInstant, Facts = projected });
-        inner.CommitEvent(occurrence);
+        evidence.Measure("durable-event-publication", () => inner.CommitEvent(occurrence));
         _prepared = transition;
     }
     public void CommitState(PlaygroundWorld nextState, KernelCursor nextCursor) {
         var occurrence = inner.PendingEvent!;
         JsonElement projected = _prepared ?? throw new InvalidOperationException("Missing prepared fact projection.");
-        inner.CommitState(nextState, nextCursor);
+        evidence.Measure("durable-state-publication", () => inner.CommitState(nextState, nextCursor));
         facts.Add(projected);
         foreach (PlaygroundFact fact in occurrence.Facts) {
             if (fact.OperationDisposition == PlaygroundOperationDisposition.Succeeded && fact.ActorId is not null) { accepted.Add(fact.ActorId); }

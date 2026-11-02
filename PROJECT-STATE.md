@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[预测式时间模型的角色推理并行研究](docs/research/predictive-time-parallelism/README.md) Goal 进行中，独立实验已贯通影响估计→调度、真实 Playground 请求 gate 与小批次在线对照，仍保留唯一 Kernel 串行提交，默认 CLI 未启用并行；证据与支持边界见[研究结果](docs/research/predictive-time-parallelism/results/playground-online.md)。接下来覆盖运动、唤醒生命周期、未来材料与 Human 共存，唯一续轮入口在[工作计划](docs/research/predictive-time-parallelism/work-plan.md)。有限模型或单次在线测量不代表一般安全性或稳定性能结论。
+**当前焦点与下一步**：[预测式时间模型的角色推理并行研究](docs/research/predictive-time-parallelism/results/summary.md) 已完成 C1–C8；保留有界首响应预取、完整输入验证及唯一 Kernel 串行提交的实验原型，默认 CLI 未启用并行。有限范围/延迟有助于形成窗口，但共享后端、废弃请求与准备成本可抵消收益；生产采用须以具体常驻 workload 的稳定收益和机制覆盖重新立项。证据、复现与独立验收归综合报告，后续重开条件见[工作计划](docs/research/predictive-time-parallelism/work-plan.md)。
 
 [home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 

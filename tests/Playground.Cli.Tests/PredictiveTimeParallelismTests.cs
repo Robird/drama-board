@@ -12,7 +12,7 @@ namespace DramaBoard.Playground.Cli.Tests;
 
 /// <summary>Offline probes of real materials, controllers, arbitration and durable publication.
 /// Candidate requests are diagnostics, never persisted decision boundaries.</summary>
-public sealed class PredictiveTimeParallelismTests {
+public sealed partial class PredictiveTimeParallelismTests {
     [Fact]
     public async Task Independent_first_requests_overlap_but_full_trace_and_operation_identities_follow_serial_kernel() {
         using var serial = new Run();

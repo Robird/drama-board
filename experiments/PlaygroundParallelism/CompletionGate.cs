@@ -19,8 +19,8 @@ internal sealed class ProviderDispatcher(ProbeEvidence evidence, OnlineBudget? b
     public async Task<CompletionResult> Invoke(string actor, string purpose, LlmDecisionBinding binding,
         ConnectionIdentity identity, CompletionRequest request, CancellationToken cancellationToken) {
         RequireHealthyWriters();
-        string input = ProbeEvidence.Request(request);
-        string hash = ProbeEvidence.Hash(input);
+        string input = evidence.Measure("request-projection", () => ProbeEvidence.Request(request));
+        string hash = evidence.Fingerprint(input);
         evidence.Write("provider-queued", new { ActorId = actor, Purpose = purpose, InputHash = hash, identity });
         await _slots.WaitAsync(cancellationToken);
         try {
@@ -97,7 +97,7 @@ internal sealed class Candidate : ICompletionClient, IAsyncDisposable {
         _evidence.Write("candidate-created", new { CandidateId, Actor, SourceStateCommitId, SourceBranchId,
             Target = new { ContextSequence, TimeTicks = projected.Observation.Time.Ticks }, identity });
         var controller = ControllerFactory.Create(this, binding, (_, _) =>
-            throw new InvalidOperationException("Speculative feedback sentinel must never execute."));
+            throw new InvalidOperationException("Speculative feedback sentinel must never execute."), evidence);
         _controllerTask = controller.ChooseCommandAsync(projected, _controllerStop.Token).AsTask();
     }
     public async Task<CompletionResult> StreamCompletionAsync(CompletionRequest request, CompletionStreamObserver? observer,
@@ -141,22 +141,22 @@ internal sealed class DemandGate(string actor, LlmDecisionBinding binding, Conne
     public string ApiSpecId => binding.Client.ApiSpecId;
     public async Task<CompletionResult> StreamCompletionAsync(CompletionRequest request, CompletionStreamObserver? observer,
         CancellationToken cancellationToken = default) {
-        string actual = ProbeEvidence.Request(request);
+        string actual = evidence.Measure("request-projection", () => ProbeEvidence.Request(request));
         PlaygroundDecisionBoundary boundary = Boundary ?? throw new InvalidOperationException("Actual request requires a real decision boundary.");
         ActualInputs.Add(actual);
         actualInputSequence.Add(actual);
-        evidence.Write("actual-request", new { ActorId = actor, Boundary, InputHash = ProbeEvidence.Hash(actual), Input = actual, identity });
+        evidence.Write("actual-request", new { ActorId = actor, Boundary, InputHash = evidence.Fingerprint(actual), Input = actual, identity });
         if (candidate is not null && !candidate.Examined) {
             candidate.Examined = true;
             CompletionRequest projected = await candidate.Captured.Task.WaitAsync(cancellationToken);
-            string expected = ProbeEvidence.Request(projected);
+            string expected = evidence.Measure("request-projection", () => ProbeEvidence.Request(projected));
             bool targetMatches = boundary.ActorId == candidate.Actor && boundary.BranchId == candidate.SourceBranchId &&
                 boundary.ContextSequence == candidate.ContextSequence && boundary.OperationSequence == 0;
-            bool same = targetMatches && identity == candidate.Identity && expected == actual;
+            bool same = evidence.Measure("input-validation", () => targetMatches && identity == candidate.Identity && expected == actual);
             evidence.Write(same ? "candidate-input-validated" : "candidate-discarded", new {
                 candidate.CandidateId, candidate.SourceStateCommitId, Boundary,
                 Reason = same ? "complete-input-and-binding-match" : !targetMatches ? "target-changed" : identity != candidate.Identity ? "connection-changed" : "input-changed",
-                ExpectedHash = ProbeEvidence.Hash(expected), ActualHash = ProbeEvidence.Hash(actual)
+                ExpectedHash = evidence.Fingerprint(expected), ActualHash = evidence.Fingerprint(actual)
             });
             if (same) {
                 CompletionResult result = await candidate.Response!.WaitAsync(cancellationToken);
@@ -173,9 +173,11 @@ internal sealed class DemandGate(string actor, LlmDecisionBinding binding, Conne
 
 internal static class ControllerFactory {
     public static LlmCharacterController Create(ICompletionClient client, LlmDecisionBinding binding,
-        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>> feedback) =>
+        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>> feedback, ProbeEvidence? evidence = null) =>
         new((_, _) => ValueTask.FromResult(new LlmDecisionBinding(client, binding.ModelId, binding.ConnectionId)),
-            context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout())
-                + "\n实验任务：请只调用 act 工具，提交 handoff 研究记录，作为本次短实验的行动。请勿重复已有操作。\n",
+            context => evidence is null ? Render(context) : evidence.Measure("character-material", () => Render(context)),
             new LlmControllerOptions { MaxCalls = 8 }, feedbackSink: feedback);
+    private static string Render(PlaygroundDecisionContext context) =>
+        CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout())
+            + "\n实验任务：请只调用 act 工具，提交 handoff 研究记录，作为本次短实验的行动。请勿重复已有操作。\n";
 }

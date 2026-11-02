@@ -11,7 +11,9 @@ dotnet run --project experiments/PredictiveTimeParallelism -- --influence-check
 
 CLI 无隐式联网。未知参数、无效场景、非法容量等返回退出码 1。`--output` 可选，指定后覆盖该结果文件；stdout 始终输出同一 JSON。调用前为每次实验选新目录，并在外层另存版本、环境、manifest 与文件哈希；本工程输出不是完整来源 manifest。
 
-六种规则场景：`independent`（独立角色）、`shared-resource`（所有操作改变共享观察）、`new-message`（操作即时传递给下一角色）、`zero-chain`（即时闭包影响所有角色）、`delayed-message`（延后三个逻辑边界送达）、`future-time`（目标边界时间进入输入）。每轮按角色编号服务，轮间依次推进；同刻角色始终遵守编号顺序。每次实际提交含完整输入、操作身份、响应及世界状态。资源数量与完整状态即使不在特定角色观察中，仍进入串行/候选轨迹对照。
+七种规则场景：`independent`（独立角色）、`shared-resource`（所有操作改变共享观察）、`scarce-resource`（仅一份库存，取一份或等待）、`new-message`（操作即时传递给下一角色）、`zero-chain`（即时闭包影响所有角色）、`delayed-message`（延后三个逻辑边界送达）、`future-time`（目标边界时间进入输入）。每轮按角色编号服务，轮间依次推进；同刻角色始终遵守编号顺序。每次实际提交含完整输入、操作身份、响应及世界状态。资源数量与完整状态即使不在特定角色观察中，仍进入串行/候选轨迹对照。
+
+`scarce-resource` 的权威 Apply 拒绝负数量、超库存和一次多取；fixture 按输入中的剩余库存决定取 1 或等待 0。两角色最小例中，旧的第二角色候选被丢弃，fresh 请求等待，库存加所有持有量始终为 1。它是有限竞争例，和旧 `shared-resource` 的充裕库存观察变化分开。
 
 `serial` 按实际轮次请求；`safe` 仅在 `independent`/`future-time` 的已知独立规则中预发其他角色，其余退化到需求请求；`speculative` 固定窗口尝试预发，实际采用前逐字比较完整结构化请求编码。每角色最多一项未提交候选，不预测该角色下一轮。`--candidate-limit` 同时限制候选窗口和本地候选总量，不是全程调用次数预算；该工程全部为本地替身，无付费调用。
 
@@ -23,15 +25,15 @@ CLI 无隐式联网。未知参数、无效场景、非法容量等返回退出�
 
 JSON 保留每个请求 queued/invoked/completed、候选 admitted/adopted/discarded、实际 committed 时间线。source/target 为合成逻辑边界编号；Sequence 仅为诊断序号。`WorkMilliseconds` 计至预定提交全部完成，`DrainMilliseconds` 单列停止后的排空时间；验证耗时与当前线程分配字节单列，未包含完整日志/估计器分项开销。usage/价格不适用于本地替身，未伪造为真实 provider 零 usage。
 
-`--matrix` 在六规则 × 三后端内运行三策略配对样本，同一重复使用同一 seed（重复间递增）。每个规则/后端组合先让三个策略按相同配置分别预热，Warmups 单独保留、不计入 Results。测量顺序随重复轮换（serial/safe/speculative，safe/speculative/serial，speculative/serial/safe），Orders 记录实际顺序；并非随机顺序，无法完全消除长期机器漂移。各策略必须具有相同轨迹哈希，否则立即失败。当前输出保留原始样本，不自动宣称显著性或 p95，也不含人为压缩后的最佳样本。全矩阵默认五次重复，成本可用参数预先调整。
+`--matrix` 在七规则 × 三后端内运行三策略配对样本，同一重复使用同一 seed（重复间递增）。每个规则/后端组合先让三个策略按相同配置分别预热，Warmups 单独保留、不计入 Results。测量顺序随重复轮换（serial/safe/speculative，safe/speculative/serial，speculative/serial/safe），Orders 记录实际顺序；并非随机顺序，无法完全消除长期机器漂移。各策略必须具有相同轨迹哈希，否则立即失败。当前输出保留原始样本，不自动宣称显著性或 p95，也不含人为压缩后的最佳样本。全矩阵默认五次重复，成本可用参数预先调整。
 
 `AdoptedCandidates` 是兼容首轮结果的全部候选采用数，含 source=target 的即时需求，不能直接当成预取命中数。PrefetchedCandidates 仅计 source&lt;target 的提前候选；AdoptedPrefetchedCandidates 仅计其中实际采用者；ImmediateCandidates 记录即时创建者。DecisionTimings 逐次记录实际可服务边界开始到响应可用的墙钟等待、候选来源及提前量，失配重请求等待计入同次样本。取消或失败的未完成决策不伪造等待样本，其过程留在 Timeline。
 
 Run 预算耗尽、取消或异常会先结清所有本地候选，再以 RunFailedException.Snapshot 携带失败时的完整原始 Timeline、计数、已提交前缀、Outcome/ErrorType/ErrorMessage 与 RemainingCandidates。CLI 同样写入 `--output` 并返回 1。自检查直接验证预算及取消 snapshot 的候选清零、调用结算和无提交；输出目标本身不可写时 stderr 另报写入失败，保留原始运行错误。矩阵若中途失败，目前 CLI 保存失败子运行 snapshot；已完成其他样本不在该失败 snapshot 中，完整成功矩阵才包含所有样本。
 
-`--self-check` 覆盖六场景的串行对照、确有并发、失配废弃、17 类完整输入变化、容量/调用结算、取消传播。停止时请求本地排空后才返回；候选不持久化、不恢复、不重试。正常返回必须没有剩余候选。进程硬杀没有恢复协议，外层工件应标 unknown。
+`--self-check` 覆盖七场景的串行对照、确有并发、失配废弃、17 类完整输入变化、容量/调用结算、取消传播。停止时请求本地排空后才返回；候选不持久化、不恢复、不重试。正常返回必须没有剩余候选。进程硬杀没有恢复协议，外层工件应标 unknown。
 
-限制：上述六场景的安全判断是人工规则白名单，不是通用影响估计器；`Influence/` 提供独立估计与枚举模块，下面的 `Causal/` 才将估计接入调度。六场景没有模拟动态移动/新拓扑、feedback 工具循环、持久化故障、真实连接 Dispose、原生模型响应失败或真实恢复。[实际应用入口](../PlaygroundParallelism/README.md)的接入和在线证据单独交付，不能由本工程自检查代替。
+限制：上述人工场景的安全判断是人工规则白名单，不是通用影响估计器；`Influence/` 提供独立估计与枚举模块，下面的 `Causal/` 才将估计接入调度。这些场景没有模拟动态移动/新拓扑、feedback 工具循环、持久化故障、真实连接 Dispose、原生模型响应失败或真实恢复。[实际应用入口](../PlaygroundParallelism/README.md)的接入和在线证据单独交付，不能由本工程自检查代替。
 
 `--cancel-mode cooperative` 是旧默认行为：已开始的本地 Task.Delay 可取消并释放槽位，Canceled 计数表示这种替身取消，不能推广为真实远端已停止。`--cancel-mode noncooperative` 中，排队请求仍可取消，但取得槽位并开始的服务不再响应 host token，继续计算到原定结束/失败并占用容量。host 只停止等待/采用，所有真实开始的服务在 shutdown 后完整排空，之后才产出正常或失败 snapshot。请求次数不因 host 取消或候选废弃返还，不伪造 provider usage/价格。
 
@@ -62,3 +64,14 @@ python experiments/PredictiveTimeParallelism/Verify-ModelTime.py artifacts/predi
 ```
 
 Python 核验器独立重放实际输入、事实、响应和调用区间，并直接比较四策略完整轨迹；输入缺失或篡改返回非零。支持的机制、实测与证明边界见[研究报告](../../docs/research/predictive-time-parallelism/results/model-time-windows.md)。固定唤醒与加法传播小模型的正确性不证明任意游戏安全。
+
+## 生命周期与规模切片
+
+`--lifecycle-check` 在有限队列实际执行提前、延后、合并、取消、死亡、重新唤醒及分支/绑定变化；交叉 provider 先/后完成与两种取消行为，检查 36 对完整输入/事实/提交前缀，另有 unknown 退化。冷开例只是这个小模型的队列 JSON 重建；真实磁盘恢复由 Playground 测试另证。
+
+`--scale-check` 固定 2/8/32 角色、两轮、独立/共享资源两场景、独立/单槽服务两后端、三策略，候选上限 min(4, actorCount)，不可协作取消，5ms 基础延迟。各条件三策略预热后，五个配对 seed 轮换顺序，共 180 个测量运行、36 个预热；保留完整原始结果、吞吐和验证成本所需字段。它不会扩大实际 CLI 的人数。
+
+```powershell
+dotnet run --project experiments/PredictiveTimeParallelism -c Release --no-build -- --lifecycle-check --output artifacts/predictive-time-parallelism/new-lifecycle/result.json
+dotnet run --project experiments/PredictiveTimeParallelism -c Release --no-build -- --scale-check --output artifacts/predictive-time-parallelism/new-scale/result.json
+```

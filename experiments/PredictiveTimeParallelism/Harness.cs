@@ -15,8 +15,8 @@ public static class JsonFormat {
 public sealed record Options(string Scenario = "independent", string Strategy = "speculative", string Backend = "independent",
     int Actors = 8, int Rounds = 2, int Seed = 17, int LatencyMs = 20, int Slots = 2, int Budget = 4,
     int Repeats = 5, bool SelfCheck = false, bool Matrix = false, string? Output = null, int TotalCallLimit = 1024, bool InfluenceCheck = false,
-    string CancelMode = "cooperative", string FaultMode = "none", bool ModelTimeCheck = false) {
-    public static readonly string[] Scenarios = ["independent", "shared-resource", "new-message", "zero-chain", "delayed-message", "future-time"];
+    string CancelMode = "cooperative", string FaultMode = "none", bool ModelTimeCheck = false, bool LifecycleCheck = false, bool ScaleCheck = false) {
+    public static readonly string[] Scenarios = ["independent", "shared-resource", "scarce-resource", "new-message", "zero-chain", "delayed-message", "future-time"];
     public static Options Parse(string[] args) {
         var o = new Options();
         for (int i = 0; i < args.Length; i++) {
@@ -24,6 +24,8 @@ public sealed record Options(string Scenario = "independent", string Strategy = 
             if (key == "--self-check") { o = o with { SelfCheck = true }; continue; }
             if (key == "--influence-check") { o = o with { InfluenceCheck = true }; continue; }
             if (key == "--model-time-check") { o = o with { ModelTimeCheck = true }; continue; }
+            if (key == "--lifecycle-check") { o = o with { LifecycleCheck = true }; continue; }
+            if (key == "--scale-check") { o = o with { ScaleCheck = true }; continue; }
             if (key == "--matrix") { o = o with { Matrix = true }; continue; }
             if (++i == args.Length) throw new ArgumentException($"Missing value for {key}.");
             var value = args[i];
@@ -74,15 +76,15 @@ internal sealed class World(Options options) {
     private readonly int[] values = new int[options.Actors];
     private readonly List<string>[] messages = Enumerable.Range(0, options.Actors).Select(_ => new List<string>()).ToArray();
     private readonly List<(int At, int Actor, string Text)> pending = [];
-    private int resource = 10000;
+    private int resource = options.Scenario == "scarce-resource" ? 1 : 10000;
     public Request Input(int target, int actualBoundary) {
         int actor = target % options.Actors, round = target / options.Actors;
         // Target time is explicitly projected; wall-clock completion has no effect on it.
         int time = options.Scenario == "future-time" ? target : round;
         var visible = messages[actor].Concat(pending.Where(p => p.Actor == actor && p.At <= target).Select(p => p.Text)).ToArray();
-        return new("synthetic-main", 1, "synthetic-v1", "deterministic", "act(amount:int)", "temperature=0",
+        return new("synthetic-main", 1, "synthetic-v1", "deterministic", options.Scenario == "scarce-resource" ? "take-one-or-wait(amount:0|1)" : "act(amount:int)", "temperature=0",
             "synthetic-rules-v1:" + options.Scenario, "synthetic-v1", "opaque-tail", $"actor-{actor}/wake-{round}", actor,
-            round, time, values[actor], options.Scenario == "shared-resource" ? resource : 0, visible, options.Seed);
+            round, time, values[actor], options.Scenario is "shared-resource" or "scarce-resource" ? resource : 0, visible, options.Seed);
     }
     public void Deliver(int boundary) {
         foreach (var p in pending.Where(p => p.At <= boundary).ToArray()) {
@@ -91,7 +93,9 @@ internal sealed class World(Options options) {
         }
     }
     public Commit Apply(int target, Request input, Reply reply) {
-        if (reply.OperationId != input.OperationId || reply.Amount is < 1 or > 3) throw new InvalidOperationException("Invalid reply.");
+        bool scarce = options.Scenario == "scarce-resource";
+        if (reply.OperationId != input.OperationId || (scarce ? reply.Amount is < 0 or > 1 || reply.Amount > resource : reply.Amount is < 1 or > 3))
+            throw new InvalidOperationException("Invalid reply or insufficient inventory.");
         values[input.Actor] += reply.Amount;
         resource -= reply.Amount;
         int next = (input.Actor + 1) % options.Actors;
@@ -166,7 +170,7 @@ internal sealed class Backend : IDisposable {
             Interlocked.Increment(ref completed);
             outcome = "completed";
             log("completed", target, $"reservation={reservation};input={inputHash}");
-            return new(request.OperationId, 1 + hash[1] % 3);
+            return new(request.OperationId, options.Scenario == "scarce-resource" ? (request.Resource > 0 ? 1 : 0) : 1 + hash[1] % 3);
         } catch (OperationCanceledException) {
             if (started) Interlocked.Increment(ref canceled);
             outcome = started ? "cooperatively-canceled" : "not-invoked";
@@ -444,9 +448,17 @@ public static class Checks {
                 && s.PeakInFlight <= 2 && s.Services.Length == s.Invoked;
         }
         if (!remoteDrained) throw new InvalidOperationException("Noncooperative physical service did not drain/account after host cancellation.");
+        var scarce = await Experiments.RunAsync(new Options(Scenario: "scarce-resource", Actors: 2, Rounds: 1, Budget: 2, LatencyMs: 2));
+        var scarceReference = await Experiments.RunAsync(new Options(Scenario: "scarce-resource", Strategy: "serial", Actors: 2, Rounds: 1, Budget: 2, LatencyMs: 2));
+        bool conserved = scarce.TrajectoryHash == scarceReference.TrajectoryHash && scarce.DiscardedCandidates == 1
+            && scarce.Commits.Select(c => c.Reply.Amount).SequenceEqual(new[] { 1, 0 })
+            && scarce.Commits.All(c => c.Resource >= 0 && c.Resource + c.Values.Sum() == 1)
+            && scarce.Invoked == 3;
+        if (!conserved) throw new InvalidOperationException("Scarce inventory conflict was not re-decided with conservation.");
         return new { Passed = true, Comparisons = comparisons, DiscardedCandidates = mismatches, EffectiveInputMutations = variants.Length,
             BackendCapacityChecks = 2, RequestBudgetStopObserved = budgetStopped, CancellationObserved = canceled,
             StaleFailureIsolated = staleIsolated, MatchingFailureStopped = matchingFailed, NoncooperativeRemoteDrained = remoteDrained,
+            ScarceInventoryConserved = conserved,
             Scope = "synthetic harness only; not Playground integration or general conservatism proof" };
     }
 }

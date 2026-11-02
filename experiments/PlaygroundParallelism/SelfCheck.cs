@@ -61,7 +61,8 @@ internal static class SelfCheck {
             passed &= casePassed;
         }
         object admission = await CheckAdmission(Path.Combine(output, "admission"));
-        ProbeEvidence.SaveSummary(output, new { Outcome = passed ? "passed" : "failed", Cases = cases, Admission = admission, ActualNetworkRequests = 0 });
+        object controllers = await ControllerChecks.Run(Path.Combine(output, "controllers"));
+        ProbeEvidence.SaveSummary(output, new { Outcome = passed ? "passed" : "failed", Cases = cases, Admission = admission, Controllers = controllers, ActualNetworkRequests = 0 });
         Console.WriteLine(JsonSerializer.Serialize(new { Outcome = passed ? "passed" : "failed", SelfCheck = output }));
         return passed ? 0 : 1;
     }

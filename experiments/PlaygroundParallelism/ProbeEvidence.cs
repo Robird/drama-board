@@ -16,6 +16,7 @@ internal sealed class ProbeEvidence : IDisposable {
     private readonly Action<string>? _beforeFlush;
     private bool _faulted;
     private long _sequence;
+    private readonly Dictionary<string, (long Count, long Ticks, long Bytes)> _metrics = new(StringComparer.Ordinal);
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     public static readonly JsonSerializerOptions Options = new() {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -27,7 +28,30 @@ internal sealed class ProbeEvidence : IDisposable {
         _beforeFlush = beforeFlush;
         _writer = new(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read), new UTF8Encoding(false));
     }
-    public void Write(string kind, object detail) {
+    public T Measure<T>(string phase, Func<T> operation) {
+        long started = Stopwatch.GetTimestamp();
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        try { return operation(); }
+        finally {
+            long ticks = Stopwatch.GetTimestamp() - started;
+            long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            lock (_gate) {
+                _metrics.TryGetValue(phase, out var previous);
+                _metrics[phase] = (previous.Count + 1, previous.Ticks + ticks, previous.Bytes + bytes);
+            }
+        }
+    }
+    public void Measure(string phase, Action operation) => Measure(phase, () => { operation(); return 0; });
+    public object MetricsSnapshot() {
+        lock (_gate) {
+            return _metrics.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToDictionary(pair => pair.Key,
+                pair => new { Calls = pair.Value.Count, Milliseconds = pair.Value.Ticks * 1000d / Stopwatch.Frequency,
+                    AllocatedBytes = pair.Value.Bytes }, StringComparer.Ordinal);
+        }
+    }
+    public string Fingerprint(string value) => Measure("fingerprint", () => Hash(value));
+    public void Write(string kind, object detail) => Measure("evidence-write", () => WriteCore(kind, detail));
+    private void WriteCore(string kind, object detail) {
         lock (_gate) {
             if (_faulted) { throw new InvalidOperationException("Evidence writer is retired after an uncertain append outcome."); }
             try {

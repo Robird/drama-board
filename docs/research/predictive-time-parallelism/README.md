@@ -16,6 +16,7 @@
 2. [实验协议](experiment-protocol.md)：对照方法、场景、指标、预算、原始证据与复现要求。
 3. [工作计划](work-plan.md)：唯一的本研究阶段状态、下一轮入口与子代理协作方法。
 4. 本页：研究目标、完成条件和后续 Goal 启动文本。
+5. [综合结论与验收索引](results/summary.md)：五个研究问题的实测答案、支持边界、C1–C8 证据与后续采用建议；[独立复核](results/final-review.md)提供新目录重跑和工程核验记录。
 
 后续逐项研究报告放在本目录 `results/`，小型可复现输入和汇总可以提交；大量原始日志、存档与请求材料放在忽略的 `artifacts/predictive-time-parallelism/<ExperimentId>/`，报告记录位置、来源和哈希。原型建议放在仓内 `experiments/PredictiveTimeParallelism/`，确切代码组织由首轮源码调查裁决。
 

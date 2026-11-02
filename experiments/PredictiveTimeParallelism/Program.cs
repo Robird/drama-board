@@ -12,7 +12,9 @@ async Task WriteAsync(object result) {
 }
 try {
     options = Options.Parse(args);
-    object result = options.ModelTimeCheck ? await DramaBoard.Experiments.PredictiveTimeParallelism.Causal.ModelTimeWindows.RunAsync()
+    object result = options.ScaleCheck ? await ScaleExperiments.RunAsync()
+        : options.LifecycleCheck ? await DramaBoard.Experiments.PredictiveTimeParallelism.Lifecycle.WakeLifecycle.RunAsync()
+        : options.ModelTimeCheck ? await DramaBoard.Experiments.PredictiveTimeParallelism.Causal.ModelTimeWindows.RunAsync()
         : options.InfluenceCheck ? DramaBoard.Experiments.PredictiveTimeParallelism.Influence.InfluenceExperiments.Run() : options.SelfCheck ? await Checks.RunAsync() : options.Matrix
         ? await Experiments.MatrixAsync(options) : await Experiments.RunAsync(options);
     await WriteAsync(result);

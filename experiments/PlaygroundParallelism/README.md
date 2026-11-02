@@ -58,4 +58,8 @@ dotnet run --no-build --project experiments/PlaygroundParallelism -c Release -- 
 
 工件含完整请求、角色材料及原生 reasoning payload，默认输出到忽略的 `artifacts/predictive-time-parallelism/`；不要将这些批量材料直接提交。诊断文件是研究证据，不能替代世界 E/S 或驱动恢复。记录 world-event-planned 时尚未证明 E/S 发布，只有 world-state-committed 才表示 Step 正常完成；提交后的诊断 I/O 在 Kernel publication API 之外。
 
+`summary.Metrics` 记录同步 scope 的调用次数、累计墙钟毫秒和当前线程分配字节：scratch Context 构造、角色材料渲染、请求投影、指纹、采用比较、事实投影、E/S 发布和证据写入。所有测量均在同步 Func/Action 内取样，不跨 await；并发 scope 可重叠、内部 scope 可嵌套，是 inclusive 累计，不能直接相加当作总机械规则耗时。初始化、Git/配置/连接、部分未插桩 Kernel 规则及最终报告写盘没有纳入这些局部 phase；完整工作时长仍包含准备成本，分配字节也不是持有内存或峰值内存。
+
+`--self-check <新目录>` 除 writer 退役和预算边界外，还调用真实 runner/pool/控制器，注入离线工厂检查协议纠正、实际 feedback 回执、过期候选失败、provider 主错与 Dispose 双错及 cleanup-only 失败。注入只允许内部显式 fixture 参数，CLI 没有工厂入口；独立 synthetic ledger 不构成研究真实调用授权。当前有 feedback sink 的控制器把纠正放在 Tail 的 ObservationMessage，feedback 续调则含实际 ToolResults 回执；不得根据无 sink 的另一模式推断本模式的请求形状。
+
 本入口目前仅比较一项同刻首次请求策略，fixture 后端只模拟独立延迟；有限并发槽与共享吞吐模型由另一小模型 harness 提供。它不覆盖所有 M1–M9、不提供安全窗口证明、不支持 Human、绑定热切换或跨时刻预测，也没有修改 pending 恢复算法。在线随机输出可能改变后续输入、命中和调用数，serial/candidate 只报告集成现象与条件化耗时，不断言同轨迹或公平加速比。代码存在不表示在线验证完成；C6 是否满足由后续实际工件及独立验收决定。
