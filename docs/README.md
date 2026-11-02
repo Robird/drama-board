@@ -24,6 +24,8 @@ The [Console layout contract](design/console-layouts.md) describes runtime layou
 
 ## Current work
 
+[Host diagnostics and feedback backlog](worksets/diagnostics-feedback-backlog.md) records the deferred JSONL responsibility redesign, overlap inventory, shared Human/LLM feedback direction and diagnostic correlation needs. This is a separate future design, outside the home/control refactor; log organization candidates remain undecided.
+
 [Playground development practices and naming handoff](research/playground-development-practices.md) records sourced examples from game and engine development, recommendations for small experiments and an integrated world, and the ResourceCycle-to-Playground naming decision. The [rename implementation](implementation/playground-rename.md) records the completed migration and verification; Hillside remains the integrated scenario name.
 
 [Living world: town and mountains](codex-goals/living-world/README.md) has completed its C1–C8 milestone: Hillside is one continuous, resumable world for Human Console players (including Coding Agents) and LLM characters. The [acceptance and handover](codex-goals/living-world/acceptance.md) indexes the implementation, engineering checks, a 72-hour same-history three-model run, and two independent free-play sessions including mixed Human/LLM control. Current scope is recorded in the [work plan](codex-goals/living-world/work-plan.md); further gameplay or UI work requires a new task.
