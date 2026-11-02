@@ -6,7 +6,7 @@ public sealed class OptionsTests {
         PlaygroundHomeTests.WithDirectory(path => {
             string home = Directory.CreateDirectory(Path.Combine(path, "home with spaces")).FullName;
             File.WriteAllText(Path.Combine(home, "playground.json"), """
-                {"version":1,"gym":"feedback","maxCalls":7,"steps":42,"store":"world","llmConnections":"connections.json","characterControls":"controls.json"}
+                {"version":1,"gym":"record","maxCalls":7,"steps":42,"store":"world","llmConnections":"connections.json","characterControls":"controls.json"}
                 """);
             var baseline = Options.Parse([], home).Resolve();
             var selected = Options.Parse(["--character-controls", "temporary.json", "--gym", "off", "--home", home], path).Resolve();
@@ -17,7 +17,7 @@ public sealed class OptionsTests {
             Assert.Equal(7, selected.Host.MaxCalls);
             Assert.Equal(42, selected.Host.MaxSteps);
             Assert.False(selected.Host.Gym);
-            Assert.False(selected.Host.Feedback);
+            Assert.True(baseline.Host.Gym);
             Assert.Null(Options.Parse(["--home", home, "--no-character-controls"], path).Resolve().Host.CharacterControlsPath);
         });
     }
@@ -50,12 +50,28 @@ public sealed class OptionsTests {
         });
     }
 
+    [Fact]
+    public void Ephemeral_feedback_query_selects_home_and_does_not_require_models() {
+        PlaygroundHomeTests.WithDirectory(path => {
+            File.WriteAllText(Path.Combine(path, "playground.json"), "{\"version\":1,\"gym\":\"record\",\"llmConnections\":\"missing.json\"}");
+            var selected = Options.Parse(["--ephemeral", "--feedbacks"], path).Resolve();
+            Assert.Null(selected.Store);
+            Assert.Equal(path, selected.HomePath);
+            Assert.Equal(GymManagementKind.Feedbacks, selected.Management!.Kind);
+            Assert.Empty(Directory.GetDirectories(path));
+        });
+    }
+
     [Theory]
     [InlineData("--llm")]
     [InlineData("--human", "a")]
     [InlineData("--character-connections", "old.json")]
     [InlineData("--feedback")]
     [InlineData("--gym")]
+    [InlineData("--gym", "feedback")]
+    [InlineData("--gym-feedbacks")]
+    [InlineData("--gym-fork", "old-feedback")]
+    [InlineData("--ephemeral", "--feedbacks", "--branch", "01000000")]
     [InlineData("--gym", "record", "--gym", "off")]
     [InlineData("--character-controls", "x", "--no-character-controls")]
     [InlineData("--store", "x", "--ephemeral")]

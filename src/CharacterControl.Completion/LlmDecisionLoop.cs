@@ -13,10 +13,10 @@ public sealed class LlmDecisionLoop {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
     public const string ToolName = "act";
-    public const string FeedbackToolName = "report-feedback";
+    public const string FeedbackToolName = "feedback";
     private const string PromptOpening = "你在一个持续运行的游戏中控制当前角色。仅使用当前角色可知的观察、保留经历和明确提供的角色记录；不要假定未提供的地图或资源。";
     private const string ActProtocol = "每次调用都是新的独立决策，请根据提供的完整角色上下文行动。调用一次 act 工具，command 为界面列出的一个游戏行动字符串。";
-    private const string FeedbackProtocol = "每次角色服务从提供的完整角色上下文开始。每次响应只调用一个工具：可先用 report-feedback 报告问题或需求，收到回执后继续；最终调用一次 act，command 为界面列出的一个游戏行动字符串。";
+    private const string FeedbackProtocol = "每次角色服务从提供的完整角色上下文开始。每次响应只调用一个工具：可先用 feedback 报告问题或需求，收到回执后继续；最终调用一次 act，command 为界面列出的一个游戏行动字符串。";
     private readonly Func<string, CancellationToken, ValueTask<LlmDecisionBinding>> _resolveConnection;
     private readonly LlmControllerOptions _options;
     private readonly Action<LlmControllerTrace>? _trace;
@@ -51,12 +51,9 @@ public sealed class LlmDecisionLoop {
         // Codex supports Auto; enforce exactly one call locally even if a provider ignores the parallel hint.
         var tools = new List<ToolDefinition> { tool };
         if (feedbackSink is not null) {
-            tools.Add(new(FeedbackToolName, "向开发者报告遇到的障碍或所需支持。不是世界行动；收到保存回执后继续选择 act。kind 只能为 issue 或 feature-request。",
+            tools.Add(new(FeedbackToolName, "向开发者报告遇到的障碍或所需支持。不是世界行动；用 text 自由描述反馈，收到保存回执后继续选择 act。",
                 new ToolSchema.Object([
-                    new("kind", new ToolSchema.Value(ToolParamType.String, stringEnumValues: ["issue", "feature-request"], maxLength: 15), isRequired: true),
-                    new("summary", new ToolSchema.Value(ToolParamType.String, maxLength: _options.MaxFeedbackCharacters), isRequired: true),
-                    new("obstacle", new ToolSchema.Value(ToolParamType.String, maxLength: _options.MaxFeedbackCharacters), isRequired: true),
-                    new("desired_support", new ToolSchema.Value(ToolParamType.String, maxLength: _options.MaxFeedbackCharacters), isRequired: false)
+                    new("text", new ToolSchema.Value(ToolParamType.String, maxLength: _options.MaxFeedbackCharacters), isRequired: true)
                 ])));
         }
         _outputContract = new([.. tools], CompletionToolChoice.Auto, allowParallelToolCalls: false);
@@ -94,7 +91,7 @@ public sealed class LlmDecisionLoop {
                 }
                 string prompt = PromptOpening + (_feedbackSink is null ? ActProtocol : FeedbackProtocol) + context.GameGuidance;
                 if (_feedbackSink is not null) {
-                    prompt += $"本次角色服务可选用 report-feedback 向开发者报告 issue 或 feature-request，最多 {_options.MaxFeedbackPerDecision} 条，字段总长不超过 {_options.MaxFeedbackCharacters} 字符。"
+                    prompt += $"本次角色服务可选用 feedback 向开发者自由描述问题、需求或体验，最多 {_options.MaxFeedbackPerDecision} 条，text 非空且不超过 {_options.MaxFeedbackCharacters} 字符。"
                         + "每次响应恰好调用一个工具。反馈不改变世界、不成为角色记忆；收到保存回执后继续，最终调用 act。无需每回合提交反馈。";
                 }
                 IHistoryMessage[] requestTail = protocolError is not null && _feedbackSink is not null
@@ -143,7 +140,7 @@ public sealed class LlmDecisionLoop {
                     Trace(LlmControllerTraceKind.Response, result, code);
                     throw Pause(code);
                 }
-                protocolError = Validate(result, out RawToolCall? toolCall, out string? command, out FeedbackFields? feedback);
+                protocolError = Validate(result, out RawToolCall? toolCall, out string? command, out string? feedback);
                 if (protocolError is null && feedbackCallIds.Contains(toolCall!.ToolCallId)) { protocolError = "duplicate-call-id"; }
                 if (protocolError is null && feedback is not null && feedbackCount >= _options.MaxFeedbackPerDecision) {
                     protocolError = "feedback-budget-exhausted";
@@ -155,8 +152,7 @@ public sealed class LlmDecisionLoop {
                         string receipt;
                         try {
                             receipt = await _feedbackSink!(new(requestId, call, context.CharacterId,
-                                context.ContextSequence, toolCall!.ToolCallId, feedback.Kind, feedback.Summary,
-                                feedback.Obstacle, feedback.DesiredSupport), cancellationToken).ConfigureAwait(false);
+                                context.ContextSequence, toolCall!.ToolCallId, feedback), cancellationToken).ConfigureAwait(false);
                             if (string.IsNullOrWhiteSpace(receipt) || receipt.Length > 256) {
                                 throw new InvalidDataException("The feedback sink returned an invalid receipt identity.");
                             }
@@ -194,9 +190,7 @@ public sealed class LlmDecisionLoop {
 
     private LlmControllerPausedException Pause(string reason, Exception? inner = null) => new(reason, CallsMade, inner);
 
-    private sealed record FeedbackFields(string Kind, string Summary, string Obstacle, string? DesiredSupport);
-
-    private string? Validate(CompletionResult result, out RawToolCall? call, out string? command, out FeedbackFields? feedback) {
+    private string? Validate(CompletionResult result, out RawToolCall? call, out string? command, out string? feedback) {
         call = null;
         command = null;
         feedback = null;
@@ -215,20 +209,13 @@ public sealed class LlmDecisionLoop {
             if (document.RootElement.ValueKind != JsonValueKind.Object) { return "expected-object"; }
             JsonProperty[] properties = document.RootElement.EnumerateObject().ToArray();
             if (isFeedback) {
-                var fields = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (JsonProperty property in properties) {
-                    if (property.Name is not ("kind" or "summary" or "obstacle" or "desired_support") ||
-                        property.Value.ValueKind != JsonValueKind.String || !fields.TryAdd(property.Name, property.Value.GetString()!)) {
-                        return "invalid-feedback-fields";
-                    }
-                }
-                if (!fields.TryGetValue("kind", out string? kind) || kind is not ("issue" or "feature-request") ||
-                    !fields.TryGetValue("summary", out string? summary) || string.IsNullOrWhiteSpace(summary) ||
-                    !fields.TryGetValue("obstacle", out string? obstacle) || string.IsNullOrWhiteSpace(obstacle)) {
+                if (properties.Length != 1 || properties[0].Name != "text" ||
+                    properties[0].Value.ValueKind != JsonValueKind.String) {
                     return "invalid-feedback-fields";
                 }
-                if (fields.Values.Sum(value => (long)value.Length) > limit) { return "feedback-too-large"; }
-                feedback = new(kind, summary, obstacle, fields.GetValueOrDefault("desired_support"));
+                feedback = properties[0].Value.GetString()!;
+                if (string.IsNullOrWhiteSpace(feedback)) { return "invalid-feedback-fields"; }
+                if (feedback.Length > limit) { return "feedback-too-large"; }
                 return null;
             }
             if (properties.Length != 1 || properties[0].Name != "command" || properties[0].Value.ValueKind != JsonValueKind.String) {

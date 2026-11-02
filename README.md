@@ -63,6 +63,7 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 | 意图 | 命令 |
 | --- | --- |
 | 重新查看、帮助、退出 | `:look`、`:help`、`:quit` |
+| 向开发者提交反馈 | `:feedback <text>` |
 | 移动 | `go <passage-id>` |
 | 采集 | `gather <resource-id> <count\|all>` |
 | 等待 | `wait <1–24 小时>` |
@@ -100,9 +101,9 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 当前游戏修订仍为 22；Playground 持久类型与 Inventory.ItemInventory 使用新的 Schema v1 身份，不兼容重命名前存档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
 
-每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
+除带外 `:feedback` 外，每个非空 Console 操作提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 
-Gym 使用 `--gym off|record|feedback`，默认 off，启用记录需要磁盘 store，管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
+独立反馈已实施并通过工程与脚本 CLI 验收，合同见[设计](docs/design/independent-feedback.md)：Human `:feedback <text>` 与 LLM `feedback({text})` 默认共用宿主保存，正文上限默认 4000 字符，独立于 Gym。持久局写 store/feedback.jsonl，ephemeral 写 home/feedback.jsonl 且不可分叉；成功回执在刷盘后返回。Gym 改为 `--gym off|record`，默认 off，录制需要磁盘 store；`--feedbacks` / `--fork-feedback ID` 独立管理反馈，`--gym-fork-request ID` 保留。详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
 
 ## 原型与历史证据
 

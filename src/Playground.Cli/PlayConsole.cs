@@ -1,3 +1,4 @@
+using DramaBoard.Playground.Cli;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
@@ -34,7 +35,8 @@ internal static class PlayConsole {
     // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
     internal sealed class ConsoleCharacterController(PlayPresentation presentation, ConsoleMetaCommands metaCommands, TextReader? inputReader = null,
         TextWriter? outputWriter = null, Action<string>? writeBoundary = null, PlaygroundOperationJournal? operations = null,
-        Func<string>? worldVersion = null) : IPlaygroundCharacterController {
+        Func<string>? worldVersion = null,
+        Func<PlaygroundDecisionContext, string, CancellationToken, ValueTask<string>>? feedbackSink = null) : IPlaygroundCharacterController {
         private readonly TextReader _input = inputReader ?? Console.In;
         private readonly TextWriter _output = outputWriter ?? Console.Out;
         private readonly PlaygroundOperationJournal _operations = operations ?? PlaygroundOperationJournal.CreateInMemory();
@@ -68,6 +70,28 @@ internal static class PlayConsole {
                 if (input is null) { _session.CloseSession(); throw new PlayEndedException(); }
                 if (string.IsNullOrWhiteSpace(input)) { continue; }
                 string toolName = input.TrimStart().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
+                // Feedback owns its independent durable receipt; unrelated operation audit failures must not
+                // prevent saving or turn a saved report into an apparent failure.
+                if (toolName == ":feedback") {
+                    ConsoleMetaCommand? feedback = metaCommands.Parse(input);
+                    if (feedback?.Kind != ConsoleMetaCommandKind.Feedback) {
+                        _session.Reply("无法识别命令。" + metaCommands.RejectionHint + "时间未推进；未确认消息。");
+                    } else if (string.IsNullOrWhiteSpace(feedback.Argument) || feedback.Argument.Length > FeedbackRecord.MaxTextCharacters) {
+                        _session.Reply("反馈正文不能为空，且不得超过 4000 字符。时间未推进；未确认消息。");
+                    } else if (feedbackSink is null) {
+                        _session.Reply("反馈未保存：当前宿主没有反馈保存位置。时间未推进；未确认消息。");
+                    } else {
+                        string? feedbackId = null;
+                        try {
+                            feedbackId = await feedbackSink(context, feedback.Argument, cancellationToken);
+                        } catch (OperationCanceledException) { throw; }
+                        catch (Exception) {
+                            _session.Reply("反馈保存未确认；请检查保存位置后再提交。时间未推进；未确认消息。");
+                        }
+                        if (feedbackId is not null) { _session.Reply($"反馈已保存：{feedbackId}。继续选择行动；时间未推进，未确认消息。"); }
+                    }
+                    continue;
+                }
                 PlaygroundOperationReceipt receipt = _operations.Receive(_batchId, "call_" + Guid.NewGuid().ToString("N"),
                     observation.Actor.Id, context.Context.ContextSequence, toolName, input);
                 void Reply(string result, PlaygroundOperationStatus status = PlaygroundOperationStatus.Succeeded) {

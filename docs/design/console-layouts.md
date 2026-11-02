@@ -17,6 +17,7 @@
 | `:layout <名称> once` | 按指定布局临时显示完整观察，不改变布局、输出模式或消费游标 |
 | `:help` | 元命令帮助、当前布局及全部可用布局的切换命令、当前布局的行动帮助 |
 | `:exit` | 退出；也可使用 `:quit` |
+| `:feedback <text>` | [独立保存开发反馈](independent-feedback.md)，不登记操作 |
 
 元命令只接受冒号前缀形式；无冒号的 `look / help / quit / exit / details / layout` 均无效。游戏世界内的 `go / gather / use / wait / continue / cancel / handoff` 不加冒号。查看、切换、未知布局及非法元命令均留在同一次输入循环，不推进时间、不消费通知、不写游戏 E/S。EOF 沿用退出语义。退出重启后使用该模式默认布局。
 
@@ -30,7 +31,7 @@
 
 两种布局通过 [ContextHistoryPlayView](../../src/Playground.Cli/ContextHistoryPlayView.cs) 展示 Opening 的上次放行信息与同源经历。背景使用保存的 `Opening.Background`，各 Item 的历史草稿从保存的效果还原，不借用当前草稿；本轮补给不改写历史效果。`handoff <文字>` 覆盖草稿，`handoff --clear` 清空，旧交接不自动续传。原始输入、交接文字等作为数据引用并转义控制字符，不把其中的 `:exit` 等文本解释成管理指令。
 
-[操作 ID 合同](decision-context-handoff.md#44-操作-id结果配对与-completion-边界)由 Console 与 [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs) 落实：非空提交在解析前隐式生成 ToolCallId 并登记，查询/拒绝/元命令也保存同 ID 结果。`--store` 使用存档下的 `operations.jsonl`；没有存档时仅保留在内存。空行和 EOF 不产生操作记录，布局偏好仍仅在当前进程中生效。
+[操作 ID 合同](decision-context-handoff.md#44-操作-id结果配对与-completion-边界)由 Console 与 [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs) 落实：除[独立反馈](independent-feedback.md)的 `:feedback` 在 Receive 前分流并单独保存外，非空提交在解析前隐式生成 ToolCallId 并登记，查询/拒绝/元命令也保存同 ID 结果。`--store` 使用存档下的 `operations.jsonl`；没有存档时仅保留在内存。空行和 EOF 不产生操作记录，布局偏好仍仅在当前进程中生效。
 
 ## 单次布局预览（2026-10-29）
 

@@ -26,11 +26,11 @@ try {
               --llm-log PATH      本次独立运行证据文件
               --until-hour N      绝对模拟小时上界；达到后暂停
               --steps N           提交转换上限（默认 10000）
-              --gym off|record|feedback 轨迹及模型反馈模式，整项覆盖
+              --gym off|record     轨迹记录模式；反馈独立默认启用
               --branches          列出分支，不运行游戏
-              --gym-feedbacks     列出反馈；可选 --branch / --actor
+              --feedbacks         列出独立反馈 JSONL；可选 --branch / --actor；--ephemeral 查询 home 内存运行报告
               --gym-export FILE   导出到新文件；需 --actor，可选 --branch
-              --gym-fork ID        从反馈的决定前 S 注册分支
+              --fork-feedback ID   从反馈的决定前 S 注册分支，不依赖 Gym
               --gym-fork-request ID 从请求的决定前 S 注册分支
               --fork-label LABEL  分叉名称；另用 --branch 续跑
               --actor ID          管理查询角色
@@ -38,6 +38,7 @@ try {
 
             home 路径相对 home，CLI 路径相对调用时 CWD。管理省略 --store 时读取 home。
             :quit、EOF 或 Ctrl+C 暂停；同一 home 续局可重新选择控制文件。
+            :feedback <正文> 提交开发反馈；不推进时间、不确认消息。LLM 使用 feedback 工具。
             """);
         return 0;
     }
@@ -48,7 +49,7 @@ try {
     var resolved = options.Resolve();
     hasStore = resolved.Store is not null;
     if (resolved.Management is { } management) {
-        GymCommands.Run(resolved.Store!, resolved.Branch, management, Console.Out);
+        GymCommands.Run(resolved.Store ?? resolved.HomePath!, resolved.Branch, management, Console.Out);
         return 0;
     }
     if (resolved.Branch is not null && !Directory.Exists(resolved.Store)) { throw new ArgumentException("指定分支需要已有存档。"); }

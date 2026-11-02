@@ -15,6 +15,8 @@ public sealed class ConsoleMetaCommandsTests {
     [InlineData(":layout classic once", "Layout", "classic", true)]
     [InlineData(" :layout\tdecision\tonce ", "Layout", "decision", true)]
     [InlineData(":layout unknown once", "Layout", "unknown", true)]
+    [InlineData(":feedback 这里 有 多个 空格", "Feedback", "这里 有 多个 空格")]
+    [InlineData(":feedback", "Feedback", "")]
     [InlineData(":mode", "Mode", null)]
     [InlineData(":mode full", "Mode", "full")]
     [InlineData(":mode delta", "Mode", "delta")]

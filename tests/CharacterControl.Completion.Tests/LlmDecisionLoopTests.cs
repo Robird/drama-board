@@ -6,8 +6,8 @@ namespace DramaBoard.CharacterControl.Completion.Tests;
 public sealed class LlmDecisionLoopTests {
     [Fact]
     public async Task Different_game_inputs_share_the_loop_without_sharing_policy_material_or_native_history() {
-        var feedback = Result(new("report-feedback", "feedback-call",
-            "{\"kind\":\"issue\",\"summary\":\"missing price\",\"obstacle\":\"cannot compare\"}"));
+        var feedback = Result(new("feedback", "feedback-call",
+            "{\"text\":\"missing price; cannot compare\"}"));
         var client = new Client(feedback, Act("town-call", "buy grain 2"), Act("forest-call", "wait 1"));
         var traces = new List<LlmControllerTrace>();
         var submissions = new List<LlmFeedbackSubmission>();
@@ -62,8 +62,8 @@ public sealed class LlmDecisionLoopTests {
 
     [Fact]
     public async Task Role_bindings_are_lazy_fixed_per_decision_and_share_call_budget_without_replaying_tail() {
-        var feedback = Result(new("report-feedback", "feedback",
-            "{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\"}"));
+        var feedback = Result(new("feedback", "feedback",
+            "{\"text\":\"feedback text\"}"));
         var first = new Client(feedback, Act("a", "work"));
         var second = new Client(Act("b", "rest"));
         var resolved = new List<string>();

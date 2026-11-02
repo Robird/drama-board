@@ -19,6 +19,13 @@ public sealed class LlmFeedbackTests {
             feedbackSink: (_, _) => ValueTask.FromResult("durable-receipt"));
         Assert.Equal("act-call", (await controller.ChooseCommandAsync(await Context(), default)).ToolCallId);
         Assert.Equal(2, handler.Requests.Count);
+        using (var first = JsonDocument.Parse(handler.Requests[0])) {
+            var tool = Assert.Single(first.RootElement.GetProperty("tools").EnumerateArray(),
+                item => item.GetProperty("name").GetString() == "feedback");
+            var parameters = tool.GetProperty("parameters");
+            Assert.Equal("text", Assert.Single(parameters.GetProperty("properties").EnumerateObject()).Name);
+            Assert.Equal("text", Assert.Single(parameters.GetProperty("required").EnumerateArray()).GetString());
+        }
         using var second = JsonDocument.Parse(handler.Requests[1]);
         JsonElement[] input = second.RootElement.GetProperty("input").EnumerateArray().ToArray();
         Assert.Equal("opaque-fixture", Assert.Single(input, item => item.TryGetProperty("type", out var type) &&
@@ -53,14 +60,12 @@ public sealed class LlmFeedbackTests {
         Assert.Equal(1, submission.ContextSequence);
         Assert.Equal(1, submission.CallNumber);
         Assert.Equal("feedback-call", submission.ToolCallId);
-        Assert.Equal("issue", submission.Kind);
-        Assert.Equal("summary", submission.Summary);
-        Assert.Null(submission.DesiredSupport);
+        Assert.Equal("feedback text", submission.Text);
         Assert.Equal(traces[0].RequestId, submission.RequestId);
         Assert.Same(feedback.Message, client.Requests[1].TailMessages[0]);
         var receipt = Assert.Single(Assert.IsType<ToolResultsMessage>(client.Requests[1].TailMessages[1]).Results);
         Assert.Equal("feedback-call", receipt.ToolCallId);
-        Assert.Equal("report-feedback", receipt.ToolName);
+        Assert.Equal("feedback", receipt.ToolName);
         Assert.Equal(ToolExecutionStatus.Success, receipt.Status);
         Assert.Contains("receipt-1", receipt.GetFlattenedText());
         Assert.Equal("receipt-1", Assert.Single(traces, t => t.Kind == LlmControllerTraceKind.Feedback).FeedbackId);
@@ -82,7 +87,7 @@ public sealed class LlmFeedbackTests {
             await controller.ChooseCommandAsync(await Context(), default));
         Assert.Equal("protocol-failure-limit", error.ReasonCode);
         Assert.Equal("act", Assert.Single(client.Requests[0].PromptPrefix.OutputContract.Tools).Name);
-        Assert.DoesNotContain("report-feedback", client.Requests[0].PromptPrefix.SystemPrompt);
+        Assert.DoesNotContain("feedback", client.Requests[0].PromptPrefix.SystemPrompt);
     }
 
     [Fact]
@@ -146,18 +151,44 @@ public sealed class LlmFeedbackTests {
     }
 
     [Theory]
-    [InlineData("{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\",\"extra\":1}")]
-    [InlineData("{\"kind\":\"issue\",\"summary\":\"s\",\"summary\":\"s2\",\"obstacle\":\"o\"}")]
-    [InlineData("{\"kind\":\"bug\",\"summary\":\"s\",\"obstacle\":\"o\"}")]
-    [InlineData("{\"kind\":\"issue\",\"summary\":\" \",\"obstacle\":\"o\"}")]
-    [InlineData("{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\",\"desired_support\":null}")]
+    [InlineData("{}")]
+    [InlineData("{\"text\":\"s\",\"extra\":1}")]
+    [InlineData("{\"text\":\"s\",\"text\":\"s2\"}")]
+    [InlineData("{\"text\":\" \"}")]
+    [InlineData("{\"text\":null}")]
+    [InlineData("{\"text\":1}")]
+    [InlineData("{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\"}")]
     public async Task Malformed_feedback_never_reaches_sink(string json) {
-        var client = new Client(Result(new("report-feedback", "f", json)));
+        var client = new Client(Result(new("feedback", "f", json)));
         var controller = new LlmCharacterController(client, "model", _ => "material", new() { MaxConsecutiveProtocolFailures = 1 },
             feedbackSink: (_, _) => throw new InvalidOperationException("must not save"));
         var error = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
             await controller.ChooseCommandAsync(await Context(), default));
         Assert.Equal("protocol-failure-limit", error.ReasonCode);
+    }
+
+    [Theory]
+    [InlineData("原文\n  空白", true)]
+    [InlineData("12345678", true)]
+    [InlineData("123456789", false)]
+    public async Task Feedback_text_preserves_original_content_and_enforces_decoded_length(string text, bool accepted) {
+        var client = new Client(Result(new("feedback", "f", JsonSerializer.Serialize(new { text }))), Act("act"));
+        var saved = new List<LlmFeedbackSubmission>();
+        var traces = new List<LlmControllerTrace>();
+        var controller = new LlmCharacterController(client, "model", _ => "material",
+            new() { MaxFeedbackCharacters = 8, MaxConsecutiveProtocolFailures = 1 }, traces.Add,
+            (submission, _) => { saved.Add(submission); return ValueTask.FromResult("saved"); });
+        if (accepted) {
+            Assert.Equal("act", (await controller.ChooseCommandAsync(await Context(), default)).ToolCallId);
+            Assert.Equal(text, Assert.Single(saved).Text);
+        } else {
+            var error = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
+                await controller.ChooseCommandAsync(await Context(), default));
+            Assert.Equal("protocol-failure-limit", error.ReasonCode);
+            Assert.Empty(saved);
+            Assert.Equal("feedback-too-large", traces.Last().ProtocolError);
+            Assert.Single(client.Requests);
+        }
     }
 
     [Theory]
@@ -189,8 +220,8 @@ public sealed class LlmFeedbackTests {
         Assert.Equal("saved", Assert.Single(traces, t => t.Kind == LlmControllerTraceKind.Feedback).FeedbackId);
     }
 
-    private static CompletionResult Feedback(string id) => Result(new("report-feedback", id,
-        JsonSerializer.Serialize(new { kind = "issue", summary = "summary", obstacle = "obstacle" })));
+    private static CompletionResult Feedback(string id) => Result(new("feedback", id,
+        JsonSerializer.Serialize(new { text = "feedback text" })));
     private static CompletionResult Act(string id) => Result(new("act", id, "{\"command\":\"wait 1\"}"));
     private static CompletionResult Result(RawToolCall call) => new(new ActionMessage([new ActionBlock.ToolCall(call)]), new("fixture", "fixture-api", "fixture-model"));
     private static async Task<PlaygroundDecisionContext> Context() {
@@ -216,8 +247,8 @@ public sealed class LlmFeedbackTests {
             Requests.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
             bool first = Requests.Count == 1;
             object call = new { type = "function_call", id = first ? "feedback-item" : "act-item",
-                call_id = first ? "feedback-call" : "act-call", name = first ? "report-feedback" : "act",
-                arguments = first ? "{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\"}" : "{\"command\":\"wait 1\"}" };
+                call_id = first ? "feedback-call" : "act-call", name = first ? "feedback" : "act",
+                arguments = first ? "{\"text\":\"feedback text\"}" : "{\"command\":\"wait 1\"}" };
             object[] items = first
                 ? [new { type = "reasoning", id = "reasoning-item", encrypted_content = "opaque-fixture", summary = Array.Empty<object>() }, call]
                 : [call];

@@ -20,8 +20,8 @@ internal static class PlaygroundHost {
         ICompletionClientFactory? clientFactory = null, Action<PlaygroundDiagnosticRecord>? diagnosticSink = null) {
         cancellationToken.ThrowIfCancellationRequested();
         TextWriter output = outputWriter ?? Console.Out;
-        if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) {
-            throw new ArgumentException("Gym、反馈和分支运行需要 --store。");
+        if ((options.Gym || options.Branch is not null) && store is null) {
+            throw new ArgumentException("Gym 和分支运行需要 --store。");
         }
         LlmConnectionConfiguration? configuration = options.ConnectionsPath is { } configurationPath
             ? LlmConnectionConfiguration.Load(configurationPath) : null;
@@ -62,7 +62,7 @@ internal static class PlaygroundHost {
         WorldHost.RequireContent(history.State, options.Content);
         WorldHost.RequireBudget(history.State.Time, options.Until, options.MaxSteps);
         if (options.MaxCalls < 1 || options.MaxFailures < 1 || options.MaxContextCharacters < 1) { throw new ArgumentOutOfRangeException(nameof(options)); }
-        if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) { throw new ArgumentException("Gym、反馈和分支运行需要存档。"); }
+        if ((options.Gym || options.Branch is not null) && store is null) { throw new ArgumentException("Gym 和分支运行需要存档。"); }
         if (bindings.Count != history.State.Characters.Count || history.State.Characters.Any(character => !bindings.ContainsKey(character.Id)) ||
             bindings.Values.Any(binding => binding is not CharacterControlBinding.HumanConsole and not CharacterControlBinding.Llm)) {
             throw new ArgumentException("控制绑定必须恰好覆盖本局全部角色。");
@@ -75,11 +75,15 @@ internal static class PlaygroundHost {
         using var audit = new LlmRunAudit(logPath, output, showModelDetails: humanActors.Length == 0);
         using PlaygroundOperationJournal operations = store is null ? PlaygroundOperationJournal.CreateInMemory()
             : PlaygroundOperationJournal.Open(GymSession.OperationsPath(store, durable!));
+        string? feedbackDirectory = store ?? options.HomePath;
+        using FeedbackSession? feedback = feedbackDirectory is null ? null
+            : new FeedbackSession(FeedbackSession.JournalPath(feedbackDirectory), durable, storePath: store);
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
         var human = humanActors.Length > 0 ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
             inputReader: inputReader, outputWriter: output, writeBoundary: ReferenceEquals(output, Console.Out) ? PlayConsole.WriteBoundary : null, operations: operations,
-            worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}") : null;
+            worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}",
+            feedbackSink: feedback is null ? null : feedback.SaveHuman) : null;
         IPlaygroundCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
             history.State.Characters.ToDictionary(character => character.Id,
                 character => bindings[character.Id] is CharacterControlBinding.HumanConsole ? (IPlaygroundCharacterController)human : forwarding, StringComparer.Ordinal));
@@ -91,19 +95,19 @@ internal static class PlaygroundHost {
                 .Select(commit => new PlaygroundOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
-        using GymSession? gym = options.Gym || options.Feedback ? new GymSession(store!, durable!, options, bindings, logPath, recovered) : null;
+        using GymSession? gym = options.Gym ? new GymSession(store!, durable!, options, bindings, logPath, recovered) : null;
         audit.Gym = gym;
         gym?.CaptureCommitted(kernel.World, operations);
         audit.Write("host", new { State = "ready", RecoveredPending = recovered, Home = options.HomePath, Store = store,
             Branch = durable?.CurrentBranch.BranchId, options.ConnectionsPath, options.CharacterControlsPath,
-            Gym = options.Feedback ? "feedback" : options.Gym ? "record" : "off", LogPath = Path.GetFullPath(logPath),
+            Gym = options.Gym ? "record" : "off", LogPath = Path.GetFullPath(logPath),
             Version = kernel.Version.ToString(), Content = new { kernel.World.Definition.ContentId, kernel.World.Definition.Fingerprint }, Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = bindings[character.Id] is CharacterControlBinding.HumanConsole ? "Human" : "LLM",
                 ConnectionId = (bindings[character.Id] as CharacterControlBinding.Llm)?.ConnectionId }).ToArray(),
             Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps } });
         string bindingSummary = string.Join("，", bindings.Select(pair => $"{pair.Key} = {pair.Value}"));
         output.WriteLine($"山野镇 / Hillside · home：{options.HomePath ?? "(程序注入)"} · store：{store ?? "(内存)"} · branch：{durable?.CurrentBranch.BranchId ?? "(内存)"}\n"
             + $"内容：{kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindingSummary}\n"
-            + $"预算：calls={options.MaxCalls}, failures={options.MaxFailures}, context={options.MaxContextCharacters}, steps={options.MaxSteps}, until={options.Until} · Gym：{(options.Feedback ? "feedback" : options.Gym ? "record" : "off")}\n"
+            + $"预算：calls={options.MaxCalls}, failures={options.MaxFailures}, context={options.MaxContextCharacters}, steps={options.MaxSteps}, until={options.Until} · Gym：{(options.Gym ? "record" : "off")}\n"
             + $"连接配置：{options.ConnectionsPath ?? "(程序注入)"} · 控制配置：{options.CharacterControlsPath ?? "(默认/程序注入)"} · 日志：{Path.GetFullPath(logPath)}。Ctrl+C 暂停。");
         if (recovered) { output.WriteLine("已完成上次中断时保存的行动；没有重新询问控制器。"); }
         if (operations.DiscardedTailBytes > 0) { output.WriteLine($"操作记录末尾 {operations.DiscardedTailBytes} 字节未完整写入；游戏进度按已提交 E/S 恢复。"); }
@@ -131,8 +135,8 @@ internal static class PlaygroundHost {
                 throw new ArgumentException("LLM 决策需要显式连接配置。");
             }, context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
                 new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
-                    MaxContextCharacters = options.MaxContextCharacters }, audit.Trace,
-                feedbackSink: options.Feedback ? gym!.SaveFeedback : null);
+                    MaxContextCharacters = options.MaxContextCharacters, MaxFeedbackCharacters = FeedbackRecord.MaxTextCharacters }, audit.Trace,
+                feedbackSink: feedback is null ? null : feedback.SaveLlm);
             int completed = 0;
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();

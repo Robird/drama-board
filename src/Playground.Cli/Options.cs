@@ -13,10 +13,10 @@ internal sealed class Options {
     public string HomePath => PathValue("--home") ?? LaunchDirectory;
     public static Options Parse(string[] args, string? launchDirectory = null) {
         var result = new Options { LaunchDirectory = Path.GetFullPath(launchDirectory ?? Environment.CurrentDirectory) };
-        string[] flags = ["--help", "--ephemeral", "--no-character-controls", "--branches", "--gym-feedbacks"];
+        string[] flags = ["--help", "--ephemeral", "--no-character-controls", "--branches", "--feedbacks"];
         string[] valued = ["--home", "--store", "--branch", "--content", "--characters", "--until-hour", "--steps", "--gym",
             "--llm-connections", "--character-controls", "--llm-log", "--max-calls", "--max-failures", "--max-context-chars",
-            "--actor", "--gym-export", "--gym-fork", "--gym-fork-request", "--fork-label"];
+            "--actor", "--gym-export", "--fork-feedback", "--gym-fork-request", "--fork-label"];
         for (int i = 0; i < args.Length; i++) {
             string name = args[i];
             string? value = null;
@@ -51,7 +51,7 @@ internal sealed class Options {
         var host = new PlaygroundHostOptions(MaxCalls: Number("--max-calls") ?? home.MaxCalls,
             MaxFailures: Number("--max-failures") ?? home.MaxFailures,
             MaxContextCharacters: Number("--max-context-chars") ?? home.MaxContextCharacters,
-            LogPath: PathValue("--llm-log"), Gym: gym != GymMode.Off, Feedback: gym == GymMode.Feedback,
+            LogPath: PathValue("--llm-log"), Gym: gym == GymMode.Record,
             Branch: branch, Until: until, MaxSteps: Number("--steps") ?? home.Steps, Content: Get("--content"),
             ConnectionsPath: PathValue("--llm-connections") ?? HomeFile(home.LlmConnections), CharacterControlsPath: controls, HomePath: home.HomePath);
         return new(store, host, Number("--characters"), branch, null, home.HomePath);
@@ -77,24 +77,25 @@ internal sealed class Options {
         if (management is not null) {
             string[] allowed = management.Kind switch {
                 GymManagementKind.Branches => ["--home", "--store", "--branches"],
-                GymManagementKind.Feedbacks => ["--home", "--store", "--gym-feedbacks", "--branch", "--actor"],
+                GymManagementKind.Feedbacks => ["--home", "--store", "--ephemeral", "--feedbacks", "--branch", "--actor"],
                 GymManagementKind.Export => ["--home", "--store", "--gym-export", "--branch", "--actor"],
-                _ => ["--home", "--store", "--gym-fork", "--gym-fork-request", "--fork-label"]
+                _ => ["--home", "--store", "--fork-feedback", "--gym-fork-request", "--fork-label"]
             };
             if (values.Keys.Any(name => !allowed.Contains(name, StringComparer.Ordinal))) { throw new ArgumentException("管理模式不能混用游戏、模型或其他管理配置。"); }
+            if (Has("--ephemeral") && Has("--branch")) { throw new ArgumentException("内存运行反馈没有持久分支，不能使用 --branch 筛选。"); }
             if (management.Kind == GymManagementKind.Export && Get("--actor") is null) { throw new ArgumentException("--gym-export 必须指定 --actor。"); }
             if (management.Kind is GymManagementKind.ForkFeedback or GymManagementKind.ForkRequest && Get("--fork-label") is null) { throw new ArgumentException("分叉必须指定 --fork-label。"); }
         } else if (Has("--actor") || Has("--fork-label")) { throw new ArgumentException("--actor / --fork-label 仅用于对应管理模式。"); }
         _ = Branch();
     }
     private GymManagementOptions? Management() {
-        string[] modes = ["--branches", "--gym-feedbacks", "--gym-export", "--gym-fork", "--gym-fork-request"];
+        string[] modes = ["--branches", "--feedbacks", "--gym-export", "--fork-feedback", "--gym-fork-request"];
         var selected = modes.Where(Has).ToArray();
         if (selected.Length > 1) { throw new ArgumentException("管理模式只能选择一种。"); }
         if (selected.Length == 0) { return null; }
-        var kind = selected[0] switch { "--branches" => GymManagementKind.Branches, "--gym-feedbacks" => GymManagementKind.Feedbacks,
-            "--gym-export" => GymManagementKind.Export, "--gym-fork" => GymManagementKind.ForkFeedback, _ => GymManagementKind.ForkRequest };
-        return new(kind, Get("--actor"), PathValue("--gym-export"), Get("--gym-fork") ?? Get("--gym-fork-request"), Get("--fork-label"));
+        var kind = selected[0] switch { "--branches" => GymManagementKind.Branches, "--feedbacks" => GymManagementKind.Feedbacks,
+            "--gym-export" => GymManagementKind.Export, "--fork-feedback" => GymManagementKind.ForkFeedback, _ => GymManagementKind.ForkRequest };
+        return new(kind, Get("--actor"), PathValue("--gym-export"), Get("--fork-feedback") ?? Get("--gym-fork-request"), Get("--fork-label"));
     }
     private string? Branch() {
         if (Get("--branch") is not { } branch) { return null; }

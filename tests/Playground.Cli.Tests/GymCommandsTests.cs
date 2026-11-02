@@ -16,10 +16,10 @@ public sealed class GymCommandsTests {
     [InlineData("--store", "somewhere", "--branch", "not-an-id")]
     [InlineData("--branches", "--steps", "1")]
     [InlineData("--store", "somewhere", "--branches", "--llm")]
-    [InlineData("--store", "somewhere", "--branches", "--gym-feedbacks")]
+    [InlineData("--store", "somewhere", "--branches", "--feedbacks")]
     [InlineData("--store", "somewhere", "--gym-export", "out.md")]
-    [InlineData("--store", "somewhere", "--gym-feedbacks", "--model", "anything")]
-    [InlineData("--store", "somewhere", "--gym-fork", "feedback")]
+    [InlineData("--store", "somewhere", "--feedbacks", "--model", "anything")]
+    [InlineData("--store", "somewhere", "--fork-feedback", "feedback")]
     [InlineData("--store", "somewhere", "--gym-fork-request", "request", "--fork-label", "label", "--actor", "a")]
     [InlineData("--actor", "a")]
     [InlineData("--store", "somewhere", "--fork-label", "orphan")]
@@ -27,21 +27,20 @@ public sealed class GymCommandsTests {
         Assert.Throws<ArgumentException>(() => Options.Parse(args));
 
     [Fact]
-    public void Feedback_implies_recording_and_branch_passes_to_model_host() {
-        ResolvedOptions options = HostFixture.Resolve(["--characters", "2", "--llm-connections", "connections.json", "--store", "game", "--gym", "feedback", "--branch", "01000000"]);
-        Assert.True(options.Host.Gym);
-        Assert.True(options.Host.Feedback);
+    public void Management_modes_and_branch_pass_to_host() {
+        ResolvedOptions options = HostFixture.Resolve(["--characters", "2", "--llm-connections", "connections.json", "--store", "game", "--branch", "01000000"]);
+        Assert.False(options.Host.Gym);
         Assert.Equal(options.Branch, options.Host.Branch);
         Assert.Equal(2, options.CharacterCount);
         Assert.Null(options.Management);
         Assert.Equal(GymManagementKind.Feedbacks,
-            Options.Parse(["--store", "game", "--gym-feedbacks", "--actor", "b"]).Resolve().Management!.Kind);
+            Options.Parse(["--store", "game", "--feedbacks", "--actor", "b"]).Resolve().Management!.Kind);
         Assert.Equal(GymManagementKind.ForkRequest,
             Options.Parse(["--store", "game", "--gym-fork-request", "r", "--fork-label", "test"]).Resolve().Management!.Kind);
     }
 
     [Fact]
-    public async Task Feedback_fork_uses_recorded_prestate_and_export_excludes_parent_future() {
+    public async Task Request_fork_uses_recorded_prestate_and_export_excludes_parent_future() {
         using var fixture = await Fixture.Create();
         using (var parent = PlaygroundDurableHistory.Open(fixture.Store)) {
             var kernel = PlaygroundEngine.CreateKernel(parent, characterController: new Command("use item.water"));
@@ -49,7 +48,7 @@ public sealed class GymCommandsTests {
         }
         PlaygroundBranchInfo sourceBefore = Assert.Single(PlaygroundDurableHistory.ListBranches(fixture.Store));
         using var messages = new StringWriter();
-        GymCommands.Run(fixture.Store, null, new(GymManagementKind.ForkFeedback, SourceId: "feedback-1", ForkLabel: "alternate"), messages);
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.ForkRequest, SourceId: "request-1", ForkLabel: "alternate"), messages);
         PlaygroundBranchInfo[] branches = PlaygroundDurableHistory.ListBranches(fixture.Store).ToArray();
         Assert.Equal(2, branches.Length);
         Assert.Equal(sourceBefore, branches.Single(branch => branch.BranchId == fixture.Boundary.BranchId));
@@ -59,7 +58,7 @@ public sealed class GymCommandsTests {
         Assert.Contains("未打开或运行", messages.ToString());
         var fork = Assert.Single(GymJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
         Assert.Equal(fixture.RequestSequence - 1, fork.Payload.GetProperty("SourceThroughSequence").GetInt64());
-        Assert.Equal("feedback-1", fork.Payload.GetProperty("SourceFeedbackId").GetString());
+        Assert.Equal(JsonValueKind.Null, fork.Payload.GetProperty("SourceFeedbackId").ValueKind);
 
         string beforeRead = fixture.Fingerprint();
         string export = Path.Combine(fixture.Root, "child.md");
@@ -82,8 +81,8 @@ public sealed class GymCommandsTests {
         using var output = new StringWriter();
         GymCommands.Run(fixture.Store, null, new(GymManagementKind.Branches), output);
         GymCommands.Run(fixture.Store, null, new(GymManagementKind.Feedbacks, Actor: "a"), output);
-        Assert.Contains("feedback-1", output.ToString());
-        Assert.Contains("不完整", output.ToString());
+        Assert.Contains(fixture.FeedbackId, output.ToString());
+
         string export = Path.Combine(fixture.Root, "trace.md");
         GymCommands.Run(fixture.Store, null, new(GymManagementKind.Export, "a", export), output);
         byte[] saved = File.ReadAllBytes(export);
@@ -116,16 +115,17 @@ public sealed class GymCommandsTests {
         }
         Assert.NotEqual(fixture.Boundary.BranchId, branch);
         Assert.NotEqual(branch, branch.ToUpperInvariant());
-        using (var journal = GymJournal.Open(fixture.Journal)) {
-            journal.Append("feedback", "fixture", branch, "a", new { FeedbackId = "case-feedback", Summary = "中文反馈" });
+        using (var journal = FeedbackJournal.Open(FeedbackSession.JournalPath(fixture.Store))) {
+            journal.Append(fixture.Feedback with { FeedbackId = Guid.NewGuid().ToString("N"),
+                Boundary = fixture.Boundary with { BranchId = branch }, Text = "中文反馈" });
         }
         string before = fixture.Fingerprint();
         using var output = new StringWriter();
         GymCommands.Run(fixture.Store, branch.ToUpperInvariant(), new(GymManagementKind.Feedbacks, Actor: "a"), output);
-        GymRecord selected = Assert.Single(output.ToString().Split('\n')
-            .Where(line => line.StartsWith('{')).Select(line => JsonSerializer.Deserialize<GymRecord>(line)!));
-        Assert.Equal("case-feedback", selected.Payload.GetProperty("FeedbackId").GetString());
-        Assert.Equal(branch, selected.BranchId);
+        FeedbackRecord selected = Assert.Single(output.ToString().Split('\n')
+            .Where(line => line.StartsWith('{')).Select(line => JsonSerializer.Deserialize<FeedbackRecord>(line)!));
+        Assert.Equal("中文反馈", selected.Text);
+        Assert.Equal(branch, selected.Boundary!.BranchId);
         Assert.Equal("a", selected.ActorId);
         Assert.Contains("中文反馈", output.ToString());
         using var wrongActor = new StringWriter();
@@ -157,13 +157,98 @@ public sealed class GymCommandsTests {
         using var fixture = await Fixture.Create();
         using var heldWriter = GymJournal.Open(fixture.Journal);
         IOException error = Assert.Throws<IOException>(() => GymCommands.Run(fixture.Store, null,
-            new(GymManagementKind.ForkFeedback, SourceId: "feedback-1", ForkLabel: "registered-despite-log-lock"), new StringWriter()));
+            new(GymManagementKind.ForkRequest, SourceId: "request-1", ForkLabel: "registered-despite-log-lock"), new StringWriter()));
         Assert.Contains("已注册", error.Message);
         Assert.Contains("不要盲目重试", error.Message);
         PlaygroundBranchInfo[] branches = PlaygroundDurableHistory.ListBranches(fixture.Store).ToArray();
         Assert.Equal(2, branches.Length);
         Assert.Contains(branches.Single(branch => branch.BranchId != fixture.Boundary.BranchId).BranchId, error.Message);
         Assert.DoesNotContain(GymJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
+    }
+
+    [Fact]
+    public async Task Independent_feedback_query_and_fork_need_no_gym_and_do_not_create_it() {
+        using var fixture = await Fixture.Create();
+        File.Delete(fixture.Journal);
+        using var output = new StringWriter();
+        string before = fixture.Fingerprint();
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.Feedbacks, Actor: "a"), output);
+        FeedbackRecord record = Assert.Single(output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonSerializer.Deserialize<FeedbackRecord>(line)!));
+        Assert.Equal(fixture.FeedbackId, record.FeedbackId);
+        Assert.Equal(before, fixture.Fingerprint());
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.ForkFeedback, SourceId: fixture.FeedbackId, ForkLabel: "human-feedback"), output);
+        Assert.Equal(2, PlaygroundDurableHistory.ListBranches(fixture.Store).Count);
+        Assert.False(File.Exists(fixture.Journal));
+    }
+
+    [Fact]
+    public async Task Missing_feedback_file_query_is_empty_and_read_only() {
+        using var fixture = await Fixture.Create();
+        File.Delete(FeedbackSession.JournalPath(fixture.Store));
+        File.Delete(fixture.Journal);
+        string before = fixture.Fingerprint();
+        using var output = new StringWriter();
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.Feedbacks), output);
+        Assert.Equal(string.Empty, output.ToString());
+        Assert.Equal(before, fixture.Fingerprint());
+    }
+
+    [Fact]
+    public async Task Feedback_query_keeps_jsonl_and_reports_incomplete_tail_only_to_diagnostics() {
+        using var fixture = await Fixture.Create();
+        using var cleanOutput = new StringWriter();
+        using var cleanDiagnostics = new StringWriter();
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.Feedbacks), cleanOutput, cleanDiagnostics);
+        Assert.Equal(string.Empty, cleanDiagnostics.ToString());
+        FeedbackRecord clean = Assert.Single(cleanOutput.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonSerializer.Deserialize<FeedbackRecord>(line)!));
+        Assert.Equal(fixture.FeedbackId, clean.FeedbackId);
+
+        const string tail = "{\"Text\":\"未完成";
+        string feedbackPath = FeedbackSession.JournalPath(fixture.Store);
+        File.AppendAllText(feedbackPath, tail, new System.Text.UTF8Encoding(false));
+        string before = fixture.Fingerprint();
+        byte[] beforeHash = SHA256.HashData(File.ReadAllBytes(feedbackPath));
+        using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        GymCommands.Run(fixture.Store, null, new(GymManagementKind.Feedbacks), output, diagnostics);
+        FeedbackRecord record = Assert.Single(output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonSerializer.Deserialize<FeedbackRecord>(line)!));
+        Assert.Equal(fixture.FeedbackId, record.FeedbackId);
+        Assert.Equal(cleanOutput.ToString(), output.ToString());
+        Assert.Contains($"{System.Text.Encoding.UTF8.GetByteCount(tail)} 字节", diagnostics.ToString());
+        Assert.Contains("未修改原文件", diagnostics.ToString());
+        Assert.Equal(beforeHash, SHA256.HashData(File.ReadAllBytes(feedbackPath)));
+        Assert.Equal(before, fixture.Fingerprint());
+    }
+
+    [Fact]
+    public async Task Independent_feedback_full_boundary_mismatch_rejects_before_registration() {
+        using var fixture = await Fixture.Create();
+        var record = fixture.Feedback with {
+            FeedbackId = Guid.NewGuid().ToString("N"),
+            Boundary = fixture.Boundary with { OperationSequence = fixture.Boundary.OperationSequence + 1 }
+        };
+        using (var journal = FeedbackJournal.Open(FeedbackSession.JournalPath(fixture.Store))) { journal.Append(record); }
+        string before = fixture.Fingerprint();
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => GymCommands.Run(fixture.Store, null,
+            new(GymManagementKind.ForkFeedback, SourceId: record.FeedbackId, ForkLabel: "must-not-exist"), new StringWriter()));
+        Assert.Contains("完整决定前状态不一致", error.Message);
+        Assert.Single(PlaygroundDurableHistory.ListBranches(fixture.Store));
+        Assert.Equal(before, fixture.Fingerprint());
+    }
+
+    [Fact]
+    public async Task Feedback_without_boundary_cannot_fork() {
+        using var fixture = await Fixture.Create();
+        var record = fixture.Feedback with { FeedbackId = Guid.NewGuid().ToString("N"), Boundary = null };
+        using (var journal = FeedbackJournal.Open(FeedbackSession.JournalPath(fixture.Store))) { journal.Append(record); }
+        string before = fixture.Fingerprint();
+        Assert.Throws<InvalidDataException>(() => GymCommands.Run(fixture.Store, null,
+            new(GymManagementKind.ForkFeedback, SourceId: record.FeedbackId, ForkLabel: "invalid"), new StringWriter()));
+        Assert.Single(PlaygroundDurableHistory.ListBranches(fixture.Store));
+        Assert.Equal(before, fixture.Fingerprint());
     }
 
     private sealed class Command(string text) : IPlaygroundCharacterController {
@@ -178,6 +263,8 @@ public sealed class GymCommandsTests {
         public string Journal => GymSession.JournalPath(Store);
         public PlaygroundDecisionBoundary Boundary { get; private set; } = null!;
         public long RequestSequence { get; private set; }
+        public string FeedbackId => Feedback.FeedbackId;
+        public FeedbackRecord Feedback { get; private set; } = null!;
 
         public static async Task<Fixture> Create() {
             var result = new Fixture();
@@ -202,6 +289,9 @@ public sealed class GymCommandsTests {
                 });
                 journal.Append("perception", "fixture", result.Boundary.BranchId, "a", new { Material = "parent-future-secret" });
             }
+            result.Feedback = new(1, Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, "fixture", "a",
+                FeedbackSource.HumanConsole, result.Boundary.ContextSequence, "test feedback", result.Boundary, null, result.Store);
+            using (var feedback = FeedbackJournal.Open(FeedbackSession.JournalPath(result.Store))) { feedback.Append(result.Feedback); }
             return result;
         }
 

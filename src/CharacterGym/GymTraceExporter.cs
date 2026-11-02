@@ -134,8 +134,6 @@ public static class GymTraceExporter {
         }
         foreach (GymRecord feedback in records.Where(r => r.Kind == "feedback")) {
             string? id = String(feedback.Payload, "FeedbackId");
-            string? request = String(feedback.Payload, "RequestId");
-            if (request is null || !requests.Any(r => String(r.Payload, "RequestId") == request)) { gaps.Add($"反馈记录 {feedback.Sequence} 未见对应请求材料。"); }
             if (id is null || !records.Any(r => r.Kind == "feedback-receipt" && String(r.Payload, "FeedbackId") == id)) {
                 gaps.Add($"反馈记录 {feedback.Sequence} 已记录，但未见回执记录；不能断言模型已收到回执。");
             }

@@ -1,6 +1,6 @@
 # 后续待办：宿主日志去重与统一诊断反馈
 
-状态：待启动的独立设计与重构，尚未选定日志布局或反馈 API。2026-11-02 按用户要求记录观察、现状和后续入口；本轮不实施代码，不作为 [home / 角色控制重构](../design/playground-home.md)的附加验收条件。
+状态：2026-11-02，独立反馈已实施，合同见[独立宿主反馈](../design/independent-feedback.md)，验收见[实施验收](../experiments/independent-feedback-acceptance.md)；本文保留日志去重的延期方向与启动前调查快照。日志布局仍未裁决，不随反馈切片合并 JSONL，也不作为 [home / 角色控制重构](../design/playground-home.md)的附加验收条件。
 
 ## 1. 用户观察与方向
 
@@ -11,9 +11,9 @@
 - `llm-runs/*.jsonl` 内容细致且模型专用，保持独立性合理；“减少重叠”不等于把所有东西装进同一个文件。
 - 其他日志如何分工、是否合并、如何引用，用户尚未选定；本文记录候选方向，不提前冻结最终结构。
 
-## 2. 当前事实与职责
+## 2. 独立反馈启动前的职责快照
 
-以下为当前源码核对结果，不是未来接口。路径均相对 store；`--llm-log` 可以将本次模型审计放在外部路径。
+以下为独立反馈启动前的源码调查快照，不是新接口；当前反馈保存与管理以[独立合同](../design/independent-feedback.md)为准。路径均相对 store；`--llm-log` 可以将本次模型审计放在外部路径。
 
 | 载体 | 当前保存内容与消费者 | 当前开关/生命周期 |
 | --- | --- | --- |
@@ -31,7 +31,7 @@
 - [GymSession](../../src/Playground.Cli/Gym/GymSession.cs)：实际请求与决定前边界关联、反馈保存、Context/操作捕获。
 - [GymJournal](../../src/CharacterGym/GymJournal.cs)：共享序列、校验链、完整行刷盘及尾部处理。
 - [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs)、[轨迹导出器](../../src/CharacterGym/GymTraceExporter.cs)：按角色/分支导出、反馈定位与 fork。
-- [使用说明](../design/character-gym/usage.md)：当前查询/导出/fork 入口；实施后更新当前用法，历史实验命令保留原语境。
+- [使用说明](../design/character-gym/usage.md)：当前查询/导出/fork 入口；当前用法已更新，历史实验命令保留原语境。
 
 ## 3. 已发现的重叠与不能机械合并的地方
 
@@ -47,18 +47,13 @@
 
 **分叉与证据前缀。** 现有 fork 使用已完成的决定前 S，不是任意日志行或任意 E；子分支导出包含切点以前的祖先证据和自己的后续，不混入父分支未来。若改为跨文件引用，引用解析也必须遵守这项边界。只读管理不修尾、不恢复 pending、不调用模型；fork 本身则是显式写操作。
 
-## 4. 统一反馈能力的设计起点
+## 4. 统一反馈的已定切片与历史设计起点
 
-当前 [LlmFeedbackSubmission](../../src/CharacterControl.Completion/LlmFeedbackSubmission.cs) 包含 RequestId、CallNumber、CharacterId、ContextSequence、ToolCallId 和报告正文；[LlmDecisionLoop](../../src/CharacterControl.Completion/LlmDecisionLoop.cs)提供 `report-feedback`。GymSession 要求匹配已记录 request，再保存报告并返回 FeedbackId。因此“反馈独立出来”不只是给 Console 增加一个命令，还要解除“每份反馈必须有模型 request”的假设。
+用户已选择最小独立切片：Human `:feedback <text>` 与 LLM `feedback({text})` 共用 FeedbackSession，自由正文默认上限 4000 个 UTF-16 code unit；store/feedback.jsonl 懒建，ephemeral 写 home 且无可分叉 Boundary。宿主捕获提出时的角色、Context、完整 PlaygroundDecisionBoundary 和可选实际模型调用；刷盘后返回 ID，失败退役且不自动重试，保存与回执交付分别判断。
 
-候选最小职责分配，待正式设计验证：
+`--feedbacks` / `--fork-feedback ID` 脱离 Gym；反馈分叉直接 Inspect/Fork，不读写 Gym。无精确 Gym 截点不猜祖先前缀，导出标缺口；请求分叉保留精确前缀。`--gym` 仅 off/record，旧 `--gym-feedbacks` / `--gym-fork` 移除。详细字段与失败语义仅在[设计](../design/independent-feedback.md)维护。
 
-1. **提交入口**：LLM 工具与 Human Console 命令分别适配输入，但提交到同一个宿主反馈能力；不进入游戏动作 parser、领域 Fact 或角色记忆。Console 命令拼写、交互方式暂不决定。
-2. **报告正文**：现有 issue / feature-request、summary、obstacle、desired support 可作为起点；是否调整分类和字段后续决定。
-3. **宿主自动附证**：从当前运行、角色输入窗口、操作或模型调用取得真实关联；LLM/Human 不负责填写内部 ID/address。模型请求定位只是可选附件，Human 反馈不能伪造 RequestId、CallNumber 或工具回执来凑相同结构。
-4. **保存与回执**：成功回执必须有实际保存依据；失败不假称未写入。报告本身不推进模拟时间、不消耗游戏行动、不确认角色警告。LLM 发出反馈所经历的模型调用仍占模型预算，Human 输入不凭空消耗模型调用预算。
-
-自动捕获应围绕“这条反馈针对什么”组织：当前所见材料、最近失败操作、某次模型调用或明确选择的历史问题，可能具有不同边界。不能每次只抓最新 head 就宣称关联到了用户描述的过去问题。首次可只支持当前输入/决策窗口，并把历史目标选择作为待决能力。
+以下定位调查仍供日志去重参考，不增加本切片字段或承诺历史问题自动定位。
 
 当前可复用的定位信息：
 
@@ -87,19 +82,19 @@
 
 这三项只用于下一轮比较，不要求各做一个框架或原型。不预先决定合并文件数量、新日志名称、通用事件总线、数据库或统一日志框架。`llm-runs` 独立不意味着永久保留其所有 host/committed 重复内容；专用模型载荷与通用宿主信息可以分别裁决。
 
-反馈启用与轨迹记录的关系也要重评：独立反馈不应天然要求完整 Gym 录制，但保存一份可靠报告及最小关联仍可能需要写诊断记录。届时决定启用策略、自动附证范围和失败行为，不把“record 关闭”误解释成“反馈不得保存任何文件”。
+反馈与轨迹关系已确定：反馈默认独立保存，Gym off 不禁止 feedback.jsonl。其余日志去重候选仍未裁决。
 
 ## 6. 后续工作入口与验收方向
 
-用户重新启动此专题后，再展开以下工作；当前没有实施待命的隐藏任务：
+独立反馈切片已实施并通过工程与脚本 CLI 验收；以下日志去重工作仍待用户另行启动。相关反馈验收由独立设计承载，不以此清单暗中扩大施工范围：
 
 - [ ] 在 home/控制重构后的实际源码上重查所有 JSONL 写入点、读者、导出器、smoke 脚本及现有证据，列出“记录种类 → 唯一权威/副本/派生视图”。
 - [ ] 为 Human 当前输入反馈、LLM 决策中反馈、失败操作反馈、冷开补对账、请求边界分叉各画一条实际顺序；明确缺失信息和失败窗口。
 - [ ] 比较上面的候选，以保留真实语义所需的最少职责为标准，形成正式设计；单独决定反馈合同和诊断关联，不先造泛化框架。
-- [ ] 选一个纵向实现切片：两种控制入口提交反馈 → 宿主附证 → 保存回执 → 只读查询定位。之后再按裁决迁移日志，不同时重写模型协议与领域存档。
+- 独立反馈纵向切片已实施并验收：两种入口 → 宿主附证 → 保存回执 → 查询/分叉；见[实施验收](../experiments/independent-feedback-acceptance.md)，不同时重写模型协议、其他日志与领域存档。
 - [ ] 验证无模型 RequestId 的 Human 报告、真实模型报告、收到与未收到回执、日志部分失败、重开/重复 ID、同 tick 多转换、父子分支隔离；不靠重跑业务补日志。
 - [ ] 验证现有操作结果对账、模型原始材料、只读导出及 fork 证据仍可追查，世界 Schema/行为不因诊断重构变化。明确旧实验材料的读取/归档政策，再决定是否转换；不覆盖旧证据文件。
 
-与当前重构的约定：home/控制绑定切片仅做必要的路径归属、实际角色映射与日志消费者接线，暂保留 `off / record / feedback` 的语义和既有记录格式；不在该切片中执行日志合并、独立反馈服务或 Human 反馈入口。未来独立专题可以替换这一临时启用模型，不把它当永久 API。
+home/控制绑定初版曾暂留 off/record/feedback；独立反馈切片正式替换此临时模式，历史实验命令不改写。日志去重仍保留 llm-runs 的独立模型材料，不预先选择通用日志框架或合并文件数。
 
-本待办依据当前源码阅读与用户观察整理；未修改代码、未运行测试或真实模型实验。
+本文调查快照不作为本次运行证据；独立反馈的工程与脚本 CLI 结果见[实施验收](../experiments/independent-feedback-acceptance.md)，本轮无在线模型调用。

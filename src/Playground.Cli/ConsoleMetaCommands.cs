@@ -1,10 +1,10 @@
-internal enum ConsoleMetaCommandKind { Look, Help, Layout, Mode, Exit }
+internal enum ConsoleMetaCommandKind { Look, Help, Layout, Mode, Exit, Feedback }
 
 internal sealed record ConsoleMetaCommand(ConsoleMetaCommandKind Kind, string? Argument = null, bool Once = false);
 
 /// <summary>Immutable Human Console capabilities. Parsing and help share the same finite definitions.</summary>
 internal sealed class ConsoleMetaCommands {
-    private enum ArgumentShape { None, OptionalLayout, OptionalMode }
+    private enum ArgumentShape { None, OptionalLayout, OptionalMode, FreeText }
     private sealed record Definition(ConsoleMetaCommandKind Kind, string Name, string? Alias,
         ArgumentShape Argument, string Description) {
         public string Syntax => $":{Name}";
@@ -15,6 +15,7 @@ internal sealed class ConsoleMetaCommands {
     public static ConsoleMetaCommands HumanDefault { get; } = new([
         new(ConsoleMetaCommandKind.Layout, "layout", null, ArgumentShape.OptionalLayout, "无参数列出布局，带名称持续切换，追加 once 仅查看一次"),
         new(ConsoleMetaCommandKind.Mode, "mode", null, ArgumentShape.OptionalMode, "无参数列出输出模式，带名称切换"),
+        new(ConsoleMetaCommandKind.Feedback, "feedback", null, ArgumentShape.FreeText, "向开发者保存自由文本反馈（最多 4000 字符），不推进时间或确认消息"),
         new(ConsoleMetaCommandKind.Look, "look", null, ArgumentShape.None, "重绘当前观察"),
         new(ConsoleMetaCommandKind.Help, "help", null, ArgumentShape.None, "查看规则与命令"),
         new(ConsoleMetaCommandKind.Exit, "exit", "quit", ArgumentShape.None, "退出 Console 会话"),
@@ -25,6 +26,12 @@ internal sealed class ConsoleMetaCommands {
 
     public ConsoleMetaCommand? Parse(string input) {
         ArgumentNullException.ThrowIfNull(input);
+        string trimmed = input.Trim();
+        int separator = 0;
+        while (separator < trimmed.Length && !char.IsWhiteSpace(trimmed[separator])) { separator++; }
+        string name = trimmed[..separator];
+        Definition? freeText = _definitions.FirstOrDefault(item => item.Argument == ArgumentShape.FreeText && item.Syntax == name);
+        if (freeText is not null) { return new(freeText.Kind, trimmed[separator..].Trim()); }
         string[] parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length is < 1 or > 3) { return null; }
         foreach (Definition definition in _definitions) {
@@ -68,6 +75,7 @@ internal sealed class ConsoleMetaCommands {
     private static string Describe(Definition definition, PlayPresentation presentation) {
         string argument = definition.Argument switch {
             ArgumentShape.OptionalLayout => " [名称 [once]]",
+            ArgumentShape.FreeText => " 正文",
             ArgumentShape.OptionalMode => $" [{string.Join('|', presentation.SupportedModes.Keys)}]",
             _ => "",
         };

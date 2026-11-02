@@ -5,11 +5,10 @@ using System.Text.Json;
 using DramaBoard.Playground;
 using DramaBoard.Playground.Completion;
 
-/// <summary>Host evidence only. Neither feedback nor recording advances the game.</summary>
+/// <summary>Host evidence only. Recording does not advance the game.</summary>
 internal sealed class GymSession : IDisposable {
     private readonly GymJournal _journal;
     private readonly PlaygroundDurableHistory _history;
-    private readonly Dictionary<string, GymRecord> _requests = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CharacterContext?> _contexts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _recordedOperations;
     private bool _stopped;
@@ -47,7 +46,7 @@ internal sealed class GymSession : IDisposable {
                 Actors = history.State.Characters.Select(character => new { ActorId = character.Id,
                     Controller = bindings[character.Id] is CharacterControlBinding.HumanConsole ? "Human" : "LLM",
                     ConnectionId = (bindings[character.Id] as CharacterControlBinding.Llm)?.ConnectionId }).ToArray(),
-                FeedbackEnabled = options.Feedback, Presentation = "decision/full/character-context",
+                Presentation = "decision/full/character-context",
                 Builds = new[] { typeof(GymSession).Assembly, typeof(PlaygroundWorld).Assembly, typeof(LlmCharacterController).Assembly,
                     typeof(DramaBoard.CharacterControl.Completion.LlmDecisionLoop).Assembly, typeof(GymJournal).Assembly,
                     typeof(DramaBoard.Goals.GoalSet).Assembly }
@@ -63,14 +62,13 @@ internal sealed class GymSession : IDisposable {
         string requestId = trace.RequestId ?? throw new InvalidOperationException("Gym requires a stable request identity.");
         if (trace.Kind == LlmControllerTraceKind.Request) {
             PlaygroundDecisionBoundary boundary = _history.CaptureDecisionBoundary(trace.CharacterId);
-            var record = Append("request", trace.CharacterId, new {
+            Append("request", trace.CharacterId, new {
                 RequestId = requestId, trace.CallNumber, trace.ContextSequence, Boundary = boundary,
                 trace.ConnectionId, trace.ApiSpecId, trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
                 OutputContract = GymMessageProjection.Contract(trace.Request.PromptPrefix.OutputContract),
                 Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(GymMessageProjection.Message).ToArray(),
                 Tail = trace.Request.TailMessages.Select(GymMessageProjection.Message).ToArray()
             });
-            _requests.Add(requestId, record);
         } else if (trace.Kind == LlmControllerTraceKind.Feedback) {
             Append("feedback-receipt", trace.CharacterId, new { RequestId = requestId, trace.FeedbackId,
                 Status = "saved; delivery is evidenced by the next request" });
@@ -81,27 +79,6 @@ internal sealed class GymSession : IDisposable {
                 Invocation = trace.Result?.Invocation, Termination = trace.Result?.Termination, Usage = trace.Result?.Usage,
                 Blocks = trace.Result?.Message.Blocks.Select(block => GymMessageProjection.Runtime(block)).ToArray() });
         }
-    }
-
-    public ValueTask<string> SaveFeedback(LlmFeedbackSubmission submission, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!_requests.TryGetValue(submission.RequestId, out GymRecord? request) || request.ActorId != submission.CharacterId ||
-            request.Payload.GetProperty("ContextSequence").GetInt64() != submission.ContextSequence) {
-            throw new InvalidOperationException("Feedback has no matching captured request.");
-        }
-        var existing = _journal.Records.SingleOrDefault(record => record.Kind == "feedback" &&
-            record.Payload.GetProperty("RequestId").GetString() == submission.RequestId &&
-            record.Payload.GetProperty("Submission").GetProperty("ToolCallId").GetString() == submission.ToolCallId);
-        if (existing is not null) {
-            if (existing.Payload.GetProperty("Submission").Deserialize<LlmFeedbackSubmission>() != submission) {
-                throw new InvalidOperationException("Feedback identity was reused with different contents.");
-            }
-            return ValueTask.FromResult(existing.Payload.GetProperty("FeedbackId").GetString()!);
-        }
-        string id = Guid.NewGuid().ToString("N");
-        Append("feedback", submission.CharacterId, new { FeedbackId = id, submission.RequestId,
-            RequestSequence = request.Sequence, Boundary = request.Payload.GetProperty("Boundary"), Submission = submission });
-        return ValueTask.FromResult(id);
     }
 
     public void CaptureCommitted(PlaygroundWorld world, PlaygroundOperationJournal operations) {

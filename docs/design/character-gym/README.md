@@ -1,6 +1,6 @@
 # 角色实验环境（Character Gym）
 
-状态：2026-10-31，一期已实现并完成工程及真实模型串联验收；二期未启动。证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)，直接操作见[使用说明](usage.md)。
+状态：2026-11-02，独立反馈已实施并通过工程与脚本 CLI 验收，现行合同见[独立宿主反馈](../independent-feedback.md)；以下一期范围保留历史背景。一期已实现并完成工程及真实模型串联验收；二期未启动。证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)，直接操作见[使用说明](usage.md)。
 
 长期愿景是利用虚拟世界的结构化事实、可保存的角色上下文和分支历史，让角色运行产生可定位的问题现场，支持后续反事实实验。Gym 在这里指可观察、可反馈、可分叉重跑的实验环境，不表示已经采用某种训练协议或提供强化学习平台。
 

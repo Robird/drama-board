@@ -101,6 +101,17 @@ public sealed class GymTraceExporterTests {
     }
 
     [Fact]
+    public void IndependentFeedbackReceiptDoesNotRequireFeedbackOrRequestInGym() {
+        string text = Render(Record(1, "feedback-receipt", new { FeedbackId = "external-feedback", Accepted = true }));
+        Assert.Contains("external-feedback", text);
+        Assert.DoesNotContain("未见对应请求", text);
+        Assert.DoesNotContain("未见回执", text);
+        string legacy = Render(Record(1, "feedback", new { FeedbackId = "f", Text = "independent" }),
+            Record(2, "feedback-receipt", new { FeedbackId = "f", Accepted = true }));
+        Assert.DoesNotContain("未见对应请求", legacy);
+    }
+
+    [Fact]
     public void InterruptedHostResultPairsIdentityWithoutProvingGameCommit() {
         var receipt = new { OperationRecordId = "op1", BatchId = "batch", ToolCallId = "call1", ActorId = "b",
             ContextSequence = 1, ToolName = "act", RawInput = "wait 1" };

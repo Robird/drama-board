@@ -1,5 +1,6 @@
 # 角色实验环境一期：实施与剩余工作
 
+> 2026-11-02：本文件的一期完成记录保留历史语境；[独立反馈](../design/independent-feedback.md)切片已实施并通过工程与脚本 CLI 验收，当前命令以[使用说明](../design/character-gym/usage.md)为准。
 状态：2026-10-31，一期实现与真实模型串联验收完成。范围与完成条件唯一依据为[一期里程碑](../design/character-gym/milestone.md)，架构边界见[设计思路](../design/character-gym/design.md)。本文件维护剩余工作与重开条件；详细验证证据见[工程验收](../experiments/character-gym-acceptance.md)与[真实试玩](../experiments/character-gym-playtest.md)。
 
 ## 当前下一步

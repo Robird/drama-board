@@ -10,7 +10,4 @@ public sealed record LlmFeedbackSubmission(
     string CharacterId,
     long ContextSequence,
     string ToolCallId,
-    string Kind,
-    string Summary,
-    string Obstacle,
-    string? DesiredSupport);
+    string Text);

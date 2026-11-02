@@ -22,6 +22,7 @@ public sealed class PlaygroundHomeTests {
     [InlineData("{\"version\":1,\"maxCalls\":\"1\"}")]
     [InlineData("{\"version\":1,\"steps\":0}")]
     [InlineData("{\"version\":1,\"gym\":\"invalid\"}")]
+    [InlineData("{\"version\":1,\"gym\":\"feedback\"}")]
     [InlineData("{\"version\":1,\"store\":null}")]
     [InlineData("{\"version\":1,\"characterControls\":\" \"}")]
     public void Manifest_is_strict(string json) {

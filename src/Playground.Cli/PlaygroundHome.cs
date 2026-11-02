@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-internal enum GymMode { Off, Record, Feedback }
+internal enum GymMode { Off, Record }
 
 internal sealed record PlaygroundHome(string HomePath, GymMode Gym = GymMode.Off, int MaxCalls = 128,
     int MaxFailures = 3, int MaxContextCharacters = 200000, int Steps = 10000,
@@ -49,8 +49,8 @@ internal sealed record PlaygroundHome(string HomePath, GymMode Gym = GymMode.Off
     }
 
     internal static GymMode ParseGym(string value) => value switch {
-        "off" => GymMode.Off, "record" => GymMode.Record, "feedback" => GymMode.Feedback,
-        _ => throw new ArgumentException("gym 必须为 off、record 或 feedback。")
+        "off" => GymMode.Off, "record" => GymMode.Record,
+        _ => throw new ArgumentException("gym 必须为 off 或 record；反馈独立启用。")
     };
     private static string Text(JsonElement value, string field) => value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
         ? value.GetString()! : throw new ArgumentException($"{field} 必须为非空字符串。");

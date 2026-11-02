@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。后续按用户选择展开独立的[日志与统一反馈设计](docs/worksets/diagnostics-feedback-backlog.md)，本切片不合并 JSONL 或增加 Human 反馈工具。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
+**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。[独立宿主反馈](docs/design/independent-feedback.md)已落地 Human/LLM 共用自由文本保存、刷盘后回执、完整决定前边界与独立反馈分叉，Gym 仅 off/record；Windows 工程、Completion fixture 与脚本实际 CLI 证据见[实施验收](docs/experiments/independent-feedback-acceptance.md)，本轮没有在线 LLM 或真人自由试玩。[其他日志去重](docs/worksets/diagnostics-feedback-backlog.md)继续延期。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
@@ -57,7 +57,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **控制器边界**：[共享无状态 CharacterController](docs/design/stateless-character-controller.md) 不私藏跨决策语义记忆；Business 根的 [CharacterInteractionState](src/Playground/CharacterContext.cs) 保存独立 Goals、Context、DraftHandoff、PendingAdvance 与待交付经历。`ChooseCommandAsync` 接收 [PlaygroundDecisionContext](src/Playground/PlaygroundObservation.cs)，返回保存原始输入/身份的 `PlaygroundControllerOperation`；共享 parser 与角色校验决定成功或持久拒绝，pending E 不重做决定。[Human Console 边界](docs/design/console-command-boundary.md) 的 `HumanDefault` / `None` 目录同时控制元命令提示和执行；拒绝不轮转服务、不确认警告；操作窗口清理不返还同刻 1024 转换预算，冷开也不重置预算。LLM 适配器已接入；目录热切换和完整工具会话恢复未施工。
 
-**操作身份**：[PlaygroundOperationJournal](src/Playground.Cli/PlaygroundOperationJournal.cs) 在解析前保存 Console 隐式 ToolCallId，覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
+**操作身份**：[PlaygroundOperationJournal](src/Playground.Cli/PlaygroundOperationJournal.cs) 在解析前保存 Console 操作的隐式 ToolCallId（带外 `:feedback` 在 Receive 前分流），覆盖查询/拒绝/元命令；结果同 ID 配对，成功/拒绝的游戏 E/S 保存来源与结论，元命令仍只记宿主日志。`operations.jsonl` 与 E/S 各自提交，冷开只补原成功/拒绝结果、不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
 **初始化与修订**：[PlaygroundGameFactory](src/Playground/PlaygroundGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 22](src/Playground/Persistence/PlaygroundGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
@@ -69,7 +69,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 延期与重开条件
 
-- **日志与统一反馈**：用户要求在 home/角色控制重构之外独立展开，稍后再启动；[待办文档](docs/worksets/diagnostics-feedback-backlog.md)记录 JSONL 职责重叠、独立模型审计、Human/LLM 共用反馈及自动采集 ID/address 的方向。候选日志布局尚未裁决，当前切片不合并日志或新增 Human 反馈入口。
+- **日志去重**：[待办文档](docs/worksets/diagnostics-feedback-backlog.md)保留 JSONL 职责重叠与独立模型审计等方向；候选布局尚未裁决，不随独立反馈合并日志。
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
 - **Player 与玩法扩展**：长期约定由角色 Goals 承载，handoff 保持一次性交接。结构化经历召回、实体解析、完整笔记编辑器、自动规划与条件提醒按目标管理实测缺口重开；概率产出、主动后台插话、唯一目标失效和通用规则包按真实玩法需要重开。旧运行时保持归档；出现激活过多的证据后再设计通知过滤。
 - **持久化扩展**：Playground adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
