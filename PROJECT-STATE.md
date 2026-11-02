@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。[独立宿主反馈](docs/design/independent-feedback.md)已落地 Human/LLM 共用自由文本保存、刷盘后回执、完整决定前边界与独立反馈分叉，Gym 仅 off/record；Windows 工程、Completion fixture 与脚本实际 CLI 证据见[实施验收](docs/experiments/independent-feedback-acceptance.md)，本轮没有在线 LLM 或真人自由试玩。[其他日志去重](docs/worksets/diagnostics-feedback-backlog.md)继续延期。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
+**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。[独立宿主反馈](docs/design/independent-feedback.md)已落地 Human/LLM 共用自由文本保存、刷盘后回执、完整决定前边界与独立反馈分叉，Gym 仅 off/record；Windows 工程、Completion fixture 与脚本实际 CLI 证据见[实施验收](docs/experiments/independent-feedback-acceptance.md)，本轮没有在线 LLM 或真人自由试玩。[角色 history 与日志收敛方案](docs/design/character-history-and-diagnostics.md)已完成辩证简化审阅，尚未实施；下一步按其纵向切片与验收矩阵推进，先建立人物阅读闭环，再完成唯一来源、故障与分叉验收。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
@@ -69,7 +69,7 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 延期与重开条件
 
-- **日志去重**：[待办文档](docs/worksets/diagnostics-feedback-backlog.md)保留 JSONL 职责重叠与独立模型审计等方向；候选布局尚未裁决，不随独立反馈合并日志。
+- **角色 history 与日志收敛**：实施入口见当前焦点及[方案](docs/design/character-history-and-diagnostics.md)；领域记忆回灌、自动摘要、delta 存储和全量历史 S 重渲染仍延期，以出现明确消费者为重开条件。
 - **Mud 成果复用**：按新实例的真实需要选择内容、独立库或设计经验，不搬迁整套领域/Session，不要求旧存档兼容。
 - **Player 与玩法扩展**：长期约定由角色 Goals 承载，handoff 保持一次性交接。结构化经历召回、实体解析、完整笔记编辑器、自动规划与条件提醒按目标管理实测缺口重开；概率产出、主动后台插话、唯一目标失效和通用规则包按真实玩法需要重开。旧运行时保持归档；出现激活过多的证据后再设计通知过滤。
 - **持久化扩展**：Playground adapter 仅服务本实例；空间已有测试专用单根 E/S adapter 与冷开证据，尚未提供产品存档入口。其他游戏或通用存档依据真实需求扩展。归档 FirstBoard 的结果不作为新实例的落盘证据。
