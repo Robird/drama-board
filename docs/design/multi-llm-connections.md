@@ -1,6 +1,6 @@
 # 多模型连接与角色绑定
 
-> 本文记录当前已实现的连接协议与验收。用户后续已选择[双层角色控制映射重构](playground-home.md#31-双层角色控制映射)：默认 LLM(DefaultConnectionId)，逐角色覆盖为指定 LLM 或 Human Console；绑定仅属运行时，不进入 DurableGraph 领域模型。该重构尚未实施，将替换下文的 `--llm` / 单个 `--human` 与字符串角色连接覆盖；当前用法仍以本文和 README 为准。
+> home 与 typed 控制绑定正在实施；当前使用入口见[根 README](../../README.md)与 [home 方案](playground-home.md)。历史实验记录保留原命令。
 
 本设计落实用户已选择的两文件方案。共享调用层处理连接配置、生命周期与不透明角色 ID 路由；游戏只提供角色集合并校验宿主绑定。当前入口见[根 README](../../README.md)，接线见[新增游戏](../implementation/adding-a-game.md)。验收证据见文末。
 
@@ -10,13 +10,11 @@
 
 可直接使用[连接示例](../../config/llm-connections.example.json)：`quick` 与 `deliberate` 都是 Codex `gpt-6.1-sol`，分别使用 low / medium。Codex 的 kind 和 surface 均为 `openai-codex-responses`，baseAddress 必须是工厂 canonical 值 `https://chatgpt.com/backend-api/codex/`。认证沿用现有 Codex file-backed 登录发现，由 Completion 读取；示例不携带密钥，也不要求额外填写模型。增加其他 provider 时按 Completion 目录合同填入实际可用的 model、surface、地址及认证来源，不能把模板占位 model 当作可运行配置。
 
-可选角色覆盖文件为 `{ "version": 1, "overrides": { "b": "deliberate" } }`，见[示例](../../config/playground-character-connections.example.json)。缺少某角色的覆盖即回退默认连接。共享层把角色 ID 当不透明字符串；CLI 根据当前新局或存档中的真实角色集合拒绝未知角色。未知连接、非法版本/字段及显式指定却不存在的文件报错，不静默回退。省略整个覆盖参数表示没有覆盖。
-
-Human 选择优先于模型路由。Human 角色可以保留 dormant override，配置仍须引用真实角色和连接；本次不会因此读取该连接的凭据或调用模型。无 `--llm` 时使用 Human Console。`--llm` 必须与 `--llm-connections PATH` 配合，覆盖用 `--character-connections PATH`。旧 `--model`、`--auth-file`、`--catalog`、`--connection` 删除，没有兼容层。
+角色覆盖采用 `{ "version": 1, "overrides": { "a": { "kind": "human-console" }, "b": { "kind": "llm", "connectionId": "deliberate" } } }`，见[示例](../../config/playground-character-controls.example.json)。未覆盖角色使用 defaultConnectionId。`--character-controls PATH` 整项选择覆盖，`--no-character-controls` 清除。未知角色、连接、字段及缺失文件均拒绝；字符串映射不再接受。全 Human 仍校验连接结构，但不读取凭据。正常运行必须提供 home（或 CWD 是 home）；详细路径与 manifest 合同见 home 方案。
 
 ## 共享层与宿主分工
 
-`LlmConnectionConfiguration.Load(path, overridesPath?)` 一次读取、校验并冻结文件；`ConnectionIds`、`OverrideActorIds` 支持宿主检查，`GetConnectionId(actorId)` 返回覆盖或默认。运行中改文件不影响当前运行，续局可重新选择文件。嵌入目录的解析、协议配置与客户端工厂属于 Atelia.Completion，不在游戏代码复制 provider 解析。
+`LlmConnectionConfiguration.Load(path)` 一次冻结连接目录，`ConnectionIds` 支持连接身份校验；CLI 的 `CharacterControlConfiguration` 单独读取 typed 控制文件，宿主检查角色集合并选取默认或显式绑定。运行中改文件不影响当前运行，续局可重新选择文件。嵌入目录的解析、协议配置与客户端工厂属于 Atelia.Completion，不在游戏代码复制 provider 解析。
 
 `LlmConnectionPool.GetAsync(id, ct)` 返回 `LlmDecisionBinding(Client, ModelId, ConnectionId)`。Pool 按 connection ID 惰性解析所选连接的环境设置、取得凭据并创建客户端，缓存并拥有其生命周期；不同连接即使模型相同也保留独立配置与身份。未实际使用的 provider 不要求可用秘密，不创建客户端。宿主异步释放 pool，loop 和游戏 adapter 借用客户端。固定 `ICompletionClient` 的 programmatic loop 构造仍可用于测试和独立集成，CLI 不通过旧参数恢复固定默认连接。
 

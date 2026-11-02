@@ -13,7 +13,7 @@ public sealed class LivingWorldHostTests {
     public async Task Default_console_creates_three_residents_in_one_continuing_world() {
         using var files = new Files();
         using var output = new StringWriter();
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default,
+        Assert.Equal(0, await HostFixture.RunHumanAsync(files.Store, default,
             inputReader: new StringReader(""), outputWriter: output));
         using var saved = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(new[] { "a", "b", "c" }, saved.State.Characters.Select(actor => actor.Id));
@@ -28,9 +28,9 @@ public sealed class LivingWorldHostTests {
     public async Task Default_llm_routes_all_three_residents_and_gym_records_actual_bindings() {
         using var files = new Files();
         var client = new Client("wait 1");
-        LlmHostOptions options = files.Options() with { MaxCalls = 3, Gym = true };
+        PlaygroundHostOptions options = files.Options() with { MaxCalls = 3, Gym = true };
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, options, default, output, client));
         Assert.Equal(3, client.Requests.Count);
         using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
         Assert.Equal(new[] { "a", "b", "c" }, operations.Entries.Select(entry => entry.Received.ActorId));
@@ -49,12 +49,13 @@ public sealed class LivingWorldHostTests {
         using var files = new Files();
         var client = new Client("wait 1");
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options() with { MaxCalls = 2, HumanActor = "b", Gym = true },
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options() with { MaxCalls = 2, Controls = HostFixture.Humans("b"), Gym = true },
             default, output, client, inputReader: new StringReader("handoff human-b-private\nwait 1\n")));
         Assert.Equal(2, client.Requests.Count);
         Assert.All(client.Requests, request => Assert.DoesNotContain("human-b-private",
             Assert.IsType<ObservationMessage>(Assert.Single(request.PromptPrefix.SharedContextMessages)).Content));
         using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         Assert.Contains(operations.Entries, entry => entry.Received.ActorId == "b" && entry.Received.RawInput == "handoff human-b-private");
         using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
         Assert.Equal(new[] { "a", "c" }, gym.Records.Where(record => record.Kind == "request").Select(record => record.ActorId));
@@ -71,7 +72,7 @@ public sealed class LivingWorldHostTests {
         using var files = new Files();
         var client = new Client("handoff resumed-model");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { MaxSteps = 1 }, default, output, client));
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { MaxSteps = 1 }, default, output, client));
         Assert.Empty(client.Requests);
         using (var paused = PlaygroundDurableHistory.Open(files.Store)) {
             Assert.All(paused.State.Characters, actor => Assert.True(actor.IsActive));
@@ -80,11 +81,11 @@ public sealed class LivingWorldHostTests {
         }
         Assert.Contains("预算已到", output.ToString());
         using var resumedOutput = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a" },
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Controls = HostFixture.Humans("a") },
             default, resumedOutput, client, inputReader: new StringReader("")));
         Assert.Empty(client.Requests);
         Assert.Contains("[Console 输入] a>", resumedOutput.ToString());
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, client));
         Assert.Single(client.Requests);
         using var resumed = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal("resumed-model", resumed.State.Business.InteractionStates["a"].DraftHandoff);
@@ -95,14 +96,14 @@ public sealed class LivingWorldHostTests {
         using var files = new Files();
         var client = new Client("wait 1");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { Until = new ModelTime(8 * PlaygroundTime.Hour) },
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Until = new ModelTime(8 * PlaygroundTime.Hour) },
             default, output, client));
         Assert.Empty(client.Requests);
         using (var paused = PlaygroundDurableHistory.Open(files.Store)) {
             Assert.All(paused.State.Characters, actor => Assert.True(actor.IsActive));
             Assert.Equal(8 * PlaygroundTime.Hour, paused.State.Time.Ticks);
         }
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options() with { Until = new ModelTime(9 * PlaygroundTime.Hour) },
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Until = new ModelTime(9 * PlaygroundTime.Hour) },
             default, output, client));
         Assert.Single(client.Requests);
     }
@@ -140,8 +141,8 @@ public sealed class LivingWorldHostTests {
 
         var client = new Client("wait 1");
         using var output = new StringWriter();
-        LlmHostOptions options = files.Options() with { Until = limit, Gym = true };
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, options, default, output, client));
+        PlaygroundHostOptions options = files.Options() with { Until = limit, Gym = true };
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, options, default, output, client));
         Assert.Empty(client.Requests);
         string recoveredCommit;
         using (var recovered = PlaygroundDurableHistory.Open(files.Store)) {
@@ -160,7 +161,7 @@ public sealed class LivingWorldHostTests {
             Assert.Equal("time-budget", Assert.Single(gym.Records, record => record.Kind == "run-end").Payload.GetProperty("Reason").GetString());
         }
         // A second cold open at the recovered boundary must not republish or repeat the yield.
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { Until = planned.World.Time }, default, output, client));
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Until = planned.World.Time }, default, output, client));
         Assert.Empty(client.Requests);
         using var reopened = PlaygroundDurableHistory.Open(files.Store);
         Assert.Null(reopened.PendingEvent);
@@ -170,8 +171,10 @@ public sealed class LivingWorldHostTests {
         Assert.Equal(planned.World.GetResource("well").Stock, reopened.State.GetResource("well").Stock);
     }
 
-    [Fact]
-    public async Task Mixed_console_hides_model_goals_context_and_receipts_but_delivers_legitimate_public_speech() {
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task Mixed_console_hides_model_goals_context_and_receipts_but_delivers_legitimate_public_speech(int count) {
         using var files = new Files();
         const string goal = "PRIVATE_MODEL_GOAL_9831";
         const string criterion = "PRIVATE_MODEL_CRITERION_4872";
@@ -181,10 +184,12 @@ public sealed class LivingWorldHostTests {
             "create-goal " + JsonSerializer.Serialize(new { title = goal, criteria = criterion }),
             "handoff " + handoff,
             "shout " + publicSpeech);
-        LlmHostOptions options = files.Options() with { MaxCalls = 3, HumanActor = "a", Gym = true };
+        PlaygroundHostOptions options = files.Options() with { MaxCalls = 3, Controls = count == 3 ? HostFixture.Humans("a", "c") : HostFixture.Humans("a"), Gym = true };
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, options, default, output, client, characterCount: 2,
-            inputReader: new StringReader("wait 1\n:exit\n")));
+        // After the shout, c must acknowledge attention while preserving its existing wait,
+        // allowing the round-robin scheduler to deliver a's next frozen context before exit.
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, options, default, output, client, characterCount: count,
+            inputReader: new StringReader(count == 3 ? "wait 1\nwait 1\ncontinue\n:exit\n" : "wait 1\n:exit\n")));
         Assert.Equal(3, client.Requests.Count);
         string rendered = output.ToString();
         foreach (string secret in new[] { goal, criterion, handoff }) {
@@ -195,16 +200,20 @@ public sealed class LivingWorldHostTests {
         Assert.DoesNotContain("[model-output]", rendered);
         Assert.Contains(publicSpeech, rendered);
         using var saved = PlaygroundDurableHistory.Open(files.Store);
-        CharacterInteractionState human = saved.State.Business.InteractionStates["a"];
-        string humanMaterial = CharacterContextRenderer.RenderFull(human, new DecisionPlayLayout());
-        Assert.Contains(publicSpeech, humanMaterial);
-        Assert.DoesNotContain(goal, humanMaterial);
-        Assert.DoesNotContain(criterion, humanMaterial);
-        Assert.DoesNotContain(handoff, humanMaterial);
+        foreach (string actorId in count == 3 ? new[] { "a", "c" } : new[] { "a" }) {
+            Assert.Contains($"[Console 输入] {actorId}>", rendered);
+            CharacterInteractionState human = saved.State.Business.InteractionStates[actorId];
+            string humanMaterial = CharacterContextRenderer.RenderFull(human, new DecisionPlayLayout());
+            Assert.Contains(publicSpeech, humanMaterial);
+            Assert.DoesNotContain(goal, humanMaterial);
+            Assert.DoesNotContain(criterion, humanMaterial);
+            Assert.DoesNotContain(handoff, humanMaterial);
+        }
         CharacterInteractionState model = saved.State.Business.InteractionStates["b"];
         Assert.Equal(goal, Assert.Single(model.Goals.Goals).Title);
         Assert.Equal(handoff, model.DraftHandoff);
         using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         Assert.Contains(operations.Entries, entry => entry.Received.ActorId == "b" &&
             entry.Received.RawInput.Contains(handoff, StringComparison.Ordinal) && entry.Completed!.Status == PlaygroundOperationStatus.Succeeded);
         using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
@@ -235,7 +244,7 @@ public sealed class LivingWorldHostTests {
     private sealed class Files : IDisposable {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "drama-living-host-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(_root, "game");
-        public LlmHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
+        public PlaygroundHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }
 }

@@ -21,13 +21,13 @@
 
 用户已确定围绕现有时空模型在本仓库建设下一代引擎与一组实例游戏；Mud 保留为可玩参照，选择性借鉴其动作、观察、事件与状态关联经验，不进行原地迁移或兼容适配。新业务逻辑先写应用层，经实例验证后再提取共性。
 
-山野镇以 Playground 为唯一运行时：默认三居民，可用 `--characters 1|2|3` 选择新局人数；续局省略人数则读取存档。默认共用 Human Console；`--llm` 控制全体，`--human ID` 选择一个 Console 角色。`--steps` / `--until-hour` 仅暂停宿主，所有角色/空间/资源仍组成同一发布根；没有 GUI。`--content hillside|gentle` 选择新局内容，省略时续局使用保存定义；内容身份与恢复见[内容验收](docs/experiments/living-world-content-acceptance.md)。旧 `--play` / `--survival` / `--duo` 及批处理入口已撤下，历史采集语义保留在领域测试。
+山野镇以 Playground 为唯一运行时：默认三居民，可用 `--characters 1|2|3` 选择新局人数；续局省略人数则读取存档。通过 `--home` 或 CWD 选择实例，默认全 LLM(DefaultConnectionId)，可选 typed 控制文件逐角色覆盖为特定连接或 Human Console。`--steps` / `--until-hour` 仅暂停宿主，所有角色/空间/资源仍组成同一发布根；没有 GUI。`--content hillside|gentle` 选择新局内容，省略时续局使用保存定义；内容身份与恢复见[内容验收](docs/experiments/living-world-content-acceptance.md)。旧控制开关和早期批处理入口已撤下，历史采集语义保留在领域测试。
 
 用户已选定：在扩大世界前统一核心预测形状，空间由运动变化触发通道重新发现；运行中增量维护和冷开重建是独立选择。纯派生预测不应强制落盘；原持久方案仅作为[历史验收记录](docs/experiments/local-prediction-acceptance.md)保留。
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[home 与角色控制重构方案](docs/design/playground-home.md)在前轮辩证审阅后，按用户新裁决改为默认 LLM(DefaultConnectionId)＋逐角色 LLM/Human 控制绑定覆盖；仅属运行时配置，不进入 DurableGraph 领域模型。已核对源码可行性，尚未实施；下一步是统一宿主、home/绑定解析与管理接线的纵向切片，验收点集中在方案中，不预建通用控制框架。[多模型两文件连接](docs/design/multi-llm-connections.md)是当前已实施并验收的版本；其旧控制开关与字符串覆盖将被替换，按需凭据、共享调用预算和实际调用身份保留。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
+**当前焦点与下一步**：[home 与角色控制方案](docs/design/playground-home.md)已落地为 [PlaygroundHost](src/Playground.Cli/PlaygroundHost.cs) 的统一执行流程；默认 LLM＋逐角色 typed 覆盖仅属运行时配置，保留按需凭据、共享预算、实际调用身份与 pending 恢复合同，领域 Schema 不变。工程、真实 CLI 与模型冒烟见[实施验收](docs/experiments/playground-home-acceptance.md)。后续按用户选择展开独立的[日志与统一反馈设计](docs/worksets/diagnostics-feedback-backlog.md)，本切片不合并 JSONL 或增加 Human 反馈工具。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
@@ -79,5 +79,5 @@ FirstBoard 场景、Demo、LLM Player、实际持久化 adapter 和专属资料�
 
 ## 按需导航与验证
 
-- 唯一入口 [DramaBoard.slnx](DramaBoard.slnx) 包含核心、当前实例及测试，并显式列入相邻 DG/Storage/Completion 源码项目供 IDE/LSP 加载；重复 Local solution 已删除。[README](README.md)与 [CI](.github/workflows/ci.yml)均使用相邻仓库布局，使用精确 SDK 10.0.201；第三方包来自 nuget.org，保留仓内包缓存。旧包准备脚本仅保留历史复现用途，当前不要求发包。试玩：`dotnet run --project src/Playground.Cli -c Release -- --store artifacts/my-hillside`；控制绑定和预算见根 README。
+- 唯一入口 [DramaBoard.slnx](DramaBoard.slnx) 包含核心、当前实例及测试，并显式列入相邻 DG/Storage/Completion 源码项目供 IDE/LSP 加载；重复 Local solution 已删除。[README](README.md)与 [CI](.github/workflows/ci.yml)均使用相邻仓库布局，使用精确 SDK 10.0.201；第三方包来自 nuget.org，保留仓内包缓存。旧包准备脚本仅保留历史复现用途，当前不要求发包。先按根 README 初始化 home 与连接，再运行 `dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillside`；全 Human 试玩需显式选择对应角色的控制文件。
 - 文档入口：[docs/README](docs/README.md)；概念与当前代码命名对照见[术语表](docs/glossary.md)，区分角色、控制器、活动、决策请求与预测/事实。FirstBoard/LLM 的恢复路径、清单与原始基线在 [归档索引](docs/archive/firstboard-llm.md)；其正文必须显式 `rg --no-ignore` 查阅，不能作为当前待办或测试基线。

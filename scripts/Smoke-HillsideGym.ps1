@@ -189,13 +189,20 @@ try {
         }) }
     }
     [IO.File]::WriteAllText($connectionsPath, ($connections | ConvertTo-Json -Depth 10), $utf8)
-    $common = @('--branch', $child, '--llm', '--gym', '--llm-connections', $connectionsPath)
+    $homePath = Join-Path $outputRoot 'home'
+    New-Item -ItemType Directory -Path $homePath | Out-Null
+    [IO.File]::WriteAllText((Join-Path $homePath 'playground.json'), '{"version":1}', $utf8)
+    $controlsA = Join-Path $homePath 'a-human.json'
+    $controlsB = Join-Path $homePath 'b-human.json'
+    [IO.File]::WriteAllText($controlsA, '{"version":1,"overrides":{"a":{"kind":"human-console"}}}', $utf8)
+    [IO.File]::WriteAllText($controlsB, '{"version":1,"overrides":{"b":{"kind":"human-console"}}}', $utf8)
+    $common = @('--home', $homePath, '--branch', $child, '--gym', 'record', '--llm-connections', $connectionsPath)
     $firstAudit = Join-Path $outputRoot '06-child-handoff.audit.jsonl'
-    $firstOutput = Invoke-GymCli '06-child-handoff' ($common + @('--human', 'a', '--steps', '1', '--llm-log', $firstAudit)) @('handoff gym-child-private')
+    $firstOutput = Invoke-GymCli '06-child-handoff' ($common + @('--character-controls', $controlsA, '--steps', '1', '--llm-log', $firstAudit)) @('handoff gym-child-private')
     $secondAudit = Join-Path $outputRoot '07-child-travel.audit.jsonl'
     # Successful a handoff yields fairly to b. The second process opens b's context,
     # then commits b's move; neither transition needs an LLM controller.
-    $secondOutput = Invoke-GymCli '07-child-travel' ($common + @('--human', 'b', '--steps', '2', '--llm-log', $secondAudit)) @('go home-workshop')
+    $secondOutput = Invoke-GymCli '07-child-travel' ($common + @('--character-controls', $controlsB, '--steps', '2', '--llm-log', $secondAudit)) @('go home-workshop')
     Assert-True ($firstOutput.Contains('山野镇住处') -and -not $secondOutput.Contains('gym-child-private')) 'Selected location was lost or actor b saw actor a private handoff.'
     foreach ($auditPath in @($firstAudit, $secondAudit)) {
         $audit = @([IO.File]::ReadAllLines($auditPath) | ForEach-Object { $_ | ConvertFrom-Json })

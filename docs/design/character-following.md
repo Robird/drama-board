@@ -200,7 +200,7 @@ OR（不在移动 AND 没有 Activity AND 没有 FollowingLeaderId）
 
 增加 `--survival --characters 1|2|3` 入口；新局默认 1。`--duo` 只在参数解析处归一到显式 count=2，不在内部继续传播 duo 布尔模式；与 --survival 或 --characters 同用时拒绝歧义组合。--characters 只适用于 --survival。恢复时，未显式给人数就使用存档角色数；显式数量与存档不符要报错。
 
-具体检查 [Program](../../src/Playground.Cli/Program.cs)、[PlayConsole](../../src/Playground.Cli/PlayConsole.cs)、[LlmConsole](../../src/Playground.Cli/LlmConsole.cs)、[宿主接线](../../src/Playground.Cli/PlayConsole.cs) 与 Gym 场景信息，包含两次模式校验、退出/续局提示和实际绑定审计；不能只放开工厂人数。不增加通用 roster 配置。
+具体检查 [Program](../../src/Playground.Cli/Program.cs)、[PlayConsole](../../src/Playground.Cli/PlayConsole.cs)、[PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)、[宿主接线](../../src/Playground.Cli/PlayConsole.cs) 与 Gym 场景信息，包含两次模式校验、退出/续局提示和实际绑定审计；不能只放开工厂人数。不增加通用 roster 配置。
 
 多人默认共用 Human Console；带 `--llm` 时保持 a 为 Human，其他角色使用现有角色路由绑定 LLM；单人 --survival --llm 继续由 LLM 控制 a。绑定从实际 Characters 构造，不能漏掉 c；继续复用无状态控制器与既有宿主调用预算，不按队员人数隐式增加预算。允许 LLM 或 Human 任一角色担当领队；不按控制器类型写玩法分支。
 

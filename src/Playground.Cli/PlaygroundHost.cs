@@ -11,53 +11,78 @@ using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Playground;
 using DramaBoard.Playground.Completion;
+using DramaBoard.Playground.Cli;
 
-internal sealed record LlmHostOptions(int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
-    string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null,
-    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null,
-    string? ConnectionsPath = null, string? CharacterConnectionsPath = null);
-
-/// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
-internal static class LlmConsole {
-    public static async Task<int> RunAsync(string? store, LlmHostOptions options, CancellationToken cancellationToken,
+/// <summary>Single serial runtime host. Only committed game state is recovery authority; model audit is evidence.</summary>
+internal static class PlaygroundHost {
+    public static async Task<int> RunAsync(string? store, PlaygroundHostOptions options, CancellationToken cancellationToken,
         TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, int? characterCount = null, TextReader? inputReader = null,
-        ICompletionClientFactory? clientFactory = null) {
+        ICompletionClientFactory? clientFactory = null, Action<PlaygroundDiagnosticRecord>? diagnosticSink = null) {
         cancellationToken.ThrowIfCancellationRequested();
         TextWriter output = outputWriter ?? Console.Out;
         if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) {
             throw new ArgumentException("Gym、反馈和分支运行需要 --store。");
         }
         LlmConnectionConfiguration? configuration = options.ConnectionsPath is { } configurationPath
-            ? LlmConnectionConfiguration.Load(configurationPath, options.CharacterConnectionsPath) : null;
-        if (configuration is null && options.CharacterConnectionsPath is not null) {
-            throw new ArgumentException("角色连接覆盖需要连接配置。");
+            ? LlmConnectionConfiguration.Load(configurationPath) : null;
+        CharacterControlConfiguration controls = options.Controls ?? (options.CharacterControlsPath is { } controlsPath
+            ? CharacterControlConfiguration.Load(controlsPath, configuration ?? throw new ArgumentException("角色控制文件需要连接目录。"))
+            : CharacterControlConfiguration.Empty);
+        if (options.MaxCalls < 1 || options.MaxFailures < 1 || options.MaxContextCharacters < 1) {
+            throw new ArgumentOutOfRangeException(nameof(options), "宿主预算必须为正数。");
         }
         using PlaygroundDurableHistory? durable = store is null ? null : Directory.Exists(store)
             ? options.Branch is null ? PlaygroundDurableHistory.Open(store) : PlaygroundDurableHistory.Open(store, options.Branch)
-            : options.Branch is null ? CreateStore(store, characterCount, options, configuration) : throw new ArgumentException("指定分支需要已有存档。");
+            : options.Branch is null ? CreateStore(store, characterCount, options, controls, configuration) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<PlaygroundWorld, PlaygroundFact> history;
         if (durable is not null) { history = durable; }
         else {
             var initial = PlaygroundGameFactory.Create(WorldHost.Definition(options.Content, characterCount));
             history = new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor);
         }
+        var bindings = controls.Resolve(history.State.Characters.Select(character => character.Id), configuration?.DefaultConnectionId ?? "fixture");
+        return await RunCoreAsync(history, store, durable, options, bindings, configuration, cancellationToken,
+            output, suppliedClient, characterCount, inputReader, clientFactory, diagnosticSink);
+    }
+
+    public static Task<int> RunAsync(IOccurrenceHistory<PlaygroundWorld, PlaygroundFact> history,
+        IReadOnlyDictionary<string, CharacterControlBinding> bindings, PlaygroundHostOptions options, CancellationToken cancellationToken,
+        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, TextReader? inputReader = null,
+        ICompletionClientFactory? clientFactory = null, Action<PlaygroundDiagnosticRecord>? diagnosticSink = null) =>
+        RunCoreAsync(history, null, null, options, bindings, null, cancellationToken, outputWriter ?? Console.Out,
+            suppliedClient, null, inputReader, clientFactory, diagnosticSink);
+
+    private static async Task<int> RunCoreAsync(IOccurrenceHistory<PlaygroundWorld, PlaygroundFact> history,
+        string? store, PlaygroundDurableHistory? durable, PlaygroundHostOptions options,
+        IReadOnlyDictionary<string, CharacterControlBinding> bindings, LlmConnectionConfiguration? configuration,
+        CancellationToken cancellationToken, TextWriter output, ICompletionClient? suppliedClient, int? characterCount,
+        TextReader? inputReader, ICompletionClientFactory? clientFactory, Action<PlaygroundDiagnosticRecord>? diagnosticSink = null) {
+        cancellationToken.ThrowIfCancellationRequested();
         WorldHost.RequireWorld(history.State, characterCount);
         WorldHost.RequireContent(history.State, options.Content);
         WorldHost.RequireBudget(history.State.Time, options.Until, options.MaxSteps);
-        RequireActors(history.State, options, configuration);
+        if (options.MaxCalls < 1 || options.MaxFailures < 1 || options.MaxContextCharacters < 1) { throw new ArgumentOutOfRangeException(nameof(options)); }
+        if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) { throw new ArgumentException("Gym、反馈和分支运行需要存档。"); }
+        if (bindings.Count != history.State.Characters.Count || history.State.Characters.Any(character => !bindings.ContainsKey(character.Id)) ||
+            bindings.Values.Any(binding => binding is not CharacterControlBinding.HumanConsole and not CharacterControlBinding.Llm)) {
+            throw new ArgumentException("控制绑定必须恰好覆盖本局全部角色。");
+        }
+        ValidateConnections(bindings, configuration);
+        bindings = bindings.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        string[] humanActors = bindings.Where(pair => pair.Value is CharacterControlBinding.HumanConsole).Select(pair => pair.Key).ToArray();
         await using LlmConnectionPool? pool = configuration is null ? null : new(configuration, clientFactory);
-        string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
-        using var audit = new LlmRunAudit(logPath, output, showModelDetails: options.HumanActor is null);
+        string logPath = options.LogPath ?? Path.Combine(store ?? options.HomePath ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
+        using var audit = new LlmRunAudit(logPath, output, showModelDetails: humanActors.Length == 0);
         using PlaygroundOperationJournal operations = store is null ? PlaygroundOperationJournal.CreateInMemory()
             : PlaygroundOperationJournal.Open(GymSession.OperationsPath(store, durable!));
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
         var forwarding = new RecordedController(operations);
-        var human = options.HumanActor is not null ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
-            inputReader: inputReader, outputWriter: output, operations: operations,
+        var human = humanActors.Length > 0 ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            inputReader: inputReader, outputWriter: output, writeBoundary: ReferenceEquals(output, Console.Out) ? PlayConsole.WriteBoundary : null, operations: operations,
             worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}") : null;
         IPlaygroundCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
             history.State.Characters.ToDictionary(character => character.Id,
-                character => character.Id == options.HumanActor ? (IPlaygroundCharacterController)human : forwarding, StringComparer.Ordinal));
+                character => bindings[character.Id] is CharacterControlBinding.HumanConsole ? (IPlaygroundCharacterController)human : forwarding, StringComparer.Ordinal));
         var kernel = PlaygroundEngine.CreateKernel(history, characterController: routed);
         bool recovered = kernel.RecoverPending(cancellationToken);
         WorldHost.RequireWorld(kernel.World, characterCount);
@@ -66,30 +91,39 @@ internal static class LlmConsole {
                 .Select(commit => new PlaygroundOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
         }
-        using GymSession? gym = options.Gym || options.Feedback ? new GymSession(store!, durable!, options, logPath, recovered) : null;
+        using GymSession? gym = options.Gym || options.Feedback ? new GymSession(store!, durable!, options, bindings, logPath, recovered) : null;
         audit.Gym = gym;
         gym?.CaptureCommitted(kernel.World, operations);
-        audit.Write("host", new { State = "ready", RecoveredPending = recovered, Store = store,
-            Version = kernel.Version.ToString(), Content = new { kernel.World.Definition.ContentId, kernel.World.Definition.Fingerprint }, Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = human is not null && character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),
+        audit.Write("host", new { State = "ready", RecoveredPending = recovered, Home = options.HomePath, Store = store,
+            Branch = durable?.CurrentBranch.BranchId, options.ConnectionsPath, options.CharacterControlsPath,
+            Gym = options.Feedback ? "feedback" : options.Gym ? "record" : "off", LogPath = Path.GetFullPath(logPath),
+            Version = kernel.Version.ToString(), Content = new { kernel.World.Definition.ContentId, kernel.World.Definition.Fingerprint }, Actors = kernel.World.Characters.Select(character => new { ActorId = character.Id, Controller = bindings[character.Id] is CharacterControlBinding.HumanConsole ? "Human" : "LLM",
+                ConnectionId = (bindings[character.Id] as CharacterControlBinding.Llm)?.ConnectionId }).ToArray(),
             Budget = new { options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps } });
-        string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == options.HumanActor ? "Human" : "LLM")}"));
-        output.WriteLine($"山野镇 / Hillside · 内容 {kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm、可选 --human 及连接配置。");
+        string bindingSummary = string.Join("，", bindings.Select(pair => $"{pair.Key} = {pair.Value}"));
+        output.WriteLine($"山野镇 / Hillside · home：{options.HomePath ?? "(程序注入)"} · store：{store ?? "(内存)"} · branch：{durable?.CurrentBranch.BranchId ?? "(内存)"}\n"
+            + $"内容：{kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindingSummary}\n"
+            + $"预算：calls={options.MaxCalls}, failures={options.MaxFailures}, context={options.MaxContextCharacters}, steps={options.MaxSteps}, until={options.Until} · Gym：{(options.Feedback ? "feedback" : options.Gym ? "record" : "off")}\n"
+            + $"连接配置：{options.ConnectionsPath ?? "(程序注入)"} · 控制配置：{options.CharacterControlsPath ?? "(默认/程序注入)"} · 日志：{Path.GetFullPath(logPath)}。Ctrl+C 暂停。");
+        if (recovered) { output.WriteLine("已完成上次中断时保存的行动；没有重新询问控制器。"); }
+        if (operations.DiscardedTailBytes > 0) { output.WriteLine($"操作记录末尾 {operations.DiscardedTailBytes} 字节未完整写入；游戏进度按已提交 E/S 恢复。"); }
         if (human is null) { output.WriteLine("全模型观战：以下模型材料为宿主观察证据，不是任何单个角色拥有的知识。"); }
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
         void DeliverTerminals() {
-            if (human is not null) { human.RenderCommitted(kernel.World, options.HumanActor!); }
+            if (human is not null) { foreach (string actorId in humanActors) { human.RenderCommitted(kernel.World, actorId); } }
             foreach (PlaygroundCharacter character in kernel.World.Characters.Where(character => !character.IsActive)) {
-                if ((human is null || character.Id != options.HumanActor) && deliveredTerminals.Add(character.Id)) {
+                if (bindings[character.Id] is not CharacterControlBinding.HumanConsole && deliveredTerminals.Add(character.Id)) {
                     Terminal(kernel.World, character.Id, audit);
                 }
             }
         }
+        bool publishingDiagnostics = false;
         try {
             // Initialize the external client only on an actual live LLM decision. A saved terminal b
             // and an early Human EOF require neither credentials nor a network client.
             forwarding.Inner = new LlmCharacterController(async (actorId, token) => {
                 if (configuration is not null) {
-                    return await pool!.GetAsync(configuration.GetConnectionId(actorId), token);
+                    return await pool!.GetAsync(((CharacterControlBinding.Llm)bindings[actorId]).ConnectionId, token);
                 }
                 if (suppliedClient is not null) {
                     return new LlmDecisionBinding(suppliedClient, "fixture-model", "fixture");
@@ -119,6 +153,9 @@ internal static class LlmConsole {
                     return 0;
                 }
                 completed++;
+                publishingDiagnostics = true;
+                PlaygroundContextDiagnostics.Publish(kernel.LastCompletion!, diagnosticSink);
+                publishingDiagnostics = false;
                 PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
                 gym?.CaptureCommitted(kernel.World, operations);
                 foreach (PlaygroundFact fact in kernel.LastCompletion!.Event.Facts) {
@@ -131,7 +168,7 @@ internal static class LlmConsole {
             }
         } catch (PlayConsole.PlayEndedException) {
             audit.Write("host-stop", new { Reason = "human-session-ended", Saved = store is not null });
-            output.WriteLine("Human 会话已结束；世界暂停。续局使用 --llm、可选 --human 与同一存档及连接配置。");
+            output.WriteLine("Human 会话已结束；世界暂停。续局使用同一实例与所需控制配置。");
             return 0;
         } catch (LlmControllerPausedException error) {
             audit.Write("host-stop", new { Reason = error.ReasonCode, error.CallsMade, Saved = store is not null });
@@ -139,9 +176,9 @@ internal static class LlmConsole {
             return 2;
         } catch (OperationCanceledException) {
             audit.Write("host-stop", new { Reason = "cancelled", Saved = store is not null });
-            output.WriteLine(store is null ? "LLM 已取消；本次内存进度未保存。" : "LLM 已取消；已提交进度保存在同一 --store 中。");
+            output.WriteLine(store is null ? "宿主已取消；本次内存进度未保存。" : "宿主已取消；已提交进度保存在同一 --store 中。");
             return 130;
-        } catch (Exception error) {
+        } catch (Exception error) when (!publishingDiagnostics) {
             // Provider/configuration exception messages may contain endpoint payloads. Never print them here.
             string reason = error switch {
                 CodexSubscriptionCredentialException credential => "credential/" + credential.Reason,
@@ -153,23 +190,26 @@ internal static class LlmConsole {
                 _ => "host-failure"
             };
             audit.Write("host-stop", new { Reason = reason, ErrorType = error.GetType().Name, Saved = store is not null });
-            output.WriteLine($"LLM 宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
+            output.WriteLine($"宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
             return 1;
         }
     }
 
-    private static PlaygroundDurableHistory CreateStore(string path, int? characterCount, LlmHostOptions options, LlmConnectionConfiguration? configuration) {
+    private static PlaygroundDurableHistory CreateStore(string path, int? characterCount, PlaygroundHostOptions options,
+        CharacterControlConfiguration controls, LlmConnectionConfiguration? configuration) {
         var initial = PlaygroundGameFactory.Create(WorldHost.Definition(options.Content, characterCount));
-        RequireActors(initial.World, options, configuration);
+        WorldHost.RequireWorld(initial.World, characterCount);
+        WorldHost.RequireBudget(initial.World.Time, options.Until, options.MaxSteps);
+        ValidateConnections(controls.Resolve(initial.World.Characters.Select(actor => actor.Id), configuration?.DefaultConnectionId ?? "fixture"), configuration);
         return PlaygroundDurableHistory.Create(path, initial.World, initial.Cursor);
     }
 
-    private static void RequireActors(PlaygroundWorld world, LlmHostOptions options, LlmConnectionConfiguration? configuration) {
-        if (options.HumanActor is { } human && !world.Characters.Any(actor => actor.Id == human)) {
-            throw new ArgumentException($"Human 角色 {human} 不在此游戏中。");
-        }
-        if (configuration is not null && configuration.OverrideActorIds.Any(id => !world.Characters.Any(actor => actor.Id == id))) {
-            throw new ArgumentException("角色连接覆盖包含此游戏中不存在的角色。");
+    private static void ValidateConnections(IReadOnlyDictionary<string, CharacterControlBinding> bindings, LlmConnectionConfiguration? configuration) {
+        foreach (CharacterControlBinding.Llm binding in bindings.Values.OfType<CharacterControlBinding.Llm>()) {
+            if (string.IsNullOrWhiteSpace(binding.ConnectionId) || configuration is not null &&
+                !configuration.ConnectionIds.Contains(binding.ConnectionId, StringComparer.Ordinal)) {
+                throw new ArgumentException("控制绑定引用了无效连接。");
+            }
         }
     }
 

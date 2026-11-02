@@ -9,9 +9,9 @@ namespace DramaBoard.Playground.Cli.Tests;
 public sealed class ContentHostTests {
     [Fact]
     public void Content_selection_is_explicit_and_is_not_an_administrative_option() {
-        Assert.Null(Options.Parse([]).Content);
-        Assert.Equal("gentle", Options.Parse(["--content", "gentle"]).Content);
-        Assert.Equal("hillside", Options.Parse(["--llm", "--llm-connections", "connections.json", "--content", "hillside"]).Llm!.Content);
+        Assert.Null(HostFixture.Resolve([]).Host.Content);
+        Assert.Equal("gentle", HostFixture.Resolve(["--content", "gentle"]).Host.Content);
+        Assert.Equal("hillside", HostFixture.Resolve(["--llm-connections", "connections.json", "--content", "hillside"]).Host.Content);
         Assert.Throws<ArgumentException>(() => Options.Parse(["--content", "unknown"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--content", "gentle", "--content", "hillside"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--store", "ignored", "--branches", "--content", "gentle"]));
@@ -24,7 +24,7 @@ public sealed class ContentHostTests {
         using var files = new Files();
         using var output = new StringWriter();
         PlaygroundWorldDefinition expected = PlaygroundWorldDefinitions.Named("gentle", characterCount: count);
-        Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, inputReader: new StringReader(":quit\n"),
+        Assert.Equal(0, await HostFixture.RunHumanAsync(files.Store, default, inputReader: new StringReader(":quit\n"),
             outputWriter: output, characterCount: count, content: "gentle"));
         using (var created = PlaygroundDurableHistory.Open(files.Store)) {
             Assert.Equal(expected.Fingerprint, created.State.Definition.Fingerprint);
@@ -33,13 +33,13 @@ public sealed class ContentHostTests {
             Assert.Equal(expected.InitialCharacters[0].Money, created.State.GetCharacter("a").Money);
         }
         foreach (string? content in new string?[] { null, "gentle" }) {
-            Assert.Equal(0, await PlayConsole.RunAsync(files.Store, default, inputReader: new StringReader(":quit\n"),
+            Assert.Equal(0, await HostFixture.RunHumanAsync(files.Store, default, inputReader: new StringReader(":quit\n"),
                 outputWriter: output, content: content));
             using var restored = PlaygroundDurableHistory.Open(files.Store);
             Assert.Equal(expected.Fingerprint, restored.State.Definition.Fingerprint);
             Assert.Equal(count, restored.State.Characters.Count);
         }
-        await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default,
+        await Assert.ThrowsAsync<ArgumentException>(() => HostFixture.RunHumanAsync(files.Store, default,
             inputReader: new StringReader(""), outputWriter: output, characterCount: count == 1 ? 2 : 1, content: "gentle"));
     }
 
@@ -65,10 +65,10 @@ public sealed class ContentHostTests {
         var client = new NeverCalled();
         using var output = new StringWriter();
         if (model) {
-            await Assert.ThrowsAsync<ArgumentException>(() => LlmConsole.RunAsync(files.Store,
+            await Assert.ThrowsAsync<ArgumentException>(() => PlaygroundHost.RunAsync(files.Store,
                 new(Content: "hillside", LogPath: files.Log), default, output, client));
         } else {
-            await Assert.ThrowsAsync<ArgumentException>(() => PlayConsole.RunAsync(files.Store, default,
+            await Assert.ThrowsAsync<ArgumentException>(() => HostFixture.RunHumanAsync(files.Store, default,
                 inputReader: new StringReader(""), outputWriter: output, content: "hillside"));
         }
         Assert.Equal(0, client.Calls);
@@ -79,16 +79,16 @@ public sealed class ContentHostTests {
             Assert.NotNull(stillPending.PendingEvent);
             Assert.Equal(beforeCursor, stillPending.Cursor);
         }
-        var options = new LlmHostOptions(LogPath: files.Log, Until: initial.World.Time);
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, options, default, output, client));
+        var options = new PlaygroundHostOptions(LogPath: files.Log, Until: initial.World.Time, Controls: model ? null : HostFixture.Humans("a"));
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, options, default, output, client, inputReader: new NeverRead()));
         Assert.Equal(0, client.Calls);
         using (var recovered = PlaygroundDurableHistory.Open(files.Store)) {
             Assert.Null(recovered.PendingEvent);
             Assert.Equal(planned.Cursor, recovered.Cursor);
             Assert.Equal("content-pending-once", recovered.State.Business.InteractionStates["a"].DraftHandoff);
         }
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, options with { LogPath = files.Log + ".second", Content = "gentle" },
-            default, output, client));
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, options with { LogPath = files.Log + ".second", Content = "gentle", Controls = model ? HostFixture.Humans("a") : null },
+            default, output, client, inputReader: new NeverRead()));
         using var reopened = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(planned.Cursor, reopened.Cursor);
         Assert.Equal(0, client.Calls);
@@ -112,6 +112,9 @@ public sealed class ContentHostTests {
     private sealed class Handoff : IPlaygroundCharacterController {
         public ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new PlaygroundControllerOperation("pending-tool", "handoff content-pending-once", "pending-record"));
+    }
+    private sealed class NeverRead : TextReader {
+        public override string? ReadLine() => throw new InvalidOperationException("Pending recovery and budget pause must not ask a Human.");
     }
     private sealed class NeverCalled : ICompletionClient {
         public int Calls { get; private set; }

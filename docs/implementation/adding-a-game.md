@@ -58,9 +58,9 @@ Schema 由构建工具生成并 Verify，不手工维护生成文件。表示变
 
 ## 6. 最后接宿主与 Gym
 
-薄 Console 负责配置、控制器绑定、取消和预算，领域规则不读终端。参考山野镇的 [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) 与 [LlmConsole](../../src/Playground.Cli/LlmConsole.cs)：先验证保存定义和显式内容选择，再恢复 pending、核对宿主回执，首次需要模型时才建立连接。Human 暂停/EOF 不伪造成角色行动；调用预算耗尽是实验暂停，不是游戏完成。
+薄 Console 负责配置、控制器绑定、取消和预算，领域规则不读终端。参考山野镇的 [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)：先验证保存定义和显式内容选择，再恢复 pending、核对宿主回执，首次需要模型时才建立连接。Human 暂停/EOF 不伪造成角色行动；调用预算耗尽是实验暂停，不是游戏完成。
 
-共享 `LlmConnectionConfiguration.Load(path, overridesPath?)` 冻结两文件配置，`GetConnectionId(actorId)` 按 opaque ID 选覆盖或默认；共享层不认识游戏角色集合。宿主校验 override 角色属于本局，Human 绑定优先。一个 `LlmConnectionPool` 按 connection ID 惰性创建并拥有客户端，一个 `LlmDecisionLoop` 共享总调用与失败预算；单次决策固定连接和原生 Tail。配置和凭据不放进领域根或存档，续局可重新选择，详见[多模型连接](../design/multi-llm-connections.md)。
+共享 `LlmConnectionConfiguration.Load(path)` 冻结连接目录；CLI 的 `CharacterControlConfiguration` 冻结 typed 控制覆盖，宿主验证本局角色并解析为 HumanConsole 或 Llm(ConnectionId)，未覆盖者使用默认连接。一个 `LlmConnectionPool` 按 connection ID 惰性创建并拥有客户端，一个 `LlmDecisionLoop` 共享总调用与失败预算；单次决策固定连接和原生 Tail。配置和凭据不放进领域根或存档，续局可重新选择，详见[多模型连接](../design/multi-llm-connections.md)。
 
 每次模型请求捕获真实决定前完成 S，不能只用决策轮号缓存锚点，因为拒绝和即时操作也会提交新 S。反馈先持久化再给工具回执。宿主日志的操作记录与领域 E/S 分开提交；冷开仅补齐可证明已完成的回执，对没有提交的输入标中断，不从日志重放。
 

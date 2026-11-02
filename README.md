@@ -20,42 +20,37 @@ dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ## 启动山野镇
 
 ```powershell
-# 默认三名居民 a、b、c，共用 Human Console 轮流行动：
-dotnet run --project src/Playground.Cli -c Release -- --store artifacts/my-hillside
-
-# 恢复同一存档；省略人数则沿用存档：
-dotnet run --project src/Playground.Cli -c Release -- --store artifacts/my-hillside
-
-# 单人新局，最多提交 200 个转换、模拟不超过绝对小时 32：
-dotnet run --project src/Playground.Cli -c Release -- --characters 1 --store artifacts/my-solo-hillside --steps 200 --until-hour 32
+# init 只创建 version 1 manifest；连接目录在全 Human 时也必须结构有效。
+dotnet run --project src/Playground.Cli -c Release -- init --home artifacts/my-hillside
+Copy-Item config/llm-connections.example.json artifacts/my-hillside/llm-connections.json
+# 三角色全 Human 试玩；该覆盖文件显式选择才生效：
+dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillside --character-controls config/playground-all-human.example.json
+# 同一 home 再运行即续局；省略控制覆盖则默认全 LLM：
+dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillside --max-calls 16
 
 dotnet run --project src/Playground.Cli -c Release -- --help
 ```
+
+home 示例见 [manifest](config/playground.example.json)。home 内的路径以 home 为基准，CLI 路径以 CWD 为基准；CWD 本身是 home 时可省略 `--home`，不搜索父目录。`--ephemeral` 选择内存世界，仍要求 home 与有效连接目录。init 不创建存档、不调用模型。
 
 新局默认从 D0 08:00 的镇中住处开始。`--characters 1|2|3` 只选择人数；恢复时显式人数必须与存档一致。居民拥有各自的身体、背包、现金、Goals、Context 和探索知识，共用时间、资源与天气。当前默认初始身体为 80/80/80，每人有三份食物、三份水和 12 钱；这些是有限初始资产，回镇不会自动补满。
 
 新局可选 `--content hillside|gentle`，默认 hillside。gentle 减缓消耗、缩短镇营通路及口粮制作时间，并调整资源、市场和天气。续局省略 `--content` 会读取保存定义；显式选择不符则拒绝，不改写旧局。普通 C# 内容入口、指纹与支持范围见[内容定义](docs/codex-goals/living-world/content.md)。下文具体数值描述默认 hillside。构建后可用 `pwsh -NoProfile -File scripts/Smoke-HillsideContent.ps1` 验证命名变体与冷开。
 
-每个需要决策的角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。无 `--store` 时只在内存中运行；指定存档后每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
+每个需要决策的 Human 角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。默认保存到 home 下的 `store/`；`--store PATH` 可覆盖，每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
 
 `:quit`、`:exit`、EOF 或 Ctrl+C 暂停当前宿主。`--steps` 默认 10000，是本次运行提交转换数的上限；`--until-hour` 是从 D0 00:00 起的**绝对模拟小时**，省略则没有该时限。预算结束不会宣告世界终局，继续运行可设置更大的时间上限。世界只跳到实际事件，若上界没有事件，时间保留在最后完成事件的位置。所有居民死亡后宿主停止；一名居民死亡不会结束其他人的生活。
 
 ## 让模型参与
 
 ```powershell
-# 三名居民全由模型控制，所有角色共用本次调用预算：
-dotnet run --project src/Playground.Cli -c Release -- --llm --llm-connections config/llm-connections.example.json --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
-
-# Human Console 控制 b，模型控制 a 与 c；a/b/c 均可被选择：
-dotnet run --project src/Playground.Cli -c Release -- --llm --human b --llm-connections config/llm-connections.example.json --character-connections config/playground-character-connections.example.json --store artifacts/my-mixed-hillside --max-calls 64
-
-# 恢复同一存档时改变绑定：
-dotnet run --project src/Playground.Cli -c Release -- --llm --human a --llm-connections config/llm-connections.example.json --character-connections config/playground-character-connections.example.json --store artifacts/my-mixed-hillside --max-calls 64
+# 默认所有角色使用连接目录的 defaultConnectionId：
+dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillside --max-calls 128 --until-hour 32
+# a=Human、b=deliberate，其余使用默认连接；续局可更换覆盖：
+dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillside --character-controls config/playground-character-controls.example.json --max-calls 64
 ```
 
-`--llm` 默认控制所有角色；`--human ID` 必须与 `--llm` 同用，且 ID 必须属于当前存档。不带 `--llm` 时所有角色交给共享 Human Console。绑定在启动/恢复边界选择，保留原角色身份、背包、目标和个人材料；没有运行中热切换。模型控制器与 Human 使用同一领域行动及冻结角色材料。全模型观战输出属于宿主观察证据，不是任一角色的额外知识。
-
-`--llm` 必须显式提供 `--llm-connections PATH`，可选 `--character-connections PATH` 按角色覆盖。仓内[连接示例](config/llm-connections.example.json)含两个 Codex `gpt-6.1-sol` 连接：默认 `quick` 使用 low，`deliberate` 使用 medium；只需已有 Codex 登录。[角色覆盖示例](config/playground-character-connections.example.json)令 b 使用 `deliberate`，其余角色回退 `quick`。Human 优先，Human 的覆盖可以保留待下次改回模型控制时使用。未知角色、未知连接、显式缺失文件都在启动时报告错误。
+[角色控制示例](config/playground-character-controls.example.json)使用 typed 绑定：`human-console` 或 `llm` 加 `connectionId`。绑定只在宿主启动时选择，不进入世界存档。未覆盖角色使用默认 LLM；`--no-character-controls` 清除 home 中的覆盖选择。未知角色、未知连接、缺失文件与非法形状均报错。全 Human 不读取凭据或创建客户端，但连接目录仍必须结构合法；单角色新局应使用仅含 a 的覆盖文件。
 
 配置在每次启动冻结；续局可换配置，不改变角色与世界存档。凭据与客户端只在实际调用相应连接时读取/创建，按连接缓存，由宿主释放。可复制示例为 `config/*.local.json` 后修改，这类本机文件已忽略。旧 `--model`、`--auth-file`、`--catalog`、`--connection` 已删除，没有兼容入口；模型与认证设置放进连接配置。完整格式与边界见[多模型连接设计](docs/design/multi-llm-connections.md)。
 
@@ -107,7 +102,7 @@ dotnet run --project src/Playground.Cli -c Release -- --llm --human a --llm-conn
 
 每个非空 Console 提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
 
-Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
+Gym 使用 `--gym off|record|feedback`，默认 off，启用记录需要磁盘 store，管理命令包括 `--branches`、`--gym-feedbacks`、`--gym-export` 和分叉命令；详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
 
 ## 原型与历史证据
 

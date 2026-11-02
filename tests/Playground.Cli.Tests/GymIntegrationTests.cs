@@ -16,8 +16,8 @@ public sealed class GymIntegrationTests {
         var client = new Client(feedback, Act("handoff model-private"));
         using var input = new StringReader("handoff human-private\nwait 1\n");
         using var output = new StringWriter();
-        var options = files.Options(2) with { HumanActor = "a" };
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, options, default, output, client, characterCount: 2, inputReader: input));
+        var options = files.Options(2) with { Controls = HostFixture.Humans("a") };
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, options, default, output, client, characterCount: 2, inputReader: input));
 
         var snapshot = files.Read();
         JsonElement builds = Assert.Single(snapshot.Records, record => record.Kind == "run-start").Payload.GetProperty("Builds");
@@ -65,7 +65,7 @@ public sealed class GymIntegrationTests {
         // Items, but the host-only tool must create neither extra game transitions nor experiences.
         using var baselineFiles = new Files(characterCount: 2);
         using var baselineInput = new StringReader("handoff human-private\nwait 1\n");
-        Assert.Equal(2, await LlmConsole.RunAsync(baselineFiles.Store, baselineFiles.Options(1) with { HumanActor = "a" }, default, output,
+        Assert.Equal(2, await PlaygroundHost.RunAsync(baselineFiles.Store, baselineFiles.Options(1) with { Controls = HostFixture.Humans("a") }, default, output,
             new Client(Act("handoff model-private")), characterCount: 2, inputReader: baselineInput));
         using var baseline = PlaygroundDurableHistory.Open(baselineFiles.Store);
         Assert.Equal(baseline.Cursor.Version.TransitionCount, state.Cursor.Version.TransitionCount);
@@ -96,8 +96,8 @@ public sealed class GymIntegrationTests {
     public async Task Two_runs_and_early_fork_keep_parent_future_out_of_child_trace_and_state() {
         using var files = new Files();
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(2), default, output, new Client(Feedback(), Act("use item.water"))));
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, new Client(Act("handoff parent-future-only"))));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(2), default, output, new Client(Feedback(), Act("use item.water"))));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, new Client(Act("handoff parent-future-only"))));
         GymJournalSnapshot parentSnapshot = files.Read();
         GymRecord request = parentSnapshot.Records.First(r => r.Kind == "request");
         var source = request.Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>()!;
@@ -110,7 +110,7 @@ public sealed class GymIntegrationTests {
         }
         PlaygroundBranchForkResult fork = Fork(files, request, "alternate");
         var childClient = new Client(Act("handoff child-only"));
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, childClient));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, childClient));
         using (var child = PlaygroundDurableHistory.Open(files.Store, fork.Branch.BranchId)) {
             Assert.Equal(45 * PlaygroundSurvival.Scale, child.State.GetCharacter("a").Survival!.WaterUnits);
             Assert.Equal("child-only", child.State.Business.InteractionStates["a"].DraftHandoff);
@@ -138,7 +138,7 @@ public sealed class GymIntegrationTests {
     public async Task Fork_from_feedback_followup_preserves_prior_evidence_but_restarts_from_clean_game_context() {
         using var files = new Files();
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(2), default, output,
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(2), default, output,
             new Client(Feedback(), Act("create-goal {\"title\":\"parent-later-goal\",\"criteria\":\"parent-later-criterion\"}"))));
         GymJournalSnapshot original = files.Read();
         GymRecord[] parentRequests = original.Records.Where(r => r.Kind == "request").ToArray();
@@ -160,7 +160,7 @@ public sealed class GymIntegrationTests {
             Assert.DoesNotContain("fixture-obstacle", CharacterContextRenderer.RenderFull(interaction, new DecisionPlayLayout()));
         }
         var client = new Client(Act("handoff child-after-feedback"));
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, client));
         Assert.Empty(client.Requests.Single().TailMessages);
         Assert.DoesNotContain("fixture-obstacle", Assert.IsType<ObservationMessage>(client.Requests.Single().PromptPrefix.SharedContextMessages.Single()).Content);
 
@@ -208,7 +208,7 @@ public sealed class GymIntegrationTests {
         PlaygroundBranchForkResult fork = PlaygroundDurableHistory.Fork(files.Store, boundary.BranchId, boundary.StateCommitId, "a", "pending-isolation");
         using var output = new StringWriter();
         var client = new Client(Act("handoff child-pending-safe"));
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, client));
         Assert.Equal(originalOperations, File.ReadAllBytes(operationsPath));
         using (var parent = PlaygroundDurableHistory.Open(files.Store, boundary.BranchId)) {
             Assert.Equal(parentHead, parent.CurrentBranch.HeadCommitId);
@@ -230,7 +230,7 @@ public sealed class GymIntegrationTests {
     public async Task Feedback_only_pause_preserves_world_and_cold_open_starts_fresh_local_tool_loop() {
         using var files = new Files();
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, new Client(Feedback())));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, new Client(Feedback())));
         string stateCommit;
         using (var paused = PlaygroundDurableHistory.Open(files.Store)) {
             stateCommit = paused.CurrentBranch.CompletedStateCommitId!;
@@ -240,7 +240,7 @@ public sealed class GymIntegrationTests {
             Assert.Equal(15 * PlaygroundTime.Hour, paused.State.Time.Ticks);
         }
         var resumed = new Client(Act("handoff after-feedback-pause"));
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, resumed));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, resumed));
         Assert.Empty(resumed.Requests.Single().TailMessages);
         Assert.DoesNotContain("fixture-obstacle", Assert.IsType<ObservationMessage>(resumed.Requests.Single().PromptPrefix.SharedContextMessages.Single()).Content);
         GymJournalSnapshot snapshot = files.Read();
@@ -309,7 +309,7 @@ public sealed class GymIntegrationTests {
                 using var saved = PlaygroundDurableHistory.Create(Store, initial.World, initial.Cursor);
             }
         }
-        public LlmHostOptions Options(int maxCalls, string? branch = null) => new(MaxCalls: maxCalls,
+        public PlaygroundHostOptions Options(int maxCalls, string? branch = null) => new(MaxCalls: maxCalls,
             LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"), Gym: true, Feedback: true, Branch: branch);
         public GymJournalSnapshot Read() => GymJournal.Read(GymSession.JournalPath(Store));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }

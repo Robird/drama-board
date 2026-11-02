@@ -1,6 +1,6 @@
 # Playground 实例目录与启动配置
 
-状态：home 初稿经过三位独立审阅者、两轮辩证审阅；其后按用户明确选择，改为“默认 LLM＋逐角色控制绑定覆盖”，并完成源码可行性检查，尚未实现。本文命令与字段是拟议接口；当前可执行入口仍见[根 README](../../README.md)。本轮仅设计与文档，不修改运行代码。
+状态：已实施。home、typed 角色控制、统一宿主与当前消费者已迁移；工程与实际 CLI 证据见[实施验收](../experiments/playground-home-acceptance.md)。本次真实模型尝试遇到 transport failure，未作为在线成功。
 
 ## 1. 目标与需求账本
 
@@ -9,16 +9,16 @@
 | 需求与约束 | 来源与证据 | 裁决边界 |
 | --- | --- | --- |
 | 缩短日常启动命令，配置与存档通常放在一起，允许局部开发覆盖 | 用户本轮前的直接诉求 | 必须支持 |
-| 写方案并进行辩证简化；本轮不实施代码 | 用户本轮直接要求 | 文档编辑已授权 |
+| 先写方案并进行辩证简化，再按方案实施 | 用户前轮设计要求与本轮明确实施授权 | 方案与实现证据分开记录 |
 | 不承担旧接口兼容包袱 | 用户此前连续实施任务的明确选择；本设计延续 | 不设旧参数兼容层；不能据此删除世界或改写历史证据 |
 | 默认所有角色使用 LLM DefaultConnection；逐角色覆盖为指定 LLM Connection 或 Human Console | 用户最新明确采纳的双层映射方案 | 替换全局 Human/LLM 开关和特殊 Human 优先通道 |
 | 控制绑定仅属于运行时配置，不进入 DurableGraph 持久化领域模型 | 用户本轮明确要求；第 5 节源码可行性证据 | 不增加领域字段、事件、Schema 或 GameRevision |
-| 连接目录、按需凭据、共享调用预算与实际调用身份 | [多连接设计](multi-llm-connections.md)、[配置读取](../../src/CharacterControl.Completion/LlmConnectionConfiguration.cs)、[LLM 宿主](../../src/Playground.Cli/LlmConsole.cs) | 保留调用合同；旧角色连接覆盖升级为控制绑定，不保留双路由 |
-| 内存运行、磁盘冷开、多分支管理、只读查询/导出与显式 fork | [CLI](../../src/Playground.Cli/Program.cs)、[Human 宿主](../../src/Playground.Cli/PlayConsole.cs)、[管理入口](../../src/Playground.Cli/Gym/GymCommands.cs) | 保留真实用途，不为旧命令拼写保留双实现 |
+| 连接目录、按需凭据、共享调用预算与实际调用身份 | [多连接设计](multi-llm-connections.md)、[配置读取](../../src/CharacterControl.Completion/LlmConnectionConfiguration.cs)、[统一宿主](../../src/Playground.Cli/PlaygroundHost.cs) | 保留调用合同；旧角色连接覆盖升级为控制绑定，不保留双路由 |
+| 内存运行、磁盘冷开、多分支管理、只读查询/导出与显式 fork | [CLI](../../src/Playground.Cli/Program.cs)、[统一宿主](../../src/Playground.Cli/PlaygroundHost.cs)、[管理入口](../../src/Playground.Cli/Gym/GymCommands.cs) | 保留真实用途，不为旧命令拼写保留双实现 |
 | 单进程串行驱动，E/S 为游戏恢复权威，pending 不重问控制器 | 上述宿主代码与[初始化设计](game-initialization-and-revision.md) | 不增加服务、配置数据库、运行中热更新或跨进程调度 |
 | home 标识、init、路径与参数覆盖细节 | 助手建议与前轮审阅裁决 | 延续可用部分；撤回“init 后默认 Human 即可玩”的旧建议 |
 
-本文与上轮建议来自同一提案，不作为彼此的独立证据。拟议默认值与可见行为接受下文审阅；未来多人协作、云同步、多应用通用 workspace 均没有当前消费者。
+本文保留设计裁决与约束，实际实现证据另见验收文档；未来多人协作、云同步、多应用通用 workspace 均没有当前消费者。
 
 ## 2. 目录与使用
 
@@ -53,7 +53,7 @@ playground --home E:\playgrounds\hillside --branches
 
 `--help` 不要求有效 home。`init` 可作用于不存在或已有的目录，仅使用 CreateNew 写入一个 `playground.json`，内容为 `{ "version": 1 }`；文件已存在即拒绝。它不创建 store、不打开模型、不检查或改写已有存档。不引入多文件初始化、回滚或修复模式；单文件写入发生 I/O 失败时如实报告，不能把残留的坏文件认作有效 home。
 
-默认绑定为 LLM，因此 init 只完成目录标识，并不代表模型配置已就绪。首次运行前，将现有[连接示例](../../config/llm-connections.example.json)复制为 home 内 `llm-connections.json`，或在 manifest 中指向已有文件；必要时调整其默认连接。需要角色覆盖时再准备第 3 节格式的 `character-controls.json` 并显式填写其路径。旧[角色连接示例](../../config/playground-character-connections.example.json)是当前实现格式，实施时替换，不直接作为新协议使用。
+默认绑定为 LLM，因此 init 只完成目录标识，并不代表模型配置已就绪。首次运行前，将现有[连接示例](../../config/llm-connections.example.json)复制为 home 内 `llm-connections.json`，或在 manifest 中指向已有文件；必要时调整其默认连接。需要角色覆盖时再准备第 3 节格式的 `character-controls.json` 并显式填写其路径。[角色控制示例](../../config/playground-character-controls.example.json)和[全 Human 示例](../../config/playground-all-human.example.json)采用新协议。
 
 init 明确输出“已创建启动文件；运行前需准备默认连接配置”，并指向同一文档/示例；不内嵌第二份 provider 模板。正常启动若缺少连接配置即报错，不能退回 Console，也不能暗中选择模型。完成一次配置后，只传 home 或在其 CWD 启动即可按配置运行。
 
@@ -153,7 +153,7 @@ CLI 只能选择/清除控制文件，不再逐角色叠加第三层覆盖：删
 | [业务状态](../../src/Playground/PlaygroundModels.cs)、[持久根](../../src/Playground/Persistence/PlaygroundDurableRoot.cs)、[持久事件](../../src/Playground/Persistence/PlaygroundDurableEvent.cs) | 保存世界/角色材料、游标、修订及已决定事实，没有控制绑定；保持此边界 |
 | [LivingWorldHostTests](../../tests/Playground.Cli.Tests/LivingWorldHostTests.cs)、[MultiConnectionHostTests](../../tests/Playground.Cli.Tests/MultiConnectionHostTests.cs) | 已有冷开改为 Human、冷开换连接与共享预算的测试；证明现有 API 支持，非本轮重新运行的验收 |
 | [恢复测试](../../tests/Playground.Cli.Tests/OperationRecoveryIntegrationTests.cs)及宿主 RecoverPending 调用 | 已发布行动按记录恢复，不重新调用控制器；绑定更换不应改变此顺序 |
-| [LlmConsole](../../src/Playground.Cli/LlmConsole.cs)、[GymSession](../../src/Playground.Cli/Gym/GymSession.cs) | 当前多处比较单个 HumanActor，包括路由、终局输出、观战材料与 run-start；必须一起改用同一完整绑定映射 |
+| [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)、[GymSession](../../src/Playground.Cli/Gym/GymSession.cs) | 实施前多处比较单个 HumanActor；本次路由、终局输出、观战材料与 run-start 已统一使用完整绑定映射 |
 
 **持久化禁区**：不把控制 kind、ConnectionId、默认绑定、home 路径、客户端或控制器引用加入 `PlaygroundBusinessState`、角色、WorldDefinition、Context、`PlaygroundDurableRoot` 或游戏事件。不新增“控制器切换”领域事件，不更新内容指纹、Schema 或 GameRevision。角色身份、记忆、活动和行动事实仍按既有领域模型持久化；ToolCallId/OperationRecordId 等原有操作来源字段保留，它们不代表控制策略。
 
@@ -165,7 +165,7 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 建议从 `Options.Parse` 拆出显式命令行解析、home 文件读取与生效选项解析，采用普通内部 record/函数。控制绑定用区分 HumanConsole 与 Llm(ConnectionId) 的只读值表达，启动时按本局实际角色生成唯一完整只读字典；路由、呈现、启动摘要、Gym 均消费它，不各自重复“Human 优先”判断。
 
-将 PlayConsole/LlmConsole 重复的存档开启、pending 恢复、操作对账、循环预算和退出处理收敛为一个宿主执行流程，名称使用中性的 Playground 运行宿主概念；Console 控制器及 LLM adapter 分别保留。所有 Human 角色共用一个 Console 实例，所有 LLM 角色共用一个 loop 与连接 pool，客户端只在实际调用时创建。没有 Human 时不等待终端；全部 Human 时不创建模型客户端，不读取认证。不要为每个角色新建 loop 而重置共享调用预算。
+原 PlayConsole/LlmConsole 重复的存档开启、pending 恢复、操作对账、循环预算和退出处理已收敛为一个宿主执行流程，名称使用中性的 Playground 运行宿主概念；Console 控制器及 LLM adapter 分别保留。所有 Human 角色共用一个 Console 实例，所有 LLM 角色共用一个 loop 与连接 pool，客户端只在实际调用时创建。没有 Human 时不等待终端；全部 Human 时不创建模型客户端，不读取认证。不要为每个角色新建 loop 而重置共享调用预算。
 
 呈现/日志同步适配：按 Human 角色集合交付各自 Context 和终局材料；只要存在 Human 角色，就继续避免将其他 LLM 的完整请求、推理或私有材料直接打印到共享玩家终端。共享终端不承诺隔离同一操作者对不同 Human 角色的记忆。Console 已在解析前记录输入，LLM 的 RecordedController 记录模型返回操作，统一宿主不能把两条入口重复包裹而记录两次。Gym/run-start 按映射记录全部角色；Human 不伪造 connection/model/protocol，LLM 请求仍按实际 trace 记录这些身份。
 
@@ -173,7 +173,7 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 正常运行的新局先在内存构造 initial，使用同一个 initial 校验已知角色与预算后再 `PlaygroundDurableHistory.Create`，不重复创建世界、不在报错后删除存档回滚。已有 store 的一致性验证、pending 恢复和决策顺序保持原合同。凭据只在实际首次模型调用才解析。
 
-这里包含一项有证据的相邻技术债：当前 `PlayConsole.RunAsync` 和 `LlmConsole.RunAsync` 都可能先创建 store，再调用 `WorldHost.RequireBudget`；新目录配 `--until-hour 0`，初始时间 08:00，会先留下存档再拒绝。这是源码顺序推导，本轮未运行失败实验。实施时把同一预算校验前移到创建边界；保证仅限静态配置及创建前可知的新局角色/预算错误不创建 store。I/O、凭据、日志写入或远端调用失败不承诺零残留，不扩展成启动事务。
+实施前 `PlayConsole.RunAsync` 和 `LlmConsole.RunAsync` 可能先创建 store，再校验预算；本次已把新局角色和预算的可知校验前移到创建边界。该保证仅限静态配置及创建前可知错误；I/O、凭据、日志写入或远端调用失败不承诺零残留，不扩展成启动事务。
 
 运行启动摘要打印实际 home/store/branch、控制绑定、预算、Gym 模式、所选配置路径和日志位置，不打印连接配置全文或凭据。实际模型调用仍以原有 trace 身份为准；不增加完整配置快照日志或第二份恢复权威。管理命令保留当前机器可读输出，不向 `--branches` 的 JSONL stdout 前插普通文字，也不额外产生成功 stderr；直接 store 的定位规则写入帮助和文档。
 
@@ -221,4 +221,4 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 前轮审阅存在两项便利性取舍：一位审阅者偏好 init 同时复制连接示例，并接受所有管理均要求 home。单文件 init 与显式 store 管理仍保留；默认 LLM 改变了初始化后的体验，因此本版明确 init 不等于可运行，准备连接后才可启动，不再声称默认 Human 开箱即玩。允许管理同时传 home/store、由显式 store 胜出。后两项仍是方案细节建议；双层映射及不进入 DurableGraph 则为用户明确裁决。
 
-可观察的缩减：两个 Gym 设置合为一个；删除 newGame 对象及来源分流、可选文件探测；init 从两次文件创建减为一次；再删除全局控制模式与特殊 Human 字段，角色控制和模型选择合为一个绑定。下一步是第 6 节的实施切片，本轮仅授权更新重构方案，不代表已获代码实施指令。
+可观察的缩减：两个 Gym 设置合为一个；删除 newGame 对象及来源分流、可选文件探测；init 从两次文件创建减为一次；再删除全局控制模式与特殊 Human 字段，角色控制和模型选择合为一个绑定。第 6 节的实施切片已完成，日志与统一反馈仍按第 7 节独立延期。

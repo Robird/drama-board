@@ -15,10 +15,17 @@ if ((Test-Path -LiteralPath $outputRoot) -and (Get-ChildItem -LiteralPath $outpu
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 $storePath = Join-Path $outputRoot 'world'
 $utf8 = [Text.UTF8Encoding]::new($false)
+$homePath = Join-Path $outputRoot 'home'
+New-Item -ItemType Directory -Path $homePath | Out-Null
+[IO.File]::WriteAllText((Join-Path $homePath 'playground.json'), '{"version":1,"characterControls":"controls.json"}', $utf8)
+Copy-Item (Join-Path $repoRoot 'config/llm-connections.example.json') (Join-Path $homePath 'llm-connections.json')
+$overrides = @{ a = @{ kind = 'human-console' } }
+if ($Scenario -eq 'Trade') { $overrides.b = @{ kind = 'human-console' } }
+[IO.File]::WriteAllText((Join-Path $homePath 'controls.json'), (@{ version = 1; overrides = $overrides } | ConvertTo-Json -Depth 5), $utf8)
 
 function Invoke-Console([string]$Name, [string[]]$Commands, [bool]$NewWorld) {
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
-    foreach ($argument in @($cliPath, '--store', $storePath, '--steps', '1000', '--until-hour', '32')) {
+    foreach ($argument in @($cliPath, '--home', $homePath, '--store', $storePath, '--steps', '1000', '--until-hour', '32')) {
         $start.ArgumentList.Add($argument)
     }
     if ($NewWorld) {

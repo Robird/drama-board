@@ -5,34 +5,24 @@ using Atelia.Completion;
 
 namespace DramaBoard.CharacterControl.Completion;
 
-/// <summary>Frozen host routing configuration. Actor existence is validated by the game host.</summary>
+/// <summary>Frozen connection catalog. Credentials are resolved only by the connection pool on use.</summary>
 public sealed class LlmConnectionConfiguration {
     private readonly FrozenDictionary<string, CompletionConnectionConfig> _connections;
-    private readonly FrozenDictionary<string, string> _overrides;
     public string DefaultConnectionId { get; }
     public IReadOnlyList<string> ConnectionIds { get; }
-    public IReadOnlyList<string> OverrideActorIds { get; }
 
-    private LlmConnectionConfiguration(CompletionConnectionCatalogConfig catalog, string defaultId, Dictionary<string, string> overrides) {
+    private LlmConnectionConfiguration(CompletionConnectionCatalogConfig catalog, string defaultId) {
         _connections = catalog.Connections.ToFrozenDictionary(x => x.Id, StringComparer.Ordinal);
         if (!_connections.ContainsKey(defaultId)) { throw new InvalidDataException("Default connection does not exist in the catalog."); }
-        if (overrides.Values.Any(id => !_connections.ContainsKey(id))) { throw new InvalidDataException("An actor override references an unknown connection."); }
         DefaultConnectionId = defaultId;
-        _overrides = overrides.ToFrozenDictionary(StringComparer.Ordinal);
         ConnectionIds = Array.AsReadOnly(catalog.Connections.Select(x => x.Id).ToArray());
-        OverrideActorIds = Array.AsReadOnly(overrides.Keys.ToArray());
-    }
-
-    public string GetConnectionId(string actorId) {
-        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
-        return _overrides.GetValueOrDefault(actorId) ?? DefaultConnectionId;
     }
 
     internal CompletionConnectionConfig GetConnection(string connectionId) =>
         _connections.TryGetValue(connectionId, out var connection) ? connection
             : throw new ArgumentException("Unknown LLM connection ID.", nameof(connectionId));
 
-    public static LlmConnectionConfiguration Load(string path, string? overridesPath = null) {
+    public static LlmConnectionConfiguration Load(string path) {
         using JsonDocument document = Read(path);
         JsonElement root = document.RootElement;
         RequireProperties(root, "version", "defaultConnectionId", "catalog");
@@ -40,22 +30,7 @@ public sealed class LlmConnectionConfiguration {
         string defaultId = Identifier(root.GetProperty("defaultConnectionId"));
         var catalog = CompletionConnectionConfigLoader.DecodeCatalogWithoutEnvironment(
             Encoding.UTF8.GetBytes(root.GetProperty("catalog").GetRawText()));
-        var overrides = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (overridesPath is not null) {
-            using JsonDocument overridesDocument = Read(overridesPath);
-            JsonElement overridesRoot = overridesDocument.RootElement;
-            RequireProperties(overridesRoot, "version", "overrides");
-            RequireVersion(overridesRoot);
-            JsonElement values = overridesRoot.GetProperty("overrides");
-            if (values.ValueKind != JsonValueKind.Object) { throw new InvalidDataException("Actor overrides must be an object."); }
-            foreach (JsonProperty item in values.EnumerateObject()) {
-                if (string.IsNullOrWhiteSpace(item.Name) || Encoding.UTF8.GetByteCount(item.Name) > 256 ||
-                    !overrides.TryAdd(item.Name, Identifier(item.Value))) {
-                    throw new InvalidDataException("Actor overrides contain an invalid or duplicate actor ID.");
-                }
-            }
-        }
-        return new(catalog, defaultId, overrides);
+        return new(catalog, defaultId);
     }
 
     private static JsonDocument Read(string path) {

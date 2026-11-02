@@ -11,7 +11,7 @@
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
 | 实验应用（Playground） | 用于组合、试验和验证世界模拟机制的开发期可交互游戏原型；不追求商业游戏的游戏性，不预设通用游戏框架。 | 应用项目与类型已按此名称统一；实施及验收见[重命名说明](implementation/playground-rename.md)。见[实践参照与命名交接](research/playground-development-practices.md)。 |
-| 运行实例目录（home） | 将宿主启动设置、连接配置与默认世界存档组织在一起的目录；不是操作系统用户目录，也不构成世界身份或恢复权威。 | [方案](design/playground-home.md)已完成辩证审阅，尚未实现；拟由 Playground.Cli 负责发现与解析。 |
+| 运行实例目录（home） | 将宿主启动设置、连接配置与默认世界存档组织在一起的目录；不是操作系统用户目录，也不构成世界身份或恢复权威。 | [方案](design/playground-home.md)由 Playground.Cli 实施；manifest 标识 home，仅选择当前目录或显式路径。 |
 | 山野镇（Hillside） | 融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 由 Playground 项目和 Playground 类型承载；已融合生产、现金、市场、赠钱与居民报价；完成状态见专题工作计划。 |
 | 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | Playground 拥有山野镇的领域根和存档适配；独立 Microtown 实现已[归档](archive/microtown.md)，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `PlaygroundGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
@@ -25,10 +25,9 @@
 | 跟随（Following） | 队员主动授权领队带自己移动的持续关系；期间禁止自己的移动与其他耗时活动，到点可显式解除；不等于采集/等待 Activity。领队和队员由关系派生。 | `PlaygroundCharacter.FollowingLeaderId`；`follow` / `unfollow` / `dismiss-followers`；游戏内 `PlaygroundFollowingRules` 与唯一 `PlaygroundActions.NeedsDecision`。见[跟随合同](design/character-following.md)。 |
 | 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前应用接口为 [IPlaygroundCharacterController](../src/Playground/PlaygroundActions.cs)，尚未提取通用引擎接口。 |
 | Console 控制器（Human Console，旧称 HumanPlayer） | 通过终端取得角色决策；操作者可以是真人或使用终端的 Coding Agent。操作者、控制器和被控角色是三个不同概念；与游戏内直接调用模型的 LLM 控制器区分。 | [PlayConsole](../src/Playground.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；同一入口可服务多个角色，生存场景当前支持 1–3 人。当前[融合世界](codex-goals/living-world/README.md)沿用此区分，支持指定 Human 角色与模型角色同局。 |
-| LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
+| LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 接 Completion；统一 `PlaygroundHost` 负责连接、共享预算和旁观输出，未覆盖角色默认由 LLM 控制。 |
 | 模型连接（LLM connection） | 宿主侧可复用的 provider、model、protocol 与认证配置；ID 区分不同模型或同模型参数，不是角色身份。 | `LlmConnectionConfiguration` 冻结配置；`LlmConnectionPool` 按连接缓存并拥有客户端；见[多模型连接](design/multi-llm-connections.md)。 |
-| 角色连接覆盖（Character connection override） | 宿主用角色 opaque ID 指向连接；无覆盖时回退默认，Human 优先。 | `GetConnectionId(actorId)`；CLI 校验本局角色，不进入领域状态或存档。 |
-| 角色控制绑定（Character control binding） | 每个角色的运行时控制选择：Human Console 或 LLM(ConnectionId)；默认 LLM(DefaultConnectionId)，逐角色覆盖一次，不再另算 Human 优先。配置与审计不构成 DurableGraph 领域状态。 | 用户已选择的[重构方案](design/playground-home.md#31-双层角色控制映射)，尚未实现；将替换上一行角色连接覆盖和 CLI 的全局控制开关。 |
+| 角色控制绑定（Character control binding） | 每个角色的运行时控制选择：Human Console 或 LLM(ConnectionId)；默认 LLM(DefaultConnectionId)，逐角色覆盖一次，不再另算 Human 优先。配置与审计不构成 DurableGraph 领域状态。 | `CharacterControlConfiguration` 解析并冻结，`PlaygroundHost` 统一路由；见[运行时绑定](design/playground-home.md#31-双层角色控制映射)。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
 | 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
 | 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 共享 `LlmDecisionLoop` 在单次决策内保留反馈所需原生 Tail；跨决策清空，不支持冷开恢复原生会话。 |

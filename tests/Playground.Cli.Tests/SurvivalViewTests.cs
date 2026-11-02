@@ -89,10 +89,10 @@ public sealed class SurvivalViewTests {
 
     [Fact]
     public void Default_product_entry_is_the_continuous_living_world() {
-        Options options = Options.Parse([]);
-        Assert.Null(options.Llm);
+        ResolvedOptions options = HostFixture.Resolve([]);
+        Assert.Null(options.Host.Controls);
         Assert.Null(options.CharacterCount);
-        Assert.Null(options.Until);
+        Assert.Null(options.Host.Until);
     }
 
     private static async Task Step(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) =>

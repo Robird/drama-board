@@ -27,7 +27,7 @@
 关键实现入口：
 
 - [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs)：接收/结果身份、刷盘、恢复对账及 `ExactResult`。
-- [LlmConsole / LlmRunAudit](../../src/Playground.Cli/LlmConsole.cs)：运行审计、模型 trace、提交摘要；当前还将 trace 转发给 Gym。
+- [PlaygroundHost / LlmRunAudit](../../src/Playground.Cli/PlaygroundHost.cs)：运行审计、模型 trace、提交摘要；当前还将 trace 转发给 Gym。home 重构已将 Human/LLM 收敛为统一宿主，日志职责重整仍属本待办。
 - [GymSession](../../src/Playground.Cli/Gym/GymSession.cs)：实际请求与决定前边界关联、反馈保存、Context/操作捕获。
 - [GymJournal](../../src/CharacterGym/GymJournal.cs)：共享序列、校验链、完整行刷盘及尾部处理。
 - [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs)、[轨迹导出器](../../src/CharacterGym/GymTraceExporter.cs)：按角色/分支导出、反馈定位与 fork。

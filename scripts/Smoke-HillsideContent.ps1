@@ -13,10 +13,16 @@ if ((Test-Path -LiteralPath $outputRoot) -and (Get-ChildItem -LiteralPath $outpu
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 $storePath = Join-Path $outputRoot 'world'
 $utf8 = [Text.UTF8Encoding]::new($false)
+$homePath = Join-Path $outputRoot 'home'
+New-Item -ItemType Directory -Path $homePath | Out-Null
+[IO.File]::WriteAllText((Join-Path $homePath 'playground.json'), '{"version":1}', $utf8)
+Copy-Item (Join-Path $repoRoot 'config/llm-connections.example.json') (Join-Path $homePath 'llm-connections.json')
+$controlsPath = Join-Path $homePath 'character-controls.json'
+[IO.File]::WriteAllText($controlsPath, '{"version":1,"overrides":{"a":{"kind":"human-console"}}}', $utf8)
 
 function Invoke-ContentConsole([string]$Name, [string[]]$Commands, [string[]]$ExtraArguments, [int]$ExpectedExit = 0) {
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
-    foreach ($argument in @($cliPath, '--store', $storePath, '--steps', '1000') + $ExtraArguments) { $start.ArgumentList.Add($argument) }
+    foreach ($argument in @($cliPath, '--home', $homePath, '--character-controls', $controlsPath, '--store', $storePath, '--steps', '1000') + $ExtraArguments) { $start.ArgumentList.Add($argument) }
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true

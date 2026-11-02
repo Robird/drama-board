@@ -23,7 +23,7 @@ public sealed class TradeHostTests {
             return "accept " + offeredId;
         });
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a" }, default, output, model,
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Controls = HostFixture.Humans("a") }, default, output, model,
             characterCount: 2, inputReader: new StringReader("offer b item.food 1 for money 2\n:exit\n")));
         Assert.Single(model.Requests);
         Assert.NotNull(offeredId);
@@ -49,7 +49,7 @@ public sealed class TradeHostTests {
             Assert.Contains(offeredId!, accepted.Completed!.Result);
         }
         var resumed = new Client(_ => "handoff trade-settled-once");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, resumed));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, resumed));
         Assert.Equal(expected, Material(Assert.Single(resumed.Requests)));
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(14, restored.State.GetCharacter("a").Money);
@@ -82,7 +82,7 @@ public sealed class TradeHostTests {
         using (var saved = PlaygroundDurableHistory.Create(files.Store, kernel.World, kernel.Cursor)) { }
         var model = new Client(request => "accept " + TradeId(Material(request)));
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, model));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, model));
         Assert.Equal(expected, Material(Assert.Single(model.Requests)));
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         PlaygroundCharacter actor = restored.State.GetCharacter("a");
@@ -132,7 +132,7 @@ public sealed class TradeHostTests {
     private sealed class Files : IDisposable {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "drama-trade-host-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(_root, "game");
-        public LlmHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
+        public PlaygroundHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }
 }

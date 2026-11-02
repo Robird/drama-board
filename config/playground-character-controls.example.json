@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "overrides": {
+    "a": {
+      "kind": "human-console"
+    },
+    "b": {
+      "kind": "llm",
+      "connectionId": "deliberate"
+    }
+  }
+}

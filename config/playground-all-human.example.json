@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "overrides": {
+    "a": {
+      "kind": "human-console"
+    },
+    "b": {
+      "kind": "human-console"
+    },
+    "c": {
+      "kind": "human-console"
+    }
+  }
+}

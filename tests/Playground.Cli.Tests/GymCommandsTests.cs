@@ -12,9 +12,9 @@ public sealed class GymCommandsTests {
     [InlineData("--gym")]
     [InlineData("--llm", "--feedback")]
     [InlineData("--store", "somewhere", "--gym")]
-    [InlineData("--branch", "01000000")]
+    [InlineData("--feedback")]
     [InlineData("--store", "somewhere", "--branch", "not-an-id")]
-    [InlineData("--branches")]
+    [InlineData("--branches", "--steps", "1")]
     [InlineData("--store", "somewhere", "--branches", "--llm")]
     [InlineData("--store", "somewhere", "--branches", "--gym-feedbacks")]
     [InlineData("--store", "somewhere", "--gym-export", "out.md")]
@@ -28,16 +28,16 @@ public sealed class GymCommandsTests {
 
     [Fact]
     public void Feedback_implies_recording_and_branch_passes_to_model_host() {
-        Options options = Options.Parse(["--characters", "2", "--llm", "--llm-connections", "connections.json", "--store", "game", "--feedback", "--branch", "01000000"]);
-        Assert.True(options.Llm!.Gym);
-        Assert.True(options.Llm.Feedback);
-        Assert.Equal(options.Branch, options.Llm.Branch);
+        ResolvedOptions options = HostFixture.Resolve(["--characters", "2", "--llm-connections", "connections.json", "--store", "game", "--gym", "feedback", "--branch", "01000000"]);
+        Assert.True(options.Host.Gym);
+        Assert.True(options.Host.Feedback);
+        Assert.Equal(options.Branch, options.Host.Branch);
         Assert.Equal(2, options.CharacterCount);
         Assert.Null(options.Management);
         Assert.Equal(GymManagementKind.Feedbacks,
-            Options.Parse(["--store", "game", "--gym-feedbacks", "--actor", "b"]).Management!.Kind);
+            Options.Parse(["--store", "game", "--gym-feedbacks", "--actor", "b"]).Resolve().Management!.Kind);
         Assert.Equal(GymManagementKind.ForkRequest,
-            Options.Parse(["--store", "game", "--gym-fork-request", "r", "--fork-label", "test"]).Management!.Kind);
+            Options.Parse(["--store", "game", "--gym-fork-request", "r", "--fork-label", "test"]).Resolve().Management!.Kind);
     }
 
     [Fact]

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "gym": "record",
+  "maxCalls": 16,
+  "llmConnections": "llm-connections.json",
+  "characterControls": "character-controls.json"
+}

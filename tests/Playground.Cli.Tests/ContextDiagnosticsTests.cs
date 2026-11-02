@@ -28,7 +28,7 @@ public sealed class ContextDiagnosticsTests {
                 using (var saved = PlaygroundDurableHistory.Create(store, initial.World, initial.Cursor)) { }
                 using var input = new StringReader("use item.water\ninvalid\nhandoff 等待查看溪谷\ngo trail-1\n:exit\n");
                 using var output = new StringWriter();
-                Assert.Equal(0, await PlayConsole.RunAsync(store, default, diagnosticSink: sink,
+                Assert.Equal(0, await HostFixture.RunHumanAsync(store, default, diagnosticSink: sink,
                     inputReader: input, outputWriter: output));
                 using var history = PlaygroundDurableHistory.Open(store);
                 JsonNode material = JsonSerializer.SerializeToNode(new { history.State.Business, history.Cursor }, MaterialJson)!;
@@ -83,7 +83,7 @@ public sealed class ContextDiagnosticsTests {
             using var output = new StringWriter();
             PlaygroundDiagnosticRecord? failed = null;
             var sinkError = new IOException("diagnostic-only-failure");
-            IOException error = await Assert.ThrowsAsync<IOException>(() => PlayConsole.RunAsync(store, default,
+            IOException error = await Assert.ThrowsAsync<IOException>(() => HostFixture.RunHumanAsync(store, default,
                 diagnosticSink: record => {
                     if (!record.Completion.Event.Facts.Any(fact => fact.Kind == PlaygroundEventKind.ItemUsed)) { return; }
                     failed = record;
@@ -112,7 +112,7 @@ public sealed class ContextDiagnosticsTests {
             var recoveredRecords = new List<PlaygroundDiagnosticRecord>();
             using var reopenedInput = new StringReader(":exit\n");
             using var reopenedOutput = new StringWriter();
-            Assert.Equal(0, await PlayConsole.RunAsync(store, default,
+            Assert.Equal(0, await HostFixture.RunHumanAsync(store, default,
                 diagnosticSink: recoveredRecords.Add, inputReader: reopenedInput, outputWriter: reopenedOutput));
             Assert.Empty(recoveredRecords);
             using var reopened = PlaygroundDurableHistory.Open(store);
@@ -144,7 +144,7 @@ public sealed class ContextDiagnosticsTests {
             var records = new List<PlaygroundDiagnosticRecord>();
             using var input = new StringReader(":exit\n");
             using var output = new StringWriter();
-            Assert.Equal(0, await PlayConsole.RunAsync(store, default,
+            Assert.Equal(0, await HostFixture.RunHumanAsync(store, default,
                 diagnosticSink: records.Add, inputReader: input, outputWriter: output));
             Assert.Empty(records);
             using var restored = PlaygroundDurableHistory.Open(store);

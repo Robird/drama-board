@@ -6,7 +6,7 @@
 
 | 已核对入口 | 基础职责 | 一期实现 |
 | --- | --- | --- |
-| [LlmControllerTrace](../../../src/CharacterControl.Completion/LlmControllerTrace.cs)、[LlmConsole / LlmRunAudit](../../../src/Playground.Cli/LlmConsole.cs) | 保存实际请求、响应/失败及已提交事实；每次宿主运行使用新审计文件 | [GymSession](../../../src/Playground.Cli/Gym/GymSession.cs) 关联 Run/Request/S；[GymTraceExporter](../../../src/CharacterGym/GymTraceExporter.cs) 按角色导出 |
+| [LlmControllerTrace](../../../src/CharacterControl.Completion/LlmControllerTrace.cs)、[PlaygroundHost / LlmRunAudit](../../../src/Playground.Cli/PlaygroundHost.cs) | 保存实际请求、响应/失败及已提交事实；每次宿主运行使用新审计文件 | [GymSession](../../../src/Playground.Cli/Gym/GymSession.cs) 关联 Run/Request/S；[GymTraceExporter](../../../src/CharacterGym/GymTraceExporter.cs) 按角色导出 |
 | [PlaygroundOperationJournal](../../../src/Playground.Cli/PlaygroundOperationJournal.cs) | 原始提交与结果按身份配对，可补录已有游戏结果；独立于游戏 E/S | 根/子分支使用各自操作日志；Gym 导入结果，明确 Interrupted、恢复补录和没有领域事件的查询不是游戏提交证明 |
 | [LlmCharacterController](../../../src/Playground.Completion/LlmCharacterController.cs) | 每次从角色材料构造独立服务，最终返回一个 act | 可选 report-feedback，持久回执后携原始消息继续本次服务；协议重试、字符与调用预算共同约束 |
 | [PlaygroundDurableHistory](../../../src/Playground/Persistence/PlaygroundDurableHistory.cs) | E/S 提交和恢复仍由游戏适配器负责 | [PlaygroundBranchBoundary](../../../src/Playground/Persistence/PlaygroundBranchBoundary.cs) 捕获/检查完成 S、列分支、显式打开与 fork；多分支时拒绝默认猜选 |

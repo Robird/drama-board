@@ -15,7 +15,7 @@ public sealed class EconomyHostTests {
         var client = new Client("go market-home", "buy item.food 2", "go market-workshop", "produce ration 1",
             "go market-workshop", "sell item.ration 1", "use item.ration", "handoff economic-loop-complete");
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(8), default, output, client, characterCount: 1));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(8), default, output, client, characterCount: 1));
         Assert.Equal(8, client.Requests.Count);
         string expected;
         using (var saved = PlaygroundDurableHistory.Open(files.Store)) {
@@ -39,7 +39,7 @@ public sealed class EconomyHostTests {
             Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         }
         var resumed = new Client("handoff same-world-after-cold-open");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, resumed));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, resumed));
         Assert.Equal(expected, Material(Assert.Single(resumed.Requests)));
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(11, restored.State.GetCharacter("a").Money);
@@ -52,7 +52,7 @@ public sealed class EconomyHostTests {
         using var files = new Files();
         var client = new Client("give a money 5");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options(1) with { HumanActor = "a" },
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options(1) with { Controls = HostFixture.Humans("a") },
             default, output, client, characterCount: 2, inputReader: new StringReader("wait 4\n:exit\n")));
         Assert.Single(client.Requests);
         string expected;
@@ -74,7 +74,7 @@ public sealed class EconomyHostTests {
         Assert.Contains("5 钱", output.ToString());
         Assert.DoesNotContain("余额：7 钱", output.ToString());
         var resumed = new Client("handoff gift-received");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, resumed));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, resumed));
         Assert.Equal(expected, Material(Assert.Single(resumed.Requests)));
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(due, restored.State.GetCharacter("a").Activity!.Due.Ticks);
@@ -106,7 +106,7 @@ public sealed class EconomyHostTests {
         using (var saved = PlaygroundDurableHistory.Create(files.Store, kernel.World, kernel.Cursor)) { }
         var client = new Client("cancel");
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(1), default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, client));
         Assert.Equal(expected, Material(Assert.Single(client.Requests)));
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         PlaygroundCharacter actor = restored.State.GetCharacter("a");
@@ -147,7 +147,7 @@ public sealed class EconomyHostTests {
     private sealed class Files : IDisposable {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "drama-economy-host-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(_root, "game");
-        public LlmHostOptions Options(int maxCalls) => new(MaxCalls: maxCalls,
+        public PlaygroundHostOptions Options(int maxCalls) => new(MaxCalls: maxCalls,
             LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }

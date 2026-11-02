@@ -1,4 +1,5 @@
 using DramaBoard.CharacterGym;
+using DramaBoard.Playground.Cli;
 using System.Security.Cryptography;
 using System.Text.Json;
 using DramaBoard.Playground;
@@ -25,7 +26,7 @@ internal sealed class GymSession : IDisposable {
         return Path.Combine(directory, branch.BranchId + ".jsonl");
     }
 
-    public GymSession(string store, PlaygroundDurableHistory history, LlmHostOptions options, string logPath, bool recovered) {
+    public GymSession(string store, PlaygroundDurableHistory history, PlaygroundHostOptions options, IReadOnlyDictionary<string, CharacterControlBinding> bindings, string logPath, bool recovered) {
         _history = history;
         BranchId = history.CurrentBranch.BranchId;
         _lastState = PlaygroundDurableHistory.FormatCommitId(history.CompletedStateCommitId);
@@ -44,7 +45,8 @@ internal sealed class GymSession : IDisposable {
                 Content = new { history.State.Definition.ContentId, history.State.Definition.Fingerprint },
                 Scenario = history.State.Expedition!.ScenarioId, CharacterCount = history.State.Characters.Count,
                 Actors = history.State.Characters.Select(character => new { ActorId = character.Id,
-                    Controller = character.Id == options.HumanActor ? "Human" : "LLM" }).ToArray(),
+                    Controller = bindings[character.Id] is CharacterControlBinding.HumanConsole ? "Human" : "LLM",
+                    ConnectionId = (bindings[character.Id] as CharacterControlBinding.Llm)?.ConnectionId }).ToArray(),
                 FeedbackEnabled = options.Feedback, Presentation = "decision/full/character-context",
                 Builds = new[] { typeof(GymSession).Assembly, typeof(PlaygroundWorld).Assembly, typeof(LlmCharacterController).Assembly,
                     typeof(DramaBoard.CharacterControl.Completion.LlmDecisionLoop).Assembly, typeof(GymJournal).Assembly,

@@ -9,17 +9,15 @@ public sealed class LlmConnectionConfigurationTests {
     public async Task Frozen_routes_share_one_lazy_client_and_unused_environment_is_not_resolved() {
         string missing = "DRAMABOARD_UNUSED_" + Guid.NewGuid().ToString("N");
         using var file = Configuration(Connection("main"), Connection("unused", missing));
-        using var overrides = new JsonFile("""{"version":1,"overrides":{"b":"main"}}""");
-        var config = LlmConnectionConfiguration.Load(file.Path, overrides.Path);
-        Assert.Equal("main", config.GetConnectionId("a"));
-        Assert.Equal("main", config.GetConnectionId("b"));
-        Assert.Equal(["b"], config.OverrideActorIds);
+        var config = LlmConnectionConfiguration.Load(file.Path);
+        Assert.Equal("main", config.DefaultConnectionId);
+        Assert.Equal(["main", "unused"], config.ConnectionIds);
         File.WriteAllText(file.Path, "invalid after snapshot");
         var factory = new Factory();
         var pool = new LlmConnectionPool(config, factory);
         Assert.Equal(0, factory.Created);
-        LlmDecisionBinding first = await pool.GetAsync(config.GetConnectionId("a"));
-        Assert.Same(first, await pool.GetAsync(config.GetConnectionId("b")));
+        LlmDecisionBinding first = await pool.GetAsync(config.DefaultConnectionId);
+        Assert.Same(first, await pool.GetAsync("main"));
         Assert.Equal("main", first.ConnectionId);
         Assert.Equal("model-main", first.ModelId);
         Assert.Equal(1, factory.Created);
@@ -39,51 +37,6 @@ public sealed class LlmConnectionConfigurationTests {
         string catalog = JsonSerializer.Serialize(new { v = 3, connections = new[] { Connection("main") } });
         using var file = new JsonFile(json.Replace("CATALOG", catalog, StringComparison.Ordinal));
         Assert.Throws<InvalidDataException>(() => LlmConnectionConfiguration.Load(file.Path));
-    }
-
-    [Fact]
-    public void Explicit_missing_override_file_fails_instead_of_using_defaults() {
-        using var file = Configuration(Connection("main"));
-        string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
-        Assert.Throws<FileNotFoundException>(() => LlmConnectionConfiguration.Load(file.Path, missing));
-    }
-
-    [Fact]
-    public void Empty_overrides_have_the_same_routing_as_omitting_the_file() {
-        using var file = Configuration(Connection("main"), Connection("other"));
-        using var overrides = new JsonFile("""{"version":1,"overrides":{}}""");
-        var withoutOverrides = LlmConnectionConfiguration.Load(file.Path);
-        var withEmptyOverrides = LlmConnectionConfiguration.Load(file.Path, overrides.Path);
-        Assert.Empty(withoutOverrides.OverrideActorIds);
-        Assert.Empty(withEmptyOverrides.OverrideActorIds);
-        Assert.Equal(withoutOverrides.ConnectionIds, withEmptyOverrides.ConnectionIds);
-        foreach (string actor in new[] { "a", "b", "unknown" }) {
-            Assert.Equal(withoutOverrides.GetConnectionId(actor), withEmptyOverrides.GetConnectionId(actor));
-        }
-    }
-
-    [Fact]
-    public void Nondefault_actor_override_is_frozen_after_loading() {
-        using var file = Configuration(Connection("main"), Connection("other"));
-        using var overrides = new JsonFile("""{"version":1,"overrides":{"b":"other"}}""");
-        var configuration = LlmConnectionConfiguration.Load(file.Path, overrides.Path);
-        File.WriteAllText(overrides.Path, """{"version":1,"overrides":{"b":"main","a":"other"}}""");
-        Assert.Equal("main", configuration.GetConnectionId("a"));
-        Assert.Equal("other", configuration.GetConnectionId("b"));
-        Assert.Equal(["b"], configuration.OverrideActorIds);
-        var reloaded = LlmConnectionConfiguration.Load(file.Path, overrides.Path);
-        Assert.Equal("other", reloaded.GetConnectionId("a"));
-        Assert.Equal("main", reloaded.GetConnectionId("b"));
-    }
-
-    [Theory]
-    [InlineData("{\"version\":1,\"overrides\":{\"a\":\"main\",\"a\":\"main\"}}")]
-    [InlineData("{\"version\":1,\"overrides\":{\"a\":\"missing\"}}")]
-    [InlineData("{\"version\":1,\"overrides\":{\"a\":null}}")]
-    public void Rejects_invalid_override_references_and_duplicates(string json) {
-        using var file = Configuration(Connection("main"));
-        using var overrides = new JsonFile(json);
-        Assert.Throws<InvalidDataException>(() => LlmConnectionConfiguration.Load(file.Path, overrides.Path));
     }
 
     [Fact]

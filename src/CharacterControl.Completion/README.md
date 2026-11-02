@@ -10,7 +10,7 @@ The game must publish a frozen decision boundary before invoking the loop if it 
 
 ## Host connection configuration and pool
 
-`LlmConnectionConfiguration.Load(path, overridesPath?)` freezes the two host files. `GetConnectionId(actorId)` selects an opaque actor ID override or the required default; `ConnectionIds` and `OverrideActorIds` support host validation. The game host checks that actors exist and gives Human control priority. A Human actor may retain a dormant override. See the [two-file contract and examples](../../docs/design/multi-llm-connections.md).
+`LlmConnectionConfiguration.Load(path)` freezes the required connection catalog and its default connection ID. Typed character controls belong to the composing host: each override selects `human-console` or `llm` with a real connection ID; absent overrides select the default LLM. The host validates actor membership and binding shape before creating a world. Even all-Human runs require a structurally valid catalog, while credentials and clients remain lazy. See the [home and control contract](../../docs/design/playground-home.md) and [connection examples](../../docs/design/multi-llm-connections.md).
 
 `LlmConnectionPool.GetAsync(id, ct)` lazily returns `LlmDecisionBinding(Client, ModelId, ConnectionId)` and caches by connection ID. The pool owns and disposes clients; the loop and game adapters borrow them. Atelia.Completion parses the embedded V3 catalog and creates provider clients. Credentials/environment values are resolved only for actually used connections. Hosts freeze configuration at startup, complete pending recovery and reconcile evidence before the first model call. Management commands need no client.
 

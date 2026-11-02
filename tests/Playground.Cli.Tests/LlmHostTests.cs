@@ -10,7 +10,7 @@ namespace DramaBoard.Playground.Cli.Tests;
 public sealed class LlmHostTests {
     [Theory]
     [InlineData("--llm")]
-    [InlineData("--llm-connections", "connections.json")]
+    [InlineData("--character-connections", "connections.json")]
     [InlineData("--model", "x")]
     [InlineData("--llm", "--catalog", "x")]
     [InlineData("--llm", "--connection", "x")]
@@ -21,13 +21,13 @@ public sealed class LlmHostTests {
         Assert.Throws<ArgumentException>(() => Options.Parse(args));
 
     [Fact]
-    public void Configured_llm_and_human_modes_remain_separate() {
-        Assert.Null(Options.Parse([]).Llm);
-        Assert.Null(Options.Parse(["--llm", "--llm-connections", "connections.json"]).Llm!.HumanActor);
-        var llm = Options.Parse(["--llm", "--llm-connections", "connections.json", "--max-calls", "7"]).Llm!;
+    public void Default_llm_uses_home_and_control_overrides_are_explicit() {
+        Assert.Null(HostFixture.Resolve([]).Host.Controls);
+        Assert.Null(HostFixture.Resolve(["--llm-connections", "connections.json"]).Host.CharacterControlsPath);
+        var llm = HostFixture.Resolve(["--llm-connections", "connections.json", "--max-calls", "7"]).Host;
         Assert.Equal(Path.GetFullPath("connections.json"), llm.ConnectionsPath);
         Assert.Equal(7, llm.MaxCalls);
-        Assert.Null(llm.CharacterConnectionsPath);
+        Assert.Null(llm.CharacterControlsPath);
     }
 
     [Fact]
@@ -35,8 +35,8 @@ public sealed class LlmHostTests {
         using var files = new Files();
         var first = new Client("use item.water");
         using var output = new StringWriter();
-        LlmHostOptions firstOptions = files.Options();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, firstOptions, default, output, first));
+        PlaygroundHostOptions firstOptions = files.Options();
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, firstOptions, default, output, first));
         Assert.Single(first.Requests);
         Assert.Contains("call-budget-exhausted", output.ToString());
         string inputLine = File.ReadLines(firstOptions.LogPath!)
@@ -59,7 +59,7 @@ public sealed class LlmHostTests {
             Assert.Single(saved.State.Business.InteractionStates["a"].CurrentContext!.Items);
         }
         var second = new Client("handoff 继续探索");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, second));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, second));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(second.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.Contains("use item.water", material);
         Assert.DoesNotContain(":exit", material);
@@ -79,7 +79,7 @@ public sealed class LlmHostTests {
         const string speech = "ColdWind\nTerminal\n\"回来集合\" **现在**";
         var first = new Client("shout " + speech);
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, first));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, first));
         string expected;
         using (var saved = PlaygroundDurableHistory.Open(files.Store)) {
             CharacterInteractionState interaction = saved.State.Business.InteractionStates["a"];
@@ -95,7 +95,7 @@ public sealed class LlmHostTests {
             Assert.Equal(1, saved.State.GetCharacter("a").Communication.SentCount);
         }
         var second = new Client("handoff 等待回复");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, second));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, second));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(second.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.Equal(expected, material);
         Assert.Contains("不报告听众或接收确认", material);
@@ -106,7 +106,7 @@ public sealed class LlmHostTests {
         using var files = new Files();
         var first = new Client("use item.water");
         using var broken = new FailOnceOnResponse();
-        Assert.Equal(1, await LlmConsole.RunAsync(files.Store, files.Options(), default, broken, first));
+        Assert.Equal(1, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, broken, first));
         using (var saved = PlaygroundDurableHistory.Open(files.Store)) {
             Assert.Equal(45 * PlaygroundSurvival.Scale, saved.State.GetCharacter("a").Survival!.WaterUnits);
             Assert.Empty(saved.State.Business.InteractionStates["a"].CurrentContext!.Items);
@@ -114,7 +114,7 @@ public sealed class LlmHostTests {
         }
         using var output = new StringWriter();
         var second = new Client("use item.water");
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, second));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, second));
         Assert.Single(second.Requests);
         using var final = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(90 * PlaygroundSurvival.Scale, final.State.GetCharacter("a").Survival!.WaterUnits);
@@ -143,7 +143,7 @@ public sealed class LlmHostTests {
         }
         var client = new Client("handoff 已恢复");
         using var output = new StringWriter();
-        Assert.Equal(2, await LlmConsole.RunAsync(files.Store, files.Options(), default, output, client));
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, client));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(client.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.Contains("use item.water", material);
         using var final = PlaygroundDurableHistory.Open(files.Store);
@@ -163,7 +163,7 @@ public sealed class LlmHostTests {
         using var source = new CancellationTokenSource();
         var client = new Client { OnCall = (_, token) => { source.Cancel(); token.ThrowIfCancellationRequested(); return null!; } };
         using var output = new StringWriter();
-        Assert.Equal(130, await LlmConsole.RunAsync(files.Store, files.Options(), source.Token, output, client));
+        Assert.Equal(130, await PlaygroundHost.RunAsync(files.Store, files.Options(), source.Token, output, client));
         Assert.Contains("cancelled", output.ToString());
         using var final = PlaygroundDurableHistory.Open(files.Store);
         Assert.Null(final.PendingEvent);
@@ -208,7 +208,7 @@ public sealed class LlmHostTests {
                 using var saved = PlaygroundDurableHistory.Create(Store, initial.World, initial.Cursor);
             }
         }
-        public LlmHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
+        public PlaygroundHostOptions Options() => new(MaxCalls: 1, LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }
 }
