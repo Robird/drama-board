@@ -31,6 +31,34 @@ Run 预算耗尽、取消或异常会先结清所有本地候选，再以 RunFai
 
 `--self-check` 覆盖六场景的串行对照、确有并发、失配废弃、17 类完整输入变化、容量/调用结算、取消传播。停止时请求本地排空后才返回；候选不持久化、不恢复、不重试。正常返回必须没有剩余候选。进程硬杀没有恢复协议，外层工件应标 unknown。
 
-限制：这里的安全判断是对六种人工规则的白名单，不是通用影响估计器；`Influence/` 提供另一独立研究模块。场景没有模拟动态移动/新拓扑、feedback 工具循环、持久化故障、真实连接 Dispose、原生模型响应失败或真实恢复。相关产品接入和在线证据必须单独交付，不能由本工程自检查代替。
+限制：上述六场景的安全判断是人工规则白名单，不是通用影响估计器；`Influence/` 提供独立估计与枚举模块，下面的 `Causal/` 才将估计接入调度。六场景没有模拟动态移动/新拓扑、feedback 工具循环、持久化故障、真实连接 Dispose、原生模型响应失败或真实恢复。[实际应用入口](../PlaygroundParallelism/README.md)的接入和在线证据单独交付，不能由本工程自检查代替。
 
-当前本地 Task.Delay 取消后立即释放服务槽位，因此后端只刻画可取消的合成计算。它没有模拟“远端已接受且继续不可撤销计算/计费”；canceled-remote-unknown 是语义提醒，不能据此估真实浪费费用或取消后的实际后端负载。`delayed-message` 的“三步延迟”按提交逻辑边界而非 ModelTime 计量；不能当成有限模拟时间传播窗口的证据。这两个机制需要另轮实验。
+`--cancel-mode cooperative` 是旧默认行为：已开始的本地 Task.Delay 可取消并释放槽位，Canceled 计数表示这种替身取消，不能推广为真实远端已停止。`--cancel-mode noncooperative` 中，排队请求仍可取消，但取得槽位并开始的服务不再响应 host token，继续计算到原定结束/失败并占用容量。host 只停止等待/采用，所有真实开始的服务在 shutdown 后完整排空，之后才产出正常或失败 snapshot。请求次数不因 host 取消或候选废弃返还，不伪造 provider usage/价格。
+
+过期候选在本地标 candidate-abandoned，异步观察物理结果，不在实际需求前主动等待它结束；新的需求仍可能被真实占用的槽位阻塞。独立后端现在也有 `--candidate-limit` 个物理服务槽位，避免后台过期工作形成无界物理并发；slots/shared 继续使用各自容量。请求队列受累计 TotalCallLimit 保守约束。候选数量与物理服务数量是不同指标。AbandonedCandidates 记录本地放弃；Completed/PhysicalFaulted/Canceled 记录物理服务结果，全部 invoked 必须最终满足 `Invoked = Completed + PhysicalFaulted + Canceled`；RemainingPhysical 和 RemainingCandidates 归零后才交付 snapshot。
+
+Services 按 reservation 记录完整输入哈希、实际服务开始/结束、host 取消时刻和物理结果；ServiceMilliseconds 为全部服务时间之和，ServiceAfterHostCancelMilliseconds 仅累计开始服务后收到 host 取消至物理结束的耗时。它不是墙钟耗时或价格，也不包含取消前已完成但最终废弃的计算，需结合废弃时间线统计总浪费。各 ServiceRecord 的时间相对本次 Backend 建立，Timeline 相对 Run 开始，两者相差初始化开销，不能直接混用时间原点。总 DrainMilliseconds 包含有效工作结束/失败后仍需等待的物理服务。后台 stale-failure-isolated 有独立计数 StaleFailures，不替换原始主错误。
+
+确定性故障 `--fault-mode stale-shared` 仅令完整输入中规则为 shared-resource、actor=1 且 Resource=10000 的请求失败，并将其服务延长四倍；它不检查请求到达序号或策略。串行实际 actor1 通常已经观察到资源变化，所以不匹配该故障；投机输入过期后即使物理失败也只记诊断并继续正确需求。`--fault-mode actor-zero` 对 actor0/wake0 的实际输入失败，采用输入匹配时立即失败，不隐式重试。`none` 为默认值。所有实际故障与 host 取消均保留失败 snapshot。
+
+```powershell
+# 过期物理故障被隔离，实际轨迹仍与serial相同；对照时只改strategy
+dotnet run --project experiments/PredictiveTimeParallelism -- --scenario shared-resource --actors 4 --rounds 1 --candidate-limit 4 --latency-ms 20 --cancel-mode noncooperative --fault-mode stale-shared --output artifacts/predictive-time-parallelism/new-stale/result.json
+# 实际匹配请求失败，退出1并保存完整失败snapshot
+dotnet run --project experiments/PredictiveTimeParallelism -- --actors 4 --rounds 1 --cancel-mode noncooperative --fault-mode actor-zero --output artifacts/predictive-time-parallelism/new-matching-failure/result.json
+# 自检查包含host取消后服务继续占槽/完成、真实drain与计数结算
+dotnet run --project experiments/PredictiveTimeParallelism -- --self-check
+```
+
+这些仍是可控服务替身，不证明真实端点的取消、计费、排队公平或吞吐。host 取消通过 RunAsync 的 CancellationToken 测试，CLI 当前没有额外取消定时参数。`delayed-message` 的“三步延迟”仍按提交逻辑边界而非 ModelTime 计量，不能当成有限模拟时间传播窗口的证据。
+
+## 模型时间窗口与独立核验
+
+`--model-time-check` 运行独立 `Causal/ModelTimeWindows.cs`：模型时间事件队列、同 tick 机械事件优先、已排队效果的 scratch 投影、未决决定的影响种子，以及粗闭包/延迟下界两种估计驱动的安全调度。六种规则×两种唤醒形状×四种策略，五个配对 seed；完整输入和事实逐条件对照。动态拓扑窗口和未声明机制拒绝安全证书，目标时刻恰好到达同样拒绝。
+
+```powershell
+dotnet run --project experiments/PredictiveTimeParallelism -c Release --no-build -- --model-time-check --output artifacts/predictive-time-parallelism/new-causal/result.json
+python experiments/PredictiveTimeParallelism/Verify-ModelTime.py artifacts/predictive-time-parallelism/new-causal/result.json --output artifacts/predictive-time-parallelism/new-causal/replay.json
+```
+
+Python 核验器独立重放实际输入、事实、响应和调用区间，并直接比较四策略完整轨迹；输入缺失或篡改返回非零。支持的机制、实测与证明边界见[研究报告](../../docs/research/predictive-time-parallelism/results/model-time-windows.md)。固定唤醒与加法传播小模型的正确性不证明任意游戏安全。

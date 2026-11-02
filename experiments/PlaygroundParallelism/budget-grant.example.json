@@ -1,0 +1,9 @@
+{
+  "ResearchId": "predictive-time-parallelism",
+  "BatchId": "replace-with-new-coordinator-batch",
+  "LedgerPath": "E:/repos/Atelia-org/drama-board/artifacts/predictive-time-parallelism/online-budget.jsonl",
+  "Strategy": "serial",
+  "MaxCalls": 4,
+  "MaxInFlight": 2,
+  "TimeoutSeconds": 90
+}

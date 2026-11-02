@@ -75,6 +75,98 @@ public sealed class PredictiveTimeParallelismTests {
     }
 
     [Fact]
+    public async Task Opening_another_actors_context_invalidates_trade_input_without_changing_receivers_decision_identities() {
+        using var run = new Run(PlaygroundGameFactory.CreateLivingWorld(characterCount: 2, enableNeeds: false, enableWeather: false));
+        var prelude = PlaygroundEngine.CreateKernel(run.History, characterController: new ActualController(run,
+            Controller(new ImmediateClient(Act("offer b item.food 1 for money 5"), Act("wait 1"), Act("wait 24"))),
+            Controller(new ImmediateClient(Act("reject trade:a:1:1"), Act("wait 2"), Act("say a please-respond")))));
+        bool reachedSpeech = false;
+        for (int step = 0; step < 80; step++) {
+            Assert.Equal(StepStatus.Committed, await prelude.StepAsync(new ModelTime(long.MaxValue)));
+            if (Assert.Single(prelude.LastCompletion!.Event.Facts).Kind == PlaygroundEventKind.SpeechSent) {
+                reachedSpeech = true;
+                break;
+            }
+        }
+        Assert.True(reachedSpeech, "The real trade/wait/speech prelude must reach its bounded decision frontier.");
+
+        PlaygroundWorld source = run.History.State;
+        KernelCursor sourceCursor = run.History.Cursor;
+        var sourceCommit = run.History.CompletedStateCommitId;
+        CharacterContext before = source.Business.InteractionStates["b"].CurrentContext!;
+        long generation = source.GetCharacter("b").DecisionGeneration;
+        Assert.Equal(CharacterContextStatus.Open, before.Status);
+        Assert.Equal(PlaygroundTradeStatus.Rejected, Assert.Single(before.LatestObservation.Trades).Status);
+        Assert.All(source.Business.Economy!.Trades.Offers, offer => {
+            Assert.Equal(2, offer.ProposerDeliveredVersion);
+            Assert.Equal(2, offer.RecipientDeliveredVersion);
+        });
+        string sourceMaterial = RenderMaterial(source);
+        var provider = new HeldClient(Act("handoff stale-terminal-offer"));
+        await using var candidate = new Candidate(PlaygroundDecisionContext.Create(source, "b"), provider);
+        await provider.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // This dry opening also reclaims the offer, but its business replacements must remain
+        // in scratch. In particular, the other actor's already-open material stays unchanged.
+        PlaygroundDecisionContext projectedA = Opening(source, "a");
+        Assert.Empty(projectedA.Observation.Trades);
+        Assert.Same(source, run.History.State);
+        Assert.Equal(sourceCursor, run.History.Cursor);
+        Assert.Equal(sourceCommit, run.History.CompletedStateCommitId);
+        Assert.Null(run.History.PendingEvent);
+        Assert.Same(before, source.Business.InteractionStates["b"].CurrentContext);
+        Assert.Single(source.Business.Economy!.Trades.Offers);
+        Assert.Equal(sourceMaterial, RenderMaterial(source));
+        provider.Release.SetResult();
+        await candidate.Ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Only the ordinary next Kernel transition publishes a's opening and b's refresh.
+        Assert.Equal(StepStatus.Committed, await prelude.StepAsync(new ModelTime(long.MaxValue)));
+        PlaygroundFact opening = Assert.Single(prelude.LastCompletion!.Event.Facts);
+        Assert.Equal(PlaygroundEventKind.DecisionContextOpened, opening.Kind);
+        Assert.Equal("a", opening.ActorId);
+        Assert.Null(opening.OperationRecordId);
+        Assert.Empty(opening.ObservedEvents);
+        Assert.Empty(run.History.State.Business.Economy!.Trades.Offers);
+        CharacterContext refreshed = run.History.State.Business.InteractionStates["b"].CurrentContext!;
+        Assert.Equal(before.ContextSequence, refreshed.ContextSequence);
+        Assert.Equal(before.LastOperationSequence, refreshed.LastOperationSequence);
+        Assert.Equal(generation, run.History.State.GetCharacter("b").DecisionGeneration);
+        Assert.Equal(before.Items.Count + 1, refreshed.Items.Count);
+        Assert.Null(refreshed.Items[^1].OperationSequence);
+        Assert.Empty(refreshed.Items[^1].Experiences);
+        Assert.Empty(refreshed.LatestObservation.Trades);
+        Assert.NotEqual(sourceMaterial, RenderMaterial(run.History.State));
+        Assert.Equal(sourceMaterial, RenderMaterial(source)); // Publication did not mutate the retained source either.
+
+        var fallback = new ImmediateClient(Act("handoff fresh-terminal-offer"));
+        var gate = new AdoptionClient(candidate, fallback);
+        var actual = PlaygroundEngine.CreateKernel(run.History, characterController: new ActualController(run,
+            Controller(new ImmediateClient(Act("continue"))), Controller(gate)));
+        Assert.Equal(StepStatus.Committed, await actual.StepAsync(new ModelTime(long.MaxValue)));
+        Assert.Equal("a", Assert.Single(actual.LastCompletion!.Event.Facts).ActorId);
+        CharacterInteractionState actualInput = run.History.State.Business.InteractionStates["b"];
+        Assert.Equal(before.ContextSequence, actualInput.CurrentContext!.ContextSequence);
+        Assert.Equal(before.LastOperationSequence, actualInput.CurrentContext!.LastOperationSequence);
+        Assert.Equal(generation, run.History.State.GetCharacter("b").DecisionGeneration);
+        string freshMaterial = CharacterContextRenderer.RenderFull(actualInput, new DecisionPlayLayout());
+
+        Assert.Equal(StepStatus.Committed, await actual.StepAsync(new ModelTime(long.MaxValue)));
+        Assert.Equal(0, gate.Adopted);
+        Assert.Equal(1, gate.Discarded);
+        CompletionRequest freshRequest = Assert.Single(fallback.Requests);
+        Assert.NotEqual(RequestValue(candidate.Request!), RequestValue(freshRequest));
+        Assert.Equal(freshMaterial, Assert.IsType<ObservationMessage>(Assert.Single(freshRequest.PromptPrefix.SharedContextMessages)).Content);
+        PlaygroundFact accepted = Assert.Single(actual.LastCompletion!.Event.Facts);
+        Assert.Equal("b", accepted.ActorId);
+        Assert.Equal("handoff fresh-terminal-offer", accepted.RawInput);
+        Assert.Equal(before.LastOperationSequence + 1,
+            run.History.State.Business.InteractionStates["b"].CurrentContext!.LastOperationSequence);
+        Assert.DoesNotContain("stale-terminal-offer", run.FinalMaterial());
+        Assert.Contains("fresh-terminal-offer", run.FinalMaterial());
+    }
+
+    [Fact]
     public async Task Stopping_an_inflight_candidate_drains_controller_without_opening_real_context() {
         using var run = new Run();
         PlaygroundWorld source = run.History.State;
@@ -89,6 +181,49 @@ public sealed class PredictiveTimeParallelismTests {
         Assert.Null(run.History.PendingEvent);
         Assert.All(source.Business.InteractionStates.Values, state => Assert.Null(state.CurrentContext));
         // Local cancellation proves cleanup, not that a remote provider avoided computation.
+    }
+
+    [Fact]
+    public async Task Pending_operation_recovers_after_candidates_are_discarded_without_requesting_a_model() {
+        using var baseline = new Run();
+        var baselineController = new ActualController(baseline, Controller(new ImmediateClient(Act("handoff durable-a"))),
+            Controller(new ImmediateClient(Act("handoff unused"))));
+        var reference = PlaygroundEngine.CreateKernel(baseline.History, characterController: baselineController);
+        Assert.Equal(StepStatus.Committed, await reference.StepAsync(new ModelTime(long.MaxValue)));
+        Assert.Equal(StepStatus.Committed, await reference.StepAsync(new ModelTime(long.MaxValue)));
+        string expectedMaterial = baseline.FinalMaterial();
+        KernelCursor expectedCursor = baseline.History.Cursor;
+
+        using var interrupted = new Run();
+        var provider = new HeldClient(Act("handoff speculative-b"));
+        var candidate = new Candidate(Opening(interrupted.History.State, "b"), provider);
+        await provider.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var controller = new ActualController(interrupted, Controller(new ImmediateClient(Act("handoff durable-a"))),
+            Controller(new ImmediateClient(Act("handoff unused"))));
+        var broken = PlaygroundEngine.CreateKernel(new FailSecondState(interrupted.History), characterController: controller);
+        Assert.Equal(StepStatus.Committed, await broken.StepAsync(new ModelTime(long.MaxValue)));
+        InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => broken.StepAsync(new ModelTime(long.MaxValue)).AsTask());
+        Assert.IsType<IOException>(failure.InnerException);
+        Assert.True(broken.IsFaulted);
+        Assert.NotNull(interrupted.History.PendingEvent);
+        Assert.False(candidate.Ready.Task.IsCompleted);
+        await candidate.DisposeAsync();
+        Assert.True(candidate.Ready.Task.IsCanceled);
+        interrupted.CloseHistory();
+
+        using var reopened = PlaygroundDurableHistory.Open(interrupted.Store);
+        Assert.NotNull(reopened.PendingEvent);
+        var forbidden = new ForbiddenController();
+        var recovery = PlaygroundEngine.CreateKernel(reopened, characterController: forbidden);
+        Assert.True(recovery.RecoverPending());
+        Assert.False(recovery.RecoverPending());
+        Assert.Equal(0, forbidden.Calls);
+        Assert.Null(reopened.PendingEvent);
+        Assert.Equal(expectedCursor, reopened.Cursor);
+        Assert.Equal(expectedMaterial, RenderMaterial(reopened.State));
+        Assert.DoesNotContain("speculative-b", RenderMaterial(reopened.State));
+        Assert.Null(reopened.State.Business.InteractionStates["b"].CurrentContext);
     }
 
     [Fact]
@@ -241,8 +376,8 @@ public sealed class PredictiveTimeParallelismTests {
         public List<string> Inputs { get; } = [];
         public List<string> Transitions { get; } = [];
         public List<PlaygroundDecisionBoundary> Boundaries { get; } = [];
-        public Run() {
-            var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false, characterCount: 2);
+        public Run() : this(PlaygroundGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false, characterCount: 2)) { }
+        public Run((PlaygroundWorld World, KernelCursor Cursor) initial) {
             History = PlaygroundDurableHistory.Create(Store, initial.World, initial.Cursor);
         }
         public async Task Execute(ICompletionClient a, ICompletionClient b,
@@ -255,8 +390,7 @@ public sealed class PredictiveTimeParallelismTests {
             }
             Assert.Equal(2, Boundaries.Count);
         }
-        public string FinalMaterial() => string.Join("\n", History.State.Business.InteractionStates.OrderBy(pair => pair.Key)
-            .Select(pair => CharacterContextRenderer.RenderFull(pair.Value, new DecisionPlayLayout())));
+        public string FinalMaterial() => RenderMaterial(History.State);
         public void CloseHistory() {
             if (_historyClosed) { return; }
             History.Dispose();
@@ -265,6 +399,30 @@ public sealed class PredictiveTimeParallelismTests {
         public void Dispose() {
             CloseHistory();
             if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); }
+        }
+    }
+
+    private static string RenderMaterial(PlaygroundWorld world) => string.Join("\n", world.Business.InteractionStates.OrderBy(pair => pair.Key)
+        .Select(pair => pair.Value.CurrentContext is null ? $"{pair.Key}:no-committed-context"
+            : CharacterContextRenderer.RenderFull(pair.Value, new DecisionPlayLayout())));
+
+    private sealed class ForbiddenController : IPlaygroundCharacterController {
+        public int Calls { get; private set; }
+        public ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) {
+            Calls++;
+            throw new InvalidOperationException("Recovery must not call a model or reuse a candidate.");
+        }
+    }
+
+    private sealed class FailSecondState(PlaygroundDurableHistory inner) : IOccurrenceHistory<PlaygroundWorld, PlaygroundFact> {
+        private int _states;
+        public PlaygroundWorld State => inner.State;
+        public KernelCursor Cursor => inner.Cursor;
+        public OccurrenceEvent<PlaygroundFact>? PendingEvent => inner.PendingEvent;
+        public void CommitEvent(OccurrenceEvent<PlaygroundFact> occurrence) => inner.CommitEvent(occurrence);
+        public void CommitState(PlaygroundWorld nextState, KernelCursor nextCursor) {
+            if (++_states == 2) { throw new IOException("Injected interruption after durable operation E, before S."); }
+            inner.CommitState(nextState, nextCursor);
         }
     }
 

@@ -14,7 +14,8 @@ public static class JsonFormat {
 
 public sealed record Options(string Scenario = "independent", string Strategy = "speculative", string Backend = "independent",
     int Actors = 8, int Rounds = 2, int Seed = 17, int LatencyMs = 20, int Slots = 2, int Budget = 4,
-    int Repeats = 5, bool SelfCheck = false, bool Matrix = false, string? Output = null, int TotalCallLimit = 1024, bool InfluenceCheck = false) {
+    int Repeats = 5, bool SelfCheck = false, bool Matrix = false, string? Output = null, int TotalCallLimit = 1024, bool InfluenceCheck = false,
+    string CancelMode = "cooperative", string FaultMode = "none", bool ModelTimeCheck = false) {
     public static readonly string[] Scenarios = ["independent", "shared-resource", "new-message", "zero-chain", "delayed-message", "future-time"];
     public static Options Parse(string[] args) {
         var o = new Options();
@@ -22,6 +23,7 @@ public sealed record Options(string Scenario = "independent", string Strategy = 
             var key = args[i];
             if (key == "--self-check") { o = o with { SelfCheck = true }; continue; }
             if (key == "--influence-check") { o = o with { InfluenceCheck = true }; continue; }
+            if (key == "--model-time-check") { o = o with { ModelTimeCheck = true }; continue; }
             if (key == "--matrix") { o = o with { Matrix = true }; continue; }
             if (++i == args.Length) throw new ArgumentException($"Missing value for {key}.");
             var value = args[i];
@@ -32,11 +34,14 @@ public sealed record Options(string Scenario = "independent", string Strategy = 
                 "--latency-ms" => o with { LatencyMs = int.Parse(value) }, "--slots" => o with { Slots = int.Parse(value) },
                 "--candidate-limit" => o with { Budget = int.Parse(value) }, "--repeats" => o with { Repeats = int.Parse(value) },
                 "--total-call-limit" => o with { TotalCallLimit = int.Parse(value) },
+                "--cancel-mode" => o with { CancelMode = value }, "--fault-mode" => o with { FaultMode = value },
                 "--output" => o with { Output = value }, _ => throw new ArgumentException($"Unknown option {key}.")
             };
         }
         if (!Scenarios.Contains(o.Scenario) || !new[] { "serial", "safe", "speculative" }.Contains(o.Strategy)
             || !new[] { "independent", "slots", "shared" }.Contains(o.Backend)
+            || !new[] { "cooperative", "noncooperative" }.Contains(o.CancelMode)
+            || !new[] { "none", "stale-shared", "actor-zero" }.Contains(o.FaultMode)
             || o.Actors < 2 || o.Actors > 128 || o.Rounds < 1 || o.Rounds > 100 || o.Budget < 1 || o.Budget > 128
             || o.LatencyMs < 0 || o.LatencyMs > 10000 || o.Slots < 1 || o.Repeats < 1 || o.TotalCallLimit < 1) throw new ArgumentException("Unsupported configuration.");
         return o;
@@ -51,11 +56,19 @@ public sealed record Reply(string OperationId, int Amount);
 public sealed record Commit(int Sequence, string OperationId, string Input, Reply Reply, int Resource, int[] Values);
 public sealed record Trace(long Sequence, double Milliseconds, string Kind, int Target, string? Detail);
 public sealed record DecisionTiming(int Target, int? CandidateSource, bool AdoptedPrefetch, double WaitMilliseconds, double? LeadMilliseconds);
+public sealed record ServiceRecord(int Reservation, int Target, string InputHash, string Outcome,
+    double StartedMilliseconds, double FinishedMilliseconds, double? HostCanceledMilliseconds) {
+    public double ServiceMilliseconds => FinishedMilliseconds - StartedMilliseconds;
+    public double ServiceAfterHostCancelMilliseconds => HostCanceledMilliseconds is double canceled
+        ? Math.Max(0, FinishedMilliseconds - canceled) : 0;
+}
 public sealed record RunResult(Options Configuration, double WorkMilliseconds, double DrainMilliseconds,
     double ValidationMilliseconds, long ValidationAllocatedBytes, int AdoptedCandidates, int DiscardedCandidates,
     int DemandCalls, int Reservations, int UninvokedReservations, int Invoked, int Completed, int Canceled, int PeakInFlight, int RemainingCandidates,
     string TrajectoryHash, Commit[] Commits, Trace[] Timeline, string Outcome, string? ErrorType, string? ErrorMessage,
-    int PrefetchedCandidates, int AdoptedPrefetchedCandidates, int ImmediateCandidates, DecisionTiming[] DecisionTimings);
+    int PrefetchedCandidates, int AdoptedPrefetchedCandidates, int ImmediateCandidates, DecisionTiming[] DecisionTimings,
+    int AbandonedCandidates, int StaleFailures, int PhysicalFaulted, int RemainingPhysical, ServiceRecord[] Services,
+    double ServiceMilliseconds, double ServiceAfterHostCancelMilliseconds);
 
 internal sealed class World(Options options) {
     private readonly int[] values = new int[options.Actors];
@@ -94,9 +107,15 @@ internal sealed class World(Options options) {
 
 internal sealed class Backend : IDisposable {
     private readonly Options options;
-    private readonly SemaphoreSlim? slots;
+    private readonly SemaphoreSlim slots;
     private readonly Action<string, int, string?> log;
-    private int active, invoked, completed, canceled, peak, reservations;
+    private int active, invoked, completed, canceled, peak, reservations, faulted;
+    private readonly List<Task<Reply>> physical = [];
+    private readonly List<ServiceRecord> services = [];
+    private readonly Stopwatch clock = Stopwatch.StartNew();
+    public int Faulted => faulted;
+    public int RemainingPhysical => physical.Count(t => !t.IsCompleted);
+    public ServiceRecord[] Services { get { lock (services) return services.ToArray(); } }
     public int Reservations => reservations;
     public int Invoked => invoked;
     public int Completed => completed;
@@ -105,44 +124,80 @@ internal sealed class Backend : IDisposable {
     public Backend(Options options, Action<string, int, string?> log) {
         this.options = options; this.log = log;
         // Shared is a fixed-capacity FIFO-like single service station: all work consumes one throughput budget.
-        slots = options.Backend == "independent" ? null : new(options.Backend == "shared" ? 1 : options.Slots);
+        slots = new(options.Backend == "independent" ? options.Budget : options.Backend == "shared" ? 1 : options.Slots);
     }
     public Task<Reply> InvokeAsync(Request request, int target, CancellationToken token) {
         // Only the coordinator calls this synchronous reservation boundary.
         if (reservations >= options.TotalCallLimit) throw new RequestBudgetExceededException(options.TotalCallLimit);
         reservations++;
         log("reserved", target, $"reservation={reservations};limit={options.TotalCallLimit}");
-        return InvokeCoreAsync(request, target, token);
+        var task = InvokeCoreAsync(request, target, reservations, token);
+        physical.Add(task);
+        return task;
     }
-    private async Task<Reply> InvokeCoreAsync(Request request, int target, CancellationToken token) {
+    private async Task<Reply> InvokeCoreAsync(Request request, int target, int reservation, CancellationToken token) {
         bool acquired = false, started = false;
-        log("queued", target, request.OperationId);
+        double startedAt = 0;
+        double canceledAt = double.NaN;
+        string outcome = "not-invoked";
+        string inputHash = JsonFormat.Hash(JsonFormat.Encode(request));
+        using var registration = token.Register(() => {
+            Interlocked.CompareExchange(ref canceledAt, clock.Elapsed.TotalMilliseconds, double.NaN);
+            log("host-cancel-requested", target, $"reservation={reservation};input={inputHash}");
+        });
+        log("queued", target, $"reservation={reservation};operation={request.OperationId}");
         try {
-            if (slots is not null) { await slots.WaitAsync(token); acquired = true; }
+            await slots.WaitAsync(token); acquired = true;
             token.ThrowIfCancellationRequested();
             Interlocked.Increment(ref invoked); started = true;
+            startedAt = clock.Elapsed.TotalMilliseconds;
             int n = Interlocked.Increment(ref active);
             int observed;
             do { observed = peak; } while (n > observed && Interlocked.CompareExchange(ref peak, n, observed) != observed);
             var hash = SHA256.HashData(Encoding.UTF8.GetBytes(JsonFormat.Encode(request)));
             int delay = options.LatencyMs + (options.LatencyMs == 0 ? 0 : hash[0] % (options.LatencyMs + 1));
-            log("invoked", target, $"delay={delay};input={JsonFormat.Hash(JsonFormat.Encode(request))}");
-            await Task.Delay(delay, token);
+            bool injectFault = options.FaultMode == "actor-zero" && request.Actor == 0 && request.WakeGeneration == 0
+                || options.FaultMode == "stale-shared" && request.Shared == "synthetic-rules-v1:shared-resource"
+                    && request.Actor == 1 && request.Resource == 10000;
+            if (injectFault) delay = Math.Max(1, delay * 4);
+            log("invoked", target, $"reservation={reservation};delay={delay};input={inputHash}");
+            await Task.Delay(delay, options.CancelMode == "noncooperative" ? CancellationToken.None : token);
+            if (injectFault) throw new SyntheticProviderException(inputHash);
             Interlocked.Increment(ref completed);
-            log("completed", target, null);
+            outcome = "completed";
+            log("completed", target, $"reservation={reservation};input={inputHash}");
             return new(request.OperationId, 1 + hash[1] % 3);
         } catch (OperationCanceledException) {
             if (started) Interlocked.Increment(ref canceled);
-            log(started ? "canceled-remote-unknown" : "canceled-before-invoke", target, null);
+            outcome = started ? "cooperatively-canceled" : "not-invoked";
+            log(started ? "canceled-remote-unknown" : "canceled-before-invoke", target, $"reservation={reservation}");
+            throw;
+        } catch (Exception ex) {
+            if (started) Interlocked.Increment(ref faulted);
+            outcome = "failed";
+            log("physical-failed", target, $"reservation={reservation};{ex.GetType().Name};input={inputHash}");
             throw;
         } finally {
+            if (started) {
+                double end = clock.Elapsed.TotalMilliseconds;
+                double canceledValue = Volatile.Read(ref canceledAt);
+                lock (services) services.Add(new(reservation, target, inputHash, outcome, startedAt, end,
+                    double.IsNaN(canceledValue) ? null : Math.Max(startedAt, canceledValue)));
+                log("physical-finished", target, $"reservation={reservation};outcome={outcome}");
+            }
             if (started) Interlocked.Decrement(ref active);
-            if (acquired) slots!.Release();
+            if (acquired) slots.Release();
         }
     }
-    public void Dispose() => slots?.Dispose();
+    public async Task DrainAsync() {
+        foreach (var task in physical) {
+            try { await task; } catch (Exception) { /* Every fault is logged; matching faults propagate at adoption. */ }
+        }
+    }
+    public void Dispose() => slots.Dispose();
 }
 
+public sealed class SyntheticProviderException(string inputHash) : Exception($"Deterministic synthetic provider failure for input {inputHash}.");
 public sealed class RequestBudgetExceededException(int limit) : Exception($"Synthetic request reservation limit {limit} exhausted before queue/invoke.");
 public sealed class RunFailedException(RunResult snapshot, Exception cause) : Exception(cause.Message, cause) {
     public RunResult Snapshot { get; } = snapshot;
@@ -165,15 +220,26 @@ public static class Experiments {
         var timings = new List<DecisionTiming>();
         int adopted = 0, discarded = 0, demand = 0;
         int prefetched = 0, adoptedPrefetched = 0, immediate = 0;
+        int abandoned = 0, staleFailures = 0;
+        var retirements = new List<Task>();
         Exception? failure = null;
         double validation = 0;
         long allocations = 0;
         double work = 0;
-        async Task Retire(Candidate c) {
+        async Task ObserveAbandoned(Candidate c, int target) {
             try {
-                c.Cancellation.Cancel();
                 try { await c.Task; } catch (OperationCanceledException) { }
+                catch (Exception ex) {
+                    Interlocked.Increment(ref staleFailures);
+                    Log("stale-failure-isolated", target, $"{ex.GetType().Name}: {ex.Message}");
+                }
             } finally { c.Cancellation.Dispose(); }
+        }
+        void Abandon(Candidate c, int target) {
+            abandoned++;
+            Log("candidate-abandoned", target, $"source={c.Source};physical-completed={c.Task.IsCompleted}");
+            c.Cancellation.Cancel();
+            retirements.Add(ObserveAbandoned(c, target));
         }
         try {
             for (int target = 0; target < options.Actors * options.Rounds; target++) {
@@ -213,19 +279,27 @@ public static class Experiments {
                     validation += Stopwatch.GetElapsedTime(before).TotalMilliseconds;
                     allocations += GC.GetAllocatedBytesForCurrentThread() - beforeBytes;
                     if (equal) {
-                        try { reply = await candidate.Task; }
-                        catch { discarded++; Log("discarded-adoption-failed", target, null); throw; }
-                        finally { candidate.Cancellation.Dispose(); }
+                        bool retiredInBackground = false;
+                        try { reply = await candidate.Task.WaitAsync(token); }
+                        catch (Exception ex) {
+                            discarded++; Log("discarded-adoption-failed", target, null);
+                            if (ex is OperationCanceledException && !candidate.Task.IsCompleted) {
+                                Abandon(candidate, target);
+                                retiredInBackground = true;
+                            }
+                            throw;
+                        }
+                        finally { if (!retiredInBackground) candidate.Cancellation.Dispose(); }
                         adopted++;
                         if (candidate.Source < target) { adoptedPrefetched++; usedPrefetch = true; }
                         Log("adopted", target, JsonFormat.Hash(received));
                     } else {
                         discarded++;
                         Log("discarded-input-mismatch", target, JsonFormat.Encode(new { Expected = candidate.Input, Actual = actual }));
-                        await Retire(candidate);
-                        demand++; reply = await backend.InvokeAsync(actual, target, token);
+                        Abandon(candidate, target);
+                        demand++; reply = await backend.InvokeAsync(actual, target, token).WaitAsync(token);
                     }
-                } else { demand++; reply = await backend.InvokeAsync(actual, target, token); }
+                } else { demand++; reply = await backend.InvokeAsync(actual, target, token).WaitAsync(token); }
                 timings.Add(new(target, candidateSource, usedPrefetch, clock.Elapsed.TotalMilliseconds - readyAt, lead));
                 token.ThrowIfCancellationRequested();
                 commits.Add(world.Apply(target, actual, reply));
@@ -239,18 +313,28 @@ public static class Experiments {
         } finally {
             foreach (var pair in candidates) {
                 discarded++; Log("discarded-stop", pair.Key, null);
-                try { await Retire(pair.Value); }
+                try { Abandon(pair.Value, pair.Key); }
                 catch (Exception ex) {
                     failure ??= ex;
                     Log("drain-failed", pair.Key, $"{ex.GetType().Name}: {ex.Message}");
                 }
             }
             candidates.Clear();
+            try {
+                await Task.WhenAll(retirements);
+                await backend.DrainAsync();
+            } catch (Exception ex) {
+                failure ??= ex;
+                Log("drain-failed", -1, $"{ex.GetType().Name}: {ex.Message}");
+            }
         }
+        var serviceRecords = backend.Services;
         var snapshot = new RunResult(options, work, clock.Elapsed.TotalMilliseconds - work, validation, allocations, adopted, discarded,
             demand, backend.Reservations, backend.Reservations - backend.Invoked, backend.Invoked, backend.Completed, backend.Canceled, backend.Peak, candidates.Count,
             JsonFormat.Hash(JsonFormat.Encode(commits)), commits.ToArray(), traces.ToArray(), failure is null ? "completed" : "failed",
-            failure?.GetType().Name, failure?.Message, prefetched, adoptedPrefetched, immediate, timings.ToArray());
+            failure?.GetType().Name, failure?.Message, prefetched, adoptedPrefetched, immediate, timings.ToArray(),
+            abandoned, staleFailures, backend.Faulted, backend.RemainingPhysical, serviceRecords,
+            serviceRecords.Sum(s => s.ServiceMilliseconds), serviceRecords.Sum(s => s.ServiceAfterHostCancelMilliseconds));
         if (failure is not null) throw new RunFailedException(snapshot, failure);
         return snapshot;
     }
@@ -330,8 +414,39 @@ public static class Checks {
                 && s.Commits.Length == 0 && s.Timeline.Any(t => t.Kind == "run-failed");
         }
         if (!canceled) throw new InvalidOperationException("Cancellation was not observed.");
+        var staleOptions = new Options(Scenario: "shared-resource", Actors: 4, Rounds: 1, LatencyMs: 3,
+            CancelMode: "noncooperative", FaultMode: "stale-shared");
+        var stale = await Experiments.RunAsync(staleOptions);
+        var reference = await Experiments.RunAsync(staleOptions with { Strategy = "serial" });
+        bool staleIsolated = stale.StaleFailures == 1 && stale.PhysicalFaulted == 1
+            && stale.TrajectoryHash == reference.TrajectoryHash && stale.RemainingPhysical == 0
+            && stale.RemainingCandidates == 0 && stale.AbandonedCandidates > 0
+            && stale.Invoked == stale.Completed + stale.Canceled + stale.PhysicalFaulted;
+        if (!staleIsolated) throw new InvalidOperationException("Stale physical failure was not isolated/accounted.");
+        bool matchingFailed = false;
+        try { await Experiments.RunAsync(new Options(Actors: 4, Rounds: 1, LatencyMs: 2, FaultMode: "actor-zero", CancelMode: "noncooperative")); }
+        catch (RunFailedException ex) when (ex.InnerException is SyntheticProviderException) {
+            var s = ex.Snapshot;
+            matchingFailed = s.Commits.Length == 0 && s.RemainingCandidates == 0 && s.RemainingPhysical == 0
+                && s.PhysicalFaulted >= 1 && s.Invoked == s.Completed + s.Canceled + s.PhysicalFaulted;
+        }
+        if (!matchingFailed) throw new InvalidOperationException("Matching failure did not stop without retry.");
+        bool remoteDrained = false;
+        using var noncooperativeCancel = new CancellationTokenSource();
+        noncooperativeCancel.CancelAfter(10);
+        try { await Experiments.RunAsync(new Options(LatencyMs: 100, Backend: "slots", Slots: 2,
+            CancelMode: "noncooperative"), noncooperativeCancel.Token); }
+        catch (RunFailedException ex) when (ex.InnerException is OperationCanceledException) {
+            var s = ex.Snapshot;
+            remoteDrained = s.Commits.Length == 0 && s.RemainingCandidates == 0 && s.RemainingPhysical == 0
+                && s.Invoked > 0 && s.Canceled == 0 && s.Completed == s.Invoked
+                && s.ServiceAfterHostCancelMilliseconds > 0 && s.DrainMilliseconds > 0
+                && s.PeakInFlight <= 2 && s.Services.Length == s.Invoked;
+        }
+        if (!remoteDrained) throw new InvalidOperationException("Noncooperative physical service did not drain/account after host cancellation.");
         return new { Passed = true, Comparisons = comparisons, DiscardedCandidates = mismatches, EffectiveInputMutations = variants.Length,
             BackendCapacityChecks = 2, RequestBudgetStopObserved = budgetStopped, CancellationObserved = canceled,
+            StaleFailureIsolated = staleIsolated, MatchingFailureStopped = matchingFailed, NoncooperativeRemoteDrained = remoteDrained,
             Scope = "synthetic harness only; not Playground integration or general conservatism proof" };
     }
 }
