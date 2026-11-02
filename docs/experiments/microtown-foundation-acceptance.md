@@ -1,5 +1,7 @@
 # 小镇首片：共享模块与内存经济验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 日期：2026-10-31。范围仅为[小镇目标](../codex-goals/microtown/README.md)的第一实施片，**不是完整里程碑验收，也不是真实模型试玩**。
 
 ## 实际交付与双消费者边界
@@ -9,7 +11,7 @@
 | [Goals](../../src/Goals/README.md) | ResourceCycle 的角色交互；Microtown 的 `TownPlanning` | 角色归属、上下文序号、原子发布与呈现 |
 | [CharacterControl.Completion](../../src/CharacterControl.Completion/README.md) | ResourceCycle 的薄 `LlmCharacterController`；独立测试使用两种游戏材料 | 冻结角色观察、能力政策、渲染、命令校验；小镇真实控制器尚未接入 |
 | [CharacterGym](../../src/CharacterGym/README.md) | ResourceCycle CLI 的 GymSession/GymCommands | 完成 S 定位、fork、角色可见材料和存档修复；小镇适配尚未接入 |
-| Kernel / Spatial / Inventory | 原游戏与新 [Microtown](../../src/Microtown/README.md) | 小镇的配方、有限市场、生活需要和跨模块结算 |
+| Kernel / Spatial / Inventory | 原游戏与新 [Microtown](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/README.md) | 小镇的配方、有限市场、生活需要和跨模块结算 |
 
 新的共享程序集不引用 ResourceCycle。没有统一世界根、观察全集或游戏命令枚举；共享调用输入只是已经渲染好的材料，不是新的持久 Context。
 
@@ -35,7 +37,7 @@ pwsh -NoProfile -File scripts/Smoke-ResourceCycleGoals.ps1 -OutputDirectory arti
 
 1. 提取后原渲染回调跑在共享循环串行门外，恢复为整个 adapter 服务串行；测试确认预取消不渲染、并发调用不二次渲染、完成后可再次服务。
 2. Gym 构建指纹加入共享 Goals/控制器/Gym 程序集；实际 session 测试核对指纹、字符串状态及完整操作结果字段。格式 1 数字 Interrupted 继续可解释。
-3. 小镇最初遗漏 `SpatialContactOccurrenceRule`。独立 [TownSpatialReviewTests](../../tests/Microtown.Tests/TownSpatialReviewTests.cs) 先以默认工厂合法反向移动证明相遇事实缺失，再以相遇与到达之间的第三居民饥饿事件证明过期预测异常。两条测试先失败，接入候选/规划及 `ContactOccurred` 后通过；未扩展途中交流玩法。
+3. 小镇最初遗漏 `SpatialContactOccurrenceRule`。独立 [TownSpatialReviewTests](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/tests/Microtown.Tests/TownSpatialReviewTests.cs) 先以默认工厂合法反向移动证明相遇事实缺失，再以相遇与到达之间的第三居民饥饿事件证明过期预测异常。两条测试先失败，接入候选/规划及 `ContactOccurred` 后通过；未扩展途中交流玩法。
 
 ## 存档及未完成边界
 

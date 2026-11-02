@@ -1,5 +1,7 @@
 # 微型小镇：工作计划与收尾
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 状态：2026-10-31，本里程碑完成。[README](README.md)的六项条件逐项对应[总验收](../../experiments/microtown-acceptance.md)，实现契约见[设计](design.md)。本文件保留重开条件，不再维护已完成施工清单。
 
 ## 当前结论

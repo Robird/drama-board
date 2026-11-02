@@ -1,14 +1,16 @@
 # Microtown 居民报价交易切片验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 日期：2026-10-31。范围为指定居民的单资产换单资产、无预留报价、原子接受、拒绝/撤回/到期、可靠终态材料与真实磁盘恢复；本片不等于整个[小镇里程碑](../codex-goals/microtown/README.md)完成。
 
 ## 实现与审查结论
 
-- [TownTradeRules](../../src/Microtown/TownTradeRules.cs) 提供 `offer`、`accept`、`reject`、`withdraw`。创建只要求本人当前持有所给资产；接受要求双方同地、存活且严格未到期，双方各有完整支付后再分别计算最终库存/余额。
+- [TownTradeRules](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTradeRules.cs) 提供 `offer`、`accept`、`reject`、`withdraw`。创建只要求本人当前持有所给资产；接受要求双方同地、存活且严格未到期，双方各有完整支付后再分别计算最终库存/余额。
 - 接受一次发布双方变化和终态，内部交换不增加外部收支。满背包可以先付后收；双方结果均必须保留当前生产完成和取消退料的空间。无法结算时不部分转移，也不自动关闭报价。
-- [TownTradeState](../../src/Microtown/TownTradeState.cs) 将生命周期名额与普通消息队列分离。世界最多 24 份、每发起人最多 8 份保留报价；已有报价终态不申请新名额。双方首次纳入终态 Opening 后，参与者更晚的 Opening 才可回收；失败方仅豁免等待，不伪造交付。
-- [TownEngine](../../src/Microtown/TownEngine.cs) 在失败之后、决策之前处理到期；失败/终局在同一业务转换内关闭相关报价。变化触发响应，报价持续有效本身不轮询唤醒；`continue` 保留活动期限。
-- [TownObservation](../../src/Microtown/TownObservation.cs) 只投影本人参与的报价及本人的交付布尔标记。创建/接受提示不探测对方私有库存，接受明确是提交时重验的尝试；[Renderer](../../src/Microtown/TownTextRenderer.cs) 给完整双边条款、截止时刻与可复制命令。
+- [TownTradeState](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTradeState.cs) 将生命周期名额与普通消息队列分离。世界最多 24 份、每发起人最多 8 份保留报价；已有报价终态不申请新名额。双方首次纳入终态 Opening 后，参与者更晚的 Opening 才可回收；失败方仅豁免等待，不伪造交付。
+- [TownEngine](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownEngine.cs) 在失败之后、决策之前处理到期；失败/终局在同一业务转换内关闭相关报价。变化触发响应，报价持续有效本身不轮询唤醒；`continue` 保留活动期限。
+- [TownObservation](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownObservation.cs) 只投影本人参与的报价及本人的交付布尔标记。创建/接受提示不探测对方私有库存，接受明确是提交时重验的尝试；[Renderer](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTextRenderer.cs) 给完整双边条款、截止时刻与可复制命令。
 
 领域、界面与独立验收按不同文件委派，另有只读结算/交付审查。主线程复核实际源码、测试和产品材料，发现并要求修正了旧报价重复标新、交付序号范围校验、重复同一 Opening 回收以及手动终态的到期边界；未以代理成功报告替代验收。
 
@@ -29,10 +31,10 @@ dotnet build src/Microtown.Cli/Microtown.Cli.csproj -c Release -m:1 -p:DurableGr
 
 | 测试入口 | 证明范围 |
 | --- | --- |
-| [TownTradeStateTests](../../tests/Microtown.Tests/TownTradeStateTests.cs) | 生命周期容量、不可变集合、双边首交付、失败豁免、重复 Opening、交付序号与到期边界 |
-| [TownTradeAcceptanceTests](../../tests/Microtown.Tests/TownTradeAcceptanceTests.cs) | 无预留、权限、接受失败无转移、满包换物、双方产出/退料四种容量边界、忙碌去重、普通消息满、到期先于决定、真实饥饿失败与终局关闭、离开后拒绝/撤回 |
-| [TownTradeAcceptancePersistenceTests](../../tests/Microtown.Tests/TownTradeAcceptancePersistenceTests.cs) | 实际磁盘只提交接受 E 后中断；Open 保持原 S，RecoverPending 一次结算且不重问，第二次接受拒绝；精确 S fork 排除父未来且子接受不改变父 head |
-| [TownTradeObservationTests](../../tests/Microtown.Tests/TownTradeObservationTests.cs) | 条款完整、本人材料冻结、第三方交易与对方私有资产/交付游标隔离、终态不依赖消息容量、位置/到期/busy 命令提示 |
+| [TownTradeStateTests](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/tests/Microtown.Tests/TownTradeStateTests.cs) | 生命周期容量、不可变集合、双边首交付、失败豁免、重复 Opening、交付序号与到期边界 |
+| [TownTradeAcceptanceTests](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/tests/Microtown.Tests/TownTradeAcceptanceTests.cs) | 无预留、权限、接受失败无转移、满包换物、双方产出/退料四种容量边界、忙碌去重、普通消息满、到期先于决定、真实饥饿失败与终局关闭、离开后拒绝/撤回 |
+| [TownTradeAcceptancePersistenceTests](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/tests/Microtown.Tests/TownTradeAcceptancePersistenceTests.cs) | 实际磁盘只提交接受 E 后中断；Open 保持原 S，RecoverPending 一次结算且不重问，第二次接受拒绝；精确 S fork 排除父未来且子接受不改变父 head |
+| [TownTradeObservationTests](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/tests/Microtown.Tests/TownTradeObservationTests.cs) | 条款完整、本人材料冻结、第三方交易与对方私有资产/交付游标隔离、终态不依赖消息容量、位置/到期/busy 命令提示 |
 
 ## 实际 Console 试玩
 

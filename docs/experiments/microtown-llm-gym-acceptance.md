@@ -1,15 +1,17 @@
 # 小镇 LLM / Gym 接线验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 日期：2026-10-31。范围是第二个游戏接入共享控制器、连接配置与 Gym，以及一次有限真实模型反馈分叉探针。**不是小镇完整里程碑验收**：社交、忙碌通知、owner 预测维护与完整经济日模型试玩仍待实施或验证。
 
 ## 实现与边界
 
-- [TownLlmCharacterController](../../src/Microtown.Completion/TownLlmCharacterController.cs) 将冻结角色观察和小镇行为指引交给共享 `LlmDecisionLoop`。同一实例串行服务三居民，共享调用预算，不保留跨角色/跨决策语义 Tail；返回未执行的原始命令和操作身份。
-- [TownConsole](../../src/Microtown.Cli/TownConsole.cs) 默认 Human，`--llm` 可绑定三居民，`--human` 保留一位人类调试角色。先恢复 pending 和核对结果，再按需建立连接；暂停不会代选 wait。最近回执与本人活动结果仍是最小角色记忆，宿主轨迹不作为其补充记忆。
+- [TownLlmCharacterController](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Completion/TownLlmCharacterController.cs) 将冻结角色观察和小镇行为指引交给共享 `LlmDecisionLoop`。同一实例串行服务三居民，共享调用预算，不保留跨角色/跨决策语义 Tail；返回未执行的原始命令和操作身份。
+- [TownConsole](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/TownConsole.cs) 默认 Human，`--llm` 可绑定三居民，`--human` 保留一位人类调试角色。先恢复 pending 和核对结果，再按需建立连接；暂停不会代选 wait。最近回执与本人活动结果仍是最小角色记忆，宿主轨迹不作为其补充记忆。
 - [CompletionConnectionBinding](../../src/CharacterControl.Completion/CompletionConnectionBinding.cs) 被 Town 与原山林宿主实际使用。发现旧 catalog 加载会提前解析所有连接的环境变量后，在相邻 `atelia-completion` 提交 `ef78922` 增加选中连接读取 API：整体结构仍严格校验，仅解析被选连接的环境变量。原完整加载 API 不变；未打包或推送。
-- [TownGymSession](../../src/Microtown.Cli/Gym/TownGymSession.cs) 复用共享日志/消息投影/导出；请求记录精确完成 S，反馈落盘再给回执。冷开从已完成 E/S 补精确结果，无提交旧输入标 Interrupted，不重放。错误游戏身份先只读拒绝，不能在拒绝前修剪日志尾行。
-- [TownGymCommands](../../src/Microtown.Cli/Gym/TownGymCommands.cs) 提供反馈列表、单角色导出、请求/反馈 fork。列表/导出不执行 pending、不修复日志；fork 只注册分支。证据截止为源请求序号减一，分叉不恢复原生工具 Tail。
-- [TownGymBoundary](../../src/Microtown/Persistence/TownGymBoundary.cs) 提供只读历史边界检查和当前分支已完成操作查询。排除 pending、父分叉点之后的未来和初始快照复制的旧回执；游戏 E/S 始终是效果权威。
+- [TownGymSession](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/Gym/TownGymSession.cs) 复用共享日志/消息投影/导出；请求记录精确完成 S，反馈落盘再给回执。冷开从已完成 E/S 补精确结果，无提交旧输入标 Interrupted，不重放。错误游戏身份先只读拒绝，不能在拒绝前修剪日志尾行。
+- [TownGymCommands](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/Gym/TownGymCommands.cs) 提供反馈列表、单角色导出、请求/反馈 fork。列表/导出不执行 pending、不修复日志；fork 只注册分支。证据截止为源请求序号减一，分叉不恢复原生工具 Tail。
+- [TownGymBoundary](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/Persistence/TownGymBoundary.cs) 提供只读历史边界检查和当前分支已完成操作查询。排除 pending、父分叉点之后的未来和初始快照复制的旧回执；游戏 E/S 始终是效果权威。
 
 ## 工程验证
 

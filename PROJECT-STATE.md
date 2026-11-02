@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-01；山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
+> 最近整理：2026-11-02；山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -33,7 +33,7 @@ Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper �
 
 [角色跟随](docs/design/character-following.md)已贯通主动集合、普通 go 全员出发、到点解散工作与重新集合，见[实现与验收](docs/experiments/character-following-acceptance.md)。实际人类参与的合作试玩与集合体验反馈仍独立保留，代理操作 Human 入口不能替代。不自动等待未加入者，不添加 Party/Ready 屏障；途中退出、异步插话或通用队伍模块仍按实际需求裁决。
 
-[微型小镇里程碑](docs/codex-goals/microtown/README.md)已完成，证据集中于[总验收](docs/experiments/microtown-acceptance.md)与[真实模型试玩](docs/experiments/microtown-playtest.md)。Microtown 已停止独立产品演进，保留源码、测试和历史证据作参照；新生活世界只使用 Cycle 发布根，生产、现金、市场与赠钱已通过[经济验收](docs/experiments/living-world-economy-acceptance.md)，居民报价见[交易验收](docs/experiments/living-world-trades-acceptance.md)。两原型共用 Goals、CharacterControl.Completion、CharacterGym 与既有核心/库存；[新增游戏接线说明](docs/implementation/adding-a-game.md)列出实际调用点。小镇 GameRevision 3 的经济、交易、owner 预测和恢复/分叉是融合起点；融合方向以上述新专题为准，旧里程碑不再要求未来继续维持两个独立产品。其他体验建议与 Gym 二期的历史重开条件见[原工作计划](docs/codex-goals/microtown/work-plan.md)。
+Microtown 源码、配套测试和 smoke 已从主线移除，通过 [Git tag 归档](docs/archive/microtown.md)保留历史实现与证据；当前生活世界只使用 Cycle 发布根。生产、现金、市场与赠钱见[经济验收](docs/experiments/living-world-economy-acceptance.md)，居民报价见[交易验收](docs/experiments/living-world-trades-acceptance.md)。共享 Goals、CharacterControl.Completion、CharacterGym 保持独立；[新增游戏接线说明](docs/implementation/adding-a-game.md)以当前山野镇为参照。
 
 [角色实验环境一期](docs/design/character-gym/README.md)已通过[工程验收](docs/experiments/character-gym-acceptance.md)与[真实模型串联试玩](docs/experiments/character-gym-playtest.md)，操作见[使用说明](docs/design/character-gym/usage.md)；山野镇已有[实际请求、导出与管理分叉验收](docs/experiments/living-world-gym-acceptance.md)，小镇历史实现复用并扩展其游戏适配，二期修复/对照评估需另行启动。
 
@@ -61,7 +61,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **初始化与修订**：[CycleGameFactory](src/ResourceCycle/CycleGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 22](src/ResourceCycle/Persistence/CycleGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
-当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Microtown 领域/Completion 适配/Console、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
+当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、ResourceCycle 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 
 Dynamic-Programmer R1–R8 的既有实现、验收、Player 运行时理念与长期 Plan 设计统一保留在[Player 归档](docs/archive/player-runtime.md)，不驱动当前施工。
 

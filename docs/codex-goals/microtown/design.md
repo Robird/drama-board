@@ -1,5 +1,7 @@
 # 微型小镇：玩法与复用设计草案
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 状态：2026-10-31，本轮设计已实施并通过[总验收](../../experiments/microtown-acceptance.md)。共享 Goals、Completion 调用循环和 Gym 已有山林与小镇两个消费者；小镇完成真实三居民经济日及反馈分叉。以下具体玩法仍可依据后续实验修订，不把当前配方/数值固定为跨游戏契约。
 
 ## 1. 世界与居民
@@ -98,7 +100,7 @@ Context 暂不泛型化：山林的冻结观察、目标回执及经历校验有
 
 现有 E/S 独立修订、完成 S fork、pending 恢复与角色可见性合同保留。旧开发存档不承诺全面兼容；若拆分改变 Schema 或序列化身份，明确拒绝/支持范围，保留旧证据，不隐式改写。当前程序产生的新档须完成冷开与 fork 验收。
 
-已选择独立薄 [Microtown.Cli](../../../src/Microtown.Cli/README.md)，同一个 Console 默认服务三位 Human 居民，`--llm` 绑定三个模型居民，`--human` 可保留一位由人类调试接管。一个 Town 适配器串行调用共享 `LlmDecisionLoop`，每次只接冻结观察，预算跨居民计数，跨决策不保留语义 Tail。`CompletionConnectionBinding` 也被山林宿主使用：恢复后首次真实调用才初始化，目录只解析选中连接的环境变量。
+已选择独立薄 [Microtown.Cli](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/README.md)，同一个 Console 默认服务三位 Human 居民，`--llm` 绑定三个模型居民，`--human` 可保留一位由人类调试接管。一个 Town 适配器串行调用共享 `LlmDecisionLoop`，每次只接冻结观察，预算跨居民计数，跨决策不保留语义 Tail。`CompletionConnectionBinding` 也被山林宿主使用：恢复后首次真实调用才初始化，目录只解析选中连接的环境变量。
 
 `TownGymSession` 复用共享日志、消息投影及导出。先恢复 pending E，再依据当前分支已完成 E/S 的精确操作回执补录宿主结果；无提交的旧输入标 Interrupted，绝不从日志重放。反馈持久化后才返回工具回执。只读管理不修复日志；写会话也先只读核对游戏身份，不能在拒绝外来日志前修剪尾行。每次运行记录预算、角色绑定、程序集哈希和显式实验指令；运行时实际解析的模型/连接另记 binding，不保存凭据。
 

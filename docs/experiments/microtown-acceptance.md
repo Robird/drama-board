@@ -1,5 +1,7 @@
 # 微型小镇与多游戏共享代码库：总验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 2026-10-31，[本轮六项完成条件](../codex-goals/microtown/README.md)均已有工程与运行证据。生产代码基线为 `d5a9b89`；最后一片只增加真实试玩证据和交付文档，没有为通过试玩临时改变规则。Town 接受 GameRevision 3，ResourceCycle 接受 16，旧开发存档不迁移。
 
 本次交付的是第二款独立、有限的小镇游戏和两游戏实际使用的共享代码。没有开始 Character Gym 二期、第三款游戏或通用角色记忆系统。
@@ -8,12 +10,12 @@
 
 | 条件 | 实际交付与证据 | 证据边界 |
 | --- | --- | --- |
-| 1. 独立可运行的小镇 | 三居民、三地点、饱食、库存、采购、两种耗时生产、消费与有限外销；同地交流、赠与、报价与双边原子交换。[产品入口](../../src/Microtown.Cli/README.md)、[社交](microtown-social-acceptance.md)、[交易](microtown-trade-acceptance.md)与[真实试玩](microtown-playtest.md) | `--llm` 三居民独立决策；默认 Human 便于调试，`--llm --human a` 可混合控制。模型社会成交有开发提示，不宣称自发合作 |
+| 1. 独立可运行的小镇 | 三居民、三地点、饱食、库存、采购、两种耗时生产、消费与有限外销；同地交流、赠与、报价与双边原子交换。[产品入口](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/README.md)、[社交](microtown-social-acceptance.md)、[交易](microtown-trade-acceptance.md)与[真实试玩](microtown-playtest.md) | `--llm` 三居民独立决策；默认 Human 便于调试，`--llm --human a` 可混合控制。模型社会成交有开发提示，不宣称自发合作 |
 | 2. 多游戏真实复用 | Goals、CharacterControl.Completion、CharacterGym 已由山林和小镇实际调用，另复用 Kernel/Spatial/Inventory；[新增游戏指南](../implementation/adding-a-game.md)逐项列出两个调用点 | 观察、根、规则、持久化适配和 Gym 边界仍由各游戏拥有，没有统一万能世界或将小镇变成山林开关 |
-| 3. 经济可核对 | [TownEconomicTotals](../../src/Microtown/TownModels.cs)核对现金、物品、在制品及分类流量；[TownStatistics](../../src/Microtown.Cli/TownStatistics.cs)显示全部居民与最差生活值。真实父局现金 `54−162+204=96`，物品逐项平衡，见[试玩账表](microtown-playtest.md) | 区间为新游戏至当前状态，fork 含继承前缀；失败居民仍计入。库存不虚估为现金，现金不是福利 |
+| 3. 经济可核对 | [TownEconomicTotals](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownModels.cs)核对现金、物品、在制品及分类流量；[TownStatistics](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/TownStatistics.cs)显示全部居民与最差生活值。真实父局现金 `54−162+204=96`，物品逐项平衡，见[试玩账表](microtown-playtest.md) | 区间为新游戏至当前状态，fork 含继承前缀；失败居民仍计入。库存不虚估为现金，现金不是福利 |
 | 4. 恢复与分叉 | [持久化](microtown-persistence-acceptance.md)、[Gym 接线](microtown-llm-gym-acceptance.md)、[交易恢复](microtown-trade-acceptance.md)与[预测恢复](microtown-prediction-acceptance.md)覆盖 S、pending、发布失败、精确 fork。当前真实反馈 fork 另进程完成 10 条新操作，源分支与角色证据隔离 | Open 不执行 pending，恢复不重问控制器。仅支持完成 S 决策前态与串行分支，不恢复原生模型工具 Tail |
 | 5. 工程与实际体验 | 确定性 48h 经济循环、拒绝/竞争/失败/恢复测试；三真实 LLM 父局跑至预定 30h，越过 24h 市场刷新，两个商品均生产并外销。再完成反馈分叉与有引导交易分叉，详见[试玩](microtown-playtest.md) | 父局达到实验终点；两个子局预算暂停，不冒充终局。108 次调用、106 次成功操作均有原始材料及独立复核 |
-| 6. 旧游戏与开发入口 | 当前 solution 回归含山林领域、CLI、Completion、Context/Goals/Gym；提取时另跑山林完整 Console 路线和目标工具。提供[启动说明](../../src/Microtown.Cli/README.md)和[新增游戏路径](../implementation/adding-a-game.md) | 山林实际人类与真实模型合作通关仍是原先独立延期项，没有借小镇验收宣布完成 |
+| 6. 旧游戏与开发入口 | 当前 solution 回归含山林领域、CLI、Completion、Context/Goals/Gym；提取时另跑山林完整 Console 路线和目标工具。提供[启动说明](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/README.md)和[新增游戏路径](../implementation/adding-a-game.md) | 山林实际人类与真实模型合作通关仍是原先独立延期项，没有借小镇验收宣布完成 |
 
 ## 工程基线与旧游戏证据
 
@@ -29,7 +31,7 @@ CLI 零警告、零错误；13 个测试项目 **1,289 通过、0 失败、0 跳
 
 共享提取阶段的产品验证保留在 `artifacts/microtown-extraction/survival/` 与 `goals/`，两者均有 `acceptance.json` 和原始 Console 输出。前者包含道路/信号两种逃生路线、失败、冷开、路途警告及错误模式只读拒绝；后者包含目标创建/共享/更正/查询失效、生命周期、容量与冷开。之后共享连接与 Gym 的变化由上述完整 solution 回归覆盖；本轮没有重新运行真实模型山林旅程。
 
-领域当前版本与 Schema 的拒绝合同见[领域说明](../../src/Microtown/README.md)及[交易验收](microtown-trade-acceptance.md)。游戏身份、修订号和分支三者各自校验，不靠相同版本号猜测游戏类型。相邻 Completion 的选中连接解析增强在本地提交 `ef78922`，本轮未推送或发布包；源码开发入口仍依赖相邻仓库布局。
+领域当前版本与 Schema 的拒绝合同见[领域说明](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/README.md)及[交易验收](microtown-trade-acceptance.md)。游戏身份、修订号和分支三者各自校验，不靠相同版本号猜测游戏类型。相邻 Completion 的选中连接解析增强在本地提交 `ef78922`，本轮未推送或发布包；源码开发入口仍依赖相邻仓库布局。
 
 ## 真实模型与主线程复核
 

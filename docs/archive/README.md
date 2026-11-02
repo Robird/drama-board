@@ -3,6 +3,7 @@
 This directory preserves evidence that is not a current implementation instruction. Start from [PROJECT-STATE](../../PROJECT-STATE.md) and [the documentation index](../README.md) for current work.
 
 - [StateJournal-native experiments](statejournal-native.md) records retained conclusions and the fixed tag for the removed test-only probe.
+- [Microtown archive](microtown.md) records the fixed Git tag for the removed prototype, its tests and Console smoke after integration into Hillside.
 - [FirstBoard and LLM archive](firstboard-llm.md) indexes the retired scenario, Demo, persistence adapter, LLM implementation, tests, and product documents.
 - [Player runtime and interaction archive](player-runtime.md) indexes the frozen Player/Protocol/Server/WebUI experiment, its design reserve and fixed pre-split recovery tag.
 - [Legacy work packages](legacy/legacy-work-packages.md) preserve early task sequencing and acceptance records.

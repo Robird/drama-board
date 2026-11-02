@@ -10,8 +10,8 @@
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 山野镇（Hillside） | 正在融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 当前沿用 ResourceCycle 项目和 Cycle 类型；已融合生产、现金、市场、赠钱与居民报价；完成状态见专题工作计划。 |
-| 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | ResourceCycle 与 Microtown 各自拥有领域根和存档适配，不预设统一根接口。 |
+| 山野镇（Hillside） | 融合小镇与山林的连续生活游戏；唯一生活世界根，抵达镇口不会终止角色。 | 当前沿用 ResourceCycle 项目和 Cycle 类型；已融合生产、现金、市场、赠钱与居民报价；完成状态见专题工作计划。 |
+| 具体游戏（Game） | 拥有规则组合、世界根、初始化、内容、结束条件和修订政策的应用；可与其他游戏共享机制。 | ResourceCycle 拥有山野镇的领域根和存档适配；独立 Microtown 实现已[归档](archive/microtown.md)，不预设统一根接口。 |
 | 场景（Scenario） | 一款游戏内选定的地图、人物、资源、初始状态和局部参数组合；不等于一套独立游戏规则。 | `CycleGameFactory` 提供当前场景构造；新场景无需自动新建程序集。 |
 | 共享领域模块（Shared domain module） | 一项可复用能力的状态与局部规则；游戏组合协调跨模块变化并统一发布。 | Inventory 为现有实例；Goals 等后续提取按实际消费者验证，不把模块等同 ECS 组件。 |
 
@@ -28,7 +28,7 @@
 | 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/ResourceCycle.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
 | 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 共享 `LlmDecisionLoop` 在单次决策内保留反馈所需原生 Tail；跨决策清空，不支持冷开恢复原生会话。 |
 | 行动主体（Actor） | 某条命令、事实或规则中的“谁在行动”这一关系角色，不另立一种 Character 类别。 | ResourceCycle 的 `actorId` / `ActorId` 指向 `CycleCharacter.Id`；不因此要求所有 Spatial 实体都是角色。 |
-| 观察（Observation） | 某个角色当时可知的信息投影；不等同于完整世界对象或完整上下文。具体游戏可同时投影本人已保存的近期记录。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；小镇 [TownObservation](../src/Microtown/TownObservation.cs) 冻结本人状态与有界交互记录，不含其他角色私有材料。 |
+| 观察（Observation） | 某个角色当时可知的信息投影；不等同于完整世界对象或完整上下文。具体游戏可同时投影本人已保存的近期记录。 | [CycleObservation](../src/ResourceCycle/CycleObservation.Material.cs) 保存于 Opening/Items，无世界、Context 或委托引用；只提供本角色可知材料。 |
 | 行程观察（Journey observation） | 角色正在行走的路线知识：出发地、通路与方向线索、已知目的地；未探索目的地不公开身份。 | [CycleJourneyObservation](../src/ResourceCycle/CycleJourneyObservation.cs) 冻结于 `CycleObservation.Journey`，与 `ArrivalDue` 同时存在；抵达后清除，途中终局保留。 |
 | 游戏背景材料（Game background） | 角色可知的目标与规则；不含宿主启动信息、管理命令或排版。 | [CycleBackground](../src/ResourceCycle/CycleBackground.cs) 从纯观察选择并冻结材料，随 Opening 持久化。完整渲染与增量均使用保存的 Opening.Background，不按当前观察重新选择规则。 |
 | Console 布局（Play layout） | 对同一角色观察的文本组织方式；可运行时切换，属于会话偏好，不是角色记忆或游戏状态。 | [IPlayLayout](../src/ResourceCycle.Cli/IPlayLayout.cs)、[PlayPresentation](../src/ResourceCycle.Cli/PlayPresentation.cs)；[布局与元命令](design/console-layouts.md)。 |
@@ -38,18 +38,18 @@
 | 可见状态键和值（State key / visible value） | 与布局和中文名称无关的状态身份，以及数值、布尔、文字、已知不存在、不可见等有限值；自有物品用尽是 0，不等于离开观察范围。 | `CycleStateKey` / `CycleVisibleValue`，效果与当前观察共用；数值按 `Units / Scale` 表达。 |
 | 速率贡献分解（Rate breakdown） | 同量纲的已求值持续贡献及其派生总值；公开来源键支持按属性或来源组织，不等于一次性效果或 Buff 实例。 | [RateBreakdown / RateContribution](../src/ResourceCycle/RateBreakdown.cs) 保存来源键、名称与贡献；`CycleSurvival` 和冻结观察共用此形状，总值只读派生。见[设计](design/attribute-rate-explanations.md)。 |
 | 属性阈值预测（Attribute threshold forecast） | 在明确假设下，单项数值到达警戒线与耗尽的预计时刻；不是通知发送时间，也不承诺角色能存活至每项预测时刻。 | [CycleAttributeForecast](../src/ResourceCycle/CycleAttributeForecast.cs) 由冻结 `CycleSurvivalObservation` 按属性保存；历史警告确认独立。见[设计](design/attribute-threshold-forecasts.md)。 |
-| 行动结果预览（Action projection） | 根据本人冻结状态、公开耗时和速率，估算无额外干预时的结果；不是已决定事实，也不改变合法性或保证成功。 | 小镇 [TownTextRenderer](../src/Microtown/TownTextRenderer.cs) 显示不进食的耗尽时刻、行程/活动及多批生产饱食预览；零以下表示在完成前已失败，不是保存负值。见[社交切片验收](experiments/microtown-social-acceptance.md)。 |
+| 行动结果预览（Action projection） | 根据本人冻结状态、公开耗时和速率，估算无额外干预时的结果；不是已决定事实，也不改变合法性或保证成功。 | 归档小镇 [TownTextRenderer](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTextRenderer.cs) 显示不进食的耗尽时刻、行程/活动及多批生产饱食预览；零以下表示在完成前已失败，不是保存负值。见[社交切片验收](experiments/microtown-social-acceptance.md)。 |
 | Console 消费游标（Delivery cursor） | 记录某角色某上下文已成功绘制的最后条目，仅优化追加输出，不决定角色可知信息。 | `PlayPresentationSession` 在写出与 Flush 成功后推进；预览不改变游标，完整材料直接从 Context 重绘。输入提示仅在实际调用控制器时出现。 |
 | 决策回合（Decision turn） | 角色一次局部交互上下文的生命周期，可包含多次零耗时操作；接受放行模拟的行动后结束，下次唤醒建立新上下文。不同于一次方法调用、一次发生项或整项活动。 | `CharacterContext.ContextSequence` 与 Open/Closed/Terminal；`DecisionContextOpened` 冻结新的 Opening，终局在终局提交内新建只读上下文。 |
 | 角色上下文 Model（Character context Model） | 按角色/决策回合保存的初始材料与有序交互，供不同控制器消费；与完整模型协议会话、世界状态和 Console 输出分别建模。 | [CharacterContext](../src/ResourceCycle/CharacterContext.cs) 位于 Business.InteractionStates；Opening + 当前保留 Items 是呈现真相；[CharacterContextRenderer](../src/ResourceCycle.Cli/CharacterContextRenderer.cs) 同源提供完整纯输出与增量，最新状态预览不等于完整 Context；已裁剪拒绝可仍留在终端滚动文字中。 |
 | 上下文条目（Context Item） | 角色可见语义交互或感知材料；内容不可改写，身份由角色/回合/单调 ItemSequence 决定；顺序表示纳入上下文的顺序，事件仍保留发生时刻。 | `CharacterContextItem`，包含反馈与完整更新观察；允许仅观察变化、没有事件文案。纯拒绝没有观察/经历，只保留本角色本轮最近 3 次已提交操作中的拒绝；成功与感知条目不因此删除。 |
 | 待交付经历（Undelivered experience） | 角色按规则可感知、尚未纳入下一次决策上下文的结构化材料；不表示网络消息已投递或人已阅读。 | `CharacterInteractionState.UndeliveredExperiences` 保存 `CharacterExperience`；ExperienceSequence 按角色分配，Closed/未开始时累计，新 Opening 消费。 |
 | 角色交接文字（Handoff text） | 角色给下次上下文的意图、预期、假设与待办；不是游戏确认的事实，也不是完整对话或长期记忆。 | `CharacterInteractionState.DraftHandoff` 与 `Opening.PreviousAdvance.Handoff` 分开；下一次放行记录并清空草稿，不自动续传。 |
-| 署名通信（Signed communication） | 活跃角色间的定向说话、赠与或范围大喊；话语内容是角色陈述，不自动成为规则、已探索地图或世界真相。 | `say` / `give` 限同地单一目标；山林另有 `shout`，以 `SpeechShouted` 的 SubjectId/SubjectName/Detail 表达署名原文，和 [CycleObservedCommunication](../src/ResourceCycle/CycleObservedEvent.cs) 一样通过既有 Context 交付；小镇由 `TownInteractionEntry` 保存双方记录，另支持赠钱。 |
+| 署名通信（Signed communication） | 活跃角色间的定向说话、赠与或范围大喊；话语内容是角色陈述，不自动成为规则、已探索地图或世界真相。 | `say` / `give` 限同地单一目标；山林另有 `shout`，以 `SpeechShouted` 的 SubjectId/SubjectName/Detail 表达署名原文，和 [CycleObservedCommunication](../src/ResourceCycle/CycleObservedEvent.cs) 一样通过既有 Context 交付；山野镇还支持同地赠钱。 |
 | 通信额度与待响应（Communication budget / attention） | 每角色每模型时刻有限发送；接收可合并为一个待响应标记，但逐条经历保留。确认保留原活动期限，不返还同刻额度。 | [CycleCommunicationState](../src/ResourceCycle/CycleCommunicationRules.cs) 的 `BudgetAt / SentCount / AttentionPending`；当前每时刻 4 次，时间前进按需恢复有效额度。 |
-| 有界个人交互记录（Bounded interaction history） | 本人收发的有限语义记录，区别于最近操作回执、活动结果和宿主审计日志；同一交互两边共用身份，各用本地序号。 | 小镇 [TownInteractionState / TownInteractionEntry](../src/Microtown/TownInteractionState.cs)：最多待交付 32 条、本次 opening 新项 32 条、此前 16 条；未读不裁剪，队列满拒绝发送。不是完整长期记忆。 |
-| 材料交付高水位（Delivered-through sequence） | 已纳入发布的决策材料的最高本地记录序号，不证明控制器已阅读或回答；与 Console 输出消费游标分开。 | `TownInteractionState.DeliveredThrough` 在 `DecisionOpened` 推进，`OpeningAfter` 标记该次新项下界；渲染不修改两者。 |
-| 忙碌响应（Busy response） | 活动仍进行时，为待响应通知提供决策机会；唤醒不取消活动，交付材料也不等于完成响应。 | 小镇 `TownInteractionState.NeedsResponse` 与交付游标独立。即时成功操作轮转但保留标记；`continue` 清标记且保留活动期限，`cancel` 结束等待/生产并一次退料。途中移动不开放该窗口。 |
+| 有界个人交互记录（Bounded interaction history） | 本人收发的有限语义记录，区别于最近操作回执、活动结果和宿主审计日志；同一交互两边共用身份，各用本地序号。 | 归档小镇 [TownInteractionState / TownInteractionEntry](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownInteractionState.cs)：最多待交付 32 条、本次 opening 新项 32 条、此前 16 条；未读不裁剪，队列满拒绝发送。不是完整长期记忆。 |
+| 材料交付高水位（Delivered-through sequence） | 已纳入发布的决策材料的最高本地记录序号，不证明控制器已阅读或回答；与 Console 输出消费游标分开。 | 归档小镇的 `TownInteractionState.DeliveredThrough` 在 `DecisionOpened` 推进，`OpeningAfter` 标记该次新项下界；渲染不修改两者。 |
+| 忙碌响应（Busy response） | 活动仍进行时，为待响应通知提供决策机会；唤醒不取消活动，交付材料也不等于完成响应。 | 归档小镇 `TownInteractionState.NeedsResponse` 与交付游标独立。即时成功操作轮转但保留标记；`continue` 清标记且保留活动期限，`cancel` 结束等待/生产并一次退料。途中移动不开放该窗口。 |
 | 居民报价（Resident trade offer） | 指定双方、每边一种资产的交换条款；未接受前不转移或预留资产，接受时重验并一次结算。 | 山野镇 [CycleTradeOffer / CycleTradeRules](../src/ResourceCycle/CycleTradeRules.cs)；`offer`、`accept`、`reject`、`withdraw`，到期/参与者死亡也会关闭。报价身份包含角色、Context、操作序号；区别于口头承诺和可尝试提示。 |
 | 报价版本交付（Offer-version delivery） | 某一报价的有效或终态版本首次纳入参与者 Opening；不代表同意、阅读或完成响应。 | [CycleTradeState](../src/ResourceCycle/CycleTradeState.cs) 保存双方已交付版本/Context 序号；最多 24 份、每发起人 8 份。双方终态交付后可在后续 Opening 回收，并同步另一方仍打开的材料；死亡方豁免未来交付，不伪造已读。内部游标不进入角色观察。 |
 | 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `CycleControllerOperation`、行动事实与 `CycleOperationJournal`；Console 隐式生成，LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
@@ -59,7 +59,7 @@
 | 感知通知（Notice） | 角色收到、等待控制器响应的业务信息，例如他人加入或资源耗尽；不是世界所有事件的副本。 | `CycleNotice`、`CycleCharacter.Notices`；会持久化。 |
 | 决策请求 / 待决策（Decision request） | 当前应给予角色控制器交互机会。可因空闲或有待响应感知产生。 | `NeedsDecision`、`CyclePredictionKind.RequestDecision`；没有独立持久请求对象。 |
 | 唤醒（Wake-up） | 服务决策请求：展示角色材料并等待操作提交；拒绝保持原服务机会。不是操作系统线程唤醒，也不意味着取消 Activity。 | `ICycleCharacterController.ChooseCommandAsync`；等待输入时暂停模型时间。 |
-| 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，按确定顺序选择下一服务者；不保证资源公平分配，也不保证无限拒绝或即时操作下时间推进。 | `CycleBusinessState.LastServedActorId` / `TownBusinessState.LastServedActorId`；拒绝和 Console 纯查询不交棒，小镇即时成功轮转空闲或待响应居民。 |
+| 交棒 / 服务轮转（Decision rotation） | 多个角色待决策时，按确定顺序选择下一服务者；不保证资源公平分配，也不保证无限拒绝或即时操作下时间推进。 | `CycleBusinessState.LastServedActorId`；拒绝和 Console 纯查询不交棒，归档小镇即时成功轮转空闲或待响应居民。 |
 | 个人终局（Character ending） | 角色获救或死亡的权威记录，停止本人的活动、需求和决策；保存结束时刻、原因与历史位置。 | `CycleCharacter.Ending` / `CycleCharacterEnding`；同时退休 Spatial 实体，其他人可继续。 |
 | 整局总结（Expedition summary） | 从所有个人终局派生的宿主结果；不是局内角色自动知道的信息。 | `CycleWorld.ExpeditionSummary`；Exploring / AllEscaped / PartiallyEscaped / NoneEscaped，不单独持久化。 |
 
@@ -108,13 +108,13 @@
 | 模型时长（Model duration） | 两个模型时刻之间的时长。 | [ModelDuration](../src/Kernel/Time/ModelDuration.cs) |
 | 逻辑时点（Logical instant） | 模型时间加同一时刻内的提交因果序号；用于区分模型时间相同的多次转换。 | [LogicalInstant](../src/Kernel/Time/LogicalInstant.cs)：`ModelTime + CausalOrdinal` |
 | 到期时刻（Due） | 过程或候选预计应结算的模型时刻。它不保证结算成功；活动可能取消，采集可能无货。 | [CandidateDue](../src/Kernel/Scheduling/CandidateDue.cs)、`CycleActivity.Due`、`TraversingLocation.ArrivalDue`；是否持久化取决于所属概念。 |
-| 预测（Prediction） | 基于当前业务状态推导的未来发生可能；可失效、重算、冷开重建。当前纯派生预测是运行时缓存。 | [CyclePrediction / CycleForecasts](../src/ResourceCycle/CycleForecasts.cs)、[TownForecasts](../src/Microtown/TownForecasts.cs)、[ContactPrediction / SpatialContactPredictions](../src/Spatial/State/SpatialSimulationState.cs) |
+| 预测（Prediction） | 基于当前业务状态推导的未来发生可能；可失效、重算、冷开重建。当前纯派生预测是运行时缓存。 | [CyclePrediction / CycleForecasts](../src/ResourceCycle/CycleForecasts.cs)、[ContactPrediction / SpatialContactPredictions](../src/Spatial/State/SpatialSimulationState.cs) |
 | 候选（Occurrence candidate） | 提交给 Kernel 仲裁的一次可能发生项，携带稳定身份、到期时刻和规则私有数据。是预测对调度器的投影，不是事实。 | [OccurrenceCandidate](../src/Kernel/Scheduling/OccurrenceCandidate.cs)、`CandidateKey` |
 | 候选枚举（Forecast） | 规则读取当前世界、产出候选的操作。不要把方法名 Forecast 理解成每次必须全量重算预测。 | [IOccurrenceRule.Forecast](../src/Kernel/Simulation/IOccurrenceRule.cs) |
 | 发生项（Occurrence） | Kernel 一次选择并处理的单位；可能是自然过程到期，也可能是请求角色决策。一次发生项可产生多个业务事实。 | 候选经 Plan 形成转换；记录形式为 `OccurrenceEvent<TFact>`。明确“候选”或“已记录”阶段，避免统称已发生事件。 |
 | 调度与仲裁（Scheduling / Arbitration） | 从规则提交的候选中选择下一项；同 Due 按世界 seed、稳定 key 确定性破平局。 | [OccurrenceScheduler](../src/Kernel/Scheduling/OccurrenceScheduler.cs)；ResourceCycle 的自然事件、活动完成、输入优先级由应用筛选实现。 |
 | 随机机会（Random opportunity） | 已安排的抽样机会，候选本身不包含结果；被选中规划时才决定实际影响。机会序号与 seed 随业务状态保存，独立于调度破平局的 seed。 | `CycleEnvironment.NextDue/Sequence/Seed`；`CycleEnvironmentRules.Plan` 复用 [DeterministicRandom](../src/Kernel/Random/DeterministicRandom.cs)，结果随 Fact 记录，见[天气合同](design/survival-weather.md)。 |
-| 预测所属单元（Prediction owner） | 负责某类预测的应用单元；更新时可以暂时没有候选。不是物品所有权。 | `CyclePrediction.OwnerId`、`CycleBinding.OwnerId` 与 `TownForecasts.Entries` 的键，例如 `actor:a:activity`；小镇另有全局 `decision` owner。没有通用 Owner 接口。 |
+| 预测所属单元（Prediction owner） | 负责某类预测的应用单元；更新时可以暂时没有候选。不是物品所有权。 | `CyclePrediction.OwnerId`、`CycleBinding.OwnerId`，例如 `actor:a:activity`。没有通用 Owner 接口。 |
 | 依赖绑定（Binding） | 把事实种类和目标映射到可能受影响的预测单元，先粗筛再检查是否需要重算。 | `CycleBinding`；当前运行时数据，不是持久化 delegate 或通用事件总线。 |
 | 待重算集合（Dirty set） | 本次转换中可能失效的单元/空间范围的去重集合；在最终业务态上更新。 | ResourceCycle 的 owner 集合、Spatial 的 passage 集合；实现层概念。 |
 | 全量重建（Rebuild） | 从业务真相和确定性规则重新构造完整派生缓存，用于初始状态、冷开及对照验证。 | `CycleEngine.Rebuild`、`SpatialSimulation.Rebuild` |
@@ -149,7 +149,7 @@
 | 新游戏工厂（New-game factory） | 组装当前规则下的初始领域对象图及起始游标；可以组合程序化生成器，不负责升级旧世界。 | 山野镇 `CycleGameFactory.Create(definition)` / `CreateLivingWorld`；旧领域夹具保留 `CreateBatch` / `CreatePlayable`。发布由 `CycleDurableHistory.Create` 负责。 |
 | 有效世界定义（Effective world definition） | 已归一化初始覆盖参数的不可变完整内容，包含地图、居民、资源、经济与身体/天气。随世界保存，运行中不能替换。 | `CycleWorldDefinition`；`CycleWorldDefinitions.Named` 提供预设，`Change` 建立新定义；派生图缓存不持久化。 |
 | 内容身份（Content identity） | ContentId 与规范 SHA-256 指纹共同标识有效内容；同名内容字段变化也改变身份。独立于模拟位置与算法修订。 | S 保存定义与指纹，`CycleDurableEvent` 保存规划前态身份；冷开、发布和分叉核验，见[内容合同](codex-goals/living-world/content.md)。 |
-| 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 山林由 `CycleGameRevision.Current` 定义；小镇 `TownGameRevision.Current = 3`，S/E 均携带修订，Business/EventKind/Fact/Experience Schema 为 2，数值不要求相同。旧小镇开发档不迁移，可能先在 DG 还原阶段拒绝；不还原业务图的分支/日志管理仍可读。 |
+| 游戏修订号（GameRevision） | State/Event 各自表示的游戏语义版本，使用同一编号体系；独立于 Schema 版本和模拟转换次数。 | 山野镇由 `CycleGameRevision.Current` 定义，S/E 均携带修订；生产只支持当前版本，旧开发档不迁移。历史小镇版本见[归档](archive/microtown.md)。 |
 | 游戏状态修订（Game revision） | 加载时协调升级 State 与可选 pending E 的内存表示；不执行事件、不推进游标、不写盘，pending 工作留给正常流程。 | `CycleGameRevision.UpgradeLoadedBoundary`；[实施合同](design/game-initialization-and-revision.md)，生产只接受当前版本，跨版本政策由夹具验证。 |
 | 模拟世界版本（WorldVersion） | 模拟谱系及已完成转换次数，标识模拟位置；不表示游戏内容或规则修订。 | [WorldVersion](../src/Kernel/Simulation/WorldVersion.cs) |
 

@@ -1,13 +1,15 @@
 # 小镇持久化与 Human Console 切片验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 日期：2026-10-31。属于[微型小镇里程碑](../codex-goals/microtown/README.md)的一个纵向切片，不代表整目标完成。主线程集成并验证；独立 subagent 审查存档/恢复边界，并另行实际操控 Console。没有真实 LLM 调用。
 
 ## 交付与边界
 
-- [TownDurableHistory](../../src/Microtown/Persistence/TownDurableHistory.cs)：独立游戏根/事件，二者携带 `microtown` / GameRevision 1；只读还原、完成 S 和 pending E 分离、恢复及精确完成决策 S 分叉。当前只接受本版本，不提供迁移。
-- [TownOperation](../../src/Microtown/TownOperation.cs)：原始输入、ToolCallId、OperationRecordId 在解析前保留，成功/拒绝回执存入事实和本人状态；本人最近活动结果独立保存。
-- [TownObservation](../../src/Microtown/TownObservation.cs) / [TownTextRenderer](../../src/Microtown/TownTextRenderer.cs)：角色可见冻结材料，列出规则、动作范围和阻因；本人私有状态不泄露给其他居民，远处市场余额不泄露。
-- [Microtown.Cli](../../src/Microtown.Cli/README.md)：同一 Human Console 服务三个居民，磁盘新档/冷开、预算、EOF/:quit 暂停、`:look` 和明确区隔的开发者经济统计。
+- [TownDurableHistory](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/Persistence/TownDurableHistory.cs)：独立游戏根/事件，二者携带 `microtown` / GameRevision 1；只读还原、完成 S 和 pending E 分离、恢复及精确完成决策 S 分叉。当前只接受本版本，不提供迁移。
+- [TownOperation](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownOperation.cs)：原始输入、ToolCallId、OperationRecordId 在解析前保留，成功/拒绝回执存入事实和本人状态；本人最近活动结果独立保存。
+- [TownObservation](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownObservation.cs) / [TownTextRenderer](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTextRenderer.cs)：角色可见冻结材料，列出规则、动作范围和阻因；本人私有状态不泄露给其他居民，远处市场余额不泄露。
+- [Microtown.Cli](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown.Cli/README.md)：同一 Human Console 服务三个居民，磁盘新档/冷开、预算、EOF/:quit 暂停、`:look` 和明确区隔的开发者经济统计。
 
 Open 检查身份、修订与历史邻接/游标并重建完成 S；pending 的业务执行及完整效果校验在正常 Kernel 恢复时进行。没有为了启动而执行尚未完成的决定。失败后必须重开，不能从宿主日志重做已经发布的操作。
 
@@ -40,7 +42,7 @@ dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 
 ## 实际 Console 证据
 
-主线程运行 [Smoke-Microtown.ps1](../../scripts/Smoke-Microtown.ps1)，原始材料在 `artifacts/microtown-persistence/console/`。三个独立进程完成：
+主线程运行 [Smoke-Microtown.ps1](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/scripts/Smoke-Microtown.ps1)，原始材料在 `artifacts/microtown-persistence/console/`。三个独立进程完成：
 
 1. 新建 25h 游戏，a 采购过量被拒，再由三个居民各买 4 谷物；达到本次操作预算后暂停。
 2. 冷开交付已保存回执；移动到工坊，各生产一批饭、吃一份、等待。经过第 24h 外界市场更新，到第 25h 有限终点。

@@ -1,5 +1,7 @@
 # 小镇交流、赠与与忙碌响应验收
 
+> 历史记录：Microtown 源码、测试和 smoke 已于 2026-11-02 从主线移除，见 [Git tag 归档](../archive/microtown.md)。本文命令、实现状态和测试结果属于当时版本。
+
 日期：2026-10-31。此片提供同地居民交互、有界个人记录与生产/等待中的响应窗口；报价交易、Town owner 预测维护和完整经济日真实模型试玩仍待后续，不将本片当成整个小镇目标完成。
 
 ## 交付
@@ -12,7 +14,7 @@
 - 冻结观察只含本人历史；其他人库存、资金、饱食和收件容量不公开。赠与候选仅按本人能力显示，明确接收方仍在执行时验证，不通过数量二分推断他人私有状态。
 - 行动材料增加基于本人现有饱食/衰减速率的路线、剩余旅途、当前活动及多批生产预览；标明不进食/无干预假设、同刻失败优先及超实验终点风险。居民原话做 Markdown/控制字符转义并标为言语，不作为游戏规则。
 
-实现：[交互记录](../../src/Microtown/TownInteractionState.cs)、[结算](../../src/Microtown/TownPlanning.cs)、[调度](../../src/Microtown/TownEngine.cs)、[观察](../../src/Microtown/TownObservation.cs)、[文本](../../src/Microtown/TownTextRenderer.cs)。新规则保留在游戏层，现有通用控制器/Gym 不需要理解赠与规则。
+实现：[交互记录](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownInteractionState.cs)、[结算](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownPlanning.cs)、[调度](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownEngine.cs)、[观察](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownObservation.cs)、[文本](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTextRenderer.cs)。新规则保留在游戏层，现有通用控制器/Gym 不需要理解赠与规则。
 
 ## 持久化与版本
 

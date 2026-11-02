@@ -1,6 +1,6 @@
 # 微型小镇与多游戏共享代码库
 
-> 当前状态（2026-11-01）：Microtown 历史原型已停止独立产品演进；当前推荐入口为[山野镇 / Hillside](../living-world/README.md)。保留源码、测试及下方历史正文，供玩法与共享模块参照；正文中的施工状态和启动示例属于原型阶段。
+> 当前状态（2026-11-02）：Microtown 源码、配套测试和 smoke 已从主线移除，完整历史实现由 [Git tag 归档](../../archive/microtown.md)保留；当前产品入口为[山野镇 / Hillside](../living-world/README.md)。下方正文为历史设计与验收依据，其启动示例需在归档版本中使用。
 
 状态：2026-10-31，本里程碑已完成，见[六项条件总验收](../../experiments/microtown-acceptance.md)与[真实模型试玩](../../experiments/microtown-playtest.md)。三居民完成 30h 经济日及市场刷新，另有精确反馈分叉和有引导的社会交易；后两段因预算暂停，不作为完整终局。本目录保留愿景、范围和实施依据；后续重开条件见[工作计划](work-plan.md)。
 

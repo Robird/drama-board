@@ -19,7 +19,7 @@
 | 观察 | 冻结 Opening＋Items | 生产、市场和交易要进入同一材料链与校验，不向模型暴露业务根。 |
 | 宿主 | 原 ResourceCycle.Cli 演化 | 默认生活世界；--llm 全模型、--human ID 指定一个 Console 角色。 |
 
-Microtown 停止独立产品演进。其源码与测试保留作历史玩法、经济语义和共享模块回归的参照；后续新增玩法与面向玩家的入口只在山野镇推进，不再要求两个产品同步开发。旧 `CreateSurvival` / 采集工厂保留为底层测试夹具，不进入产品模式选择。
+Microtown 源码与测试已从主线移除，由 [Git tag](../../archive/microtown.md)保留历史玩法与经济语义；后续新增玩法与面向玩家的入口只在山野镇推进，不再要求两个产品同步开发。旧 `CreateSurvival` / 采集工厂保留为底层测试夹具，不进入产品模式选择。
 
 当前新局可用 `--content hillside|gentle` 与 `--characters 1|2|3`；省略内容的新局采用 hillside，续局省略内容和人数则沿用保存定义。默认共用 Human Console；`--llm` 控制全体，`--human ID` 指定一个 Console 角色。管理查询不接受这些游戏参数。完整命令见[根 README](../../../README.md)与[Gym 使用说明](../../design/character-gym/usage.md)。
 

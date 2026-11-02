@@ -15,7 +15,7 @@ dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaH
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
 ```
 
-源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、新世界采用的 ResourceCycle 项目、保留为历史及共享模块回归参照的 Microtown 及相应测试，也列入相邻源码项目供 IDE/LSP 导航。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
+源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、ResourceCycle 系列及相应测试，也列入相邻源码项目供 IDE/LSP 导航。Microtown 已通过 [Git tag 归档](docs/archive/microtown.md)，不再参与构建或回归。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
 
 ## 启动山野镇
 
@@ -109,7 +109,7 @@ Gym 入口沿用 `--gym` / `--feedback`（需 `--llm --store`），管理命令�
 
 ## 原型与历史证据
 
-Microtown 已停止独立产品演进；源码和测试继续保留，作为历史玩法与共享模块的行为、回归参照。新增世界玩法与玩家入口统一在山野镇推进，不要求同步维护另一款 Microtown 产品。其生产、现金、有限外部市场与居民报价交易见 [Microtown](src/Microtown/README.md)、[里程碑验收](docs/experiments/microtown-acceptance.md)、[真实模型试玩](docs/experiments/microtown-playtest.md)及[持久化交互证据](docs/experiments/microtown-persistence-acceptance.md)。新世界已接入生产、现金、市场、赠钱与居民报价；旧证据不能替代融合验收。
+Microtown 的生产、现金、有限市场与居民报价已融入山野镇；旧源码、三个测试项目及专属 smoke 脚本已从主线移除，由 [Microtown 归档](docs/archive/microtown.md)中的固定 Git tag 保留。历史设计与实验记录继续保留，旧证据不能替代融合验收。新增世界玩法与玩家入口统一在山野镇推进。
 
 山野镇继续使用 `ResourceCycle.*` 项目、namespace 与 `Cycle*` 类型名。这些是实现身份，保留它们不代表存在另一款并行产品；不为产品收敛机械重命名持久类型或 Schema。
 

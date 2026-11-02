@@ -12,7 +12,7 @@
 
 ## 现金与物品守恒
 
-参考 [TownEconomicTotals](../../../src/Microtown/TownModels.cs)，迁移必须新增 `Harvested`，并将固定 meal 消费改为按实际物品记账：
+参考 [TownEconomicTotals](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownModels.cs)，迁移必须新增 `Harvested`，并将固定 meal 消费改为按实际物品记账：
 
 ```text
 Σ所有角色现金 = InitialMoney + ExportIncome - ImportExpense
@@ -30,18 +30,18 @@
 
 ## 生产容量：两个互斥结局分别可达
 
-沿用 [TownPlanning.CanSettleActivity](../../../src/Microtown/TownPlanning.cs) 的合同：对拟变更后的背包，分别检查“装得下全部产物”和“装得下全部取消退料”。两者互斥，不能把所需容量相加，也不能只检查其中之一。
+沿用 [TownPlanning.CanSettleActivity](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownPlanning.cs) 的合同：对拟变更后的背包，分别检查“装得下全部产物”和“装得下全部取消退料”。两者互斥，不能把所需容量相加，也不能只检查其中之一。
 
 开工、购买、赠与接收、成交接收都需要此检查。它保证生产期间其他零耗时操作不会把角色锁在无法完成或取消的状态。活动保存配方身份、批次、输入物品与数量以及既有 Id／StartedAt／DurationTicks／Due；取消与死亡不得依赖重新查找已经消失的输入。
 
 ## 操作身份、过期与交付
 
 - Cycle 的 operation sequence 在每个 Context 内编号；报价 ID 候选为 `trade:{actorId}:{contextSequence}:{operationSequence}`。不能照搬 Town 的 actor＋operation，否则跨 Context 会碰撞。
-- 保留有限报价账与终态交付后回收；参考 [TownTradeState](../../../src/Microtown/TownTradeState.cs)。只有实际发布的角色材料才能作为交付依据，死亡参与者可豁免未来交付，不能伪造已读。
+- 保留有限报价账与终态交付后回收；参考 [TownTradeState](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTradeState.cs)。只有实际发布的角色材料才能作为交付依据，死亡参与者可豁免未来交付，不能伪造已读。
 - 推荐固定 `market` 和 `trades` owner：后者预测最早 active ExpiresAt，可在同一 Fact 关闭该时刻全部到期报价；空账时没有 prediction，但 binding 仍存在。
 - 市场刷新、报价创建／关闭／回收必须更新对应 owner。不要只增加报价对象而依赖下次冷开重建才获得过期预测。
 - 到期处理应先于同刻角色输入；`now >= ExpiresAt` 不允许接受。精确优先级与 ledger revision 形状在集成时裁决，并用全量 oracle 对照。
-- 报价/成交材料只交付参与者；他人的现金、背包、远处位置不成为可见材料。参考 [TownTradeRules.CheckVisible/Check](../../../src/Microtown/TownTradeRules.cs) 区分可见查询与完整提交检查。
+- 报价/成交材料只交付参与者；他人的现金、背包、远处位置不成为可见材料。参考 [TownTradeRules.CheckVisible/Check](https://github.com/Robird/drama-board/blob/b6fea5e94ca3ea718cee2546a2d785afa1bafa6d/src/Microtown/TownTradeRules.cs) 区分可见查询与完整提交检查。
 
 ## 已确认的接线陷阱
 

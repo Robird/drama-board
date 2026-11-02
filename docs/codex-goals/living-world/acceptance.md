@@ -1,6 +1,6 @@
 # 山野镇阶段验收与交接
 
-2026-11-01。[原定 C1–C8](README.md#完成条件)全部具备实现、工程和实际运行证据。产品为 **山野镇 / Hillside**，唯一推荐入口 `src/ResourceCycle.Cli`；没有强制主线或固定天数的世界终局。Microtown 停止独立产品演进，保留实现、测试及历史证据。
+2026-11-01。[原定 C1–C8](README.md#完成条件)全部具备实现、工程和实际运行证据。产品为 **山野镇 / Hillside**，唯一推荐入口 `src/ResourceCycle.Cli`；没有强制主线或固定天数的世界终局。Microtown 在本次验收时停止独立产品演进；2026-11-02 其实现与测试已从主线移除并由 [Git tag](../../archive/microtown.md)归档，历史证据继续保留。
 
 生产规则以 `ea87f55` 为最终源码基线，GameRevision 22；本文件所属交付提交只补充入口说明、验收脚本和实际证据，未改变这些规则。操作平台为 Windows、.NET SDK 10.0.201；未宣称完成 Linux 或整仓 solution 回归。
 

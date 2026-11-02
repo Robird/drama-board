@@ -6,7 +6,7 @@ Each call supplies a `LlmDecisionInput`: actor identity, positive context sequen
 
 The optional feedback sink must durably record feedback before returning its receipt. The loop then retains the native assistant message and matching tool result within this decision only. Subsequent decisions start without this Tail. Trace callbacks expose actual request/response identities to the host; they do not publish game state. Host failures must not be translated into invented game actions.
 
-The game must publish a frozen decision boundary before invoking the loop if it needs Gym fork/recovery. Renderers that hold presentation state need their own sequential protection. The [ResourceCycle adapter](../ResourceCycle.Completion/LlmCharacterController.cs) and [Microtown adapter](../Microtown.Completion/README.md) both protect rendering and invocation as one serial service. Shared transport material does not replace a game's persistent Context or visibility checks.
+The game must publish a frozen decision boundary before invoking the loop if it needs Gym fork/recovery. Renderers that hold presentation state need their own sequential protection. The [ResourceCycle adapter](../ResourceCycle.Completion/LlmCharacterController.cs) protects rendering and invocation as one serial service. Shared transport material does not replace a game's persistent Context or visibility checks.
 
 ## Host connection binding
 
@@ -25,4 +25,4 @@ Connection configuration and credentials are host data, never character memory o
 
 `LlmControllerPausedException` reports a pause, not a fallback action. Successful feedback persistence precedes the tool receipt; neither feedback nor a model proposal proves that a game effect committed. Native Tail survives only the current service, not cold reopen or another character's decision. There is no generic persistent model session or automatic retry of an external call.
 
-Pure cross-game protocol and connection tests live in [CharacterControl.Completion.Tests](../../tests/CharacterControl.Completion.Tests). Game-specific adapter tests live in [ResourceCycle.Completion.Tests](../../tests/ResourceCycle.Completion.Tests) and [Microtown.Completion.Tests](../../tests/Microtown.Completion.Tests).
+Pure cross-game protocol and connection tests live in [CharacterControl.Completion.Tests](../../tests/CharacterControl.Completion.Tests). Game-specific adapter tests live in [ResourceCycle.Completion.Tests](../../tests/ResourceCycle.Completion.Tests).
