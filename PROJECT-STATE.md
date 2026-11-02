@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[home 与启动配置方案](docs/design/playground-home.md)已完成三位独立审阅者的两轮辩证审阅，本轮仅文档，尚未实施。下一步候选是 CLI 层的单个纵向切片：实例目录、启动文件、显式覆盖、初始化及管理接线；保留存档权威、Human 接管和管理独立性，验收点集中在方案中，不预建通用配置框架。[多模型两文件连接](docs/design/multi-llm-connections.md)已实施并记录离线及真实调用验收；连接不进入领域/存档，仍按需初始化并共享调用预算。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
+**当前焦点与下一步**：[home 与角色控制重构方案](docs/design/playground-home.md)在前轮辩证审阅后，按用户新裁决改为默认 LLM(DefaultConnectionId)＋逐角色 LLM/Human 控制绑定覆盖；仅属运行时配置，不进入 DurableGraph 领域模型。已核对源码可行性，尚未实施；下一步是统一宿主、home/绑定解析与管理接线的纵向切片，验收点集中在方案中，不预建通用控制框架。[多模型两文件连接](docs/design/multi-llm-connections.md)是当前已实施并验收的版本；其旧控制开关与字符串覆盖将被替换，按需凭据、共享调用预算和实际调用身份保留。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 

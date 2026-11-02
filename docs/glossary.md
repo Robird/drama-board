@@ -28,6 +28,7 @@
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
 | 模型连接（LLM connection） | 宿主侧可复用的 provider、model、protocol 与认证配置；ID 区分不同模型或同模型参数，不是角色身份。 | `LlmConnectionConfiguration` 冻结配置；`LlmConnectionPool` 按连接缓存并拥有客户端；见[多模型连接](design/multi-llm-connections.md)。 |
 | 角色连接覆盖（Character connection override） | 宿主用角色 opaque ID 指向连接；无覆盖时回退默认，Human 优先。 | `GetConnectionId(actorId)`；CLI 校验本局角色，不进入领域状态或存档。 |
+| 角色控制绑定（Character control binding） | 每个角色的运行时控制选择：Human Console 或 LLM(ConnectionId)；默认 LLM(DefaultConnectionId)，逐角色覆盖一次，不再另算 Human 优先。配置与审计不构成 DurableGraph 领域状态。 | 用户已选择的[重构方案](design/playground-home.md#31-双层角色控制映射)，尚未实现；将替换上一行角色连接覆盖和 CLI 的全局控制开关。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
 | 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
 | 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 共享 `LlmDecisionLoop` 在单次决策内保留反馈所需原生 Tail；跨决策清空，不支持冷开恢复原生会话。 |

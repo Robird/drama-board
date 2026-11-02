@@ -1,5 +1,7 @@
 # 多模型连接与角色绑定
 
+> 本文记录当前已实现的连接协议与验收。用户后续已选择[双层角色控制映射重构](playground-home.md#31-双层角色控制映射)：默认 LLM(DefaultConnectionId)，逐角色覆盖为指定 LLM 或 Human Console；绑定仅属运行时，不进入 DurableGraph 领域模型。该重构尚未实施，将替换下文的 `--llm` / 单个 `--human` 与字符串角色连接覆盖；当前用法仍以本文和 README 为准。
+
 本设计落实用户已选择的两文件方案。共享调用层处理连接配置、生命周期与不透明角色 ID 路由；游戏只提供角色集合并校验宿主绑定。当前入口见[根 README](../../README.md)，接线见[新增游戏](../implementation/adding-a-game.md)。验收证据见文末。
 
 ## 配置合同
