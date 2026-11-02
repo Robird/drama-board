@@ -23,7 +23,7 @@
 | 库存 | [ItemInventory](../../src/Inventory/ItemInventory.cs) | 角色背包、采集/生产/交易 | 物品定义、产出/消耗、双边转移与账本 |
 | 目标 | [GoalRules](../../src/Goals/GoalRules.cs) | [PlaygroundGoalInteractionRules](../../src/Playground/PlaygroundGoalInteractionRules.cs) | 操作时机、角色所有权、事实发布与可见材料 |
 | 模型调用 | [LlmDecisionLoop](../../src/CharacterControl.Completion/LlmDecisionLoop.cs) | [LlmCharacterController](../../src/Playground.Completion/LlmCharacterController.cs) | 强类型观察、游戏指引、原始操作转交 |
-| API 连接 | [CompletionConnectionBinding](../../src/CharacterControl.Completion/CompletionConnectionBinding.cs) | 山野镇 Console（Playground.Cli） | 宿主配置、连接生命周期与恢复后惰性初始化 |
+| API 连接 | [LlmConnectionPool](../../src/CharacterControl.Completion/LlmConnectionPool.cs) | 山野镇 Console（Playground.Cli） | 宿主配置、角色 opaque ID 绑定、连接生命周期与恢复后惰性初始化 |
 | Gym 证据 | [GymJournal](../../src/CharacterGym/GymJournal.cs)、[GymTraceExporter](../../src/CharacterGym/GymTraceExporter.cs) | [GymSession](../../src/Playground.Cli/Gym/GymSession.cs) | 游戏身份、精确 S 锚点、提交回执核对、fork 与访问范围 |
 
 Inventory/Goals 不擅自提交整个世界，Completion/Gym 不解释游戏规则。新游戏不必引用 Playground；如果相似功能仍需大量游戏知识，就先写在新游戏中，出现明确共同消费者后再提取。
@@ -60,6 +60,8 @@ Schema 由构建工具生成并 Verify，不手工维护生成文件。表示变
 
 薄 Console 负责配置、控制器绑定、取消和预算，领域规则不读终端。参考山野镇的 [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) 与 [LlmConsole](../../src/Playground.Cli/LlmConsole.cs)：先验证保存定义和显式内容选择，再恢复 pending、核对宿主回执，首次需要模型时才建立连接。Human 暂停/EOF 不伪造成角色行动；调用预算耗尽是实验暂停，不是游戏完成。
 
+共享 `LlmConnectionConfiguration.Load(path, overridesPath?)` 冻结两文件配置，`GetConnectionId(actorId)` 按 opaque ID 选覆盖或默认；共享层不认识游戏角色集合。宿主校验 override 角色属于本局，Human 绑定优先。一个 `LlmConnectionPool` 按 connection ID 惰性创建并拥有客户端，一个 `LlmDecisionLoop` 共享总调用与失败预算；单次决策固定连接和原生 Tail。配置和凭据不放进领域根或存档，续局可重新选择，详见[多模型连接](../design/multi-llm-connections.md)。
+
 每次模型请求捕获真实决定前完成 S，不能只用决策轮号缓存锚点，因为拒绝和即时操作也会提交新 S。反馈先持久化再给工具回执。宿主日志的操作记录与领域 E/S 分开提交；冷开仅补齐可证明已完成的回执，对没有提交的输入标中断，不从日志重放。
 
 fork 应验证源游戏/分支与精确边界，建立子分支后保留源请求前的证据前缀，排除父分支未来。每个角色导出只含自身私有轨迹及允许的公共元数据；日志不会自动成为角色记忆。
@@ -72,4 +74,4 @@ fork 应验证源游戏/分支与精确边界，建立子分支后保留源请�
 - 真正通过产品宿主运行 Human 与真实模型，保留输入、输出、预算和干预；测试通过不能替代试玩。
 - 修改共享模块时运行共享模块及山野镇消费者回归；更新启动说明、Schema 支持范围与验收证据。
 
-这些是接线责任，不要求提前建设统一存档适配、万能 Context、组件注册中心或动态插件装载器。历史上出现两个消费者并不保证所有规则都已通用化。产品称为 Hillside 而类型仍为 `Cycle*` 不影响这些责任；无需为整理入口机械改动持久类型或 Schema。
+这些是接线责任，不要求提前建设统一存档适配、万能 Context、组件注册中心或动态插件装载器。历史上出现两个消费者并不保证所有规则都已通用化。概念名与持久身份各有边界；无需为整理入口机械改动持久类型或 Schema。

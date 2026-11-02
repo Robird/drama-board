@@ -11,7 +11,7 @@ public sealed class ContentHostTests {
     public void Content_selection_is_explicit_and_is_not_an_administrative_option() {
         Assert.Null(Options.Parse([]).Content);
         Assert.Equal("gentle", Options.Parse(["--content", "gentle"]).Content);
-        Assert.Equal("hillside", Options.Parse(["--llm", "--content", "hillside"]).Llm!.Content);
+        Assert.Equal("hillside", Options.Parse(["--llm", "--llm-connections", "connections.json", "--content", "hillside"]).Llm!.Content);
         Assert.Throws<ArgumentException>(() => Options.Parse(["--content", "unknown"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--content", "gentle", "--content", "hillside"]));
         Assert.Throws<ArgumentException>(() => Options.Parse(["--store", "ignored", "--branches", "--content", "gentle"]));

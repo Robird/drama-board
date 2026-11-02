@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "defaultConnectionId": "quick",
+  "catalog": {
+    "v": 3,
+    "connections": [
+      {
+        "id": "quick",
+        "kind": "openai-codex-responses",
+        "modelId": "gpt-6.1-sol",
+        "completionSurfaceId": "openai-codex-responses",
+        "baseAddress": "https://chatgpt.com/backend-api/codex/",
+        "reasoningEffort": "low"
+      },
+      {
+        "id": "deliberate",
+        "kind": "openai-codex-responses",
+        "modelId": "gpt-6.1-sol",
+        "completionSurfaceId": "openai-codex-responses",
+        "baseAddress": "https://chatgpt.com/backend-api/codex/",
+        "reasoningEffort": "medium"
+      }
+    ]
+  }
+}

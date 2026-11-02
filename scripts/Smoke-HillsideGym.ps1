@@ -59,6 +59,7 @@ function Invoke-GymCli([string]$Name, [string[]]$Arguments, [string[]]$Commands 
     foreach ($argument in @($cliPath, '--store', $storePath) + $Arguments) { $start.ArgumentList.Add($argument) }
     $start.WorkingDirectory = $repoRoot
     $start.UseShellExecute = $false
+    $null = $start.Environment.Remove('DRAMABOARD_GYM_FORBIDDEN_API_KEY')
     $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
@@ -176,10 +177,19 @@ try {
     Assert-Export $childBefore $child 'a' $beforeVisible
     $checks.Add('Registered child uses the selected completed S and pre-request evidence cut')
 
-    # Deliberately absent connection catalog blocks accidental provider initialization,
-    # even when the parent process has usable credentials. Normal Human routing never reads it.
-    $absentCatalog = Join-Path $outputRoot 'model-calls-forbidden.catalog.json'
-    $common = @('--branch', $child, '--llm', '--gym', '--catalog', $absentCatalog, '--connection', 'forbidden')
+    # Configuration is validated eagerly, but credentials are resolved only for a model decision.
+    # The child environment explicitly lacks this key, so accidental model routing fails locally.
+    $connectionsPath = Join-Path $outputRoot 'model-calls-forbidden.connections.json'
+    $connections = @{
+        version = 1; defaultConnectionId = 'forbidden'
+        catalog = @{ v = 3; connections = @(@{
+            id = 'forbidden'; kind = 'openai-chat'; completionSurfaceId = 'openai-chat/strict'
+            modelId = 'forbidden'; baseAddress = 'https://example.invalid/'
+            apiKeyEnv = 'DRAMABOARD_GYM_FORBIDDEN_API_KEY'
+        }) }
+    }
+    [IO.File]::WriteAllText($connectionsPath, ($connections | ConvertTo-Json -Depth 10), $utf8)
+    $common = @('--branch', $child, '--llm', '--gym', '--llm-connections', $connectionsPath)
     $firstAudit = Join-Path $outputRoot '06-child-handoff.audit.jsonl'
     $firstOutput = Invoke-GymCli '06-child-handoff' ($common + @('--human', 'a', '--steps', '1', '--llm-log', $firstAudit)) @('handoff gym-child-private')
     $secondAudit = Join-Path $outputRoot '07-child-travel.audit.jsonl'

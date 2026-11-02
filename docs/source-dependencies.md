@@ -24,6 +24,7 @@ dotnet build src/Playground.Cli/Playground.Cli.csproj -c Release -m:1 -warnaserr
 - Kernel、Spatial、Inventory 和 Playground 导入 `eng/DurableGraph.Source.props` / `.targets`，直接引用 runtime、Generator 与 Build 工具，并导入上游 schema 配置。Generator 作为 analyzer 加载；Build 工具通过项目的 `GetTargetPath` 取得当前配置输出，不依赖包内工具路径。
 - Inventory 不引用 Kernel、Persistence 或具体游戏；它拥有库存类型的三份 Schema 历史及自身注册入口。Playground 引用 Inventory 与 Spatial，并在 `PlaygroundDurableModels.Register` 显式组合 Kernel、Inventory、Spatial 与游戏模型；只有游戏 adapter 负责整个根的磁盘发布。
 - Playground.Completion 是应用侧控制器适配库，通过 `CompletionSourceRoot` 引用 Completion；CLI 注入已有纯 Context 渲染函数并管理连接与日志。Kernel、Spatial 和 Playground 领域库不引用 Completion；不把客户端、认证和原生模型会话放入持久对象图。
+- 共享 CharacterControl.Completion 的两文件配置依赖 Completion 的 `CompletionConnectionConfigLoader.DecodeCatalogWithoutEnvironment`（上游提交 `97eb74f`）：先完整校验并冻结 V3 目录，在实际选定连接时才解析环境设置与创建客户端；仅有旧 `LoadSelectedConnectionFile` 的版本不足以提供一次冻结合同。该 API 尚未发布到 NuGet。
 - Schema 模式沿用上游默认，本地普通构建会 Publish；验收和 CI 显式选择 Verify，不用自动发布历史掩盖 schema 差异。
 - Spatial.Tests 单独引用 Persistence 源码，用于真实模型捕获与冷读资格检查。生产三核心没有新增磁盘 adapter 或 Repository 依赖。
 - DG 校验 Storage HEAD 必须匹配其 `eng/StorageDependency.props` 的 `StorageSourceRevision`；Storage 提交前进时先协调 DG 声明。未提交的源码变化可直接联调，验收须记录两仓提交和工作树状态。

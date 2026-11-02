@@ -46,8 +46,8 @@ public sealed class DuoHostTests {
         Assert.Equal(2, Options.Parse(["--characters", "2"]).CharacterCount);
         Assert.Equal(3, Options.Parse(["--characters", "3"]).CharacterCount);
         Assert.Equal(1, Options.Parse(["--characters", "1"]).CharacterCount);
-        Assert.Null(Options.Parse(["--llm"]).Llm!.HumanActor);
-        Assert.Equal("b", Options.Parse(["--llm", "--human", "b"]).Llm!.HumanActor);
+        Assert.Null(Options.Parse(["--llm", "--llm-connections", "connections.json"]).Llm!.HumanActor);
+        Assert.Equal("b", Options.Parse(["--llm", "--llm-connections", "connections.json", "--human", "b"]).Llm!.HumanActor);
         foreach (string oldMode in new[] { "--play", "--survival", "--duo", "--trace", "--full-recompute" }) {
             Assert.Throws<ArgumentException>(() => Options.Parse([oldMode]));
         }
@@ -96,7 +96,7 @@ public sealed class DuoHostTests {
         }
         using var mixedOutput = new StringWriter();
         Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with {
-            HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json")
+            HumanActor = "a"
         }, default, mixedOutput, inputReader: new StringReader("")));
         Assert.Contains("a = Human，b = LLM，c = LLM", mixedOutput.ToString());
         Assert.DoesNotContain("credential/", mixedOutput.ToString());
@@ -129,7 +129,7 @@ public sealed class DuoHostTests {
         using var files = new Files();
         using var input = new StringReader("");
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json") },
+        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a" },
             default, output, characterCount: 2, inputReader: input));
         Assert.Contains("human-session-ended", output.ToString());
         Assert.DoesNotContain("credential/", output.ToString());
@@ -196,7 +196,7 @@ public sealed class DuoHostTests {
         Assert.True(kernel.World.GetCharacter("a").IsActive);
         using (var save = PlaygroundDurableHistory.Create(files.Store, kernel.World, kernel.Cursor)) { }
         using var output = new StringWriter();
-        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a", AuthFile = Path.Combine(files.Root, "missing-auth.json") },
+        Assert.Equal(0, await LlmConsole.RunAsync(files.Store, files.Options() with { HumanActor = "a" },
             default, output, characterCount: 2, inputReader: new StringReader("")));
         Assert.Contains("[Console 输入] a>", output.ToString());
         Assert.DoesNotContain("宿主全局总结", output.ToString());

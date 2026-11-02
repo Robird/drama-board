@@ -17,4 +17,8 @@ public sealed record LlmControllerTrace(
     string? ProtocolError = null,
     CommandSubmission? Operation = null,
     string? RequestId = null,
-    string? FeedbackId = null);
+    string? FeedbackId = null,
+    string? ConnectionId = null,
+    string? ApiSpecId = null) {
+    public string ModelId => Request.ModelId;
+}

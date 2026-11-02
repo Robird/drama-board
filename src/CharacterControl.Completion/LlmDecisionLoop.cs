@@ -17,8 +17,7 @@ public sealed class LlmDecisionLoop {
     private const string PromptOpening = "你在一个持续运行的游戏中控制当前角色。仅使用当前角色可知的观察、保留经历和明确提供的角色记录；不要假定未提供的地图或资源。";
     private const string ActProtocol = "每次调用都是新的独立决策，请根据提供的完整角色上下文行动。调用一次 act 工具，command 为界面列出的一个游戏行动字符串。";
     private const string FeedbackProtocol = "每次角色服务从提供的完整角色上下文开始。每次响应只调用一个工具：可先用 report-feedback 报告问题或需求，收到回执后继续；最终调用一次 act，command 为界面列出的一个游戏行动字符串。";
-    private readonly ICompletionClient _client;
-    private readonly string _modelId;
+    private readonly Func<string, CancellationToken, ValueTask<LlmDecisionBinding>> _resolveConnection;
     private readonly LlmControllerOptions _options;
     private readonly Action<LlmControllerTrace>? _trace;
     private readonly Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>>? _feedbackSink;
@@ -29,10 +28,19 @@ public sealed class LlmDecisionLoop {
 
     public LlmDecisionLoop(ICompletionClient client, string modelId, LlmControllerOptions? options = null,
         Action<LlmControllerTrace>? trace = null,
-        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>>? feedbackSink = null) {
-        _client = client ?? throw new ArgumentNullException(nameof(client));
+        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>>? feedbackSink = null)
+        : this(FixedConnection(client, modelId), options, trace, feedbackSink) { }
+
+    private static Func<string, CancellationToken, ValueTask<LlmDecisionBinding>> FixedConnection(ICompletionClient client, string modelId) {
+        ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
-        _modelId = modelId;
+        return (_, _) => ValueTask.FromResult(new LlmDecisionBinding(client, modelId));
+    }
+
+    public LlmDecisionLoop(Func<string, CancellationToken, ValueTask<LlmDecisionBinding>> resolveConnection,
+        LlmControllerOptions? options = null, Action<LlmControllerTrace>? trace = null,
+        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>>? feedbackSink = null) {
+        _resolveConnection = resolveConnection ?? throw new ArgumentNullException(nameof(resolveConnection));
         _options = options ?? new();
         _options.Validate();
         _trace = trace;
@@ -64,6 +72,7 @@ public sealed class LlmDecisionLoop {
         try {
             string material = context.Material;
             if (material.Length > _options.MaxContextCharacters) { throw Pause("context-too-large"); }
+            LlmDecisionBinding? binding = null;
             string? protocolError = null;
             var tail = new List<IHistoryMessage>();
             var feedbackCallIds = new HashSet<string>(StringComparer.Ordinal);
@@ -90,17 +99,23 @@ public sealed class LlmDecisionLoop {
                 }
                 IHistoryMessage[] requestTail = protocolError is not null && _feedbackSink is not null
                     ? [.. tail, new ObservationMessage(correction)] : tail.ToArray();
-                var request = new CompletionRequest(_modelId, new(prompt, _outputContract, messages), requestTail);
+                binding ??= await _resolveConnection(context.CharacterId, cancellationToken).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException("The connection resolver returned null.");
+                ArgumentNullException.ThrowIfNull(binding.Client);
+                ArgumentException.ThrowIfNullOrWhiteSpace(binding.ModelId);
+                cancellationToken.ThrowIfCancellationRequested();
+                var request = new CompletionRequest(binding.ModelId, new(prompt, _outputContract, messages), requestTail);
                 int call = ++CallsMade;
                 string requestId = Guid.NewGuid().ToString("N");
                 void Trace(LlmControllerTraceKind kind, CompletionResult? result = null,
                     string? error = null, CommandSubmission? operation = null, string? feedbackId = null) =>
                     _trace?.Invoke(new(kind, call, context.CharacterId, context.ContextSequence,
-                        request, result, error, operation, requestId, feedbackId));
+                        request, result, error, operation, requestId, feedbackId, binding.ConnectionId,
+                        result?.Invocation.ApiSpecId ?? binding.Client.ApiSpecId));
                 Trace(LlmControllerTraceKind.Request);
                 CompletionResult result;
                 try {
-                    result = await _client.StreamCompletionAsync(request, observer: null, cancellationToken).ConfigureAwait(false);
+                    result = await binding.Client.StreamCompletionAsync(request, observer: null, cancellationToken).ConfigureAwait(false);
                 } catch (OperationCanceledException) {
                     Trace(LlmControllerTraceKind.Failure, error: "cancelled");
                     throw;

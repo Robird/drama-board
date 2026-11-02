@@ -25,6 +25,8 @@
 | 角色控制器（CharacterController），亦称 Player | 为被服务的角色读取观察、选择并提交命令的决策提供者。可由人类、LLM 或脚本驱动；一个控制器可以服务多个角色，不预设一对一。此处 Controller 指决策职责，不指运动控制组件。 | 当前应用接口为 [IPlaygroundCharacterController](../src/Playground/PlaygroundActions.cs)，尚未提取通用引擎接口。 |
 | Console 控制器（Human Console，旧称 HumanPlayer） | 通过终端取得角色决策；操作者可以是真人或使用终端的 Coding Agent。操作者、控制器和被控角色是三个不同概念；与游戏内直接调用模型的 LLM 控制器区分。 | [PlayConsole](../src/Playground.Cli/PlayConsole.cs) 中的 `ConsoleCharacterController`；同一入口可服务多个角色，生存场景当前支持 1–3 人。当前[融合世界](codex-goals/living-world/README.md)沿用此区分，支持指定 Human 角色与模型角色同局。 |
 | LLM 控制器（LlmPlayer） | 通过 LLM 调用或局部 tool-loop 产生角色决策。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 接 Completion；生存 CLI 的 `--llm` 负责连接、预算和旁观输出。 |
+| 模型连接（LLM connection） | 宿主侧可复用的 provider、model、protocol 与认证配置；ID 区分不同模型或同模型参数，不是角色身份。 | `LlmConnectionConfiguration` 冻结配置；`LlmConnectionPool` 按连接缓存并拥有客户端；见[多模型连接](design/multi-llm-connections.md)。 |
+| 角色连接覆盖（Character connection override） | 宿主用角色 opaque ID 指向连接；无覆盖时回退默认，Human 优先。 | `GetConnectionId(actorId)`；CLI 校验本局角色，不进入领域状态或存档。 |
 | 游戏管理上下文的独立决策调用 | 每次以当前角色保存的完整 Context 材料构造新的模型请求，交回一个操作，游戏提交后再按需调用；同一决策回合可包含多次调用。 | [生存二期 2A](implementation/survival-llm-controller.md)已接入；这是调用策略，不是原生工具会话续接。 |
 | 角色决策规约（Character decision policy） | LLM 固定提示词中的稳定检查与行为指引；依据角色材料和本回合反馈选择行动，不固定价值排序或执行阶段，不保证输出确定性。 | [LlmCharacterController](../src/Playground.Completion/LlmCharacterController.cs) 按能力选择 `GoalGuidance` / `HandoffGuidance`，共享 `LlmDecisionLoop` 提供工具协议；[配套设计](design/goal-management/decision-policy.md)。已实现，代码校验仍是强约束权威。 |
 | 原生模型工具会话 | 按模型协议续接 assistant 消息、工具调用及配对结果，可能包含原生推理续接材料；与角色语义 Context 分开。 | 共享 `LlmDecisionLoop` 在单次决策内保留反馈所需原生 Tail；跨决策清空，不支持冷开恢复原生会话。 |

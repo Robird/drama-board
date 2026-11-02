@@ -8,6 +8,40 @@ namespace DramaBoard.Playground.Completion.Tests;
 
 public sealed class LlmCharacterControllerTests {
     [Fact]
+    public async Task Shared_adapter_resolves_actual_actor_and_preserves_one_budget_across_connections() {
+        var first = new FakeClient(Result(Call("a-call", "wait 1")));
+        var second = new FakeClient(Result(Call("b-call", "wait 1")));
+        var resolved = new List<string>();
+        var traces = new List<LlmControllerTrace>();
+        var controller = new LlmCharacterController((actor, token) => {
+            resolved.Add(actor);
+            return ValueTask.FromResult(new LlmDecisionBinding(actor == "a" ? first : second,
+                actor + "-model", actor + "-connection"));
+        }, context => "material-" + context.InteractionState.ActorId,
+            new() { MaxCalls = 2 }, traces.Add);
+        var initial = PlaygroundGameFactory.CreateSurvival(enableWeather: false, characterCount: 2);
+        var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
+            characterController: controller);
+        // Let real openings freeze each actor's context before the kernel invokes the adapter.
+        for (int step = 0; controller.CallsMade < 2 && step < 20; step++) {
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(30 * PlaygroundTime.Hour)));
+        }
+        Assert.Equal(2, controller.CallsMade);
+        var paused = await Assert.ThrowsAsync<LlmControllerPausedException>(async () => {
+            for (int step = 0; step < 20; step++) {
+                Assert.Equal(StepStatus.Committed, await kernel.StepAsync(new ModelTime(30 * PlaygroundTime.Hour)));
+            }
+        });
+        Assert.Equal("call-budget-exhausted", paused.ReasonCode);
+        Assert.Equal(new[] { "a", "b" }, resolved);
+        Assert.Equal("a-model", Assert.Single(first.Requests).ModelId);
+        Assert.Equal("b-model", Assert.Single(second.Requests).ModelId);
+        Assert.All(first.Requests.Concat(second.Requests), request => Assert.Empty(request.TailMessages));
+        Assert.Equal(new[] { "a-connection", "b-connection" }, traces.Where(t => t.Kind == LlmControllerTraceKind.Request).Select(t => t.ConnectionId));
+        Assert.Equal(2, controller.CallsMade);
+    }
+
+    [Fact]
     public async Task Shared_controller_selects_guidance_from_each_roles_actual_capabilities() {
         var client = new FakeClient(Result(Call("survival", "wait 1")), Result(Call("gathering", "wait 1")));
         var controller = new LlmCharacterController(client, "fixture-model", _ => "角色材料");

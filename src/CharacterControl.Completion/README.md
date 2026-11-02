@@ -1,6 +1,6 @@
 # Shared character model invocation
 
-`LlmDecisionLoop` owns the operational tool loop. It borrows an `ICompletionClient`; the composing host owns client lifetime and connection configuration. One loop can serve different characters sequentially. Call/protocol budgets are host state, not character memory.
+`LlmDecisionLoop` owns the operational tool loop. It borrows the selected `ICompletionClient`; the composing host owns the connection pool and configuration. One loop can serve different characters sequentially. Call/protocol budgets are host state, not character memory.
 
 Each call supplies a `LlmDecisionInput`: actor identity, positive context sequence, already-rendered actor-visible material and game-specific policy. The loop supplies the `act`/optional `report-feedback` protocol. It returns `CommandSubmission`, preserving provider tool-call identity and assigning an operation identity. A returned submission is not a successful game operation: the game still parses, validates, records and applies it.
 
@@ -8,16 +8,15 @@ The optional feedback sink must durably record feedback before returning its rec
 
 The game must publish a frozen decision boundary before invoking the loop if it needs Gym fork/recovery. Renderers that hold presentation state need their own sequential protection. The [Playground adapter](../Playground.Completion/LlmCharacterController.cs) protects rendering and invocation as one serial service. Shared transport material does not replace a game's persistent Context or visibility checks.
 
-## Host connection binding
+## Host connection configuration and pool
 
-`CompletionConnectionBinding.ConnectAsync(CompletionConnectionOptions, CancellationToken)` composes a selected Completion client and exposes `Client`, `Model` and `ConnectionId`. The binding owns its registry and must be asynchronously disposed by the host. The loop and game adapters borrow clients; a caller-supplied client remains the caller's responsibility.
+`LlmConnectionConfiguration.Load(path, overridesPath?)` freezes the two host files. `GetConnectionId(actorId)` selects an opaque actor ID override or the required default; `ConnectionIds` and `OverrideActorIds` support host validation. The game host checks that actors exist and gives Human control priority. A Human actor may retain a dormant override. See the [two-file contract and examples](../../docs/design/multi-llm-connections.md).
 
-- Without `Catalog`, the binding uses Codex subscription authentication from the default Codex CLI auth source or explicit `AuthFile`; the default model is `gpt-6.1-sol`.
-- With `Catalog`, `Connection` is mandatory and matched exactly. `Model` optionally overrides that connection's model. `AuthFile` cannot be combined with a catalog, and a connection ID cannot be supplied without a catalog.
-- Catalog loading validates the entire strict document, but resolves environment settings only for the selected connection. Unselected providers neither require secrets nor initialize clients. This uses upstream `CompletionConnectionConfigLoader.LoadSelectedConnectionFile`, introduced in adjacent `atelia-completion` commit `ef78922`; a package predating that API is insufficient.
-- Cancellation is checked before configuration/auth access. Hosts create the binding lazily at the first actual model request, after pending game recovery and evidence reconciliation. Management commands need no client.
+`LlmConnectionPool.GetAsync(id, ct)` lazily returns `LlmDecisionBinding(Client, ModelId, ConnectionId)` and caches by connection ID. The pool owns and disposes clients; the loop and game adapters borrow them. Atelia.Completion parses the embedded V3 catalog and creates provider clients. Credentials/environment values are resolved only for actually used connections. Hosts freeze configuration at startup, complete pending recovery and reconcile evidence before the first model call. Management commands need no client.
 
-Connection configuration and credentials are host data, never character memory or game facts. Gym records public model/connection identities, not auth files or credential contents. General-purpose provider errors may contain sensitive values; the host controls their presentation.
+The resolver-based `LlmDecisionLoop` fixes one binding for each decision, including its local feedback Tail. One loop shares call and consecutive-failure budgets across actors and connections. The fixed-client constructor remains available for programmatic consumers; externally supplied clients remain caller-owned. There is no hot reload, automatic failover or cross-model native Tail replay.
+
+Connection configuration and credentials are host data, never character memory or game facts. Gym and audit records capture actual actor/model/connection/protocol identities at each call. Resume may select a different configuration without rewriting old evidence. General-purpose provider errors may contain sensitive values; the host controls their presentation.
 
 ## Operational boundaries
 

@@ -39,7 +39,7 @@ internal sealed class GymSession : IDisposable {
                 StoreId = _journal.StoreId, StateCommitId = history.CurrentBranch.CompletedStateCommitId,
                 history.CurrentBranch.ForkedFromCommitId, GameRevision = PlaygroundGameRevision.Current,
                 RecoveredPending = recovered, AuditPath = Path.GetFullPath(logPath),
-                options.Model, options.Connection, options.MaxCalls, options.MaxFailures, options.MaxContextCharacters,
+                options.MaxCalls, options.MaxFailures, options.MaxContextCharacters,
                 options.Until, options.MaxSteps,
                 Content = new { history.State.Definition.ContentId, history.State.Definition.Fingerprint },
                 Scenario = history.State.Expedition!.ScenarioId, CharacterCount = history.State.Characters.Count,
@@ -63,7 +63,7 @@ internal sealed class GymSession : IDisposable {
             PlaygroundDecisionBoundary boundary = _history.CaptureDecisionBoundary(trace.CharacterId);
             var record = Append("request", trace.CharacterId, new {
                 RequestId = requestId, trace.CallNumber, trace.ContextSequence, Boundary = boundary,
-                trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
+                trace.ConnectionId, trace.ApiSpecId, trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
                 OutputContract = GymMessageProjection.Contract(trace.Request.PromptPrefix.OutputContract),
                 Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(GymMessageProjection.Message).ToArray(),
                 Tail = trace.Request.TailMessages.Select(GymMessageProjection.Message).ToArray()
@@ -74,6 +74,7 @@ internal sealed class GymSession : IDisposable {
                 Status = "saved; delivery is evidenced by the next request" });
         } else {
             Append("response", trace.CharacterId, new { RequestId = requestId, trace.CallNumber, trace.ContextSequence,
+                trace.ConnectionId, trace.ApiSpecId, trace.ModelId,
                 Stage = trace.Kind.ToString(), trace.ProtocolError, trace.Operation,
                 Invocation = trace.Result?.Invocation, Termination = trace.Result?.Termination, Usage = trace.Result?.Usage,
                 Blocks = trace.Result?.Message.Blocks.Select(block => GymMessageProjection.Runtime(block)).ToArray() });

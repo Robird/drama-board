@@ -44,20 +44,22 @@ dotnet run --project src/Playground.Cli -c Release -- --help
 
 ```powershell
 # 三名居民全由模型控制，所有角色共用本次调用预算：
-dotnet run --project src/Playground.Cli -c Release -- --llm --model gpt-6.1-sol --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
+dotnet run --project src/Playground.Cli -c Release -- --llm --llm-connections config/llm-connections.example.json --store artifacts/my-llm-hillside --max-calls 128 --until-hour 32
 
 # Human Console 控制 b，模型控制 a 与 c；a/b/c 均可被选择：
-dotnet run --project src/Playground.Cli -c Release -- --llm --human b --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
+dotnet run --project src/Playground.Cli -c Release -- --llm --human b --llm-connections config/llm-connections.example.json --character-connections config/playground-character-connections.example.json --store artifacts/my-mixed-hillside --max-calls 64
 
 # 恢复同一存档时改变绑定：
-dotnet run --project src/Playground.Cli -c Release -- --llm --human a --model gpt-6.1-sol --store artifacts/my-mixed-hillside --max-calls 64
+dotnet run --project src/Playground.Cli -c Release -- --llm --human a --llm-connections config/llm-connections.example.json --character-connections config/playground-character-connections.example.json --store artifacts/my-mixed-hillside --max-calls 64
 ```
 
 `--llm` 默认控制所有角色；`--human ID` 必须与 `--llm` 同用，且 ID 必须属于当前存档。不带 `--llm` 时所有角色交给共享 Human Console。绑定在启动/恢复边界选择，保留原角色身份、背包、目标和个人材料；没有运行中热切换。模型控制器与 Human 使用同一领域行动及冻结角色材料。全模型观战输出属于宿主观察证据，不是任一角色的额外知识。
 
-默认连接使用 Completion 的 Codex Responses 客户端及标准认证文件发现；`--auth-file PATH` 可指定文件。V3 连接目录需同时提供 `--catalog PATH --connection ID`，并使用目录内的认证配置。模型配置与凭据均在宿主边界读取，不保存在游戏状态中。
+`--llm` 必须显式提供 `--llm-connections PATH`，可选 `--character-connections PATH` 按角色覆盖。仓内[连接示例](config/llm-connections.example.json)含两个 Codex `gpt-6.1-sol` 连接：默认 `quick` 使用 low，`deliberate` 使用 medium；只需已有 Codex 登录。[角色覆盖示例](config/playground-character-connections.example.json)令 b 使用 `deliberate`，其余角色回退 `quick`。Human 优先，Human 的覆盖可以保留待下次改回模型控制时使用。未知角色、未知连接、显式缺失文件都在启动时报告错误。
 
-每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行有独立 JSONL 审计，`--llm-log PATH` 可指定位置；恢复时重新提供模型/连接与控制绑定参数。连接机制的历史说明见[LLM 接线文档](docs/implementation/survival-llm-controller.md)，启动参数以当前 `--help` 为准。
+配置在每次启动冻结；续局可换配置，不改变角色与世界存档。凭据与客户端只在实际调用相应连接时读取/创建，按连接缓存，由宿主释放。可复制示例为 `config/*.local.json` 后修改，这类本机文件已忽略。旧 `--model`、`--auth-file`、`--catalog`、`--connection` 已删除，没有兼容入口；模型与认证设置放进连接配置。完整格式与边界见[多模型连接设计](docs/design/multi-llm-connections.md)。
+
+每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行有独立 JSONL 审计，`--llm-log PATH` 可指定位置；恢复时重新提供连接配置与控制绑定参数。Gym 与审计按实际调用记录 actor、connection、model 与 protocol；这些元数据不进入世界。启动参数以当前 `--help` 为准。
 
 ## 操作与个人材料
 

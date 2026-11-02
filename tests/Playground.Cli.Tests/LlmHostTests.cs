@@ -9,23 +9,25 @@ namespace DramaBoard.Playground.Cli.Tests;
 
 public sealed class LlmHostTests {
     [Theory]
+    [InlineData("--llm")]
+    [InlineData("--llm-connections", "connections.json")]
     [InlineData("--model", "x")]
     [InlineData("--llm", "--catalog", "x")]
     [InlineData("--llm", "--connection", "x")]
     [InlineData("--llm", "--max-calls", "0")]
     [InlineData("--llm", "--catalog", "x", "--connection", "a", "--auth-file", "y")]
     [InlineData("--human", "a")]
-    public void Llm_options_require_model_mode_and_exact_catalog_selection(params string[] args) =>
+    public void Llm_options_require_explicit_connection_configuration_and_reject_old_flags(params string[] args) =>
         Assert.Throws<ArgumentException>(() => Options.Parse(args));
 
     [Fact]
-    public void Default_codex_and_human_modes_remain_separate() {
+    public void Configured_llm_and_human_modes_remain_separate() {
         Assert.Null(Options.Parse([]).Llm);
-        Assert.Null(Options.Parse(["--llm"]).Llm!.HumanActor);
-        var llm = Options.Parse(["--llm", "--model", "gpt-6.1-sol", "--max-calls", "7"]).Llm!;
-        Assert.Equal("gpt-6.1-sol", llm.Model);
+        Assert.Null(Options.Parse(["--llm", "--llm-connections", "connections.json"]).Llm!.HumanActor);
+        var llm = Options.Parse(["--llm", "--llm-connections", "connections.json", "--max-calls", "7"]).Llm!;
+        Assert.Equal(Path.GetFullPath("connections.json"), llm.ConnectionsPath);
         Assert.Equal(7, llm.MaxCalls);
-        Assert.Null(llm.Catalog);
+        Assert.Null(llm.CharacterConnectionsPath);
     }
 
     [Fact]

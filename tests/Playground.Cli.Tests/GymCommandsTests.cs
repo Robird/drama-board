@@ -28,7 +28,7 @@ public sealed class GymCommandsTests {
 
     [Fact]
     public void Feedback_implies_recording_and_branch_passes_to_model_host() {
-        Options options = Options.Parse(["--characters", "2", "--llm", "--store", "game", "--feedback", "--branch", "01000000"]);
+        Options options = Options.Parse(["--characters", "2", "--llm", "--llm-connections", "connections.json", "--store", "game", "--feedback", "--branch", "01000000"]);
         Assert.True(options.Llm!.Gym);
         Assert.True(options.Llm.Feedback);
         Assert.Equal(options.Branch, options.Llm.Branch);

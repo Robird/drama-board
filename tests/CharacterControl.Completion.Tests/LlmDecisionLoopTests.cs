@@ -61,6 +61,57 @@ public sealed class LlmDecisionLoopTests {
     }
 
     [Fact]
+    public async Task Role_bindings_are_lazy_fixed_per_decision_and_share_call_budget_without_replaying_tail() {
+        var feedback = Result(new("report-feedback", "feedback",
+            "{\"kind\":\"issue\",\"summary\":\"s\",\"obstacle\":\"o\"}"));
+        var first = new Client(feedback, Act("a", "work"));
+        var second = new Client(Act("b", "rest"));
+        var resolved = new List<string>();
+        var traces = new List<LlmControllerTrace>();
+        var loop = new LlmDecisionLoop((actor, token) => {
+            resolved.Add(actor);
+            return ValueTask.FromResult(new LlmDecisionBinding(actor == "a" ? first : second,
+                actor + "-model", actor + "-connection"));
+        }, new() { MaxCalls = 3 }, traces.Add,
+            (_, _) => ValueTask.FromResult("receipt"));
+
+        await loop.ChooseCommandAsync(new("a", 1, "private-a", "policy"), default);
+        await loop.ChooseCommandAsync(new("b", 1, "private-b", "policy"), default);
+        var paused = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
+            await loop.ChooseCommandAsync(new("c", 1, "private-c", "policy"), default));
+
+        Assert.Equal("call-budget-exhausted", paused.ReasonCode);
+        Assert.Equal(new[] { "a", "b" }, resolved);
+        Assert.Equal(2, first.Requests.Count);
+        Assert.All(first.Requests, request => Assert.Equal("a-model", request.ModelId));
+        Assert.NotEmpty(first.Requests[1].TailMessages);
+        Assert.Empty(Assert.Single(second.Requests).TailMessages);
+        Assert.Equal("b-model", second.Requests[0].ModelId);
+        Assert.All(traces.Where(t => t.CharacterId == "a"), t => Assert.Equal("a-connection", t.ConnectionId));
+        Assert.All(traces.Where(t => t.CharacterId == "b"), t => Assert.Equal("b-connection", t.ConnectionId));
+        Assert.All(traces, t => Assert.Equal("fixture-api", t.ApiSpecId));
+        Assert.Equal(3, loop.CallsMade);
+    }
+
+    [Fact]
+    public async Task Protocol_failure_budget_is_shared_and_prevents_resolving_another_role() {
+        var invalid = new CompletionResult(new ActionMessage([]), new("fixture", "fixture-api", "model"));
+        var client = new Client(invalid);
+        int resolutions = 0;
+        var loop = new LlmDecisionLoop((actor, token) => {
+            resolutions++;
+            return ValueTask.FromResult(new LlmDecisionBinding(client, actor, actor));
+        }, new() { MaxConsecutiveProtocolFailures = 1 });
+        foreach (string actor in new[] { "a", "b" }) {
+            var paused = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
+                await loop.ChooseCommandAsync(new(actor, 1, "material", "policy"), default));
+            Assert.Equal("protocol-failure-limit", paused.ReasonCode);
+        }
+        Assert.Equal(1, resolutions);
+        Assert.Single(client.Requests);
+    }
+
+    [Fact]
     public async Task Concurrent_decisions_are_rejected_before_invoking_a_second_model() {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource<CompletionResult>(TaskCreationOptions.RunContinuationsAsynchronously);

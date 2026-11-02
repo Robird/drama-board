@@ -20,10 +20,8 @@ try {
               --characters 1|2|3    新局人数，默认 3；恢复时省略则沿用存档
               --llm                 所有角色由模型控制；省略时共用 Human Console
               --human ID            配合 --llm，将指定角色交给 Human Console
-              --model ID            模型 ID；默认 Codex Responses / gpt-6.1-sol
-              --auth-file PATH      内置 Codex 认证文件；默认使用标准路径
-              --catalog PATH        Completion V3 连接目录，配合 --connection ID
-              --connection ID       精确选择目录连接，不使用回退连接
+              --llm-connections PATH LLM 连接配置文件（--llm 必填）
+              --character-connections PATH 可选角色到连接覆盖文件
               --max-calls N         本次共享模型调用预算（默认 128）
               --max-failures N      连续协议错误上限（默认 3）
               --max-context-chars N Context 字符长度上限（默认 200000）
@@ -82,7 +80,7 @@ internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool 
         int? characterCount = null;
         bool gym = false, feedback = false, branches = false, feedbacks = false;
         string? branch = null, actor = null, export = null, fork = null, forkRequest = null, forkLabel = null;
-        string? model = null, authFile = null, catalog = null, connection = null, llmLog = null;
+        string? connections = null, characterConnections = null, llmLog = null;
         int maxCalls = 128, maxFailures = 3, maxContextCharacters = 200_000;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int index = 0; index < args.Length; index++) {
@@ -124,10 +122,8 @@ internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool 
                 case "--gym-fork": fork = Value(); break;
                 case "--gym-fork-request": forkRequest = Value(); break;
                 case "--fork-label": forkLabel = Value(); break;
-                case "--model": model = Value(); break;
-                case "--auth-file": authFile = Path.GetFullPath(Value()); break;
-                case "--catalog": catalog = Path.GetFullPath(Value()); break;
-                case "--connection": connection = Value(); break;
+                case "--llm-connections": connections = Path.GetFullPath(Value()); break;
+                case "--character-connections": characterConnections = Path.GetFullPath(Value()); break;
                 case "--llm-log": llmLog = Path.GetFullPath(Value()); break;
                 case "--max-calls": maxCalls = Positive(Value(), option); break;
                 case "--max-failures": maxFailures = Positive(Value(), option); break;
@@ -162,16 +158,16 @@ internal sealed record Options(string? Store, ModelTime? Until, int Steps, bool 
             try { branch = PlaygroundDurableHistory.FormatBranchId(PlaygroundDurableHistory.ParseBranchId(branch)); }
             catch (FormatException error) { throw new ArgumentException("--branch 必须为有效分支 ID。", error); }
         }
-        if (!help && !llm && seen.Any(option => option is "--model" or "--auth-file" or "--catalog" or "--connection" or
+        if (!help && !llm && seen.Any(option => option is "--llm-connections" or "--character-connections" or
             "--max-calls" or "--max-failures" or "--max-context-chars" or "--llm-log" or "--human")) {
             throw new ArgumentException("模型配置和预算参数必须配合 --llm。");
         }
-        if (!help && ((catalog is null) != (connection is null))) { throw new ArgumentException("--catalog 与 --connection 必须一起指定。"); }
-        if (!help && catalog is not null && authFile is not null) { throw new ArgumentException("--auth-file 仅用于内置 Codex 连接；目录连接使用 Completion 的认证配置。"); }
+        if (!help && llm && connections is null) { throw new ArgumentException("--llm 必须指定 --llm-connections。"); }
         ModelTime? until = hour is { } selectedHour ? new ModelTime(checked(selectedHour * 3_600_000)) : null;
         return new(store, until, steps, help,
-            llm ? new(model, authFile, catalog, connection, maxCalls, maxFailures, maxContextCharacters, llmLog,
-                gym || feedback, feedback, branch, human, until, steps, content) : null, characterCount, branch, management, content);
+            llm ? new(MaxCalls: maxCalls, MaxFailures: maxFailures, MaxContextCharacters: maxContextCharacters, LogPath: llmLog,
+                Gym: gym || feedback, Feedback: feedback, Branch: branch, HumanActor: human, Until: until, MaxSteps: steps, Content: content,
+                ConnectionsPath: connections, CharacterConnectionsPath: characterConnections) : null, characterCount, branch, management, content);
     }
     private static int Positive(string text, string option) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value > 0

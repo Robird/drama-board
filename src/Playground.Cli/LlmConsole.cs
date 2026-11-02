@@ -5,28 +5,36 @@ using System.Text.Json.Serialization;
 using Atelia.Completion;
 using Atelia.Completion.Abstractions;
 using Atelia.Completion.OpenAI;
+using DramaBoard.CharacterControl.Completion;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Simulation;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Playground;
 using DramaBoard.Playground.Completion;
 
-internal sealed record LlmHostOptions(string? Model = null, string? AuthFile = null, string? Catalog = null,
-    string? Connection = null, int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
+internal sealed record LlmHostOptions(int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
     string? LogPath = null, bool Gym = false, bool Feedback = false, string? Branch = null,
-    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null);
+    string? HumanActor = null, ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null,
+    string? ConnectionsPath = null, string? CharacterConnectionsPath = null);
 
 /// <summary>Serial spectator host. Only committed game state is recovery authority; model audit is evidence.</summary>
 internal static class LlmConsole {
     public static async Task<int> RunAsync(string? store, LlmHostOptions options, CancellationToken cancellationToken,
-        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, int? characterCount = null, TextReader? inputReader = null) {
+        TextWriter? outputWriter = null, ICompletionClient? suppliedClient = null, int? characterCount = null, TextReader? inputReader = null,
+        ICompletionClientFactory? clientFactory = null) {
+        cancellationToken.ThrowIfCancellationRequested();
         TextWriter output = outputWriter ?? Console.Out;
         if ((options.Gym || options.Feedback || options.Branch is not null) && store is null) {
             throw new ArgumentException("Gym、反馈和分支运行需要 --store。");
         }
+        LlmConnectionConfiguration? configuration = options.ConnectionsPath is { } configurationPath
+            ? LlmConnectionConfiguration.Load(configurationPath, options.CharacterConnectionsPath) : null;
+        if (configuration is null && options.CharacterConnectionsPath is not null) {
+            throw new ArgumentException("角色连接覆盖需要连接配置。");
+        }
         using PlaygroundDurableHistory? durable = store is null ? null : Directory.Exists(store)
             ? options.Branch is null ? PlaygroundDurableHistory.Open(store) : PlaygroundDurableHistory.Open(store, options.Branch)
-            : options.Branch is null ? CreateStore(store, characterCount, options.Content) : throw new ArgumentException("指定分支需要已有存档。");
+            : options.Branch is null ? CreateStore(store, characterCount, options, configuration) : throw new ArgumentException("指定分支需要已有存档。");
         IOccurrenceHistory<PlaygroundWorld, PlaygroundFact> history;
         if (durable is not null) { history = durable; }
         else {
@@ -36,9 +44,8 @@ internal static class LlmConsole {
         WorldHost.RequireWorld(history.State, characterCount);
         WorldHost.RequireContent(history.State, options.Content);
         WorldHost.RequireBudget(history.State.Time, options.Until, options.MaxSteps);
-        if (options.HumanActor is { } selectedHuman && !history.State.Characters.Any(actor => actor.Id == selectedHuman)) {
-            throw new ArgumentException($"Human 角色 {selectedHuman} 不在此存档中。");
-        }
+        RequireActors(history.State, options, configuration);
+        await using LlmConnectionPool? pool = configuration is null ? null : new(configuration, clientFactory);
         string logPath = options.LogPath ?? Path.Combine(store ?? "artifacts", "llm-runs", Guid.NewGuid().ToString("N") + ".jsonl");
         using var audit = new LlmRunAudit(logPath, output, showModelDetails: options.HumanActor is null);
         using PlaygroundOperationJournal operations = store is null ? PlaygroundOperationJournal.CreateInMemory()
@@ -68,7 +75,6 @@ internal static class LlmConsole {
         string bindings = string.Join("，", kernel.World.Characters.Select(character => $"{character.Id} = {(human is not null && character.Id == options.HumanActor ? "Human" : "LLM")}"));
         output.WriteLine($"山野镇 / Hillside · 内容 {kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindings}；证据：{Path.GetFullPath(logPath)}。Ctrl+C 暂停；重开时重新指定 --llm、可选 --human 及连接配置。");
         if (human is null) { output.WriteLine("全模型观战：以下模型材料为宿主观察证据，不是任何单个角色拥有的知识。"); }
-        CompletionConnectionBinding? binding = null;
         var deliveredTerminals = new HashSet<string>(StringComparer.Ordinal);
         void DeliverTerminals() {
             if (human is not null) { human.RenderCommitted(kernel.World, options.HumanActor!); }
@@ -81,25 +87,18 @@ internal static class LlmConsole {
         try {
             // Initialize the external client only on an actual live LLM decision. A saved terminal b
             // and an early Human EOF require neither credentials nor a network client.
-            forwarding.Inner = new LazyController(async () => {
-                string model;
-                ICompletionClient client;
-                if (suppliedClient is not null) {
-                    client = suppliedClient;
-                    model = options.Model ?? "gpt-6.1-sol";
-                } else {
-                    binding = await CompletionConnectionBinding.ConnectAsync(new(options.Model, options.AuthFile, options.Catalog, options.Connection), cancellationToken);
-                    string connectionId = binding.ConnectionId;
-                    model = binding.Model;
-                    client = binding.Client;
-                    audit.Write("binding", new { ActorIds = kernel.World.Characters.Where(character => human is null || character.Id != options.HumanActor).Select(character => character.Id).ToArray(), ConnectionId = connectionId, ModelId = model });
+            forwarding.Inner = new LlmCharacterController(async (actorId, token) => {
+                if (configuration is not null) {
+                    return await pool!.GetAsync(configuration.GetConnectionId(actorId), token);
                 }
-                return new LlmCharacterController(client, model,
-                    context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
-                    new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
-                        MaxContextCharacters = options.MaxContextCharacters }, audit.Trace,
-                    feedbackSink: options.Feedback ? gym!.SaveFeedback : null);
-            });
+                if (suppliedClient is not null) {
+                    return new LlmDecisionBinding(suppliedClient, "fixture-model", "fixture");
+                }
+                throw new ArgumentException("LLM 决策需要显式连接配置。");
+            }, context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
+                new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
+                    MaxContextCharacters = options.MaxContextCharacters }, audit.Trace,
+                feedbackSink: options.Feedback ? gym!.SaveFeedback : null);
             int completed = 0;
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -156,14 +155,22 @@ internal static class LlmConsole {
             audit.Write("host-stop", new { Reason = reason, ErrorType = error.GetType().Name, Saved = store is not null });
             output.WriteLine($"LLM 宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
             return 1;
-        } finally {
-            if (binding is not null) { await binding.DisposeAsync(); }
         }
     }
 
-    private static PlaygroundDurableHistory CreateStore(string path, int? characterCount, string? content) {
-        var initial = PlaygroundGameFactory.Create(WorldHost.Definition(content, characterCount));
+    private static PlaygroundDurableHistory CreateStore(string path, int? characterCount, LlmHostOptions options, LlmConnectionConfiguration? configuration) {
+        var initial = PlaygroundGameFactory.Create(WorldHost.Definition(options.Content, characterCount));
+        RequireActors(initial.World, options, configuration);
         return PlaygroundDurableHistory.Create(path, initial.World, initial.Cursor);
+    }
+
+    private static void RequireActors(PlaygroundWorld world, LlmHostOptions options, LlmConnectionConfiguration? configuration) {
+        if (options.HumanActor is { } human && !world.Characters.Any(actor => actor.Id == human)) {
+            throw new ArgumentException($"Human 角色 {human} 不在此游戏中。");
+        }
+        if (configuration is not null && configuration.OverrideActorIds.Any(id => !world.Characters.Any(actor => actor.Id == id))) {
+            throw new ArgumentException("角色连接覆盖包含此游戏中不存在的角色。");
+        }
     }
 
     private static void Terminal(PlaygroundWorld world, string actorId, LlmRunAudit audit) {
@@ -181,14 +188,6 @@ internal static class LlmConsole {
             journal.Receive("llm/" + operation.OperationRecordId, operation.ToolCallId, context.InteractionState.ActorId,
                 context.Context.ContextSequence, LlmCharacterController.ToolName, operation.RawInput, operation.OperationRecordId);
             return operation;
-        }
-    }
-
-    private sealed class LazyController(Func<Task<IPlaygroundCharacterController>> create) : IPlaygroundCharacterController {
-        private IPlaygroundCharacterController? _inner;
-        public async ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) {
-            _inner ??= await create();
-            return await _inner.ChooseCommandAsync(context, cancellationToken);
         }
     }
 }
@@ -233,7 +232,7 @@ internal sealed class LlmRunAudit : IDisposable {
         }
         if (trace.Kind == LlmControllerTraceKind.Request) {
             Write("model-input", new { trace.RequestId, trace.CallNumber, trace.CharacterId, trace.ContextSequence,
-                trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
+                trace.ConnectionId, trace.ApiSpecId, trace.Request.ModelId, trace.Request.PromptPrefix.SystemPrompt,
                 OutputContract = GymMessageProjection.Contract(trace.Request.PromptPrefix.OutputContract),
                 Shared = trace.Request.PromptPrefix.SharedContextMessages.Select(GymMessageProjection.Message).ToArray(),
                 Tail = trace.Request.TailMessages.Select(GymMessageProjection.Message).ToArray() });
@@ -244,6 +243,7 @@ internal sealed class LlmRunAudit : IDisposable {
             }
         } else {
             Write("model-output", new { trace.RequestId, trace.CallNumber, trace.CharacterId, trace.ContextSequence,
+                trace.ConnectionId, trace.ApiSpecId, trace.ModelId,
                 Stage = trace.Kind.ToString(), trace.ProtocolError, trace.Operation,
                 Invocation = trace.Result?.Invocation, Termination = trace.Result?.Termination, Usage = trace.Result?.Usage,
                 Blocks = trace.Result?.Message.Blocks.Select(block => GymMessageProjection.Runtime(block)).ToArray() });

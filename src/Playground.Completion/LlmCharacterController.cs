@@ -63,6 +63,14 @@ public sealed class LlmCharacterController : IPlaygroundCharacterController {
         _loop = new(client, modelId, options, trace, feedbackSink);
     }
 
+    public LlmCharacterController(Func<string, CancellationToken, ValueTask<LlmDecisionBinding>> resolveConnection,
+        Func<PlaygroundDecisionContext, string> renderContext, LlmControllerOptions? options = null,
+        Action<LlmControllerTrace>? trace = null,
+        Func<LlmFeedbackSubmission, CancellationToken, ValueTask<string>>? feedbackSink = null) {
+        _renderContext = renderContext ?? throw new ArgumentNullException(nameof(renderContext));
+        _loop = new(resolveConnection, options, trace, feedbackSink);
+    }
+
     public async ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();

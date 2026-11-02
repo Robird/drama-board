@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：Playground 项目、类型与持久身份重命名已通过构建、Schema Verify、离线回归及新入口启动/冷开验收，山野镇 / Hillside 内容身份与指纹保持；边界与证据见[重命名说明](docs/implementation/playground-rename.md)。融合阶段的 [C1–C8 已完成](docs/codex-goals/living-world/acceptance.md)，自由试玩发现的重复帮助负担仍属可选体验改进，不随重命名自动施工。
+**当前焦点与下一步**：实施用户已批准的[多模型两文件连接](docs/design/multi-llm-connections.md)：共享配置/pool 与角色 opaque ID 绑定，CLI 校验本局角色并优先 Human，一个 loop 共享预算，实际调用身份进入 Gym/审计；领域与存档不持有连接。旧模型/目录参数删除，不提供兼容。集成构建、离线回归、配置失败路径与真实调用验收待主线程补充本轮证据，文档与示例不代表已通过。Playground 重命名和融合 C1–C8 的既有证据分别见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
 [语义空间连接与大喊](docs/design/spatial-relations-and-shout.md)已贯通 64-bit 能力连接、一跳查询与多人原文交付，见[验收](docs/experiments/spatial-shout-acceptance.md)；事件分类、传播、筛选和订阅按新世界实际消费者继续深化，不预建空框架。
 
