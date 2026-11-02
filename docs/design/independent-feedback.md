@@ -1,6 +1,6 @@
 # 独立宿主反馈
 
-状态：2026-11-02，已实施。Windows 工程测试、真实宿主 Completion fixture 与脚本操作实际 CLI 已通过[实施验收](../experiments/independent-feedback-acceptance.md)；该验收无在线 LLM、真人自由试玩或 Linux 验证。后续[角色 history 与日志收敛方案](character-history-and-diagnostics.md)已形成但未实施；其录制默认值与 off 基本日志变更尚不改变本文描述的现行行为，反馈独立保存合同继续保留。
+状态：2026-11-02，已实施。Windows 工程测试、真实宿主 Completion fixture 与脚本操作实际 CLI 已通过[实施验收](../experiments/independent-feedback-acceptance.md)；该验收无在线 LLM、真人自由试玩或 Linux 验证。后续[统一宿主日志方案](character-history-and-diagnostics.md)已按用户选择修订但未实施；operations/Gym 合并与录制默认值变更尚不改变本文的现行描述。反馈仍独立保存、查询和分叉，不并入主日志正文。
 
 ## 入口与职责
 
