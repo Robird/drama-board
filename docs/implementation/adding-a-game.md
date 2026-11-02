@@ -24,7 +24,7 @@
 | 目标 | [GoalRules](../../src/Goals/GoalRules.cs) | [PlaygroundGoalInteractionRules](../../src/Playground/PlaygroundGoalInteractionRules.cs) | 操作时机、角色所有权、事实发布与可见材料 |
 | 模型调用 | [LlmDecisionLoop](../../src/CharacterControl.Completion/LlmDecisionLoop.cs) | [LlmCharacterController](../../src/Playground.Completion/LlmCharacterController.cs) | 强类型观察、游戏指引、原始操作转交 |
 | API 连接 | [LlmConnectionPool](../../src/CharacterControl.Completion/LlmConnectionPool.cs) | 山野镇 Console（Playground.Cli） | 宿主配置、角色 opaque ID 绑定、连接生命周期与恢复后惰性初始化 |
-| Gym 证据 | [GymJournal](../../src/CharacterGym/GymJournal.cs)、[GymTraceExporter](../../src/CharacterGym/GymTraceExporter.cs) | [GymSession](../../src/Playground.Cli/Gym/GymSession.cs) | 游戏身份、精确 S 锚点、提交回执核对、fork 与访问范围 |
+| 宿主证据 | [原始模型投影](../../src/CharacterGym/GymMessageProjection.cs) | [HostJournal](../../src/Playground.Cli/PlaygroundHostJournal.cs)、[HostSession](../../src/Playground.Cli/PlaygroundHostSession.cs)、[CharacterHistoryExporter](../../src/Playground.Cli/CharacterHistoryExporter.cs) | 游戏身份、精确 S 锚点、操作对账、fork 与访问范围属于游戏宿主；新游戏先适配再提取共同需求 |
 
 Inventory/Goals 不擅自提交整个世界，Completion/Gym 不解释游戏规则。新游戏不必引用 Playground；如果相似功能仍需大量游戏知识，就先写在新游戏中，出现明确共同消费者后再提取。
 

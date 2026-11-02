@@ -1,6 +1,7 @@
 param([Parameter(Mandatory)][string]$OutputDirectory, [string]$Configuration = 'Release')
 # Scripted CLI acceptance. No model calls or builds.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'HostJournalHelpers.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $cli = Join-Path $repo "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 $root = [IO.Path]::GetFullPath($OutputDirectory)
@@ -80,14 +81,15 @@ try {
     $store = Join-Path $playHome 'store'
     Assert (Test-Path $store) 'Human run did not save.'
     $null = Invoke-Cli '05-cwd-coldopen' $playHome @('--steps', '1') @(':quit')
-    $operations = Get-Content (Join-Path $store 'operations.jsonl') -Raw
-    Assert ($operations.Contains('first-private') -and $operations.Contains('second-private')) 'Missing actual multi-Human operations.'
-    foreach ($log in Get-ChildItem (Join-Path $store 'llm-runs') -File) {
-        foreach ($line in Get-Content $log.FullName) {
-            $record = $line | ConvertFrom-Json
-            Assert ($record.Kind -cnotin @('binding','model-input','model-output')) 'Human attempted model initialization.'
-        }
-    }
+    $records = @(Read-HostJournalRecords (Join-Path $store 'host/events.jsonl'))
+    $operations = @($records | Where-Object Kind -CEQ 'operation-received')
+    Assert (($operations.Payload.RawInput -join "`n").Contains('first-private') -and
+        ($operations.Payload.RawInput -join "`n").Contains('second-private')) 'Missing actual multi-Human operations.'
+    Assert (@($records | Where-Object Kind -CIn @('model-request', 'model-response', 'model-failure')).Count -eq 0) 'Human attempted a model request.'
+    Assert (-not (Test-Path (Join-Path $store 'llm-runs'))) 'All-Human run created a raw model audit.'
+    Assert-NoLegacyHostFiles $store
+    Assert (@($records | Where-Object { $_.Kind -ceq 'run-start' -and $_.Payload.DetailedRecording }).Count -eq 2) 'Durable default did not record detailed character history.'
+    Assert (@($records | Where-Object Kind -CEQ 'character-material').Count -gt 0) 'Durable default omitted character material.'
     foreach ($mode in @('human','llm')) {
         $fresh = Join-Path $root "zero $mode"
         Prepare-Home $fresh
@@ -106,9 +108,20 @@ try {
     Assert ($before -ceq (Hash-Tree $store)) 'Management changed source store.'
     $memory = Join-Path $root 'memory home'
     Prepare-Home $memory
-    $null = Invoke-Cli '09-ephemeral' $repo @('--home', $memory, '--ephemeral', '--steps', '1') @('handoff memory-private')
+    $null = Invoke-Cli '09-ephemeral' $repo @('--home', $memory, '--ephemeral', '--steps', '2') @('handoff memory-private')
     Assert (-not (Test-Path (Join-Path $memory 'store'))) 'Ephemeral created store.'
-    Assert (@(Get-ChildItem (Join-Path $memory 'llm-runs') -File).Count -gt 0) 'Ephemeral audit missing from home.'
+    Assert (-not (Test-Path (Join-Path $memory 'host')) -and -not (Test-Path (Join-Path $memory 'llm-runs'))) 'Ephemeral Human run created persistent host/model audit.'
+    $null = Invoke-Cli '10-ephemeral-record-refused' $repo @('--home', $memory, '--ephemeral', '--gym', 'record', '--steps', '1') @() 1
+    Assert (-not (Test-Path (Join-Path $memory 'store')) -and -not (Test-Path (Join-Path $memory 'host'))) 'Rejected ephemeral recording created a store or host journal.'
+    $offHome = Join-Path $root 'off home'
+    Prepare-Home $offHome
+    $null = Invoke-Cli '11-off-necessary-operations' $repo @('--home', $offHome, '--gym', 'off', '--steps', '2') @(':look', ':help', ':quit')
+    $offStore = Join-Path $offHome 'store'
+    $offRecords = @(Read-HostJournalRecords (Join-Path $offStore 'host/events.jsonl'))
+    Assert (@($offRecords | Where-Object Kind -CEQ 'operation-received').Count -eq 3) 'Detailed off omitted short Console operations.'
+    Assert (@($offRecords | Where-Object Kind -CEQ 'operation-completed').Count -eq 3) 'Detailed off omitted completed Console operations.'
+    Assert (@($offRecords | Where-Object Kind -CEQ 'character-material').Count -eq 0) 'Detailed off saved character material.'
+    Assert-NoLegacyHostFiles $offStore
     $report.Status = 'passed'
     Write-Output "Home CLI smoke passed. Evidence: $root"
 } catch { $report.Status = 'failed'; $report.Error = $_.Exception.Message; throw } finally { Save-Report }

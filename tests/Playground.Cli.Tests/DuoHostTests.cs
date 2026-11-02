@@ -68,13 +68,14 @@ public sealed class DuoHostTests {
         using var saved = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(3, saved.State.Characters.Count);
         Assert.All(new[] { "b", "c" }, actor => Assert.Equal("model-private", saved.State.Business.InteractionStates[actor].DraftHandoff));
-        using var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var journal = new PlaygroundOperationAudit(journalStore, saved.CurrentBranch.BranchId, "test-run");
         Assert.Equal(new[] { "a", "b", "c" }, journal.Entries.Select(entry => entry.Received.ActorId).Order().ToArray());
-        JsonElement host = File.ReadLines(options.LogPath!).Select(line => JsonSerializer.Deserialize<JsonElement>(line))
-            .Single(line => line.GetProperty("Kind").GetString() == "host").GetProperty("Payload");
+        JsonElement host = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store)).Records
+            .Single(record => record.Kind == "run-start").Payload;
         Assert.Equal(new[] { "Human", "LLM", "LLM" }, host.GetProperty("Actors").EnumerateArray()
             .Select(actor => actor.GetProperty("Controller").GetString()).ToArray());
-        using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
+        var gym = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store));
         JsonElement started = Assert.Single(gym.Records, record => record.Kind == "run-start").Payload;
         Assert.Equal(3, started.GetProperty("CharacterCount").GetInt32());
         Assert.Equal(new[] { "a", "b", "c" }, started.GetProperty("Actors").EnumerateArray()
@@ -97,8 +98,9 @@ public sealed class DuoHostTests {
         using var mixedOutput = new StringWriter();
         var mixedOptions = files.Options() with { Controls = HostFixture.Humans("a") };
         Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, mixedOptions, default, mixedOutput, inputReader: new StringReader("")));
-        JsonElement[] bindings = File.ReadLines(mixedOptions.LogPath!).Select(line => JsonSerializer.Deserialize<JsonElement>(line))
-            .Single(line => line.GetProperty("Kind").GetString() == "host").GetProperty("Payload").GetProperty("Actors").EnumerateArray().ToArray();
+        Assert.False(File.Exists(mixedOptions.LogPath));
+        JsonElement[] bindings = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store)).Records
+            .Last(record => record.Kind == "run-start").Payload.GetProperty("Actors").EnumerateArray().ToArray();
         Assert.Equal(new[] { "a", "b", "c" }, bindings.Select(actor => actor.GetProperty("ActorId").GetString()));
         Assert.Equal(new[] { "Human", "LLM", "LLM" }, bindings.Select(actor => actor.GetProperty("Controller").GetString()));
         Assert.Equal(JsonValueKind.Null, bindings[0].GetProperty("ConnectionId").ValueKind);
@@ -121,7 +123,8 @@ public sealed class DuoHostTests {
         Assert.Equal("human-private", saved.State.Business.InteractionStates["a"].PendingAdvance!.Handoff);
         Assert.Equal("model-private", saved.State.Business.InteractionStates["b"].DraftHandoff);
         Assert.Equal(8 * PlaygroundTime.Hour, saved.State.Time.Ticks);
-        using var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var journal = new PlaygroundOperationAudit(journalStore, saved.CurrentBranch.BranchId, "test-run");
         Assert.Equal(2, journal.Entries.Count(entry => entry.Received.ActorId == "a"));
         Assert.Single(journal.Entries, entry => entry.Received.ActorId == "b");
         Assert.All(journal.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
@@ -133,9 +136,13 @@ public sealed class DuoHostTests {
         using var files = new Files();
         using var input = new StringReader("");
         using var output = new StringWriter();
-        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Controls = HostFixture.Humans("a") },
+        PlaygroundHostOptions options = files.Options() with { Controls = HostFixture.Humans("a") };
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, options,
             default, output, characterCount: 2, inputReader: input));
-        Assert.Contains("human-session-ended", output.ToString());
+        var records = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store)).Records;
+        Assert.Equal("human-session-ended", Assert.Single(records, record => record.Kind == "run-end").Payload.GetProperty("Reason").GetString());
+        Assert.DoesNotContain(records, record => record.Kind is "model-request" or "model-response" or "model-failure");
+        Assert.False(File.Exists(options.LogPath));
         Assert.DoesNotContain("credential/", output.ToString());
     }
 

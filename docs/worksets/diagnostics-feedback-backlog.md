@@ -1,6 +1,6 @@
 # 后续待办：宿主日志去重与统一诊断反馈
 
-状态：2026-11-02，独立反馈已实施；用户已选择统一宿主日志、独立模型原始审计和独立反馈，[实施方案](../design/character-history-and-diagnostics.md)已据此修订，尚未实施。本文仅保留启动前调查与历史候选，不维护第二份施工清单。独立反馈现行合同见[独立宿主反馈](../design/independent-feedback.md)，验收见[实施验收](../experiments/independent-feedback-acceptance.md)。
+状态：2026-11-02，独立反馈及[统一宿主日志与角色 history](../design/character-history-and-diagnostics.md)均已实施，见[统一日志验收](../experiments/character-history-and-diagnostics-acceptance.md)。本文仅保留启动前调查与历史候选，不维护第二份施工清单。独立反馈现行合同见[独立宿主反馈](../design/independent-feedback.md)。
 
 ## 1. 用户观察与方向
 
@@ -24,13 +24,13 @@
 
 `gym/events.jsonl` 的 events 指实验记录，不是完整世界事件流。`perception` 是捕获时角色保留的材料，不能等同于模型实际收到的 request 或真人已看到的屏幕。模型返回 act 不等于领域接受或提交成功。
 
-关键实现入口：
+原调查中的 PlaygroundOperationJournal、LlmRunAudit、GymSession、GymJournal 和 GymTraceExporter 可从重构前提交 `c0e1880` 检出；它们已从当前运行路径和源码撤下。现行实现入口：
 
-- [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs)：接收/结果身份、刷盘、恢复对账及 `ExactResult`。
-- [PlaygroundHost / LlmRunAudit](../../src/Playground.Cli/PlaygroundHost.cs)：运行审计、模型 trace、提交摘要；当前还将 trace 转发给 Gym。home 重构已将 Human/LLM 收敛为统一宿主，日志职责重整仍属本待办。
-- [GymSession](../../src/Playground.Cli/Gym/GymSession.cs)：实际请求与决定前边界关联、反馈保存、Context/操作捕获。
-- [GymJournal](../../src/CharacterGym/GymJournal.cs)：共享序列、校验链、完整行刷盘及尾部处理。
-- [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs)、[轨迹导出器](../../src/CharacterGym/GymTraceExporter.cs)：按角色/分支导出、反馈定位与 fork。
+- [PlaygroundOperationAudit](../../src/Playground.Cli/PlaygroundOperationAudit.cs)：接收/结果身份、本分支恢复对账及 `ExactResult`，委托主 writer 保存。
+- [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)：统一运行时，依序接线独立 raw、主投影和 Console 呈现。
+- [PlaygroundHostSession](../../src/Playground.Cli/PlaygroundHostSession.cs)：完成 S、运行/模型/反馈关联和角色材料捕获。
+- [PlaygroundHostJournal](../../src/Playground.Cli/PlaygroundHostJournal.cs)：共享序列、校验链、完整行刷盘、增量操作索引及尾部处理。
+- [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs)、[人物导出器](../../src/Playground.Cli/CharacterHistoryExporter.cs)：按角色/分支导出、反馈定位与 fork。
 - [使用说明](../design/character-gym/usage.md)：当前查询/导出/fork 入口；当前用法已更新，历史实验命令保留原语境。
 
 ## 3. 已发现的重叠与不能机械合并的地方
@@ -82,7 +82,7 @@
 
 这三项是历史候选，不要求各做一个原型。用户最新选择已进入[统一宿主日志方案](../design/character-history-and-diagnostics.md)：operations 与 Gym 合并为同一有序日志，直接保存操作事实和模型可读投影，人物主体导出不依赖 raw 文件；完整模型审计与反馈独立。早先保留全部文件边界、逐项引用的方案已被替代，不保留为并行实施选项。
 
-反馈默认独立保存，Gym off 不禁止 feedback.jsonl；后续方案不改变这一保存合同。方案提出的默认录制和 off 基本运行记录行为是待实施变更，不是当前行为。
+反馈默认独立保存，Gym off 不禁止 feedback.jsonl；后续方案不改变这一保存合同。方案提出的默认录制和 off 基本运行记录行为在当时方案阶段尚未实施，现已由统一日志实现。
 
 ## 6. 后续实施入口
 

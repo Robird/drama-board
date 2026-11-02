@@ -8,7 +8,8 @@ namespace DramaBoard.Playground.Cli.Tests;
 public sealed class PlayControllerOperationTests {
     [Fact]
     public async Task Every_submitted_operation_is_recorded_and_game_rejections_are_committed_before_feedback() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader("\n \t\n:help\n  invalid  \n:layout unknown\nwait 0\nhandoff 观察保暖\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
@@ -56,7 +57,8 @@ public sealed class PlayControllerOperationTests {
     [InlineData("quit")]
     [InlineData("  handoff  保留  空格  ")]
     public async Task Non_meta_input_returns_exact_submission_without_local_rejection(string rawInput) {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(rawInput + "\n:exit\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
@@ -74,7 +76,8 @@ public sealed class PlayControllerOperationTests {
 
     [Fact]
     public async Task Basic_console_delivers_committed_rejection_once_without_rotating_actor() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader("wait 0\nwait 1\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(false), ConsoleMetaCommands.HumanDefault,
@@ -101,7 +104,8 @@ public sealed class PlayControllerOperationTests {
     [InlineData(":exit\n", 1)]
     [InlineData(":quit\n", 1)]
     public async Task Eof_does_not_invent_a_call_but_explicit_exit_has_a_paired_result(string submitted, int count) {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(submitted);
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
@@ -124,7 +128,10 @@ public sealed class PlayControllerOperationTests {
 
     [Fact]
     public async Task Received_write_failure_prevents_game_dispatch_and_state_publication() {
-        using var journal = PlaygroundOperationJournal.CreateForTesting(new FailingFlushStream());
+        using var stream = new FailingFlushStream();
+        using var journalStore = PlaygroundHostJournal.CreateForTesting(stream);
+        stream.Fail = true;
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader("wait 1\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
@@ -140,14 +147,15 @@ public sealed class PlayControllerOperationTests {
         Assert.Same(openedWorld, history.State);
         Assert.Equal(openedCursor, history.Cursor);
         Assert.Null(history.PendingEvent);
-        Assert.True(journal.IsFaulted);
+        Assert.True(journalStore.IsFaulted);
     }
 
     [Fact]
     public async Task Disabled_meta_commands_reject_without_exit_resync_or_preference_changes_then_return_action() {
         string[] disabled = [":help", ":look", ":details", ":layout", ":mode", ":exit", ":quit",
             ":layout classic", ":mode full", ":layout decision", ":mode delta", ":layout classic once", ":layout decision once"];
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var output = new StringWriter();
         var presentation = PlayPresentation.ForMode(true);
         IPlayLayout layout = presentation.Current;
@@ -187,7 +195,8 @@ public sealed class PlayControllerOperationTests {
 
     [Fact]
     public async Task Console_queries_rejections_and_exit_do_not_publish_game_state_or_events() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(":help\n:layout classic once\n:layout\n:mode\n:look\n:layout classic\n:mode full\n:mode invalid\n:exit\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
@@ -211,7 +220,8 @@ public sealed class PlayControllerOperationTests {
     [Fact]
     public async Task Cancellation_during_read_does_not_record_or_dispatch_the_returned_line() {
         using var cancellation = new CancellationTokenSource();
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new CallbackReader([":exit"], cancellation.Cancel);
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
@@ -225,7 +235,8 @@ public sealed class PlayControllerOperationTests {
 
     [Fact]
     public async Task Resync_journal_result_contains_the_complete_console_composition_written_to_output() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var output = new StringWriter();
         int beforeResync = 0;
         int afterResync = 0;
@@ -255,7 +266,8 @@ public sealed class PlayControllerOperationTests {
     [InlineData("classic")]
     [InlineData("decision")]
     public async Task Layout_once_is_a_logged_query_and_preserves_preferences_and_baseline(string target) {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var output = new StringWriter();
         var presentation = PlayPresentation.ForMode(true);
         IPlayLayout original = presentation.Current;
@@ -298,6 +310,10 @@ public sealed class PlayControllerOperationTests {
     }
 
     private sealed class FailingFlushStream : MemoryStream {
-        public override void Flush() => throw new IOException("Injected receipt flush failure.");
+        public bool Fail { get; set; }
+        public override void Flush() {
+            if (Fail) { throw new IOException("Injected receipt flush failure."); }
+            base.Flush();
+        }
     }
 }

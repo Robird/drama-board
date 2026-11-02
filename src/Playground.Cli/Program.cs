@@ -13,7 +13,7 @@ try {
             playground [options]
               --home PATH          实例目录，默认调用时 CWD；不搜索父目录
               --store PATH         覆盖存档位置；管理时直接定位并绕过 home
-              --ephemeral          世界仅内存运行（仍需 home；Gym 必须 off）
+              --ephemeral          世界与宿主操作日志仅在内存（仍需 home；详细记录默认 off）
               --branch ID          已有分支；多分支时必须指定
               --content hillside|gentle 新局内容；续局为一致性断言
               --characters 1|2|3  新局人数，默认 3；续局省略沿用存档
@@ -23,13 +23,13 @@ try {
               --max-calls N       共享模型调用预算（默认 128）
               --max-failures N    连续协议错误上限（默认 3）
               --max-context-chars N Context 字符上限（默认 200000）
-              --llm-log PATH      本次独立运行证据文件
+              --llm-log PATH      本次模型原始审计；首次真实调用时创建
               --until-hour N      绝对模拟小时上界；达到后暂停
               --steps N           提交转换上限（默认 10000）
-              --gym off|record     轨迹记录模式；反馈独立默认启用
+              --gym off|record     详细角色/模型记录；持久运行默认 record，内存运行默认 off
               --branches          列出分支，不运行游戏
               --feedbacks         列出独立反馈 JSONL；可选 --branch / --actor；--ephemeral 查询 home 内存运行报告
-              --gym-export FILE   导出到新文件；需 --actor，可选 --branch
+              --gym-export FILE   导出角色 history 到新文件；需 --actor，可选 --branch
               --fork-feedback ID   从反馈的决定前 S 注册分支，不依赖 Gym
               --gym-fork-request ID 从请求的决定前 S 注册分支
               --fork-label LABEL  分叉名称；另用 --branch 续跑
@@ -37,6 +37,8 @@ try {
               --help              显示帮助，不读取 home
 
             home 路径相对 home，CLI 路径相对调用时 CWD。管理省略 --store 时读取 home。
+            持久运行总将必要操作事实写入 store/host/events.jsonl；gym off 仅关闭详细材料。
+            模型原始审计 llm-runs/<RunId>.jsonl 与 feedback.jsonl 独立保存；全 Human 不建模型文件。
             :quit、EOF 或 Ctrl+C 暂停；同一 home 续局可重新选择控制文件。
             :feedback <正文> 提交开发反馈；不推进时间、不确认消息。LLM 使用 feedback 工具。
             """);

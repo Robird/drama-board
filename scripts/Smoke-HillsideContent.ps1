@@ -2,6 +2,7 @@ param([string]$Configuration = 'Release', [string]$OutputDirectory)
 
 # Ordinary Console engineering smoke. No online model calls or free-play claim.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'HostJournalHelpers.ps1')
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $cliPath = Join-Path $repoRoot "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 if (-not (Test-Path -LiteralPath $cliPath)) { throw "Build the CLI first: $cliPath" }
@@ -74,14 +75,16 @@ if (-not $mismatch.Error.Contains('内容身份不符') -or $beforeMismatch -cne
 }
 $matching = Invoke-ContentConsole '04-explicit-match' @(':look', ':quit') @('--content', 'gentle')
 if (-not $matching.Output.Contains('hillside-gentle-v1')) { throw 'Explicit matching content failed.' }
-$operations = @(Get-Content -LiteralPath (Join-Path $storePath 'operations.jsonl') | ForEach-Object { ($_ | ConvertFrom-Json).Payload | ConvertFrom-Json })
-$received = @($operations | Where-Object { $null -ne $_.Received -and -not $_.Received.ToolName.StartsWith(':', [StringComparison]::Ordinal) })
+$records = @(Read-HostJournalRecords (Join-Path $storePath 'host/events.jsonl'))
+$received = @($records | Where-Object { $_.Kind -ceq 'operation-received' -and -not $_.Payload.ToolName.StartsWith(':', [StringComparison]::Ordinal) })
 $expected = @('go home-workshop', 'produce ration 1', 'go market-workshop', 'sell item.ration 1')
-if (($received.Received.RawInput -join "`n") -cne ($expected -join "`n")) { throw 'Ordinary commands differ from the plan.' }
+if (($received.Payload.RawInput -join "`n") -cne ($expected -join "`n")) { throw 'Ordinary commands differ from the plan.' }
 foreach ($record in $received) {
-    $result = @($operations | Where-Object { $_.OperationRecordId -eq $record.Received.OperationRecordId -and $null -ne $_.Completed })
-    if ($result.Count -ne 1 -or $result[0].Completed.Status -ne 0) { throw 'An ordinary command did not succeed exactly once.' }
+    $result = @($records | Where-Object { $_.Kind -ceq 'operation-completed' -and $_.Payload.OperationRecordId -eq $record.Payload.OperationRecordId })
+    if ($result.Count -ne 1 -or $result[0].Payload.Completed.Status -ne 0) { throw 'An ordinary command did not succeed exactly once.' }
 }
+Assert-NoLegacyHostFiles $storePath
+if (Test-Path -LiteralPath (Join-Path $storePath 'llm-runs')) { throw 'Human-only smoke created raw model audits.' }
 $report = [ordered]@{
     Kind = 'Scripted engineering Console content smoke; no model calls or free play'
     Content = 'gentle'; Processes = 4; OrdinaryCommands = $received.Count; Store = $storePath

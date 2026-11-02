@@ -39,11 +39,11 @@ public sealed class LlmHostTests {
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, firstOptions, default, output, first));
         Assert.Single(first.Requests);
         Assert.Contains("call-budget-exhausted", output.ToString());
-        string inputLine = File.ReadLines(firstOptions.LogPath!)
-            .First(line => JsonSerializer.Deserialize<JsonElement>(line).GetProperty("Kind").GetString() == "model-input");
-        Assert.Contains("你在一个持续运行的游戏中", inputLine);
-        using (JsonDocument input = JsonDocument.Parse(inputLine)) {
-            JsonElement schema = input.RootElement.GetProperty("Payload").GetProperty("OutputContract").GetProperty("Tools")[0].GetProperty("InputSchema");
+        JsonElement input = LlmRawAudit.Read(firstOptions.LogPath!).Records
+            .First(record => record.Kind == "model-request").Payload;
+        Assert.Contains("你在一个持续运行的游戏中", input.GetRawText());
+        {
+            JsonElement schema = input.GetProperty("OutputContract").GetProperty("Tools")[0].GetProperty("InputSchema");
             Assert.Equal("object", schema.GetProperty("Type").GetString());
             Assert.False(schema.GetProperty("AdditionalProperties").GetBoolean());
             JsonElement parameter = schema.GetProperty("Properties")[0];
@@ -66,7 +66,8 @@ public sealed class LlmHostTests {
         using var restored = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(90 * PlaygroundSurvival.Scale, restored.State.GetCharacter("a").Survival!.WaterUnits);
         Assert.Equal("继续探索", restored.State.Business.InteractionStates["a"].DraftHandoff);
-        using var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var journal = new PlaygroundOperationAudit(journalStore, restored.CurrentBranch.BranchId, "test-run");
         Assert.Equal(2, journal.Entries.Count);
         Assert.All(journal.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         Assert.All(journal.Entries, entry => Assert.Equal("provider-repeatable-id", entry.Received.ToolCallId));
@@ -138,7 +139,8 @@ public sealed class LlmHostTests {
             saved.CommitEvent(planned.LastCompletion!.Event);
             if (saveState) { saved.CommitState(planned.World, planned.Cursor); }
         }
-        using (var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"))) {
+        using (var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store))) {
+            var journal = new PlaygroundOperationAudit(journalStore, HostFixture.BranchId(files.Store), "test-run");
             journal.Receive("old-run", operation.ToolCallId, "a", 1, "act", operation.RawInput, operation.OperationRecordId);
         }
         var client = new Client("handoff 已恢复");
@@ -150,7 +152,8 @@ public sealed class LlmHostTests {
         Assert.Null(final.PendingEvent);
         Assert.Equal(90 * PlaygroundSurvival.Scale, final.State.GetCharacter("a").Survival!.WaterUnits);
         Assert.Equal(2, final.State.Business.InteractionStates["a"].CurrentContext!.Items.Count);
-        using var repaired = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var repairedStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var repaired = new PlaygroundOperationAudit(repairedStore, final.CurrentBranch.BranchId, "test-run");
         var entry = repaired.Entries.Single(entry => entry.Received.OperationRecordId == operation.OperationRecordId);
         Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status);
         Assert.False(entry.Completed.ExactResult);

@@ -1,6 +1,6 @@
 # Playground 实例目录与启动配置
 
-状态：已实施。home、typed 角色控制、统一宿主与当前消费者已迁移；工程与实际 CLI 证据见[实施验收](../experiments/playground-home-acceptance.md)。本次真实模型尝试遇到 transport failure，未作为在线成功。
+状态：已实施。home、typed 角色控制与统一宿主的原切片证据见[实施验收](../experiments/playground-home-acceptance.md)，其中模型尝试遇到 transport failure，未作为在线成功。本文已同步后续[角色 history 与统一宿主日志](character-history-and-diagnostics.md)的当前布局及录制默认值；旧 home 验收不替代该重构的验证。
 
 ## 1. 目标与需求账本
 
@@ -28,9 +28,10 @@ my-playground/
 ├── llm-connections.json         # 连接目录及 defaultConnectionId
 ├── character-controls.json    # 可选，角色控制绑定覆盖
 └── store/                      # 默认世界存档与关联实验材料
-    ├── …                       # DurableGraph 数据与 operations
-    ├── gym/
-    └── llm-runs/
+    ├── …                       # DurableGraph 世界数据与分支
+    ├── host/events.jsonl        # 所有分支/运行共用的宿主时间线
+    ├── llm-runs/<RunId>.jsonl   # 首次模型调用才懒创建
+    └── feedback.jsonl          # 首次反馈提交才懒创建
 ```
 
 一个 home 默认指向一个 store；store 已能容纳多个分支，不另造 home ID、world ID 或当前分支指针。配置仍在世界存档之外。凭据由 Completion 现有机制读取，不复制登录文件到 home。
@@ -76,7 +77,7 @@ init 明确输出“已创建启动文件；运行前需准备默认连接配置
 
 | 项目 | 内置默认值与规则 | CLI 覆盖建议 |
 | --- | --- | --- |
-| Gym 模式 | `gym: off`；`record` 记录轨迹；独立反馈默认可用 | `--gym off\|record`，整项替换 |
+| 详细人物记录 | 未指定时持久运行 `record`、ephemeral `off`；`off` 不关闭必要操作记录或独立反馈 | `--gym off\|record`，整项替换；ephemeral 显式 `record` 拒绝 |
 | 调用与材料预算 | 128 次调用、3 次连续协议失败、200000 字符；跨连接共享 | 沿用 `--max-calls`、`--max-failures`、`--max-context-chars` |
 | 转换预算 | 10000 | 沿用 `--steps` |
 | store | `store` | `--store PATH`；`--ephemeral` 显式内存运行，与显式 store 互斥 |
@@ -114,9 +115,9 @@ CLI 只能选择/清除控制文件，不再逐角色叠加第三层覆盖：删
 
 ### 3.2 预算、记录与本次参数
 
-Gym 只选择 `off` 或 `record`，不控制反馈启用。Human 和 LLM 默认共用独立反馈能力；持久运行写 store/feedback.jsonl，ephemeral 写 home/feedback.jsonl 且 Boundary=null。程序化入口无 store/home 时不保存。详细合同见[独立反馈](independent-feedback.md)，本切片已实施，见[实施验收](../experiments/independent-feedback-acceptance.md)。Gym 可以记录 Human 的 Context/操作，但不伪造模型请求。调用与连续协议失败预算由一个 LLM loop 在所有 LLM 角色之间共享，Human 输入不计入；steps/until 仍约束整个世界。没有自动重试、连接 failover 或错误时回退 Console。
+Gym 只选择 `off` 或 `record`，用于详细人物材料，不控制反馈或必要操作记录。配置合并保留未指定：持久运行默认 `record`，ephemeral 默认 `off`；home 或 CLI 显式选择 `record` 时不能运行 ephemeral，可显式覆盖为 `off`。持久 `off` 仍写 `host/events.jsonl` 的运行与操作事实，关闭角色/模型阅读材料。Human 和 LLM 默认共用独立反馈能力；持久运行写 store/feedback.jsonl，ephemeral 写 home/feedback.jsonl 且 Boundary=null。程序化入口无 store/home 时不保存。详细合同见[独立反馈](independent-feedback.md)。Human history 可含 Context/操作和经历，不伪造 reasoning、response 或模型请求。调用与连续协议失败预算由一个 LLM loop 在所有 LLM 角色之间共享，Human 输入不计入；steps/until 仍约束整个世界。没有自动重试、连接 failover 或错误时回退 Console。
 
-`--content`、`--characters`、`--branch`、绝对 `--until-hour`、单次 `--llm-log`、管理查询/导出/fork 参数只放 CLI，不持久写回配置。这样不会因初始化模板、旧实验分支或已越过的模拟时限改变后续普通启动。LLM 日志仍默认每次生成独立文件；Gym 与操作日志仍跟随实际 store，不跟随未使用的默认目录。
+`--content`、`--characters`、`--branch`、绝对 `--until-hour`、单次 `--llm-log`、管理查询/导出/fork 参数只放 CLI，不持久写回配置。这样不会因初始化模板、旧实验分支或已越过的模拟时限改变后续普通启动。主日志跟随实际 store，不跟随未使用的默认目录。模型 raw 每个 Run 使用独立文件，首次调用才创建，全 Human 没有模型文件；模型的可读请求/输出已经内联于主日志，普通 history 导出无需读取 raw。
 
 ## 4. 新局、续局与管理
 
@@ -136,7 +137,9 @@ Gym 只选择 `off` 或 `record`，不控制反馈启用。Human 和 LLM 默认�
 
 管理不启动控制器、不创建运行日志、不执行 pending 恢复。`--branches`、反馈查询、导出保持现有源存档只读保证；fork 保持显式写入语义，不把所有管理命令称为只读。管理仍拒绝混入角色控制文件、模型预算、内容等运行专用 CLI 参数；home 中合法但未使用的运行设置不触发运行行为。`--help`、init、管理、运行分别进入对应路径，不因默认绑定为 LLM 被引导进运行路径。
 
-内存运行用于开发演练；`--ephemeral` 仍从 home 取得宿主配置，但 world 的 store=null，不能配合 branch 或依赖存档的管理/Gym。home 已配置 Gym 时需显式 `--gym off` 再使用 ephemeral，不静默丢弃用户要求的记录。统一宿主沿用现有运行审计：持久运行默认 `store/llm-runs/<run-id>.jsonl`，内存运行默认 `home/llm-runs/<run-id>.jsonl`，均可用 `--llm-log` 覆盖。目录/参数暂沿用既有命名，文件也包含宿主与提交记录；全 Human 可以有这些记录，但不能伪造模型请求/响应。ephemeral 只表示世界不落盘，并非没有任何文件写入。
+内存运行用于开发演练；`--ephemeral` 仍从 home 取得宿主配置，但 world 的 store=null，不能配合 branch 或详细 `record`。主日志与操作投影只在内存；默认模型 raw 仍可在首次调用时创建于 `home/llm-runs/<RunId>.jsonl`，反馈可写 home/feedback.jsonl。持久 raw 默认在 `store/llm-runs/<RunId>.jsonl`，两者均可用 `--llm-log` 覆盖。raw 专门保存完整模型调用，不再混入宿主与游戏提交记录；全 Human 不创建 raw。ephemeral 并非承诺没有任何文件写入。
+
+发现旧 `operations.jsonl`、`branch-operations/` 或旧 Gym 文件且没有有效新主日志时，运行在打开/创建世界和创建新主日志前拒绝。保留旧 store，并选择新 store 路径开始；不自动迁移、不删除旧文件。这个宿主格式边界不改变领域 Schema/GameRevision，也不阻断独立反馈查询、反馈 fork 或分支列表。具体合同见[统一宿主日志](character-history-and-diagnostics.md#8-旧数据与初始化)。
 
 程序调用仍可直接提供内存 history 与控制器依赖，无须制造 home；重构不承诺保留旧宿主静态方法的拼写，但保留这项测试/嵌入用途。CLI 正常运行只保留一种 home 解析入口，包括 ephemeral，不增加独立裸参数运行模式。显式 store 的管理入口只是已有工具所需的存档定位，不扩张成另一种运行宿主。
 
@@ -153,7 +156,7 @@ Gym 只选择 `off` 或 `record`，不控制反馈启用。Human 和 LLM 默认�
 | [业务状态](../../src/Playground/PlaygroundModels.cs)、[持久根](../../src/Playground/Persistence/PlaygroundDurableRoot.cs)、[持久事件](../../src/Playground/Persistence/PlaygroundDurableEvent.cs) | 保存世界/角色材料、游标、修订及已决定事实，没有控制绑定；保持此边界 |
 | [LivingWorldHostTests](../../tests/Playground.Cli.Tests/LivingWorldHostTests.cs)、[MultiConnectionHostTests](../../tests/Playground.Cli.Tests/MultiConnectionHostTests.cs) | 已有冷开改为 Human、冷开换连接与共享预算的测试；证明现有 API 支持，非本轮重新运行的验收 |
 | [恢复测试](../../tests/Playground.Cli.Tests/OperationRecoveryIntegrationTests.cs)及宿主 RecoverPending 调用 | 已发布行动按记录恢复，不重新调用控制器；绑定更换不应改变此顺序 |
-| [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)、[GymSession](../../src/Playground.Cli/Gym/GymSession.cs) | 实施前多处比较单个 HumanActor；本次路由、终局输出、观战材料与 run-start 已统一使用完整绑定映射 |
+| [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs)、[PlaygroundHostSession](../../src/Playground.Cli/PlaygroundHostSession.cs) | 路由、终局输出、观战材料与 run-start 统一使用完整绑定映射；运行/操作与详细人物材料共用主日志 |
 
 **持久化禁区**：不把控制 kind、ConnectionId、默认绑定、home 路径、客户端或控制器引用加入 `PlaygroundBusinessState`、角色、WorldDefinition、Context、`PlaygroundDurableRoot` 或游戏事件。不新增“控制器切换”领域事件，不更新内容指纹、Schema 或 GameRevision。角色身份、记忆、活动和行动事实仍按既有领域模型持久化；ToolCallId/OperationRecordId 等原有操作来源字段保留，它们不代表控制策略。
 
@@ -194,7 +197,7 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 ## 7. 暂缓与重开条件
 
-- 日志去重：仍按[后续待办](../worksets/diagnostics-feedback-backlog.md)独立延期，不合并 JSONL。[独立反馈](independent-feedback.md)已实施并验收，替换 home 初版的三态 Gym，见[实施验收](../experiments/independent-feedback-acceptance.md)。
+- 日志去重已由后续[统一宿主日志](character-history-and-diagnostics.md)收敛 operations/Gym，模型 raw 与[独立反馈](independent-feedback.md)继续独立；自动摘要、记忆回灌与通用日志框架仍延期。[后续待办](../worksets/diagnostics-feedback-backlog.md)只保留调查背景。
 - 全局配置、profile 继承、自动发现父目录：多个真实实例出现无法由文件路径共享解决的重复配置需求后重评。
 - 热加载、运行中切模型：需要不中断角色决策的具体产品故事后重评。
 - 多世界清单、home 管理器与自动分支选择：出现频繁管理多个世界的实际操作证据后重评。
@@ -205,7 +208,7 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 ## 8. 辩证简化记录
 
-本节保留 home 初稿裁决背景；其中三态 Gym 已由[独立反馈](independent-feedback.md)的 off/record 合同替换。2026-11-02 的 home 初稿使用 `dialectical-simplification`：需求质疑者、最小架构师、语义守护者独立提出论点，再交换反例质询；主线程核对源码/测试及 smoke 消费者后裁决。其后用户明确采纳双层控制映射并要求只作运行时配置，本版由主线程进行第 5 节的源码可行性核对后修订；没有声称新映射另经同一轮三人审阅。两次文档工作均未运行测试或真实模型调用，不把设计检查称为实现验收。
+本节保留 home 初稿裁决背景；其中三态 Gym 已由[独立反馈](independent-feedback.md)的 off/record 合同替换，日志布局及默认值又由[统一宿主日志](character-history-and-diagnostics.md)替代。2026-11-02 的 home 初稿使用 `dialectical-simplification`：需求质疑者、最小架构师、语义守护者独立提出论点，再交换反例质询；主线程核对源码/测试及 smoke 消费者后裁决。其后用户明确采纳双层控制映射并要求只作运行时配置，本版由主线程进行第 5 节的源码可行性核对后修订；没有声称新映射另经同一轮三人审阅。两次文档工作均未运行测试或真实模型调用，不把设计检查称为实现验收。
 
 | 裁决 | 初稿机制 | 最终机制及不能丢失的行为 |
 | --- | --- | --- |
@@ -221,4 +224,4 @@ home 发现、控制绑定 JSON 与角色路由留在 Playground.Cli，不为一
 
 前轮审阅存在两项便利性取舍：一位审阅者偏好 init 同时复制连接示例，并接受所有管理均要求 home。单文件 init 与显式 store 管理仍保留；默认 LLM 改变了初始化后的体验，因此本版明确 init 不等于可运行，准备连接后才可启动，不再声称默认 Human 开箱即玩。允许管理同时传 home/store、由显式 store 胜出。后两项仍是方案细节建议；双层映射及不进入 DurableGraph 则为用户明确裁决。
 
-可观察的缩减：两个 Gym 设置合为一个；删除 newGame 对象及来源分流、可选文件探测；init 从两次文件创建减为一次；再删除全局控制模式与特殊 Human 字段，角色控制和模型选择合为一个绑定。第 6 节的实施切片已完成，日志去重仍按第 7 节延期；独立反馈已另行实施并验收。
+home 初版的缩减：两个 Gym 设置合为一个；删除 newGame 对象及来源分流、可选文件探测；init 从两次文件创建减为一次；再删除全局控制模式与特殊 Human 字段，角色控制和模型选择合为一个绑定。第 6 节保留该切片验收范围；后续独立反馈及统一宿主日志的实施合同分别见其专题，不把历史表格当作当前存储布局。

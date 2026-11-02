@@ -43,7 +43,8 @@ public sealed class FeedbackHostTests {
             Assert.Equal(stateCommit, saved.CurrentBranch.CompletedStateCommitId);
             Assert.Empty(saved.State.Business.InteractionStates["a"].CurrentContext!.Items);
         }
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, HostFixture.BranchId(files.Store), "test-run");
         Assert.Empty(operations.Entries);
         Assert.False(Directory.Exists(Path.Combine(files.Store, "gym")));
     }
@@ -54,7 +55,7 @@ public sealed class FeedbackHostTests {
         using var output = new StringWriter();
         CompletionResult feedback = Tool("feedback", "feedback-call", new { text = "模型的独立反馈" });
         var client = new FeedbackClient(feedback, Tool("act", "act-call", new { command = "handoff after-feedback" }));
-        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(human: false) with { MaxCalls = 2 }, default,
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(human: false) with { MaxCalls = 2, Gym = false }, default,
             output, client));
         FeedbackRecord saved = Assert.Single(files.Reports());
         Assert.Equal(FeedbackSource.Llm, saved.Source);
@@ -68,9 +69,11 @@ public sealed class FeedbackHostTests {
         Assert.Contains(saved.FeedbackId, receipt.GetFlattenedText());
         using var history = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal("after-feedback", history.State.Business.InteractionStates["a"].DraftHandoff);
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, history.CurrentBranch.BranchId, "test-run");
         Assert.Equal("act", Assert.Single(operations.Entries).Received.ToolName);
         Assert.False(Directory.Exists(Path.Combine(files.Store, "gym")));
+        Assert.DoesNotContain(operationsStore.Records, record => record.Kind == "feedback-saved");
     }
 
     [Fact]
@@ -86,6 +89,7 @@ public sealed class FeedbackHostTests {
         Assert.Null(report.StorePath);
         Assert.False(File.Exists(FeedbackSession.JournalPath(files.Store)));
         Assert.False(Directory.Exists(Path.Combine(files.Home, "gym")));
+        Assert.False(File.Exists(PlaygroundHostJournal.JournalPath(files.Home)));
     }
 
     [Fact]
@@ -102,7 +106,8 @@ public sealed class FeedbackHostTests {
 
     [Fact]
     public async Task Feedback_stays_in_current_input_window_and_does_not_enter_operation_journal() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(":feedback 这里 有 一些 反馈\nwait 1\n");
         using var output = new StringWriter();
         var world = PlaygroundGameFactory.CreateSurvival().World;
@@ -126,8 +131,9 @@ public sealed class FeedbackHostTests {
 
     [Fact]
     public async Task Feedback_save_succeeds_even_when_operation_journal_is_unusable() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
-        journal.Dispose();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
+        journalStore.Dispose();
         using var input = new StringReader(":feedback 仍应保存\n");
         using var output = new StringWriter();
         int saved = 0;
@@ -142,13 +148,41 @@ public sealed class FeedbackHostTests {
         Assert.Contains("反馈已保存：saved-independently", output.ToString());
     }
 
+    [Fact]
+    public async Task Saved_feedback_receipt_remains_successful_when_host_association_fails() {
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
+        using var input = new StringReader(":feedback 关联失败也保留正文\nwait 1\n");
+        using var output = new StringWriter();
+        int saved = 0;
+        var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
+            input, output, operations: journal, feedbackSink: (_, _, _) => {
+                saved++;
+                return ValueTask.FromResult("saved-feedback-id");
+            }, feedbackSaved: (_, feedbackId) => {
+                Assert.Contains("反馈已保存：saved-feedback-id", output.ToString());
+                Assert.Equal("saved-feedback-id", feedbackId);
+                throw new IOException("Injected host association failure after feedback was saved.");
+            });
+
+        await Assert.ThrowsAsync<IOException>(() => controller.ChooseCommandAsync(
+            ViewContextFixture.Create(PlaygroundGameFactory.CreateSurvival().World, "a"), default).AsTask());
+
+        Assert.Equal(1, saved);
+        Assert.Empty(journal.Entries);
+        Assert.Contains("反馈已保存：saved-feedback-id", output.ToString());
+        Assert.DoesNotContain("反馈保存未确认", output.ToString());
+        Assert.Equal("wait 1", await input.ReadLineAsync());
+    }
+
     [Theory]
     [InlineData(":feedback")]
     [InlineData(":feedback   ")]
     [InlineData(":feedback too-long", true)]
     public async Task Invalid_feedback_does_not_invoke_sink_or_record_an_operation(string command, bool oversize = false) {
         if (oversize) { command = ":feedback " + new string('x', 4001); }
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(command + "\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
@@ -164,7 +198,8 @@ public sealed class FeedbackHostTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task Unavailable_or_failed_save_never_reports_success(bool fail) {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(":feedback 保存我的反馈\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
@@ -178,7 +213,8 @@ public sealed class FeedbackHostTests {
 
     [Fact]
     public async Task Disabled_directory_rejects_feedback_without_saving_or_operation_receipt() {
-        using var journal = PlaygroundOperationJournal.CreateInMemory();
+        using var journalStore = PlaygroundHostJournal.CreateInMemory();
+        var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
         using var input = new StringReader(":feedback 不应保存\n");
         using var output = new StringWriter();
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.None,

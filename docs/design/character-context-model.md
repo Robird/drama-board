@@ -23,7 +23,7 @@
 | [PlaygroundObservation](../../src/Playground/PlaygroundObservation.Material.cs) | 纯可见观察及嵌套材料直接保存在 Opening/成功 Items；拒绝不保存重复观察，PlaygroundDecisionContext 读取已保存最新观察并另持校验委托 | 后续所有呈现只读保存材料，避免 Context → Observation → Context 引用环 |
 | [PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) | 已串联业务、生存、访问观察、连续性和解释材料；控制器在 Plan 中被调用 | 组合层编排这些步骤；领域子规则不承担上下文组织 |
 | [PlayConsole](../../src/Playground.Cli/PlayConsole.cs) / [PlayPresentationSession](../../src/Playground.Cli/PlayPresentationSession.cs) | Console 从已提交 Context 消费新材料，管理反馈位于带外块；世界事实只进入可选诊断 sink | 完整与增量经同一渲染器，消费游标不成为角色知识权威 |
-| [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs) | 解析前登记身份，日志与 E/S 分别提交，冷开补配结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
+| [PlaygroundOperationAudit](../../src/Playground.Cli/PlaygroundOperationAudit.cs) | 解析前登记身份，主宿主日志与 E/S 分别提交，冷开仅补本分支结果 | 保留接收与核对边界；它不成为角色 Context 的权威副本 |
 
 `PlaygroundNotice` 的待确认通知和 `PlaygroundVisit` 的历史观察仍有独立玩法含义，不因新增 Context 删除。Context 是它们在一次决策中的材料记录，不反向承担警告确认、世界库存或地点记忆的权威。
 

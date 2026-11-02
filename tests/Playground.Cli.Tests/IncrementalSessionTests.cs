@@ -42,7 +42,8 @@ public sealed class IncrementalSessionTests {
     public async Task Unchanged_handoff_has_visible_success_answer_without_inventing_a_game_event() {
         using var input = new StringReader("handoff --clear\n");
         using var output = new StringWriter();
-        using var operations = PlaygroundOperationJournal.CreateInMemory();
+        using var operationsStore = PlaygroundHostJournal.CreateInMemory();
+        var operations = new PlaygroundOperationAudit(operationsStore, "test-branch", "test-run");
         var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         var initial = PlaygroundGameFactory.CreateSurvival();
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
@@ -167,7 +168,8 @@ public sealed class IncrementalSessionTests {
         Assert.True(presentation.TrySelect(layout));
         using var input = new StringReader("use item.water\nhandoff 明天再走\n:look\n:exit\n");
         using var output = new StringWriter();
-        using var operations = PlaygroundOperationJournal.CreateInMemory();
+        using var operationsStore = PlaygroundHostJournal.CreateInMemory();
+        var operations = new PlaygroundOperationAudit(operationsStore, "test-branch", "test-run");
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         var initial = PlaygroundGameFactory.CreateSurvival();
         var history = new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor);
@@ -196,7 +198,8 @@ public sealed class IncrementalSessionTests {
         var presentation = PlayPresentation.ForMode(false);
         using var input = new StringReader(":mode\n:mode delta\n:help\n:mode full\nwait 1\n");
         using var output = new StringWriter();
-        using var operations = PlaygroundOperationJournal.CreateInMemory();
+        using var operationsStore = PlaygroundHostJournal.CreateInMemory();
+        var operations = new PlaygroundOperationAudit(operationsStore, "test-branch", "test-run");
         var controller = new PlayConsole.ConsoleCharacterController(presentation, ConsoleMetaCommands.HumanDefault, input, output, operations: operations);
         PlaygroundControllerOperation action = await controller.ChooseCommandAsync(
             ViewContextFixture.Create(PlaygroundGameFactory.CreatePlayable().World, "a"), default);

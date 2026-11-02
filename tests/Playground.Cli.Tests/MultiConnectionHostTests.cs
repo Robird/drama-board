@@ -16,8 +16,8 @@ public sealed class MultiConnectionHostTests {
             characterCount: 3, clientFactory: factory));
         Assert.Equal(new[] { "main", "other" }, factory.Created);
         Assert.Equal(new[] { "model-main", "model-other", "model-main" }, factory.Requests.Select(x => x.ModelId));
-        var requests = DramaBoard.CharacterGym.GymJournal.Read(GymSession.JournalPath(files.Store)).Records
-            .Where(record => record.Kind == "request").ToArray();
+        var requests = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store)).Records
+            .Where(record => record.Kind == "model-request").ToArray();
         Assert.Equal(new[] { "a", "b", "c" }, requests.Select(x => x.ActorId));
         Assert.Equal(new[] { "main", "other", "main" }, requests.Select(x => x.Payload.GetProperty("ConnectionId").GetString()));
         Assert.Equal(new[] { "openai-responses-v2", "openai-chat-v1", "openai-responses-v2" },
@@ -82,14 +82,16 @@ public sealed class MultiConnectionHostTests {
             characterCount: 3, inputReader: new StringReader("wait 1\nwait 1\n:quit\n"), clientFactory: factory));
         Assert.Empty(factory.Created);
         Assert.Empty(factory.Requests);
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, HostFixture.BranchId(files.Store), "test-run");
         Assert.Equal(new[] { "a", "b", "c" }, operations.Entries.Select(entry => entry.Received.ActorId));
         Assert.Equal(3, operations.Entries.Select(entry => entry.Received.OperationRecordId).Distinct().Count());
-        var records = DramaBoard.CharacterGym.GymJournal.Read(GymSession.JournalPath(files.Store)).Records;
-        Assert.DoesNotContain(records, record => record.Kind is "request" or "response");
-        var recordedOperations = records.Where(record => record.Kind == "operation").ToArray();
-        Assert.Equal(new[] { "a", "b" }, recordedOperations.Select(record => record.ActorId));
-        Assert.Equal(2, recordedOperations.Select(record => record.Payload.GetProperty("OperationRecordId").GetString()).Distinct().Count());
+        var records = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store)).Records;
+        Assert.DoesNotContain(records, record => record.Kind is "model-request" or "model-response" or "model-failure");
+        var recordedOperations = records.Where(record => record.Kind == "operation-completed").ToArray();
+        Assert.Equal(new[] { "a", "b", "c" }, recordedOperations.Select(record => record.ActorId));
+        Assert.False(File.Exists(options.LogPath));
+        Assert.Equal(3, recordedOperations.Select(record => record.Payload.GetProperty("OperationRecordId").GetString()).Distinct().Count());
         var actors = Assert.Single(records, record => record.Kind == "run-start").Payload.GetProperty("Actors").EnumerateArray().ToArray();
         Assert.Equal(3, actors.Length);
         Assert.All(actors, actor => {

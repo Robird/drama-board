@@ -52,7 +52,8 @@ public sealed class GymBranchTests {
             Assert.Equal(source.LineageId, child.Cursor.Version.LineageId);
             Assert.Equal(source.TransitionCount, child.Cursor.Version.TransitionCount);
             Assert.Equal(source with { BranchId = fork.Branch.BranchId }, child.CaptureDecisionBoundary("a"));
-            Assert.Single(child.ReadCommittedOperations(["gym/prefix"]));
+            // The world prefix is inherited, but it cannot complete an input received by this child.
+            Assert.Empty(child.ReadCommittedOperations(["gym/prefix"]));
             Assert.Empty(child.ReadCommittedOperations(["gym/parent-future"]));
             var controller = new RecordingController(("child-new", "handoff child continuation"));
             var kernel = PlaygroundEngine.CreateKernel(child, characterController: controller);
@@ -68,6 +69,7 @@ public sealed class GymBranchTests {
         }
         using (var parent = PlaygroundDurableHistory.Open(store.StorePath, source.BranchId)) {
             Assert.Equal(parentHead, PlaygroundDurableHistory.FormatCommitId(parent.HeadCommitId));
+            Assert.Single(parent.ReadCommittedOperations(["gym/prefix"]));
             Assert.Single(parent.ReadCommittedOperations(["gym/parent-future"]));
             Assert.Empty(parent.ReadCommittedOperations(["gym/child-new"]));
         }

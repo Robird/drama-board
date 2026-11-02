@@ -2,7 +2,7 @@ using DramaBoard.Kernel.Time;
 using DramaBoard.Playground.Cli;
 
 internal sealed record PlaygroundHostOptions(int MaxCalls = 128, int MaxFailures = 3, int MaxContextCharacters = 200_000,
-    string? LogPath = null, bool Gym = false, string? Branch = null,
+    string? LogPath = null, bool? Gym = null, string? Branch = null,
     ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null,
     string? ConnectionsPath = null, string? CharacterControlsPath = null, string? HomePath = null,
     CharacterControlConfiguration? Controls = null);

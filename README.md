@@ -54,7 +54,7 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 配置在每次启动冻结；续局可换配置，不改变角色与世界存档。凭据与客户端只在实际调用相应连接时读取/创建，按连接缓存，由宿主释放。可复制示例为 `config/*.local.json` 后修改，这类本机文件已忽略。旧 `--model`、`--auth-file`、`--catalog`、`--connection` 已删除，没有兼容入口；模型与认证设置放进连接配置。完整格式与边界见[多模型连接设计](docs/design/multi-llm-connections.md)。
 
-每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行有独立 JSONL 审计，`--llm-log PATH` 可指定位置；恢复时重新提供连接配置与控制绑定参数。Gym 与审计按实际调用记录 actor、connection、model 与 protocol；这些元数据不进入世界。启动参数以当前 `--help` 为准。
+每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行的模型原始审计在首次调用时懒建为 `llm-runs/<RunId>.jsonl`，`--llm-log PATH` 可指定位置；全 Human 不创建模型文件。统一宿主日志内联保存人物阅读需要的材料，实际 actor、connection、model 与 protocol 不进入世界。启动参数以当前 `--help` 为准。
 
 ## 操作与个人材料
 
@@ -101,9 +101,13 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 当前游戏修订仍为 22；Playground 持久类型与 Inventory.ItemInventory 使用新的 Schema v1 身份，不兼容重命名前存档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
 
-除带外 `:feedback` 外，每个非空 Console 操作提交拥有隐式 ToolCallId。存档旁 `operations.jsonl` 保存宿主收到的操作和结果，包括查询与拒绝；它不是游戏状态权威。冷开依据已提交事实补齐遗漏结果，不重做动作。模型原生会话恢复不属于这份保证。
+除带外 `:feedback` 外，每个非空 Console 操作提交拥有隐式 ToolCallId。`store/host/events.jsonl` 是所有分支、所有运行共用的有序宿主日志，保存操作接收与结果，包括查询与拒绝。冷开只对账当前分支自己的操作，依据已提交世界事实补齐遗漏结果，不重做动作。世界 E/S 继续是游戏恢复权威；宿主日志不提供跨文件事务或模型原生会话恢复。
 
-独立反馈已实施并通过工程与脚本 CLI 验收，合同见[设计](docs/design/independent-feedback.md)：Human `:feedback <text>` 与 LLM `feedback({text})` 默认共用宿主保存，正文上限默认 4000 字符，独立于 Gym。持久局写 store/feedback.jsonl，ephemeral 写 home/feedback.jsonl 且不可分叉；成功回执在刷盘后返回。Gym 改为 `--gym off|record`，默认 off，录制需要磁盘 store；`--feedbacks` / `--fork-feedback ID` 独立管理反馈，`--gym-fork-request ID` 保留。详见 `--help` 与 [Gym 使用说明](docs/design/character-gym/usage.md)。山野镇的真实请求、管理分叉、两次冷开与角色范围导出已通过[实际验收](docs/experiments/living-world-gym-acceptance.md)；旧原型证据和自由游玩分别报告。
+`--gym off|record` 只控制详细人物材料：持久运行默认 `record`，`off` 仍保存运行与操作事实；ephemeral 默认 `off`，主日志仅在内存，显式 `record` 拒绝。`--gym-export FILE --actor ID` 从主日志导出 Observation、reasoning（Completion 的 PlainText，可为空）、普通 response、操作与游戏回应/后续经历；Human 没有 reasoning/response。普通导出不读取原始模型审计，raw 移走后仍可阅读主体。请求分叉只继承该请求之前的精确日志前缀。详见[角色 history 与统一宿主日志](docs/design/character-history-and-diagnostics.md)及 [Gym 使用说明](docs/design/character-gym/usage.md)。
+
+独立反馈合同见[设计](docs/design/independent-feedback.md)：Human `:feedback <text>` 与 LLM `feedback({text})` 默认共用宿主保存，正文上限默认 4000 字符。持久局写 `store/feedback.jsonl`，ephemeral 写 `home/feedback.jsonl` 且不可分叉；成功回执在刷盘后返回。`--feedbacks` / `--fork-feedback ID` 不依赖主日志健康或模型配置，主日志仅记成功反馈 ID 的关联。
+
+旧 `operations.jsonl`、`branch-operations/`、`gym/events.jsonl` 不迁移、不混写。检测到旧宿主格式且没有有效新主日志时，运行会在打开世界前拒绝；保留旧 store，使用新的 store 路径开始，home 和非敏感配置可继续使用。领域 Schema 与 GameRevision 不因这次日志重构改变。历史 Gym 验收保留其[原始版本语境](docs/experiments/living-world-gym-acceptance.md)。
 
 ## 原型与历史证据
 

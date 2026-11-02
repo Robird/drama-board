@@ -4,6 +4,7 @@ param([string]$Configuration = 'Release', [string]$OutputDirectory,
 # Scripted engineering acceptance, not free play or real LLM evidence.
 # Uses ordinary Console commands and two processes against one fresh save.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'HostJournalHelpers.ps1')
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $cliPath = Join-Path $repoRoot "src/Playground.Cli/bin/$Configuration/net10.0/DramaBoard.Playground.Cli.dll"
 if (-not (Test-Path -LiteralPath $cliPath)) { throw "Build the CLI first: $cliPath" }
@@ -87,12 +88,11 @@ if ($Scenario -eq 'Trade') {
 
 $received = [ordered]@{}
 $completed = @{}
-foreach ($line in Get-Content -LiteralPath (Join-Path $storePath 'operations.jsonl')) {
-    $record = ($line | ConvertFrom-Json).Payload | ConvertFrom-Json
-    if ($null -ne $record.Received -and -not $record.Received.ToolName.StartsWith(':', [StringComparison]::Ordinal)) {
-        $received[$record.Received.OperationRecordId] = $record.Received
+foreach ($record in Read-HostJournalRecords (Join-Path $storePath 'host/events.jsonl')) {
+    if ($record.Kind -ceq 'operation-received' -and -not $record.Payload.ToolName.StartsWith(':', [StringComparison]::Ordinal)) {
+        $received[$record.Payload.OperationRecordId] = $record.Payload
     }
-    if ($null -ne $record.Completed) { $completed[$record.OperationRecordId] = $record.Completed }
+    if ($record.Kind -ceq 'operation-completed') { $completed[$record.Payload.OperationRecordId] = $record.Payload.Completed }
 }
 $actual = @($received.Values | ForEach-Object RawInput)
 $expected = @($first) + @($second)
@@ -111,7 +111,9 @@ $report = [ordered]@{
     Processes = 2
     Store = $storePath
     CliSha256 = (Get-FileHash -LiteralPath $cliPath -Algorithm SHA256).Hash
-    OperationsSha256 = (Get-FileHash -LiteralPath (Join-Path $storePath 'operations.jsonl') -Algorithm SHA256).Hash
+    HostJournalSha256 = (Get-FileHash -LiteralPath (Join-Path $storePath 'host/events.jsonl') -Algorithm SHA256).Hash
 }
+Assert-NoLegacyHostFiles $storePath
+if (Test-Path -LiteralPath (Join-Path $storePath 'llm-runs')) { throw 'Human-only smoke created raw model audits.' }
 [IO.File]::WriteAllText((Join-Path $outputRoot 'result.json'), ($report | ConvertTo-Json), $utf8)
 Write-Output "Hillside $Scenario Console smoke passed: $($received.Count) committed commands in two processes. Evidence: $outputRoot"

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 internal enum GymMode { Off, Record }
 
-internal sealed record PlaygroundHome(string HomePath, GymMode Gym = GymMode.Off, int MaxCalls = 128,
+internal sealed record PlaygroundHome(string HomePath, GymMode? Gym = null, int MaxCalls = 128,
     int MaxFailures = 3, int MaxContextCharacters = 200000, int Steps = 10000,
     string Store = "store", string LlmConnections = "llm-connections.json", string? CharacterControls = null) {
     public static PlaygroundHome Load(string homePath) {

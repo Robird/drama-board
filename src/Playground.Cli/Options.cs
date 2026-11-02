@@ -43,8 +43,11 @@ internal sealed class Options {
         string? store = Has("--ephemeral") ? null : PathValue("--store") ?? HomeFile(home.Store);
         string? branch = Branch();
         if (management is not null) { return new(store, new(Branch: branch), null, branch, management, home.HomePath); }
-        GymMode gym = Get("--gym") is { } selectedGym ? PlaygroundHome.ParseGym(selectedGym) : home.Gym;
-        if (store is null && (gym != GymMode.Off || branch is not null)) { throw new ArgumentException("--ephemeral 不能配合 branch 或 Gym；请显式使用 --gym off。"); }
+        GymMode? configuredGym = Get("--gym") is { } selectedGym ? PlaygroundHome.ParseGym(selectedGym) : home.Gym;
+        if (store is null && (configuredGym == GymMode.Record || branch is not null)) {
+            throw new ArgumentException("--ephemeral 不能配合 branch 或显式 gym record；可省略 gym 或使用 --gym off。");
+        }
+        GymMode gym = configuredGym ?? (store is null ? GymMode.Off : GymMode.Record);
         ModelTime? until = Get("--until-hour") is { } hour ? new ModelTime(checked(long.Parse(hour, CultureInfo.InvariantCulture) * 3600000)) : null;
         string? controls = Has("--no-character-controls") ? null : PathValue("--character-controls")
             ?? (home.CharacterControls is { } file ? HomeFile(file) : null);

@@ -286,7 +286,7 @@ A/B 是同一最小可运行领域切片的施工拆分，不能发布只有数�
 | 角色连续性与固定值模型（原切片） | 原 `PlaygroundDecisionContinuity` 仅包含本次 Pending 或固定 Incoming、草稿及身份；现由 [CharacterInteractionState](../../src/Playground/CharacterContext.cs) 替换。 |
 | 规划与封存（原切片） | 原 `PlaygroundContinuityRules` 已由 [PlaygroundInteractionRules](../../src/Playground/PlaygroundInteractionRules.cs) 替换；[PlaygroundEngine](../../src/Playground/PlaygroundEngine.cs) 仍在 RequestDecision 分支先提交 ContextOpened，再服务控制器。 |
 | 来源身份与事实校验 | [PlaygroundActions](../../src/Playground/PlaygroundActions.cs)、[PlaygroundFactApplication](../../src/Playground/PlaygroundFactApplication.cs)，元数据事实与跨图字段比较独立于呈现。 |
-| 宿主记录与修复 | [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs)；[ReadCommittedOperations](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) 从已完成 S 覆盖的 E 中查询缺结果记录，不把 pending 当已完成。允许从非零模拟版本的快照建新仓库，只扫描本仓库已有历史。 |
+| 宿主记录与修复 | [PlaygroundOperationAudit](../../src/Playground.Cli/PlaygroundOperationAudit.cs)；[ReadCommittedOperations](../../src/Playground/Persistence/PlaygroundDurableHistory.cs) 从已完成 S 覆盖且属于当前分支的 E 中查询缺结果记录，不把 pending 或祖先同 ID 事实当作本分支完成。允许从非零模拟版本的快照建新仓库，只扫描本仓库已有历史。 |
 | 展示（现行接线） | [PlayConsole](../../src/Playground.Cli/PlayConsole.cs)、[ContextHistoryPlayView](../../src/Playground.Cli/ContextHistoryPlayView.cs)；历史改读冻结 Opening 和经历，完整呈现边界仍按新方案实施。 |
 
 本片保留完整 Doc UI 追加输出；没有增量渲染、`:end` 或动作后收尾阶段。试玩只证明 Console 流程、可理解性与持久恢复，不证明真实 LLM 决策效果、端点映射或 prompt-cache 命中。

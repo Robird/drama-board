@@ -12,7 +12,7 @@ public sealed class OperationRecoveryIntegrationTests {
         Directory.CreateDirectory(directory);
         try {
             string store = Path.Combine(directory, "game");
-            string journalPath = Path.Combine(directory, "operations.jsonl");
+            string journalPath = Path.Combine(directory, "host-events.jsonl");
             var initial = PlaygroundGameFactory.CreateSurvival();
             PlaygroundCharacter actor = initial.World.GetCharacter("a");
             var replacement = new PlaygroundCharacter(actor.Id, actor.Name, actor.SkillLevel, actor.Backpack,
@@ -20,7 +20,8 @@ public sealed class OperationRecoveryIntegrationTests {
             PlaygroundWorld world = PlaygroundEngine.Rebuild(initial.World.Business.Replace(initial.World.Time,
                 changedCharacters: [replacement]), initial.World.Time);
             PlaygroundOperationReceipt receipt;
-            using (var journal = PlaygroundOperationJournal.Open(journalPath)) {
+            using (var journalStore = PlaygroundHostJournal.Open(journalPath)) {
+                var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
                 receipt = journal.Receive("batch", "provider:clamp", "a", 1, "use", "use item.water");
             }
             var memory = new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(world, initial.Cursor);
@@ -36,7 +37,8 @@ public sealed class OperationRecoveryIntegrationTests {
                 history.CommitState(kernel.World, kernel.Cursor);
             }
             using var reopened = PlaygroundDurableHistory.Open(store);
-            using var operations = PlaygroundOperationJournal.Open(journalPath);
+            using var operationsStore = PlaygroundHostJournal.Open(journalPath);
+            var operations = new PlaygroundOperationAudit(operationsStore, "test-branch", "test-run");
             operations.Reconcile(reopened.ReadCommittedOperations(operations.PendingOperationRecordIds)
                 .Select(commit => new PlaygroundOperationCommit(commit.OperationRecordId, commit.ToolCallId, commit.ActorId,
                     commit.Result, $"{commit.LineageId}:{commit.TransitionCount}", commit.DomainEvent, commit.Disposition)));
@@ -66,10 +68,11 @@ public sealed class OperationRecoveryIntegrationTests {
         Directory.CreateDirectory(directory);
         try {
             string store = Path.Combine(directory, "game");
-            string journalPath = Path.Combine(directory, "operations.jsonl");
+            string journalPath = Path.Combine(directory, "host-events.jsonl");
             var initial = PlaygroundGameFactory.CreateSurvival();
             PlaygroundOperationReceipt receipt;
-            using (var journal = PlaygroundOperationJournal.Open(journalPath)) {
+            using (var journalStore = PlaygroundHostJournal.Open(journalPath)) {
+                var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
                 receipt = journal.Receive("provider-batch", "opaque/provider:42", "a", 1, "command", rawInput);
                 journal.Receive("provider-batch", "query-call", "a", 1, ":look", ":look", "lost-query");
             }
@@ -80,7 +83,8 @@ public sealed class OperationRecoveryIntegrationTests {
             PlaygroundWorld openedWorld = planned.World;
             KernelCursor openedCursor = planned.Cursor;
             Assert.Equal(StepStatus.Committed, await planned.StepAsync(new ModelTime(long.MaxValue)));
-            using var normalJournal = PlaygroundOperationJournal.CreateInMemory();
+            using var normalJournalStore = PlaygroundHostJournal.CreateInMemory();
+            var normalJournal = new PlaygroundOperationAudit(normalJournalStore, "test-branch", "test-run");
             normalJournal.Receive(receipt.BatchId, receipt.ToolCallId, receipt.ActorId, receipt.ContextSequence,
                 receipt.ToolName, receipt.RawInput, receipt.OperationRecordId);
             PlayConsole.CompleteOperations(normalJournal, planned.LastCompletion!);
@@ -90,7 +94,8 @@ public sealed class OperationRecoveryIntegrationTests {
                 if (completeState) { history.CommitState(planned.World, planned.Cursor); }
             }
             using (var reopened = PlaygroundDurableHistory.Open(store))
-            using (var journal = PlaygroundOperationJournal.Open(journalPath)) {
+            using (var journalStore = PlaygroundHostJournal.Open(journalPath)) {
+                var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
                 var kernel = PlaygroundEngine.CreateKernel(reopened); // No controller is available to replay.
                 Assert.Equal(!completeState, kernel.RecoverPending());
                 journal.Reconcile(reopened.ReadCommittedOperations(journal.PendingOperationRecordIds)
@@ -137,15 +142,16 @@ public sealed class OperationRecoveryIntegrationTests {
         Directory.CreateDirectory(directory);
         try {
             string store = Path.Combine(directory, "game");
-            string journalPath = Path.Combine(directory, "operations.jsonl");
+            string journalPath = Path.Combine(directory, "host-events.jsonl");
             var initial = PlaygroundGameFactory.CreateSurvival();
             string rejectionRecord;
             string rejectionCall;
             string rejectionResult;
             using (var history = PlaygroundDurableHistory.Create(store, initial.World, initial.Cursor))
-            using (var journal = PlaygroundOperationJournal.Open(journalPath))
+            using (var journalStore = PlaygroundHostJournal.Open(journalPath))
             using (var input = new StringReader("invalid\nhandoff 一\nhandoff 二\nhandoff 三\n"))
             using (var output = new StringWriter()) {
+                var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
                 var controller = new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true),
                     ConsoleMetaCommands.HumanDefault, input, output, operations: journal);
                 var kernel = PlaygroundEngine.CreateKernel(history, characterController: controller);
@@ -164,7 +170,8 @@ public sealed class OperationRecoveryIntegrationTests {
                     item => item.OperationRecordId == rejectionRecord);
             }
             using (var reopened = PlaygroundDurableHistory.Open(store))
-            using (var journal = PlaygroundOperationJournal.Open(journalPath)) {
+            using (var journalStore = PlaygroundHostJournal.Open(journalPath)) {
+                var journal = new PlaygroundOperationAudit(journalStore, "test-branch", "test-run");
                 CharacterContext context = reopened.State.Business.InteractionStates["a"].CurrentContext!;
                 Assert.Equal(4L, context.LastOperationSequence);
                 Assert.Equal(new long[] { 2, 3, 4 }, context.Items.Select(item => item.OperationSequence!.Value));

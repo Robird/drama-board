@@ -6,7 +6,7 @@ using DramaBoard.Playground;
 
 /// <summary>Console input and operation helpers; the unified host owns world execution.</summary>
 internal static class PlayConsole {
-    internal static void CompleteOperations(PlaygroundOperationJournal operations, OccurrenceCompletion<PlaygroundFact> completion) {
+    internal static void CompleteOperations(PlaygroundOperationAudit operations, OccurrenceCompletion<PlaygroundFact> completion) {
         foreach (PlaygroundFact fact in completion.Event.Facts) {
             if (fact.OperationRecordId is not { } recordId) { continue; }
             operations.Complete(recordId, PlaygroundOperationCommit.StatusOf(fact.OperationDisposition
@@ -34,12 +34,14 @@ internal static class PlayConsole {
 
     // Shared across characters; each invocation owns its input loop and renders the requested actor's view.
     internal sealed class ConsoleCharacterController(PlayPresentation presentation, ConsoleMetaCommands metaCommands, TextReader? inputReader = null,
-        TextWriter? outputWriter = null, Action<string>? writeBoundary = null, PlaygroundOperationJournal? operations = null,
+        TextWriter? outputWriter = null, Action<string>? writeBoundary = null, PlaygroundOperationAudit? operations = null,
         Func<string>? worldVersion = null,
-        Func<PlaygroundDecisionContext, string, CancellationToken, ValueTask<string>>? feedbackSink = null) : IPlaygroundCharacterController {
+        Func<PlaygroundDecisionContext, string, CancellationToken, ValueTask<string>>? feedbackSink = null,
+        Action<PlaygroundDecisionContext, string>? feedbackSaved = null) : IPlaygroundCharacterController {
         private readonly TextReader _input = inputReader ?? Console.In;
         private readonly TextWriter _output = outputWriter ?? Console.Out;
-        private readonly PlaygroundOperationJournal _operations = operations ?? PlaygroundOperationJournal.CreateInMemory();
+        private readonly PlaygroundOperationAudit _operations = operations
+            ?? new PlaygroundOperationAudit(PlaygroundHostJournal.CreateInMemory(), "ephemeral", Guid.NewGuid().ToString("N"));
         private readonly string _batchId = Guid.NewGuid().ToString("N");
         private readonly PlayPresentationSession _session = new(presentation, metaCommands, outputWriter ?? Console.Out, writeBoundary);
         internal string? StartupText { get => _session.StartupText; set => _session.StartupText = value; }
@@ -88,7 +90,12 @@ internal static class PlayConsole {
                         catch (Exception) {
                             _session.Reply("反馈保存未确认；请检查保存位置后再提交。时间未推进；未确认消息。");
                         }
-                        if (feedbackId is not null) { _session.Reply($"反馈已保存：{feedbackId}。继续选择行动；时间未推进，未确认消息。"); }
+                        if (feedbackId is not null) {
+                            _session.Reply($"反馈已保存：{feedbackId}。继续选择行动；时间未推进，未确认消息。");
+                            // A separate association failure must escape the save catch. The known
+                            // successful receipt is already visible and must never be resubmitted.
+                            feedbackSaved?.Invoke(context, feedbackId);
+                        }
                     }
                     continue;
                 }

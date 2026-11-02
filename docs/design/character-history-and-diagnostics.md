@@ -1,6 +1,6 @@
 # 角色 History 与统一宿主日志
 
-状态：2026-11-02，待实施方案。用户已选择“单一有序宿主时间线＋独立模型原始审计＋独立反馈”；本轮结合恢复/分叉与模型阅读投影两项源码审查修订。本文替代此前按 operations、Gym、模型文件互相引用的布局，下一轮按第 9–10 节实施验收。当前代码尚未改变。
+状态：2026-11-02，已实施。“单一有序宿主时间线＋独立模型原始审计＋独立反馈”已替代此前按 operations、Gym、模型文件互相引用的布局。源码入口如下，工程、故障与实际 CLI/模型证据见[实施验收](../experiments/character-history-and-diagnostics-acceptance.md)。本文继续保存行为合同；第 9 节切片均为本次交付范围。
 
 ## 1. 目标与已定边界
 
@@ -28,12 +28,12 @@
 
 当前源码与消费者：
 
-- [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs) / LlmRunAudit 同时写文件、观战和转发 Gym，全 Human 也建模型日志；此次拆开接线。
-- [PlaygroundOperationJournal](../../src/Playground.Cli/PlaygroundOperationJournal.cs) 的刷盘、不可变结果、Interrupted、ExactResult=false 保留，去掉独立文件所有权。
-- [GymSession](../../src/Playground.Cli/Gym/GymSession.cs) 复制完整调用和操作结果、每步扫描历史 Entries；改为单 journal 的直接追加，不再 operation-ref。
+- [PlaygroundHost](../../src/Playground.Cli/PlaygroundHost.cs) 显式依序调用 [LlmRawAudit](../../src/Playground.Cli/LlmRawAudit.cs)、[PlaygroundHostSession](../../src/Playground.Cli/PlaygroundHostSession.cs) 与 [LlmTracePresenter](../../src/Playground.Cli/LlmTracePresenter.cs)；全 Human 不建模型文件，原 LlmRunAudit 已删除。
+- [PlaygroundOperationAudit](../../src/Playground.Cli/PlaygroundOperationAudit.cs) 保留不可变结果、Interrupted、ExactResult=false，刷盘与文件所有权统一归 [PlaygroundHostJournal](../../src/Playground.Cli/PlaygroundHostJournal.cs)。
+- 原 GymSession 的调用/操作副本与每步历史扫描已删除；HostSession 直接追加详细材料，操作索引在主 journal 成功追加后增量更新。
 - [LlmDecisionLoop](../../src/CharacterControl.Completion/LlmDecisionLoop.cs) 一次服务可调用多次，同 RequestId 可先 Response 后 Failure，传输异常未必保存部分输出。
 - [CharacterContext](../../src/Playground/CharacterContext.cs) 已有 Opening/Item/Experience/Operation 身份与 PreviousAdvance；旧 Gym 只有 Material 字符串，无法据此可靠还原关联。
-- [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs) / [GymTraceExporter](../../src/CharacterGym/GymTraceExporter.cs) 是管理、请求 fork 和前缀的迁移入口。[独立反馈](independent-feedback.md)的保存、查询和 fork 不改为依赖主日志。
+- [GymCommands](../../src/Playground.Cli/Gym/GymCommands.cs) / [CharacterHistoryExporter](../../src/Playground.Cli/CharacterHistoryExporter.cs) 提供管理、请求 fork 和前缀导出；旧共享 GymJournal/GymTraceExporter 已撤下。[独立反馈](independent-feedback.md)的保存、查询和 fork 不依赖主日志。
 - [OperationJournalTests](../../tests/Playground.Cli.Tests/OperationJournalTests.cs)、[GymIntegrationTests](../../tests/Playground.Cli.Tests/GymIntegrationTests.cs)、[GymCommandsTests](../../tests/Playground.Cli.Tests/GymCommandsTests.cs)与 Home/HillsideGym smoke 是回归入口，不以历史通过结果代替新验收。
 
 ## 3. 保存布局与唯一职责
@@ -148,7 +148,7 @@ Incomplete/Failed 可展示已有输出，但不标成功行动；传输中断�
 
 ## 6. 人物 history 与分叉
 
-沿用管理入口，行为升级尚未实施：
+沿用管理入口：
 
 ```powershell
 dotnet run --project src/Playground.Cli -- --home artifacts/my-world --actor a --gym-export artifacts/a-history.md
@@ -245,7 +245,7 @@ CharacterGym 不反向引用 Playground/CLI，可提供中立字面量/文件底
 | 模式/旧数据 | 持久默认record、off仍存操作、ephemeral无主文件且显式record拒绝；旧store预检拒绝后世界/旧日志字节不变、无新主文件，独立feedback管理不受阻 |
 | 成本与领域 | 初始扫描后增量索引，不每步扫历史；Schema/GameRevision/游戏行为不变 |
 
-至少运行 Playground.Cli.Tests、CharacterGym.Tests，按需扩充 CharacterControl.Completion.Tests；dotnet 同一构建图串行、Schema Verify。更新 Smoke-PlaygroundHome / Smoke-HillsideGym，再做小预算真实 LLM＋脚本 Console 混合运行，逐角色核对导出与真实调用/操作。fixture、代理操作 Console、真实模型、真人体验分开报告；文档阶段不执行这些验收。
+工程验收运行 Playground.Cli.Tests、CharacterGym.Tests 与 CharacterControl.Completion.Tests，并覆盖受影响的 Playground 持久化；dotnet 同一构建图串行、Schema Verify。Smoke-PlaygroundHome / Smoke-HillsideGym 和小预算真实 LLM＋脚本 Console 混合运行分别留证，逐角色核对导出与真实调用/操作。fixture、代理操作 Console、真实模型、真人体验的证据边界见实施验收。
 
 ## 11. 收敛结论与延期
 

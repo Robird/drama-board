@@ -34,7 +34,8 @@ public sealed class EconomyHostTests {
             Assert.Contains("自己的资金余额", expected);
             Assert.Contains("11钱", expected);
         }
-        using (var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"))) {
+        using (var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store))) {
+            var operations = new PlaygroundOperationAudit(operationsStore, HostFixture.BranchId(files.Store), "test-run");
             Assert.Equal(8, operations.Entries.Count);
             Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         }
@@ -115,7 +116,8 @@ public sealed class EconomyHostTests {
         Assert.Equal(0, actor.Backpack.Count("item.ration"));
         Assert.Equal(kernel.World.Time, restored.State.Time);
         Assert.Equal(12, actor.Money);
-        using var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var journal = new PlaygroundOperationAudit(journalStore, restored.CurrentBranch.BranchId, "test-run");
         PlaygroundOperationEntry cancelled = Assert.Single(journal.Entries);
         Assert.Equal("a", cancelled.Received.ActorId);
         Assert.Equal("cancel", cancelled.Received.RawInput);

@@ -1,6 +1,6 @@
 # 角色实验环境（Character Gym）
 
-状态：2026-11-02，独立反馈已实施并通过工程与脚本 CLI 验收，现行合同见[独立宿主反馈](../independent-feedback.md)；以下一期范围保留历史背景。一期已实现并完成工程及真实模型串联验收；二期未启动。证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)，直接操作见[使用说明](usage.md)。
+状态：2026-11-02，一期已实现，二期未启动。当前存储与角色阅读合同已由[角色 history 与统一宿主日志](../character-history-and-diagnostics.md)收敛：host/events.jsonl 合并运行、操作和详细人物材料，模型 raw 与[独立反馈](../independent-feedback.md)另存。持久运行默认 record，ephemeral 默认 off；全 Human 不建 raw 文件。直接操作见[使用说明](usage.md)。下述一期目标和原[工程验收](../../experiments/character-gym-acceptance.md)、[真实试玩](../../experiments/character-gym-playtest.md)保留历史版本范围，不替代后续重构验收。
 
 长期愿景是利用虚拟世界的结构化事实、可保存的角色上下文和分支历史，让角色运行产生可定位的问题现场，支持后续反事实实验。Gym 在这里指可观察、可反馈、可分叉重跑的实验环境，不表示已经采用某种训练协议或提供强化学习平台。
 
@@ -12,8 +12,9 @@
 | --- | --- |
 | [使用说明](usage.md) | 创建/续局、记录与反馈、角色轨迹导出、按反馈或请求分叉及失败处理 |
 | [一期里程碑](milestone.md) | 必交付能力、验收场景、明确延期及结束条件 |
-| [设计思路](design.md) | 信息权威、轨迹/反馈/分支关系、实现边界与已查源码基础 |
-| [实施入口](../../implementation/character-gym-plan.md) | 当前下一步、依赖切片、尚待处理的问题、后续 Goal 工作方式 |
+| [统一宿主日志](../character-history-and-diagnostics.md) | 当前存储、恢复、人物阅读投影、分叉前缀与验收合同 |
+| [设计思路](design.md) | 一期的信息权威、轨迹/反馈/分支关系及其历史裁决；入口表指向当前代码 |
+| [一期实施入口](../../implementation/character-gym-plan.md) | 原阶段的收敛状态、验收与延期背景 |
 
 仓库 [PROJECT-STATE](../../../PROJECT-STATE.md) 只记录当前焦点并导航到本专题，不复制问题表。实现后在 `docs/experiments/` 保存工程与真实运行证据，回链到里程碑；不要用施工日志替代当前状态。
 

@@ -25,7 +25,7 @@ public sealed class GymIntegrationTests {
         Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.CharacterGym");
         Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.CharacterControl.Completion");
         Assert.Contains(builds.EnumerateArray(), build => build.GetProperty("Name").GetString() == "DramaBoard.Goals");
-        GymRecord[] requests = snapshot.Records.Where(r => r.Kind == "request").ToArray();
+        PlaygroundHostRecord[] requests = snapshot.Records.Where(r => r.Kind == "model-request").ToArray();
         Assert.Equal(2, requests.Length);
         Assert.All(requests, request => Assert.Equal("b", request.ActorId));
         Assert.NotEqual(Text(requests[0], "RequestId"), Text(requests[1], "RequestId"));
@@ -37,7 +37,7 @@ public sealed class GymIntegrationTests {
         Assert.Equal("fixture-obstacle", savedFeedback.Text);
         Assert.Equal(requests[0].Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>(), savedFeedback.Boundary);
         Assert.DoesNotContain(snapshot.Records, r => r.Kind == "feedback");
-        GymRecord savedReceipt = Assert.Single(snapshot.Records, r => r.Kind == "feedback-receipt");
+        PlaygroundHostRecord savedReceipt = Assert.Single(snapshot.Records, r => r.Kind == "feedback-saved");
         Assert.Equal(savedFeedback.FeedbackId, Text(savedReceipt, "FeedbackId"));
         Assert.True(requests[0].Sequence < savedReceipt.Sequence && savedReceipt.Sequence < requests[1].Sequence);
         var boundary = requests[0].Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>()!;
@@ -48,14 +48,14 @@ public sealed class GymIntegrationTests {
         Assert.Equal("feedback-call", receipt.ToolCallId);
         JsonElement tail = requests[1].Payload.GetProperty("Tail");
         Assert.Equal(2, tail.GetArrayLength());
-        JsonElement response = Assert.Single(snapshot.Records, r => r.Kind == "response" && Text(r, "RequestId") == Text(requests[0], "RequestId")).Payload;
-        Assert.Equal(response.GetProperty("Blocks").GetRawText(), tail[0].GetProperty("Blocks").GetRawText());
+        JsonElement response = Assert.Single(snapshot.Records, r => r.Kind == "model-response" && Text(r, "RequestId") == Text(requests[0], "RequestId")).Payload;
+        Assert.Equal(response.GetProperty("Result").GetProperty("Blocks").GetRawText(), tail[0].GetProperty("Blocks").GetRawText());
         Assert.Contains(savedFeedback.FeedbackId, tail[1].GetRawText());
         Assert.Contains("fixture-obstacle", tail[0].GetRawText());
         // The standalone run audit must carry the same native feedback history, not just a summary.
-        JsonElement auditedInput = File.ReadLines(options.LogPath!).Select(line => JsonSerializer.Deserialize<JsonElement>(line))
-            .Last(line => line.GetProperty("Kind").GetString() == "model-input").GetProperty("Payload");
-        Assert.Equal(tail.GetRawText(), auditedInput.GetProperty("Tail").GetRawText());
+        JsonElement auditedInput = LlmRawAudit.Read(options.LogPath!).Records.Last(line => line.Kind == "model-request").Payload;
+        Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(client.Requests[1].TailMessages.Select(GymMessageProjection.Message).ToArray()),
+            auditedInput.GetProperty("Tail")));
 
         using var state = PlaygroundDurableHistory.Open(files.Store);
         Assert.Equal(15 * PlaygroundTime.Hour, state.State.Time.Ticks);
@@ -78,21 +78,22 @@ public sealed class GymIntegrationTests {
         foreach (string actor in new[] { "a", "b" }) {
             Assert.Equal(ExperienceMaterial(baseline.State.Business.InteractionStates[actor]), ExperienceMaterial(state.State.Business.InteractionStates[actor]));
         }
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var hostJournal = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(hostJournal, boundary.BranchId, "test-read");
         Assert.Equal(new[] { "a", "b", "a" }, operations.Entries.Select(entry => entry.Received.ActorId));
         Assert.All(operations.Entries, entry => Assert.NotNull(entry.Completed));
         foreach (PlaygroundOperationEntry entry in operations.Entries) {
-            JsonElement recorded = Assert.Single(snapshot.Records, record => record.Kind == "operation" &&
-                Text(record, "OperationRecordId") == entry.Received.OperationRecordId).Payload.GetProperty("Result");
+            JsonElement recorded = Assert.Single(snapshot.Records, record => record.Kind == "operation-completed" &&
+                Text(record, "OperationRecordId") == entry.Received.OperationRecordId).Payload.GetProperty("Completed");
             PlaygroundOperationResult completed = entry.Completed!;
-            Assert.Equal(completed.Status.ToString(), recorded.GetProperty("Status").GetString());
+            Assert.Equal(completed.Status, recorded.Deserialize<PlaygroundOperationResult>()!.Status);
             Assert.Equal(completed.ToolCallId, recorded.GetProperty("ToolCallId").GetString());
             Assert.Equal(completed.Result, recorded.GetProperty("Result").GetString());
             Assert.Equal(completed.WorldVersion, recorded.GetProperty("WorldVersion").GetString());
             Assert.Equal(completed.DomainEvent, recorded.GetProperty("DomainEvent").GetString());
             Assert.Equal(completed.ExactResult, recorded.GetProperty("ExactResult").GetBoolean());
         }
-        string exported = GymTraceExporter.Render(snapshot, boundary.BranchId, "b");
+        string exported = CharacterHistoryExporter.Render(snapshot, boundary.BranchId, "b", files.Feedback());
         Assert.Contains("model-private", exported);
         Assert.Contains("fixture-obstacle", exported);
         Assert.DoesNotContain("human-private", exported);
@@ -104,8 +105,8 @@ public sealed class GymIntegrationTests {
         using var output = new StringWriter();
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(2), default, output, new Client(Feedback(), Act("use item.water"))));
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, new Client(Act("handoff parent-future-only"))));
-        GymJournalSnapshot parentSnapshot = files.Read();
-        GymRecord request = parentSnapshot.Records.First(r => r.Kind == "request");
+        PlaygroundHostJournalSnapshot parentSnapshot = files.Read();
+        PlaygroundHostRecord request = parentSnapshot.Records.First(r => r.Kind == "model-request");
         var source = request.Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>()!;
         Assert.Equal(2, parentSnapshot.Records.Count(r => r.Kind == "run-start"));
         Assert.Equal(2, parentSnapshot.Records.Where(r => r.Kind == "run-start").Select(r => r.RunId).Distinct().Count());
@@ -125,18 +126,18 @@ public sealed class GymIntegrationTests {
             Assert.Equal(parentHead, parent.CurrentBranch.HeadCommitId);
             Assert.Equal("parent-future-only", parent.State.Business.InteractionStates["a"].DraftHandoff);
         }
-        GymJournalSnapshot all = files.Read();
-        string childTrace = GymTraceExporter.Render(all, fork.Branch.BranchId, "a");
+        PlaygroundHostJournalSnapshot all = files.Read();
+        string childTrace = CharacterHistoryExporter.Render(all, fork.Branch.BranchId, "a", files.Feedback());
         Assert.Contains("child-only", childTrace);
         Assert.DoesNotContain("parent-future-only", childTrace);
         Assert.DoesNotContain("fixture-obstacle", childTrace);
         Assert.Contains(Text(request, "RequestId"), childTrace);
-        string parentTrace = GymTraceExporter.Render(all, source.BranchId, "a");
+        string parentTrace = CharacterHistoryExporter.Render(all, source.BranchId, "a", files.Feedback());
         Assert.Contains("parent-future-only", parentTrace);
         Assert.Contains("fixture-obstacle", parentTrace);
         Assert.DoesNotContain("child-only", parentTrace);
         Assert.Empty(childClient.Requests.Single().TailMessages);
-        GymRecord childRequest = Assert.Single(all.Records, r => r.Kind == "request" && r.BranchId == fork.Branch.BranchId);
+        PlaygroundHostRecord childRequest = Assert.Single(all.Records, r => r.Kind == "model-request" && r.BranchId == fork.Branch.BranchId);
         Assert.Equal(source.StateCommitId, childRequest.Payload.GetProperty("Boundary").GetProperty("StateCommitId").GetString());
     }
 
@@ -146,15 +147,15 @@ public sealed class GymIntegrationTests {
         using var output = new StringWriter();
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(2), default, output,
             new Client(Feedback(), Act("create-goal {\"title\":\"parent-later-goal\",\"criteria\":\"parent-later-criterion\"}"))));
-        GymJournalSnapshot original = files.Read();
-        GymRecord[] parentRequests = original.Records.Where(r => r.Kind == "request").ToArray();
+        PlaygroundHostJournalSnapshot original = files.Read();
+        PlaygroundHostRecord[] parentRequests = original.Records.Where(r => r.Kind == "model-request").ToArray();
         Assert.Equal(2, parentRequests.Length);
-        GymRecord followup = parentRequests[1];
+        PlaygroundHostRecord followup = parentRequests[1];
         var source = followup.Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>()!;
         Assert.Equal(parentRequests[0].Payload.GetProperty("Boundary").GetRawText(), followup.Payload.GetProperty("Boundary").GetRawText());
         Assert.Equal(2, followup.Payload.GetProperty("Tail").GetArrayLength());
         FeedbackRecord feedback = Assert.Single(files.Feedback());
-        GymRecord feedbackReceipt = Assert.Single(original.Records, r => r.Kind == "feedback-receipt");
+        PlaygroundHostRecord feedbackReceipt = Assert.Single(original.Records, r => r.Kind == "feedback-saved");
         Assert.Equal(feedback.FeedbackId, Text(feedbackReceipt, "FeedbackId"));
         Assert.Equal(Text(parentRequests[0], "RequestId"), feedback.Model!.RequestId);
         Assert.True(parentRequests[0].Sequence < feedbackReceipt.Sequence && feedbackReceipt.Sequence < followup.Sequence);
@@ -175,12 +176,12 @@ public sealed class GymIntegrationTests {
         Assert.Empty(client.Requests.Single().TailMessages);
         Assert.DoesNotContain("fixture-obstacle", Assert.IsType<ObservationMessage>(client.Requests.Single().PromptPrefix.SharedContextMessages.Single()).Content);
 
-        GymJournalSnapshot all = files.Read();
-        GymRecord childRequest = Assert.Single(all.Records, r => r.Kind == "request" && r.BranchId == fork.Branch.BranchId);
+        PlaygroundHostJournalSnapshot all = files.Read();
+        PlaygroundHostRecord childRequest = Assert.Single(all.Records, r => r.Kind == "model-request" && r.BranchId == fork.Branch.BranchId);
         Assert.Equal(source.StateCommitId, childRequest.Payload.GetProperty("Boundary").GetProperty("StateCommitId").GetString());
         Assert.Equal(followup.Payload.GetProperty("Shared").GetRawText(), childRequest.Payload.GetProperty("Shared").GetRawText());
         Assert.Equal(0, childRequest.Payload.GetProperty("Tail").GetArrayLength());
-        string trace = GymTraceExporter.Render(all, fork.Branch.BranchId, "a");
+        string trace = CharacterHistoryExporter.Render(all, fork.Branch.BranchId, "a", files.Feedback());
         Assert.Contains("fixture-obstacle", trace);
         Assert.Contains(feedback.FeedbackId, trace);
         Assert.Contains("child-after-feedback", trace);
@@ -211,16 +212,19 @@ public sealed class GymIntegrationTests {
             parent.CommitEvent(kernel.LastCompletion!.Event);
             parentHead = parent.CurrentBranch.HeadCommitId;
         }
-        string operationsPath = Path.Combine(files.Store, "operations.jsonl");
-        using (var journal = PlaygroundOperationJournal.Open(operationsPath)) {
+        string operationsPath = PlaygroundHostJournal.JournalPath(files.Store);
+        using (var host = PlaygroundHostJournal.Open(operationsPath)) {
+            var journal = new PlaygroundOperationAudit(host, boundary.BranchId, "parent-run");
             journal.Receive("parent-run", operation.ToolCallId, "a", 1, "act", operation.RawInput, operation.OperationRecordId);
         }
-        byte[] originalOperations = File.ReadAllBytes(operationsPath);
+        string[] originalOperations = PlaygroundHostJournal.Read(operationsPath).Records.Where(r => r.BranchId == boundary.BranchId)
+            .Select(r => JsonSerializer.Serialize(r)).ToArray();
         PlaygroundBranchForkResult fork = PlaygroundDurableHistory.Fork(files.Store, boundary.BranchId, boundary.StateCommitId, "a", "pending-isolation");
         using var output = new StringWriter();
         var client = new Client(Act("handoff child-pending-safe"));
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1, fork.Branch.BranchId), default, output, client));
-        Assert.Equal(originalOperations, File.ReadAllBytes(operationsPath));
+        Assert.Equal(originalOperations, PlaygroundHostJournal.Read(operationsPath).Records.Where(r => r.BranchId == boundary.BranchId)
+            .Select(r => JsonSerializer.Serialize(r)).ToArray());
         using (var parent = PlaygroundDurableHistory.Open(files.Store, boundary.BranchId)) {
             Assert.Equal(parentHead, parent.CurrentBranch.HeadCommitId);
             Assert.NotNull(parent.PendingEvent);
@@ -229,12 +233,46 @@ public sealed class GymIntegrationTests {
         using (var child = PlaygroundDurableHistory.Open(files.Store, fork.Branch.BranchId)) {
             Assert.Null(child.PendingEvent);
             Assert.Equal(45 * PlaygroundSurvival.Scale, child.State.GetCharacter("a").Survival!.WaterUnits);
-            using var journal = PlaygroundOperationJournal.Open(GymSession.OperationsPath(files.Store, child));
+            using var host = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+            var journal = new PlaygroundOperationAudit(host, child.CurrentBranch.BranchId, "test-read");
             Assert.Single(journal.Entries);
             Assert.DoesNotContain(journal.Entries, entry => entry.Received.OperationRecordId == operation.OperationRecordId);
         }
         Assert.Single(client.Requests);
-        Assert.DoesNotContain(files.Read().Records.Where(r => r.Kind == "operation"), r => Text(r, "OperationRecordId") == operation.OperationRecordId);
+        Assert.DoesNotContain(files.Read().Records.Where(r => r.Kind == "operation-completed"), r => Text(r, "OperationRecordId") == operation.OperationRecordId);
+    }
+
+    [Fact]
+    public async Task Child_receipt_reusing_an_inherited_operation_id_is_not_reconciled_from_parent_world_facts() {
+        using var files = new Files();
+        using var output = new StringWriter();
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output,
+            new Client(Act("handoff parent-completed"))));
+        PlaygroundHostRecord received = Assert.Single(files.Read().Records, record => record.Kind == "operation-received");
+        PlaygroundOperationReceipt receipt = received.ReadPayload<PlaygroundOperationReceipt>();
+        PlaygroundDecisionBoundary source;
+        using (var parent = PlaygroundDurableHistory.Open(files.Store)) { source = parent.CaptureDecisionBoundary("a"); }
+        PlaygroundBranchForkResult fork = PlaygroundDurableHistory.Fork(files.Store, source.BranchId, source.StateCommitId,
+            "a", "reused-id");
+        using (var journal = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store))) {
+            var childOperations = new PlaygroundOperationAudit(journal, fork.Branch.BranchId, "child-received");
+            childOperations.Receive(receipt.BatchId, receipt.ToolCallId, receipt.ActorId, receipt.ContextSequence,
+                receipt.ToolName, receipt.RawInput, receipt.OperationRecordId);
+        }
+        using var input = new StringReader("");
+        Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store,
+            files.Options(1, fork.Branch.BranchId) with { Controls = HostFixture.Humans("a") },
+            default, output, inputReader: input));
+        PlaygroundHostRecord childResult = Assert.Single(files.Read().Records,
+            record => record.Kind == "operation-completed" && record.BranchId == fork.Branch.BranchId);
+        PlaygroundOperationCompletion completion = childResult.ReadPayload<PlaygroundOperationCompletion>();
+        Assert.Equal(receipt.OperationRecordId, completion.OperationRecordId);
+        Assert.Equal(PlaygroundOperationStatus.Interrupted, completion.Completed.Status);
+        Assert.Null(completion.Completed.DomainEvent);
+        Assert.False(completion.Completed.ExactResult);
+        Assert.True(completion.Recovered);
+        using var saved = PlaygroundDurableHistory.Open(files.Store, fork.Branch.BranchId);
+        Assert.Equal(source.StateCommitId, saved.CurrentBranch.CompletedStateCommitId);
     }
 
     [Fact]
@@ -254,21 +292,22 @@ public sealed class GymIntegrationTests {
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(1), default, output, resumed));
         Assert.Empty(resumed.Requests.Single().TailMessages);
         Assert.DoesNotContain("fixture-obstacle", Assert.IsType<ObservationMessage>(resumed.Requests.Single().PromptPrefix.SharedContextMessages.Single()).Content);
-        GymJournalSnapshot snapshot = files.Read();
-        GymRecord[] requests = snapshot.Records.Where(r => r.Kind == "request").ToArray();
+        PlaygroundHostJournalSnapshot snapshot = files.Read();
+        PlaygroundHostRecord[] requests = snapshot.Records.Where(r => r.Kind == "model-request").ToArray();
         Assert.Equal(2, requests.Length);
         Assert.All(requests, r => Assert.Equal(stateCommit, r.Payload.GetProperty("Boundary").GetProperty("StateCommitId").GetString()));
         Assert.Single(files.Feedback());
-        Assert.Single(snapshot.Records, r => r.Kind == "feedback-receipt");
+        Assert.Single(snapshot.Records, r => r.Kind == "feedback-saved");
         Assert.DoesNotContain(snapshot.Records, r => r.Kind == "feedback");
-        Assert.Single(snapshot.Records, r => r.Kind == "operation");
+        Assert.Single(snapshot.Records, r => r.Kind == "operation-completed");
     }
 
-    private static PlaygroundBranchForkResult Fork(Files files, GymRecord request, string label) {
+    private static PlaygroundBranchForkResult Fork(Files files, PlaygroundHostRecord request, string label) {
         var boundary = request.Payload.GetProperty("Boundary").Deserialize<PlaygroundDecisionBoundary>()!;
         var fork = PlaygroundDurableHistory.Fork(files.Store, boundary.BranchId, boundary.StateCommitId, boundary.ActorId, label);
-        using var journal = GymJournal.Open(GymSession.JournalPath(files.Store));
-        journal.Append("branch-fork", null, fork.Branch.BranchId, null, new {
+        using var journal = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        journal.Append("branch-fork", null, fork.Branch.BranchId, null, null, new {
+            SourceJournalId = journal.JournalId,
             SourceBranchId = boundary.BranchId, SourceStateCommitId = boundary.StateCommitId,
             SourceThroughSequence = request.Sequence - 1, SourceRequestId = Text(request, "RequestId")
         });
@@ -292,7 +331,7 @@ public sealed class GymIntegrationTests {
     private static object VisibleValue(PlaygroundVisibleValue value) => new {
         value.Kind, value.Units, value.Scale, value.Unit, value.Text, value.Boolean
     };
-    private static string Text(GymRecord record, string name) => record.Payload.GetProperty(name).GetString()!;
+    private static string Text(PlaygroundHostRecord record, string name) => record.Payload.GetProperty(name).GetString()!;
     private static CompletionResult Feedback() => Result(new("feedback", "feedback-call",
         JsonSerializer.Serialize(new { text = "fixture-obstacle" })));
     private static CompletionResult Act(string command) => Result(new("act", "repeatable-provider-id", JsonSerializer.Serialize(new { command })));
@@ -325,7 +364,7 @@ public sealed class GymIntegrationTests {
         public PlaygroundHostOptions Options(int maxCalls, string? branch = null) => new(MaxCalls: maxCalls,
             LogPath: Path.Combine(_root, Guid.NewGuid().ToString("N") + ".jsonl"), Gym: true, Branch: branch);
         public IReadOnlyList<FeedbackRecord> Feedback() => FeedbackJournal.Read(FeedbackSession.JournalPath(Store));
-        public GymJournalSnapshot Read() => GymJournal.Read(GymSession.JournalPath(Store));
+        public PlaygroundHostJournalSnapshot Read() => PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(Store));
         public void Dispose() { if (Directory.Exists(_root)) { Directory.Delete(_root, recursive: true); } }
     }
 }

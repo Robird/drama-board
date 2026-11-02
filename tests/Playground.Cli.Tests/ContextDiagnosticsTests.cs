@@ -118,7 +118,8 @@ public sealed class ContextDiagnosticsTests {
             using var reopened = PlaygroundDurableHistory.Open(store);
             Assert.Equal(transition, reopened.Cursor.Version.TransitionCount);
             Assert.Equal(committedContext, Snapshot(reopened.State.Business.InteractionStates["a"]));
-            using var operations = PlaygroundOperationJournal.Open(Path.Combine(store, "operations.jsonl"));
+            using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(store));
+            var operations = new PlaygroundOperationAudit(operationsStore, reopened.CurrentBranch.BranchId, "test-run");
             PlaygroundOperationEntry used = Assert.Single(operations.Entries, entry => entry.Received.RawInput == "use item.water");
             Assert.Equal(PlaygroundOperationStatus.Succeeded, used.Completed!.Status);
             Assert.Equal(failed!.Completion.Event.Facts.Single().ToolCallId, used.Completed.ToolCallId);

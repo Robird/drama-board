@@ -38,14 +38,56 @@ public sealed class OptionsTests {
     }
 
     [Fact]
-    public void Ephemeral_retains_home_configuration_and_requires_explicit_gym_off() {
+    public void Ephemeral_retains_home_configuration_and_can_override_explicit_record() {
         PlaygroundHomeTests.WithDirectory(path => {
             File.WriteAllText(Path.Combine(path, "playground.json"), "{\"version\":1,\"gym\":\"record\"}");
             Assert.Throws<ArgumentException>(() => Options.Parse(["--ephemeral"], path).Resolve());
             var selected = Options.Parse(["--ephemeral", "--gym", "off"], path).Resolve();
             Assert.Null(selected.Store);
+            Assert.False(selected.Host.Gym);
             Assert.Equal(path, selected.Host.HomePath);
             Assert.Equal(Path.Combine(path, "llm-connections.json"), selected.Host.ConnectionsPath);
+            Assert.Empty(Directory.GetDirectories(path));
+        });
+    }
+
+    [Theory]
+    [InlineData(null, null, false, true)]
+    [InlineData(null, null, true, false)]
+    [InlineData("off", null, false, false)]
+    [InlineData("off", null, true, false)]
+    [InlineData("record", null, false, true)]
+    [InlineData("record", "off", true, false)]
+    [InlineData("off", "record", false, true)]
+    [InlineData("record", "off", false, false)]
+    [InlineData(null, "off", false, false)]
+    [InlineData(null, "record", false, true)]
+    public void Detailed_recording_resolves_cli_then_home_then_storage_default(
+        string? homeGym, string? cliGym, bool ephemeral, bool expected) {
+        PlaygroundHomeTests.WithDirectory(path => {
+            string gymField = homeGym is null ? "" : $",\"gym\":\"{homeGym}\"";
+            File.WriteAllText(Path.Combine(path, "playground.json"), $"{{\"version\":1{gymField}}}");
+            var args = new List<string>();
+            if (ephemeral) { args.Add("--ephemeral"); }
+            if (cliGym is not null) { args.AddRange(["--gym", cliGym]); }
+            var resolved = Options.Parse(args.ToArray(), path).Resolve();
+            Assert.Equal(expected, resolved.Host.Gym);
+            Assert.Equal(ephemeral, resolved.Store is null);
+            Assert.Empty(Directory.GetDirectories(path));
+        });
+    }
+
+    [Theory]
+    [InlineData(null, "record")]
+    [InlineData("off", "record")]
+    [InlineData("record", null)]
+    public void Ephemeral_rejects_explicit_detailed_recording_from_cli_or_home(string? homeGym, string? cliGym) {
+        PlaygroundHomeTests.WithDirectory(path => {
+            string gymField = homeGym is null ? "" : $",\"gym\":\"{homeGym}\"";
+            File.WriteAllText(Path.Combine(path, "playground.json"), $"{{\"version\":1{gymField}}}");
+            var args = new List<string> { "--ephemeral" };
+            if (cliGym is not null) { args.AddRange(["--gym", cliGym]); }
+            Assert.Throws<ArgumentException>(() => Options.Parse(args.ToArray(), path).Resolve());
             Assert.Empty(Directory.GetDirectories(path));
         });
     }

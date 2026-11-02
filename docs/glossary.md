@@ -56,7 +56,7 @@
 | 忙碌响应（Busy response） | 活动仍进行时，为待响应通知提供决策机会；唤醒不取消活动，交付材料也不等于完成响应。 | 归档小镇 `TownInteractionState.NeedsResponse` 与交付游标独立。即时成功操作轮转但保留标记；`continue` 清标记且保留活动期限，`cancel` 结束等待/生产并一次退料。途中移动不开放该窗口。 |
 | 居民报价（Resident trade offer） | 指定双方、每边一种资产的交换条款；未接受前不转移或预留资产，接受时重验并一次结算。 | 山野镇 [PlaygroundTradeOffer / PlaygroundTradeRules](../src/Playground/PlaygroundTradeRules.cs)；`offer`、`accept`、`reject`、`withdraw`，到期/参与者死亡也会关闭。报价身份包含角色、Context、操作序号；区别于口头承诺和可尝试提示。 |
 | 报价版本交付（Offer-version delivery） | 某一报价的有效或终态版本首次纳入参与者 Opening；不代表同意、阅读或完成响应。 | [PlaygroundTradeState](../src/Playground/PlaygroundTradeState.cs) 保存双方已交付版本/Context 序号；最多 24 份、每发起人 8 份。双方终态交付后可在后续 Opening 回收，并同步另一方仍打开的材料；死亡方豁免未来交付，不伪造已读。内部游标不进入角色观察。 |
-| 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `PlaygroundControllerOperation`、行动事实与 `PlaygroundOperationJournal`；Console 隐式生成，LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
+| 工具调用标识（ToolCallId） | 单次控制器操作的稳定关联 ID，结果引用同一个值；不等于 Activity、回合、消息 item ID 或全局幂等键。 | `PlaygroundControllerOperation`、行动事实与 `PlaygroundOperationAudit`；Console 隐式生成，LLM 保留 Completion 交付值，端点映射归 Completion，见[操作身份合同](design/decision-context-handoff.md#44-操作-id结果配对与-completion-边界)。 |
 | 原始操作提交（Submission） | 控制器产生的行动文本和已捕获身份；语法或合法性失败也进入同一提交边界。 | `PlaygroundControllerOperation(ToolCallId, RawInput, OperationRecordId)`；共享 `PlaygroundCommandParser` 产生命令，`OperationRejected` 产生纯拒绝条目；Console 元命令不通过此入口。 |
 | 命令 / 行动意图（Command） | 请求做什么及其参数；可能被校验拒绝，尚不是已发生事实。日常可称“行动”，讨论协议时优先用 Command。 | [PlaygroundCommand、PlaygroundActions.Check](../src/Playground/PlaygroundActions.cs) |
 | 耗时活动（Activity） | 角色已启动、跨模型时间持续的过程；移动与等待/采集互斥。 | 等待/采集由 `PlaygroundActivity` 表示；移动由 Spatial 的 `TraversingLocation` 表示，不复制到另一份 Activity 计时器。 |
@@ -81,11 +81,11 @@
 
 | 推荐术语 | 含义与边界 | 当前代码映射 / 状态 |
 | --- | --- | --- |
-| 角色实验环境（Character Gym） | 支持角色轨迹回看与请求边界分叉续跑的宿主实验能力；独立反馈不依赖其录制，不等于训练平台或自动优化器。 | [GymSession](../src/Playground.Cli/Gym/GymSession.cs)、`GymCommands`；`--gym off|record`、`--gym-export` 与 `--gym-fork-request`。 |
-| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | `GymSession.RunId`、[GymJournal](../src/CharacterGym/GymJournal.cs) 的 run-start/end；每次模型请求另有 RequestId。 |
-| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | [GymTraceExporter](../src/CharacterGym/GymTraceExporter.cs) 按角色及分支截点继承祖先前缀，并报告证据缺口。 |
-| 人物历史阅读视图（Character history，方案） | 统一宿主时间线的逐角色阅读投影：观察、可读 reasoning、普通输出、操作和已交付经历；Human 无 reasoning/response，不是新增领域记忆。 | [实施方案](design/character-history-and-diagnostics.md)拟由 CLI 导出 Markdown，主体不依赖 raw 模型文件；尚未实施、不回灌角色。 |
-| 统一宿主日志（Host journal，方案） | 单 store 内有序记录操作事实、运行诊断与可选人物材料；操作恢复只读当前分支自己的记录，history 可选择祖先前缀。 | 同一[方案](design/character-history-and-diagnostics.md)拟以 host/events.jsonl 替代 operations/Gym 文件；世界 repository 继续是游戏恢复权威。 |
+| 角色实验环境（Character Gym） | 支持角色 history 回看与请求边界分叉续跑的宿主实验能力；独立反馈不依赖其录制，不等于训练平台或自动优化器。 | [PlaygroundHostSession](../src/Playground.Cli/PlaygroundHostSession.cs)、`GymCommands`；`--gym off\|record` 选择详细材料，`--gym-export` 与 `--gym-fork-request` 保留管理名称。 |
+| 运行记录（Run） | 一段宿主执行及其配置/审计身份；同一分支可跨多个 Run，一个 Run 可服务多个角色。 | 宿主生成 RunId，供主日志、raw 和反馈共用；[PlaygroundHostSession](../src/Playground.Cli/PlaygroundHostSession.cs) 保存 run-start/end，每次模型请求另有 RequestId。 |
+| 角色轨迹（Character trajectory） | 按角色组织的实际材料、控制器输出、提交结果与感知过程，可跨运行衔接；不是当前 Context 的别名。 | [CharacterHistoryExporter](../src/Playground.Cli/CharacterHistoryExporter.cs) 按追加顺序与角色/分支前缀导出，并报告证据缺口。 |
+| 人物历史阅读视图（Character history） | 统一宿主时间线的逐角色阅读投影：观察、可读 reasoning、普通输出、操作和已交付经历；Human 无 reasoning/response，不是新增领域记忆。 | CLI 从主日志导出 Markdown，主体不加载 raw 模型文件；[投影](../src/Playground.Cli/ModelHistoryProjection.cs)只读取 ReasoningBlock.PlainText，不回灌角色。合同见[设计](design/character-history-and-diagnostics.md)。 |
+| 统一宿主日志（Host journal） | 单 store 内有序记录操作事实、运行诊断与可选人物材料；操作恢复只读当前分支自己的记录，history 可选择可证明的祖先前缀。 | [PlaygroundHostJournal](../src/Playground.Cli/PlaygroundHostJournal.cs) 保存 host/events.jsonl；[操作审计](../src/Playground.Cli/PlaygroundOperationAudit.cs)不拥有独立文件。世界 repository 继续是游戏恢复权威。 |
 | 需求反馈（Feedback report） | Human/LLM 提交的非空自由文本，由宿主附加提出时的角色材料与可用决定前边界；不是游戏操作回执、世界事实或已批准需求。 | [LlmFeedbackSubmission](../src/CharacterControl.Completion/LlmFeedbackSubmission.cs)、`feedback({text})` / `:feedback <text>`；[独立合同](design/independent-feedback.md)规定刷盘后返回 FeedbackId，正文不进入角色状态。 |
 | 重跑起点（Rerun anchor） | 可持久定位的已完成 S 决策边界；关联请求但不等同于某次模型调用。 | [PlaygroundDecisionBoundary](../src/Playground/Persistence/PlaygroundBranchBoundary.cs)，以分支/commit/角色及游标校验，不能只用模型时间或 Context 序号定位。 |
 

@@ -10,6 +10,10 @@ public sealed class PlaygroundHomeTests {
             Assert.Equal(new[] { "playground.json" }, Directory.GetFiles(path).Select(Path.GetFileName));
             Assert.False(Directory.Exists(Path.Combine(path, "store")));
             Assert.Equal(128, PlaygroundHome.Load(path).MaxCalls);
+            Assert.Null(PlaygroundHome.Load(path).Gym);
+            Assert.Null(new PlaygroundHostOptions().Gym);
+            Assert.True(Options.Parse([], path).Resolve().Host.Gym);
+            Assert.False(Options.Parse(["--ephemeral"], path).Resolve().Host.Gym);
             Assert.Throws<IOException>(() => PlaygroundHome.Initialize(path, output));
         });
     }

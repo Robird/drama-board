@@ -32,15 +32,16 @@ public sealed class LivingWorldHostTests {
         using var output = new StringWriter();
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, options, default, output, client));
         Assert.Equal(3, client.Requests.Count);
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, HostFixture.BranchId(files.Store), "test-run");
         Assert.Equal(new[] { "a", "b", "c" }, operations.Entries.Select(entry => entry.Received.ActorId));
         Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
-        using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
+        var gym = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store));
         JsonElement started = Assert.Single(gym.Records, record => record.Kind == "run-start").Payload;
         Assert.Equal(PlaygroundExpeditionMap.ScenarioId, started.GetProperty("Scenario").GetString());
         Assert.Equal(new[] { "LLM", "LLM", "LLM" }, started.GetProperty("Actors").EnumerateArray()
             .Select(actor => actor.GetProperty("Controller").GetString()));
-        Assert.Equal(new[] { "a", "b", "c" }, gym.Records.Where(record => record.Kind == "request").Select(record => record.ActorId));
+        Assert.Equal(new[] { "a", "b", "c" }, gym.Records.Where(record => record.Kind == "model-request").Select(record => record.ActorId));
         Assert.DoesNotContain("[Console 输入]", output.ToString());
     }
 
@@ -54,11 +55,12 @@ public sealed class LivingWorldHostTests {
         Assert.Equal(2, client.Requests.Count);
         Assert.All(client.Requests, request => Assert.DoesNotContain("human-b-private",
             Assert.IsType<ObservationMessage>(Assert.Single(request.PromptPrefix.SharedContextMessages)).Content));
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, HostFixture.BranchId(files.Store), "test-run");
         Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         Assert.Contains(operations.Entries, entry => entry.Received.ActorId == "b" && entry.Received.RawInput == "handoff human-b-private");
-        using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
-        Assert.Equal(new[] { "a", "c" }, gym.Records.Where(record => record.Kind == "request").Select(record => record.ActorId));
+        var gym = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store));
+        Assert.Equal(new[] { "a", "c" }, gym.Records.Where(record => record.Kind == "model-request").Select(record => record.ActorId));
         JsonElement started = Assert.Single(gym.Records, record => record.Kind == "run-start").Payload;
         Assert.Equal(new[] { "LLM", "Human", "LLM" }, started.GetProperty("Actors").EnumerateArray()
             .Select(actor => actor.GetProperty("Controller").GetString()));
@@ -155,9 +157,11 @@ public sealed class LivingWorldHostTests {
             Assert.Equal(PlaygroundDiagnostics.Render(planned.World), PlaygroundDiagnostics.Render(recovered.State));
             recoveredCommit = PlaygroundDurableHistory.FormatCommitId(recovered.CompletedStateCommitId);
         }
-        using (var gym = GymJournal.Open(GymSession.JournalPath(files.Store))) {
-            Assert.True(Assert.Single(gym.Records, record => record.Kind == "run-start").Payload.GetProperty("RecoveredPending").GetBoolean());
-            Assert.DoesNotContain(gym.Records, record => record.Kind == "request");
+        {
+            var gym = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store));
+            Assert.Contains("已完成上次中断时保存的行动", output.ToString());
+            Assert.Equal(recoveredCommit, Assert.Single(gym.Records, record => record.Kind == "run-end").Payload.GetProperty("StateCommitId").GetString());
+            Assert.DoesNotContain(gym.Records, record => record.Kind == "model-request");
             Assert.Equal("time-budget", Assert.Single(gym.Records, record => record.Kind == "run-end").Payload.GetProperty("Reason").GetString());
         }
         // A second cold open at the recovered boundary must not republish or repeat the yield.
@@ -212,12 +216,13 @@ public sealed class LivingWorldHostTests {
         CharacterInteractionState model = saved.State.Business.InteractionStates["b"];
         Assert.Equal(goal, Assert.Single(model.Goals.Goals).Title);
         Assert.Equal(handoff, model.DraftHandoff);
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, saved.CurrentBranch.BranchId, "test-run");
         Assert.All(operations.Entries, entry => Assert.Equal(PlaygroundOperationStatus.Succeeded, entry.Completed!.Status));
         Assert.Contains(operations.Entries, entry => entry.Received.ActorId == "b" &&
             entry.Received.RawInput.Contains(handoff, StringComparison.Ordinal) && entry.Completed!.Status == PlaygroundOperationStatus.Succeeded);
-        using var gym = GymJournal.Open(GymSession.JournalPath(files.Store));
-        Assert.Contains(gym.Records, record => record.Kind == "request" && record.ActorId == "b" &&
+        var gym = PlaygroundHostJournal.Read(PlaygroundHostJournal.JournalPath(files.Store));
+        Assert.Contains(gym.Records, record => record.Kind == "model-request" && record.ActorId == "b" &&
             record.Payload.GetRawText().Contains(goal, StringComparison.Ordinal));
     }
 

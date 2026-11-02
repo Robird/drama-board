@@ -4,6 +4,8 @@ using DramaBoard.Playground;
 namespace DramaBoard.Playground.Cli.Tests;
 
 internal static class HostFixture {
+    internal static string BranchId(string store) => PlaygroundDurableHistory.ListBranches(store).Single().BranchId;
+
     internal static ResolvedOptions Resolve(string[] args) {
         string home = Path.Combine(Path.GetTempPath(), "drama-options-fixture-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(home);

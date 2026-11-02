@@ -51,7 +51,7 @@ public sealed partial class PlaygroundDurableHistory : IOccurrenceHistory<Playgr
     public OccurrenceEvent<PlaygroundFact>? PendingEvent { get { RequireUsable(); return _pending?.Occurrence; } }
     public bool IsFaulted => _faulted || _repository.IsFaulted;
 
-    /// <summary>Finds operation effects already covered by a completed State, without replaying them.</summary>
+    /// <summary>Finds this branch's operation effects already covered by a completed State, without replaying them.</summary>
     /// <remarks>Pending E is excluded until the Kernel completes it. Intended for cold-open repair of
     /// missing host receipts; neither receipt absence nor presence authorizes executing an input again.</remarks>
     public IReadOnlyList<PlaygroundCommittedOperation> ReadCommittedOperations(IEnumerable<string> operationRecordIds) {
@@ -80,6 +80,9 @@ public sealed partial class PlaygroundDurableHistory : IOccurrenceHistory<Playgr
                 entry.ValidateStructure();
                 entry.ValidateContent(_readyRoot.Business.Definition);
                 foreach (PlaygroundFact fact in entry.Occurrence.Facts) {
+                    // Inherited world facts are not receipts for inputs received by this branch. A
+                    // child may reuse an operation ID, and its unexecuted input must stay unproven.
+                    if (commit.CreatedOnBranchId != _work.BranchId) { continue; }
                     if (fact.OperationRecordId is not { } recordId || !remaining.Remove(recordId)) { continue; }
                     if (string.IsNullOrWhiteSpace(fact.ToolCallId) || string.IsNullOrWhiteSpace(fact.ActorId) || fact.OperationDisposition is null) {
                         throw new InvalidDataException("A recorded operation effect has incomplete provenance.");

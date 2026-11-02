@@ -1,4 +1,3 @@
-using DramaBoard.CharacterGym;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -18,7 +17,7 @@ internal static class GymCommands {
     public static void Run(string store, string? branch, GymManagementOptions options, TextWriter output, TextWriter? diagnostics = null) {
         ArgumentNullException.ThrowIfNull(output);
         if (!Directory.Exists(store)) { throw new ArgumentException("管理操作需要已有 --store。"); }
-        string journalPath = GymSession.JournalPath(store);
+        string journalPath = PlaygroundHostJournal.JournalPath(store);
         if (options.Kind == GymManagementKind.Branches) {
             foreach (PlaygroundBranchInfo item in PlaygroundDurableHistory.ListBranches(store)) {
                 output.WriteLine(JsonSerializer.Serialize(item, DisplayJson));
@@ -43,7 +42,7 @@ internal static class GymCommands {
             ArgumentException.ThrowIfNullOrWhiteSpace(options.ExportPath);
             // Render before creating the destination; a missing/corrupt source never leaves an empty success artifact.
             using var rendered = new StringWriter();
-            GymTraceExporter.Export(journalPath, selected, options.Actor, rendered);
+            CharacterHistoryExporter.Export(journalPath, selected, options.Actor, rendered, FeedbackSession.JournalPath(store));
             using (var file = new FileStream(options.ExportPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) {
                 using var writer = new StreamWriter(file, new UTF8Encoding(false));
                 writer.Write(rendered.ToString());
@@ -71,8 +70,8 @@ internal static class GymCommands {
     private static void Fork(string store, string journalPath, GymManagementOptions options, TextWriter output) {
         ArgumentException.ThrowIfNullOrWhiteSpace(options.SourceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ForkLabel);
-        GymJournalSnapshot? snapshot = null;
-        GymRecord? request = null;
+        PlaygroundHostJournalSnapshot? snapshot = null;
+        PlaygroundHostRecord? request = null;
         PlaygroundDecisionBoundary boundary;
         if (options.Kind == GymManagementKind.ForkFeedback) {
             FeedbackRecord[] matches = FeedbackJournal.Read(FeedbackSession.JournalPath(store))
@@ -84,10 +83,10 @@ internal static class GymCommands {
                 throw new InvalidDataException("反馈与决定前边界的角色或 Context 不一致；未创建分支。");
             }
         } else {
-            snapshot = GymJournal.Read(journalPath);
-            request = Find(snapshot, "request", "RequestId", options.SourceId);
+            snapshot = PlaygroundHostJournal.Read(journalPath);
+            request = Find(snapshot, "model-request", "RequestId", options.SourceId);
             boundary = Boundary(request);
-            if (request.BranchId != boundary.BranchId || request.ActorId != boundary.ActorId) {
+            if (request.BranchId != boundary.BranchId || request.ActorId != boundary.ActorId || request.ContextSequence != boundary.ContextSequence) {
                 throw new InvalidDataException("请求记录与边界身份不一致；未创建分支。");
             }
         }
@@ -105,9 +104,13 @@ internal static class GymCommands {
         // Registration is already durable. Logging and opening are separate outcomes; never re-register on failure.
         if (request is not null && snapshot is not null) {
             try {
-                using GymJournal journal = GymJournal.Open(journalPath);
-                if (journal.StoreId != snapshot.StoreId) { throw new InvalidDataException("Gym 日志在分支注册期间被替换。"); }
-                journal.Append("branch-fork", null, registered.Branch.BranchId, null, new {
+                using PlaygroundHostJournal journal = PlaygroundHostJournal.Open(journalPath);
+                if (journal.JournalId != snapshot.JournalId || journal.Records.Count < request.Sequence ||
+                    journal.Records[(int)request.Sequence - 1].Payload.GetRawText() != request.Payload.GetRawText()) {
+                    throw new InvalidDataException("宿主日志在分支注册期间被替换。");
+                }
+                journal.Append("branch-fork", null, registered.Branch.BranchId, null, null, new {
+                    SourceJournalId = snapshot.JournalId,
                     SourceBranchId = boundary.BranchId, SourceStateCommitId = boundary.StateCommitId,
                     SourceThroughSequence = request.Sequence - 1, SourceFeedbackId = (string?)null,
                     SourceRequestId = RequiredString(request.Payload, "RequestId")
@@ -120,8 +123,8 @@ internal static class GymCommands {
         output.WriteLine("后续使用相同 --store 和上述 --branch，人数沿用存档，重新指定控制器配置续跑。");
     }
 
-    private static GymRecord Find(GymJournalSnapshot snapshot, string kind, string field, string id) {
-        GymRecord[] matches = snapshot.Records.Where(record => record.Kind == kind &&
+    private static PlaygroundHostRecord Find(PlaygroundHostJournalSnapshot snapshot, string kind, string field, string id) {
+        PlaygroundHostRecord[] matches = snapshot.Records.Where(record => record.Kind == kind &&
             record.Payload.ValueKind == JsonValueKind.Object && record.Payload.TryGetProperty(field, out JsonElement value) &&
             value.ValueKind == JsonValueKind.String && value.GetString() == id).ToArray();
         return matches.Length == 1 ? matches[0] : throw new InvalidDataException($"需要唯一的 {kind} 记录 {id}，实际找到 {matches.Length} 条。");
@@ -130,9 +133,9 @@ internal static class GymCommands {
     private static string RequiredString(JsonElement payload, string name) =>
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
-            ? value.GetString()! : throw new InvalidDataException($"Gym 记录缺少 {name}。");
+            ? value.GetString()! : throw new InvalidDataException($"宿主记录缺少 {name}。");
 
-    private static PlaygroundDecisionBoundary Boundary(GymRecord record) {
+    private static PlaygroundDecisionBoundary Boundary(PlaygroundHostRecord record) {
         try {
             if (record.Payload.ValueKind != JsonValueKind.Object || !record.Payload.TryGetProperty("Boundary", out JsonElement value)) {
                 throw new InvalidDataException("Gym 记录缺少决定前边界。");

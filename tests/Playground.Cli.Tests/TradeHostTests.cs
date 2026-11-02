@@ -42,7 +42,8 @@ public sealed class TradeHostTests {
             Assert.Contains("已成交", expected);
         }
         Assert.Contains("已成交", output.ToString());
-        using (var journal = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"))) {
+        using (var journalStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store))) {
+            var journal = new PlaygroundOperationAudit(journalStore, HostFixture.BranchId(files.Store), "test-run");
             var accepted = Assert.Single(journal.Entries, entry => entry.Received.RawInput == "accept " + offeredId);
             Assert.Equal("b", accepted.Received.ActorId);
             Assert.Equal(PlaygroundOperationStatus.Succeeded, accepted.Completed!.Status);
@@ -97,7 +98,8 @@ public sealed class TradeHostTests {
         Assert.Equal(14, actor.Money);
         Assert.Equal(kernel.World.Time, restored.State.Time);
         Assert.Equal(PlaygroundTradeStatus.Accepted, Assert.Single(restored.State.Business.Economy!.Trades.Offers).Status);
-        using var operations = PlaygroundOperationJournal.Open(Path.Combine(files.Store, "operations.jsonl"));
+        using var operationsStore = PlaygroundHostJournal.Open(PlaygroundHostJournal.JournalPath(files.Store));
+        var operations = new PlaygroundOperationAudit(operationsStore, restored.CurrentBranch.BranchId, "test-run");
         PlaygroundOperationEntry operation = Assert.Single(operations.Entries);
         Assert.Equal("a", operation.Received.ActorId);
         Assert.Equal(PlaygroundOperationStatus.Succeeded, operation.Completed!.Status);

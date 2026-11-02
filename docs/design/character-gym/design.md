@@ -1,13 +1,13 @@
 # 角色实验环境：设计思路与边界
 
-状态：一期既有验收保留；2026-11-02 起反馈独立切片已实施并通过工程与脚本 CLI 验收。反馈与分叉的新合同以[独立反馈](../independent-feedback.md)为准；下述一期实现裁决中旧反馈格式仅作历史背景，范围以[里程碑](milestone.md)为准。具体证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)。
+状态：本文保留一期设计与既有验收背景，范围见[里程碑](milestone.md)，证据见[工程验收](../../experiments/character-gym-acceptance.md)与[真实试玩](../../experiments/character-gym-playtest.md)。2026-11-02 后续[独立反馈](../independent-feedback.md)及[统一宿主日志](../character-history-and-diagnostics.md)已替代下文的旧存储裁决：不再使用独立 operations/Gym 文件或共享原始 dump exporter。第 1 节提供当前代码导航，第 2–7 节中的一期格式、日志默认值和物理分支日志描述只解释旧实现；当前操作见[使用说明](usage.md)。
 
 ## 1. 当前实现入口
 
 | 已核对入口 | 基础职责 | 一期实现 |
 | --- | --- | --- |
-| [LlmControllerTrace](../../../src/CharacterControl.Completion/LlmControllerTrace.cs)、[PlaygroundHost / LlmRunAudit](../../../src/Playground.Cli/PlaygroundHost.cs) | 保存实际请求、响应/失败及已提交事实；每次宿主运行使用新审计文件 | [GymSession](../../../src/Playground.Cli/Gym/GymSession.cs) 关联 Run/Request/S；[GymTraceExporter](../../../src/CharacterGym/GymTraceExporter.cs) 按角色导出 |
-| [PlaygroundOperationJournal](../../../src/Playground.Cli/PlaygroundOperationJournal.cs) | 原始提交与结果按身份配对，可补录已有游戏结果；独立于游戏 E/S | 根/子分支使用各自操作日志；Gym 导入结果，明确 Interrupted、恢复补录和没有领域事件的查询不是游戏提交证明 |
+| [LlmControllerTrace](../../../src/CharacterControl.Completion/LlmControllerTrace.cs)、[PlaygroundHost](../../../src/Playground.Cli/PlaygroundHost.cs) | 实际请求/响应形成 raw 与人物阅读两种投影；host 明确控制顺序 | [PlaygroundHostSession](../../../src/Playground.Cli/PlaygroundHostSession.cs) 关联 Run/Request/S；[CharacterHistoryExporter](../../../src/Playground.Cli/CharacterHistoryExporter.cs) 从主日志按角色导出，无需 raw |
+| [PlaygroundOperationAudit](../../../src/Playground.Cli/PlaygroundOperationAudit.cs)、[PlaygroundHostJournal](../../../src/Playground.Cli/PlaygroundHostJournal.cs) | 接收/结果按身份配对，单 writer 刷盘后成功；世界 E/S 仍独立 | 当前分支索引支持对账，history 单独选择祖先前缀；Interrupted、补录及查询不冒充游戏提交 |
 | [LlmCharacterController](../../../src/Playground.Completion/LlmCharacterController.cs) | 每次从角色材料构造独立服务，最终返回一个 act | 独立的可选 feedback({text})，持久回执后携原始消息继续本次服务；协议重试、字符与调用预算共同约束 |
 | [PlaygroundDurableHistory](../../../src/Playground/Persistence/PlaygroundDurableHistory.cs) | E/S 提交和恢复仍由游戏适配器负责 | [PlaygroundBranchBoundary](../../../src/Playground/Persistence/PlaygroundBranchBoundary.cs) 捕获/检查完成 S、列分支、显式打开与 fork；多分支时拒绝默认猜选 |
 | 相邻 DG 的 `Repository.ForkBranch` / `ReadCheckpoint` | 从精确 commit 建立分支；分支注册不等于成功打开领域对象图 | 游戏适配器直接使用 DG 分支；[GymCommands](../../../src/Playground.Cli/Gym/GymCommands.cs) 连接反馈/请求与该边界 |

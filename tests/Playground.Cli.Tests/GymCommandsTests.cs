@@ -29,7 +29,7 @@ public sealed class GymCommandsTests {
     [Fact]
     public void Management_modes_and_branch_pass_to_host() {
         ResolvedOptions options = HostFixture.Resolve(["--characters", "2", "--llm-connections", "connections.json", "--store", "game", "--branch", "01000000"]);
-        Assert.False(options.Host.Gym);
+        Assert.True(options.Host.Gym);
         Assert.Equal(options.Branch, options.Host.Branch);
         Assert.Equal(2, options.CharacterCount);
         Assert.Null(options.Management);
@@ -56,7 +56,7 @@ public sealed class GymCommandsTests {
         Assert.Equal(fixture.Boundary.StateCommitId, child.HeadCommitId);
         Assert.Contains(child.BranchId, messages.ToString());
         Assert.Contains("未打开或运行", messages.ToString());
-        var fork = Assert.Single(GymJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
+        var fork = Assert.Single(PlaygroundHostJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
         Assert.Equal(fixture.RequestSequence - 1, fork.Payload.GetProperty("SourceThroughSequence").GetInt64());
         Assert.Equal(JsonValueKind.Null, fork.Payload.GetProperty("SourceFeedbackId").ValueKind);
 
@@ -96,7 +96,7 @@ public sealed class GymCommandsTests {
         using var fixture = await Fixture.Create();
         using var output = new StringWriter();
         GymCommands.Run(fixture.Store, null, new(GymManagementKind.ForkRequest, SourceId: "request-1", ForkLabel: "request-origin"), output);
-        var fork = Assert.Single(GymJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
+        var fork = Assert.Single(PlaygroundHostJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
         Assert.Equal(System.Text.Json.JsonValueKind.Null, fork.Payload.GetProperty("SourceFeedbackId").ValueKind);
         Assert.Throws<ArgumentException>(() => GymCommands.Run(fixture.Store, null,
             new(GymManagementKind.Export, "a", Path.Combine(fixture.Root, "ambiguous.md")), output));
@@ -140,8 +140,8 @@ public sealed class GymCommandsTests {
     [Fact]
     public async Task Full_boundary_mismatch_rejects_before_registration() {
         using var fixture = await Fixture.Create();
-        using (var journal = GymJournal.Open(fixture.Journal)) {
-            journal.Append("request", "fixture", fixture.Boundary.BranchId, "a", new {
+        using (var journal = PlaygroundHostJournal.Open(fixture.Journal)) {
+            journal.Append("model-request", "fixture", fixture.Boundary.BranchId, "a", fixture.Boundary.ContextSequence, new {
                 RequestId = "wrong-boundary", Boundary = fixture.Boundary with { OperationSequence = fixture.Boundary.OperationSequence + 1 }
             });
         }
@@ -155,7 +155,7 @@ public sealed class GymCommandsTests {
     [Fact]
     public async Task Registration_survives_log_writer_failure_and_reports_existing_branch_without_retry() {
         using var fixture = await Fixture.Create();
-        using var heldWriter = GymJournal.Open(fixture.Journal);
+        using var heldWriter = PlaygroundHostJournal.Open(fixture.Journal);
         IOException error = Assert.Throws<IOException>(() => GymCommands.Run(fixture.Store, null,
             new(GymManagementKind.ForkRequest, SourceId: "request-1", ForkLabel: "registered-despite-log-lock"), new StringWriter()));
         Assert.Contains("已注册", error.Message);
@@ -163,7 +163,7 @@ public sealed class GymCommandsTests {
         PlaygroundBranchInfo[] branches = PlaygroundDurableHistory.ListBranches(fixture.Store).ToArray();
         Assert.Equal(2, branches.Length);
         Assert.Contains(branches.Single(branch => branch.BranchId != fixture.Boundary.BranchId).BranchId, error.Message);
-        Assert.DoesNotContain(GymJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
+        Assert.DoesNotContain(PlaygroundHostJournal.Read(fixture.Journal).Records, record => record.Kind == "branch-fork");
     }
 
     [Fact]
@@ -260,7 +260,7 @@ public sealed class GymCommandsTests {
     private sealed class Fixture : IDisposable {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "drama-gym-management-" + Guid.NewGuid().ToString("N"));
         public string Store => Path.Combine(Root, "game");
-        public string Journal => GymSession.JournalPath(Store);
+        public string Journal => PlaygroundHostJournal.JournalPath(Store);
         public PlaygroundDecisionBoundary Boundary { get; private set; } = null!;
         public long RequestSequence { get; private set; }
         public string FeedbackId => Feedback.FeedbackId;
@@ -276,18 +276,24 @@ public sealed class GymCommandsTests {
             using (var history = PlaygroundDurableHistory.Create(result.Store, kernel.World, kernel.Cursor)) {
                 result.Boundary = history.CaptureDecisionBoundary("a");
             }
-            using (var journal = GymJournal.Open(result.Journal)) {
-                journal.Append("perception", "fixture", result.Boundary.BranchId, "a", new { Material = "prefix-visible" });
-                journal.Append("perception", "fixture", result.Boundary.BranchId, "b", new { Material = "other-actor-secret" });
-                GymRecord request = journal.Append("request", "fixture", result.Boundary.BranchId, "a", new {
-                    RequestId = "request-1", Boundary = result.Boundary, Shared = "original-request-not-in-child"
-                });
+            using (var journal = PlaygroundHostJournal.Open(result.Journal)) {
+                journal.Append("run-start", "fixture", result.Boundary.BranchId, null, null,
+                    new { Actors = new[] { new { ActorId = "a" }, new { ActorId = "b" } }, DetailedRecording = true });
+                var material = CharacterHistoryProjection.Capture(kernel.World.Business.InteractionStates["a"], result.Boundary.StateCommitId);
+                journal.Append("character-material", "fixture", result.Boundary.BranchId, "a", result.Boundary.ContextSequence,
+                    material with { ObservationText = "prefix-visible" });
+                journal.Append("character-material", "fixture", result.Boundary.BranchId, "b", result.Boundary.ContextSequence,
+                    material with { ObservationText = "other-actor-secret" });
+                PlaygroundHostRecord request = journal.Append("model-request", "fixture", result.Boundary.BranchId, "a", result.Boundary.ContextSequence,
+                    new ModelRequestSnapshot("request-1", 1, "fixture", "fixture-model", "fixture", null, result.Boundary,
+                        [new("Shared", 0, "Observation", "original-request-not-in-child", [], [])], []));
                 result.RequestSequence = request.Sequence;
-                journal.Append("feedback", "fixture", result.Boundary.BranchId, "a", new {
+                journal.Append("feedback-saved", "fixture", result.Boundary.BranchId, "a", result.Boundary.ContextSequence, new {
                     FeedbackId = "feedback-1", RequestId = "request-1", RequestSequence = request.Sequence,
                     Boundary = result.Boundary, Submission = new { Summary = "test feedback" }
                 });
-                journal.Append("perception", "fixture", result.Boundary.BranchId, "a", new { Material = "parent-future-secret" });
+                journal.Append("character-material", "fixture", result.Boundary.BranchId, "a", result.Boundary.ContextSequence,
+                    material with { ObservationText = "parent-future-secret" });
             }
             result.Feedback = new(1, Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, "fixture", "a",
                 FeedbackSource.HumanConsole, result.Boundary.ContextSequence, "test feedback", result.Boundary, null, result.Store);
