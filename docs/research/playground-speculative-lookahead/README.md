@@ -3,6 +3,7 @@
 2026-11-03。本研究已完成原定 G1–G7，见[最终报告与证据索引](results/summary.md)。[工作计划](work-plan.md)已收敛为交接与重开条件；以下原始完成合同保留不变。
 
 - 仓库：`E:/repos/Atelia-org/drama-board`。
+- 2026-11-03：用户另行授权后已快进合入本地 `main`；保留默认关闭和原始研究证据，未推送。
 - 实验分支：`experiment/playground-speculative-lookahead`，起点 `3ddc384`。
 - [技术方案与实验合同](design.md)：最小算法、源码接缝、采用与故障边界、测量方法。
 - [工作计划](work-plan.md)：唯一施工状态、下一工作包与自主迭代方法。
