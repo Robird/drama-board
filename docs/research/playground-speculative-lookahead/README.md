@@ -6,6 +6,7 @@
 - 实验分支：`experiment/playground-speculative-lookahead`，起点 `3ddc384`。
 - [技术方案与实验合同](design.md)：最小算法、源码接缝、采用与故障边界、测量方法。
 - [工作计划](work-plan.md)：唯一施工状态、下一工作包与自主迭代方法。
+- 后续扩展：[Human Console 来源与真实模型性能](results/real-performance.md)，沿用开关，新增 Human 等待期间预取及实际端点分层统计。
 - 前置成果：[预测式时间并行研究](../predictive-time-parallelism/results/summary.md)。其 C1–C8 已完成；本阶段使用独立的 G1–G7，不重开旧验收或把旧在线调用当成新结果。
 
 ## 目标

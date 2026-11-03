@@ -107,3 +107,12 @@ P1/P2 的具体取舍：预取仅使用本次运行中已由真实需求解析�
 本专题使用独立 ResearchId 和 `artifacts/playground-speculative-lookahead/online-budget.jsonl`，与已结束的前期研究区分。首次建立时注明旧研究总账与来源；续轮必须对账，不能重建空账绕过未决调用。额度在调用前预留，已调用与不确定结果不返还，未调用额度需证据才能释放。凭据只在运行时读取；未知 usage 保留未知，不补零、也不从无价格依据的 token 数伪造费用。
 
 同一可写构建图的 dotnet 操作由主线程串行调度。最终按根仓约定执行 Release、Schema Verify 和受影响测试，独立代理从新目录重跑代表入口。新分支可以整理本地提交，但最终合并、推送和发布不属于此实验任务。
+
+
+### Human Console 等待窗口
+
+显式启用 lookahead 时，当前 A 可以是 Human Console；候选 B 仍必须是 scratch 遇到的下一个实际决策角色且绑定 LLM，不跳过 Human、同地或其他不合适角色。预测动作及完整 input、target、binding 三重采用条件不变。Human 新局先行允许在该等待窗口解析 B 的冷连接；LLM A 路径仍仅使用已就绪连接，不新增冷认证等待。
+
+宿主先冻结完成世界并启动真实 Console 读取，再在后台准备 scratch 与冷连接。Human 的操作、EOF、取消或异常结束本次等待后，立即退休准备准入，取消并 join 准备任务，之后才向唯一真实 Kernel 返回；不等待已发出的候选推理。准入同时检查输入任务仍未完成，冷 resolver 迟到不得发请求。忽略取消的 resolver 可能延迟 Human 提交或退出，宿主会等待其返回以保证后台准备不跨越世界提交或与后续需求竞争。取消回调或准备诊断失败仍必须 join，并保留 Human 原失败。
+
+候选物理请求沿宿主取消令牌存活，不能因 Human 正常提交而被取消；它在 Human 等待中只有物理审计数据，不执行反馈工具、不交付角色 history。已有未排空候选仍占唯一额外槽，真实与投机调用统一计入 MaxCalls；快速完成的输入及 EOF 无需启动准备。默认关闭时仍走原 Human 路径。程序化实验继续使用 Host 的 TextReader.ReadLineAsync(CancellationToken) 注入，ServiceCompleted 同时记录成功返回的 Human 服务（包含准备排空时间）。

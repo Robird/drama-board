@@ -28,3 +28,18 @@ The formal costly-provider matrix is predeclared at 1000ms service delay; the ea
 `physical-service.json` joins production physical ordinals to fixture physical ids, verifies the full input, and records every request's queue, started service, completion/failure and demand/adopted/discarded/unadopted-at-stop disposition. Local fixture outcomes are fully observed; no remote unknown classification is inferred for real providers. Discarded service time includes unadopted candidates at stop. Final cleanup remains inside host wall and is separate from effective-work wall.
 
 EventCommit/StateCommit timings measure only the inner **in-memory** history methods. Fact serialization and timeline writes are separate; these figures do not measure durable save I/O. HostJournalAppend measures the in-memory host journal's metadata and append projection/validation/hash/install, with no disk flush in this matrix. ProductionRawWrite includes raw projection/append/flush and remains nested within enclosing intervals.
+
+`--real-performance-self-check --output FRESH` checks the fresh durable performance runner with fixture clients in all four LLM/Human-script and off/on profiles, without network calls. `--real-performance` runs one pre-reserved online batch with `--output FRESH --connections PATH --grant PATH --scenario llm|human-script --operations 8 --think-ms 5000`. Human script input uses the production Console reader and alternates `wait 1` / `continue`; rejections are retained and this is not a real human playtest. Host wall time stops before post-run exports/cold-open inspection.
+
+`real_performance.py prepare` writes a predeclared eight-run plan without reserving calls. Its separate `reserve`, `execute` and `summarize` actions consume fresh grants once, stop on unexplained provider failure and reconcile physical requests to the existing research ledger. Reservation/execution require the coordinator's explicit execution window. Physical intervals measure client-observed latency (including wrapper bookkeeping), not provider-internal compute. Client request overlap and latency covered before adoption do not prove independent server capacity; naturally different trajectories support observational on/off comparisons only.
+
+The four actions are `prepare --root FRESH --connections PATH --ledger EXISTING`, `reserve --root PLAN`, `execute --root PLAN --dll BUILT_DLL`, and `summarize --root PLAN`. Existing grants and run directories cannot be reused, including the completed p3/p5 online grants. A new authorized batch requires new identifiers and a fresh reservation; do not rerun `execute` on these artifacts.
+
+To reproduce the completed batch's derived statistics without provider calls or changes to its ledger/raw evidence:
+
+```powershell
+python experiments/PlaygroundLookahead/real_performance.py summarize --root artifacts/playground-speculative-lookahead/p5-real-performance
+python artifacts/playground-speculative-lookahead/p5-real-performance/verify_evidence.py
+```
+
+These commands only rewrite derived `samples.json`, `audit.json`, `physical-accounting.json` and `evidence-verification.json`. The measured results and limitations are in [real-performance.md](../../docs/research/playground-speculative-lookahead/results/real-performance.md).

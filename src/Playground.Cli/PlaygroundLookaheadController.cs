@@ -77,6 +77,44 @@ internal sealed class PlaygroundLookaheadController : IPlaygroundCharacterContro
         } finally { _serviceTicks += Stopwatch.GetTimestamp() - started; _service = null; Volatile.Write(ref _active, 0); }
     }
 
+    // The Human call reaches its input await before any scratch work or cold authentication.
+    // Join preparation before returning an operation: it must never race a real publication.
+    internal async ValueTask<PlaygroundControllerOperation> ChooseHumanCommandAsync(PlaygroundDecisionContext context,
+        IPlaygroundCharacterController human, CancellationToken token) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Interlocked.CompareExchange(ref _active, 1, 0) != 0) { throw new InvalidOperationException("Lookahead controller requires sequential invocation."); }
+        using var preparationStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var admission = new object();
+        Task preparation = Task.CompletedTask;
+        try {
+            PruneCompletedPhysical();
+            var source = _snapshot();
+            var service = new Service(context, source.World, source.Cursor);
+            Task<PlaygroundControllerOperation> input = human.ChooseCommandAsync(context, token).AsTask();
+            // Preserve an existing prediction for its actual target, even if a Human
+            // was inserted before it. Only the ordinary demand may compare/discard it.
+            if (!input.IsCompleted && _candidate is null) {
+                preparation = Task.Run(() => Prepare(service, preparationStop.Token, token, admission, () => !input.IsCompleted));
+            }
+            Exception? inputError = null;
+            try { return await input; }
+            catch (Exception error) { inputError = error; throw; }
+            finally {
+                var cleanupErrors = new List<Exception>();
+                try { lock (admission) { preparationStop.Cancel(); } }
+                catch (Exception error) { cleanupErrors.Add(error); }
+                // Cancellation callbacks may throw. Joining remains mandatory even then.
+                try { await preparation; }
+                catch (OperationCanceledException) when (preparationStop.IsCancellationRequested) { }
+                catch (Exception error) { cleanupErrors.Add(error); }
+                if (cleanupErrors.Count != 0) {
+                    if (inputError is not null) { cleanupErrors.Insert(0, inputError); }
+                    throw new AggregateException("Human input/preparation cleanup failed.", cleanupErrors);
+                }
+            }
+        } finally { Volatile.Write(ref _active, 0); }
+    }
+
     private async Task<CompletionResult> Demand(Service service, LlmDecisionBinding binding, CompletionRequest request, CancellationToken token) {
         long started = Stopwatch.GetTimestamp();
         try { return await DemandCore(service, binding, request, token); }
@@ -121,7 +159,7 @@ internal sealed class PlaygroundLookaheadController : IPlaygroundCharacterContro
         } finally { _waitTicks += Stopwatch.GetTimestamp() - started; }
     }
 
-    private async Task Prepare(Service service, CancellationToken token) {
+    private async Task Prepare(Service service, CancellationToken token, CancellationToken? physicalToken = null, object? admission = null, Func<bool>? waiting = null) {
         if (_candidate is { } previous) {
             if (!previous.Response.IsCompleted) { return; }
             await Drain(previous);
@@ -136,10 +174,20 @@ internal sealed class PlaygroundLookaheadController : IPlaygroundCharacterContro
                 SourceCursor = service.Cursor, Target = projection.Target is { } projected ? Identity(projected) : null });
             if (projection.Target is not { } target) { return; }
             if (!_bindings.TryGetValue(target.InteractionState.ActorId, out var targetControl) ||
-                targetControl is not CharacterControlBinding.Llm targetLlm ||
-                !_readyBindings.TryGetValue(targetLlm.ConnectionId, out var binding)) {
+                targetControl is not CharacterControlBinding.Llm targetLlm) {
                 Emit("projection-skip", new { Reason = "binding-not-ready", Target = Identity(target) });
                 return;
+            }
+            // Human A may be the first decision of a new game: B's connection can be cold.
+            // Preparation is joined before the next demand, so the pool is never resolved concurrently.
+            if (!_readyBindings.TryGetValue(targetLlm.ConnectionId, out var binding)) {
+                if (physicalToken is null) {
+                    Emit("projection-skip", new { Reason = "binding-not-ready", Target = Identity(target) });
+                    return;
+                }
+                binding = await _resolver(target.InteractionState.ActorId, token);
+                token.ThrowIfCancellationRequested();
+                _readyBindings[targetLlm.ConnectionId] = binding;
             }
             var capture = new CaptureClient(binding.Client);
             var controller = new LlmCharacterController(capture, binding.ModelId, Render,
@@ -147,9 +195,15 @@ internal sealed class PlaygroundLookaheadController : IPlaygroundCharacterContro
             try { await controller.ChooseCommandAsync(target, token); }
             catch (CapturedException) { }
             if (capture.Request is not { } request || !TryInput(request, out string? input) || _calls >= _options.MaxCalls) { return; }
-            var physical = Invoke(binding, request, "candidate", target.InteractionState.ActorId, token);
-            _candidate = new(Identity(target), binding, input!, physical.Id, physical.Response, physical.Stop);
-            Emit("candidate-created", new { physical.Id, Target = _candidate.Target, FullInput = input });
+            void Admit() {
+                token.ThrowIfCancellationRequested();
+                if (waiting is not null && !waiting()) { return; }
+                var physical = Invoke(binding, request, "candidate", target.InteractionState.ActorId, physicalToken ?? token);
+                _candidate = new(Identity(target), binding, input!, physical.Id, physical.Response, physical.Stop);
+                Emit("candidate-created", new { physical.Id, Target = _candidate.Target, FullInput = input });
+            }
+            if (admission is null) { Admit(); }
+            else { lock (admission) { Admit(); } }
         } catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception error) {
             if (_evidenceError is not null) { throw; }

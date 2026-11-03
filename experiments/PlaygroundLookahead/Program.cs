@@ -24,6 +24,8 @@ internal static class Program {
     internal static readonly IReadOnlyDictionary<string, CharacterControlBinding> Bindings = new Dictionary<string, CharacterControlBinding> {
         ["a"] = new CharacterControlBinding.Llm("fixture"), ["b"] = new CharacterControlBinding.Llm("fixture") };
     public static async Task<int> Main(string[] args) {
+        if (args.Contains("--real-performance-self-check")) { return await RealPerformanceRunner.SelfCheck(args); }
+        if (args.Contains("--real-performance")) { return await RealPerformanceRunner.Run(args); }
         if (args.Contains("--online-self-check")) { return await OnlineSelfCheck.Run(args); }
         if (args.Contains("--online")) { return await OnlineRunner.Run(args); }
         var values = new Dictionary<string, string>();
@@ -250,7 +252,7 @@ internal static class Program {
     }
     internal static void Save(string path, object value) => File.WriteAllText(path, JsonSerializer.Serialize(value, Json), new UTF8Encoding(false));
     internal static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static object Provenance() {
+    internal static object Provenance() {
         string Git(params string[] args) {
             var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
             foreach (string arg in args) { start.ArgumentList.Add(arg); }

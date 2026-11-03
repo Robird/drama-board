@@ -10,4 +10,5 @@ internal sealed record PlaygroundHostOptions(int MaxCalls = 128, int MaxFailures
     Func<bool>? StopRequested = null,
     Action<PlaygroundDecisionContext, TimeSpan>? ServiceCompleted = null,
     Action<TimeSpan>? RawAuditCompleted = null,
-    Action<TimeSpan>? HostJournalCompleted = null);
+    Action<TimeSpan>? HostJournalCompleted = null,
+    Action<string, object>? LookaheadEvidence = null);

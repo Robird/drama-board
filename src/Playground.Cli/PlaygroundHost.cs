@@ -93,9 +93,10 @@ internal static class PlaygroundHost {
             worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}",
             feedbackSink: feedback is null ? null : feedback.SaveHuman,
             feedbackSaved: (context, feedbackId) => session.FeedbackSaved(context.InteractionState.ActorId, context.Context.ContextSequence, feedbackId)) : null;
+        var humanForwarding = new HumanLookaheadController(human, options.ServiceCompleted);
         IPlaygroundCharacterController routed = human is null ? forwarding : new CharacterControllerRouter(
             history.State.Characters.ToDictionary(character => character.Id,
-                character => bindings[character.Id] is CharacterControlBinding.HumanConsole ? (IPlaygroundCharacterController)human : forwarding, StringComparer.Ordinal));
+                character => bindings[character.Id] is CharacterControlBinding.HumanConsole ? (IPlaygroundCharacterController)humanForwarding : forwarding, StringComparer.Ordinal));
         var kernel = PlaygroundEngine.CreateKernel(history, characterController: routed);
         session.Start(history.State, options, bindings, logPath, store);
         bool recovered = kernel.RecoverPending(cancellationToken);
@@ -167,7 +168,11 @@ internal static class PlaygroundHost {
             var lookahead = options.Lookahead ? new PlaygroundLookaheadController(
                 CaptureLookaheadSource, bindings, ResolveBinding, controllerOptions, Trace,
                 feedbackSink: feedback is null ? null : feedback.SaveLlm,
-                evidence: (kind, payload) => raw.RecordLookahead(kind, payload), runId: runId, branchId: session.BranchId) : null;
+                evidence: (kind, payload) => {
+                    raw.RecordLookahead(kind, payload);
+                    options.LookaheadEvidence?.Invoke(kind, payload);
+                }, runId: runId, branchId: session.BranchId) : null;
+            humanForwarding.Lookahead = lookahead;
             async Task<int> RunLoopAsync() {
                 try {
                     forwarding.Inner = lookahead ?? (IPlaygroundCharacterController)new LlmCharacterController(ResolveBinding,
@@ -328,6 +333,18 @@ internal static class PlaygroundHost {
                 !configuration.ConnectionIds.Contains(binding.ConnectionId, StringComparer.Ordinal)) {
                 throw new ArgumentException("控制绑定引用了无效连接。");
             }
+        }
+    }
+
+    private sealed class HumanLookaheadController(IPlaygroundCharacterController? human,
+        Action<PlaygroundDecisionContext, TimeSpan>? serviceCompleted) : IPlaygroundCharacterController {
+        public PlaygroundLookaheadController? Lookahead { get; set; }
+        public async ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken token) {
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var operation = await (Lookahead is { } lookahead ? lookahead.ChooseHumanCommandAsync(context, human!, token)
+                : human!.ChooseCommandAsync(context, token));
+            serviceCompleted?.Invoke(context, System.Diagnostics.Stopwatch.GetElapsedTime(started));
+            return operation;
         }
     }
 
