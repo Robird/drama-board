@@ -6,7 +6,7 @@ namespace DramaBoard.Playground;
 public static class PlaygroundOperationResults {
     public static string Describe(PlaygroundFact fact) {
         ArgumentNullException.ThrowIfNull(fact);
-        if (fact.Kind is PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried) { return fact.Result!; }
+        if (fact.Kind is PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted) { return fact.Result!; }
         if (fact.GoalOperation is { } goal) { return goal.Message; }
         if (fact.OperationDisposition == PlaygroundOperationDisposition.Rejected) {
             return !string.IsNullOrWhiteSpace(fact.Result) ? fact.Result

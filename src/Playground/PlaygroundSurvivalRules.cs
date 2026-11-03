@@ -98,12 +98,12 @@ public static class PlaygroundSurvivalRules {
     /// <remarks>Call only after PlaygroundActions.Check accepts the command; this is not an identity discovery query.</remarks>
     public static string? ActionWarning(PlaygroundWorld world, string actorId, PlaygroundCommand command) {
         PlaygroundSurvival? anchor = world.GetCharacter(actorId).Survival;
-        if (anchor is null || command.Kind != PlaygroundCommandKind.Go || !IsSheltered(world.Definition, world.Expedition?.Spatial, actorId)) {
+        if (anchor is null || PlaygroundNavigationRules.NextEntrance(world.Business, actorId, command) is null || !IsSheltered(world.Definition, world.Expedition?.Spatial, actorId)) {
             return null;
         }
         string? place = PlaygroundActions.CurrentPlace(world, actorId);
         if (place is null) { return null; }
-        PlaygroundPassageDefinition passage = world.Definition.GetEntrances(place).Single(p => p.EntranceId == command.EntranceId);
+        PlaygroundPassageDefinition passage = PlaygroundNavigationRules.NextEntrance(world.Business, actorId, command)!;
         ModelTime end = new(checked(world.Time.Ticks + passage.DurationTicks));
         PlaygroundSurvival body = anchor.Project(world.Time);
         PlaygroundAttributeForecast exposed = ForecastWarmth(world.Definition, body.WarmthUnits, world.Time, sheltered: false);

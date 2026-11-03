@@ -30,7 +30,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         text.AppendLine("## 当前状态与环境");
         text.AppendLine($"{(observation.IsDay ? "白天" : "夜晚")} · 下次{(observation.IsDay ? "天黑" : "天亮")} {Time(observation.NextLightChange)}。");
         text.AppendLine(observation.ArrivalDue is { } arrival
-            ? $"**正在途中** · {JourneyView.Route(observation.Journey!)}；{Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）；移动不能取消。"
+            ? $"**正在途中** · {JourneyView.Route(observation.Journey!)}；{Time(arrival)} 抵达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）；本段移动不能取消，导航 cancel 只清剩余路线。"
             : $"**{observation.PlaceName}**：{observation.PlaceDescription}");
         if (observation.Survival is { } survival) {
             text.AppendLine();
@@ -64,9 +64,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         EconomyView.RenderCommands(text, observation);
         TradeView.RenderCommands(text, observation);
         text.Append(NavigationView.RenderHelp(observation));
-        AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；跟随时确认后继续同行，闲置时确认不推进时间");
-        if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
-            AppendCommand(text, observation, "cancel", PlaygroundCommand.Cancel(), "取消当前活动：采集保留已获物品，生产退回预留投入，等待直接结束");
+        text.Append(NavigationView.RenderNavigateCommands(observation));
+        AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), NavigationView.ContinueMeaning(observation));
+        if (observation.Navigation is not null || observation.Actor.Activity is not null && observation.ArrivalDue is null) {
+            AppendCommand(text, observation, "cancel", PlaygroundCommand.Cancel(), NavigationView.CancelMeaning(observation));
         }
         foreach (PlaygroundCommandCheck supply in observation.Commands.Where(entry => entry.Command.Kind == PlaygroundCommandKind.Use)) {
             AppendCommand(text, observation, $"use {supply.Command.ItemId}", supply.Command,
@@ -89,7 +90,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
                     text.AppendLine($"  {string.Join(" / ", group.Select(passage => passage.Id))} 行动提示（不禁止）：{warning}");
                 }
             }
-            text.AppendLine("移动途中不能取消；食物和饮水可在请求输入时补充。");
+            text.AppendLine("已经开始的路段不能取消；导航 cancel 只清剩余路线。食物和饮水可在请求输入时补充。");
         }
         if (observation.Resources.Count > 0) {
             text.AppendLine();
@@ -138,6 +139,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         if (EconomyView.RenderProduction(text, observation, ended)) { return; }
         if (observation.Actor.Activity is not { } activity) {
             text.AppendLine(ended ? "此角色已停止安排活动；原推进及中断情况见终局记录。"
+                : observation.Navigation is not null ? "导航在此等待确认；continue 尝试下一段，cancel 清除剩余路线。"
                 : observation.FollowingLeaderId is not null ? "正在跟随，等候领队安排行程；处理提醒后 continue 可继续同行。"
                 : "当前空闲，可选择下方行动。");
         } else if (activity.Kind == PlaygroundActivityKind.Wait) {

@@ -36,7 +36,9 @@ public sealed class CommunicationViewTests {
         Assert.Contains("有待响应的通信", text);
         Assert.Contains("当前 say / shout / give 受阻", text);
         Assert.Contains("这不限制地点内的大喊", text);
-        Assert.Contains("保留原活动及截止时刻", text);
+        Assert.Contains("原期限", text);
+        Assert.Contains("发送本身不确认已有通信或警告", text);
+        Assert.True(observation.Communication!.AttentionPending);
         Assert.Contains("换回合、确认或冷开不返还", text);
     }
 
@@ -129,7 +131,7 @@ public sealed class CommunicationViewTests {
         Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Passages = source.Passages, KnownMap = source.KnownMap, CandidatePath = source.CandidatePath,
+        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Passages = source.Passages, KnownMap = source.KnownMap, CandidatePath = source.CandidatePath, Navigation = source.Navigation,
         Memories = source.Memories, Outcome = source.Outcome, EndingReason = source.EndingReason,
         Survival = source.Survival, Weather = source.Weather, Journey = source.Journey, Communication = communication
     };

@@ -20,8 +20,11 @@ internal static class ContextHistoryPlayView {
             Quote(text, advance.RawInput);
             if (advance.OriginPlaceName is { } origin) { text.AppendLine($"出发位置：{origin}。"); }
             text.AppendLine(opening.ActivityState switch {
-                PlaygroundOutcomeActivityState.Ongoing when observation.FollowingLeaderId is not null => "**本段推进已返回，仍在跟随领队**；处理提醒后 continue 可继续同行。",
-                PlaygroundOutcomeActivityState.Ongoing => "**本段推进已返回，原活动仍在进行**；继续不会新建活动或重置期限。",
+                PlaygroundOutcomeActivityState.Ongoing when opening.Observation.Navigation is not null => opening.Observation.ArrivalDue is null
+                    ? "交付时导航尚未结束，已在该中间点等待下一段确认；后续变化见当前活动导航。"
+                    : "交付时导航尚未结束，仍在进行当时的路段；后续变化见当前活动导航。",
+                PlaygroundOutcomeActivityState.Ongoing when opening.Observation.FollowingLeaderId is not null => "交付时仍在跟随领队；后续关系变化见当前同行状态。",
+                PlaygroundOutcomeActivityState.Ongoing => "交付时原活动仍在进行，保留当时的进度与期限；后续变化见当前活动。",
                 PlaygroundOutcomeActivityState.Completed => "原活动已结束。",
                 _ => "旅程已终止；未完成的活动不再推进。"
             });

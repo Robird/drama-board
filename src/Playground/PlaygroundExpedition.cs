@@ -30,12 +30,15 @@ public sealed partial record PlaygroundConfirmedPassage(
     [field: DurableField(2)] string PassageId) : IDurableObject;
 
 /// <summary>Persistent scenario identity, active spatial subgraph, observations and shared environment.</summary>
-[DurableType("DramaBoard.Playground.Expedition", 3)]
+[DurableType("DramaBoard.Playground.Expedition", 4)]
 public sealed partial class PlaygroundExpedition : IDurableObject {
     [DurableField(1)] private string _scenarioId;
     [DurableField(2)] private GraphSpatialState _spatial;
     [DurableField(3)] private List<PlaygroundVisit> _visits;
     [DurableField(6)] private PlaygroundEnvironment? _environment;
+    [DurableField(9)] private List<PlaygroundNavigation> _navigations;
+    public IReadOnlyList<PlaygroundNavigation> Navigations => _navigations.AsReadOnly();
+    public PlaygroundNavigation? Navigation(string actorId) => _navigations.SingleOrDefault(n => n.Path.ActorId == actorId);
     [DurableField(8)] private List<PlaygroundPath> _candidatePaths;
     public IReadOnlyList<PlaygroundPath> CandidatePaths => _candidatePaths.AsReadOnly();
     public PlaygroundPath? CandidatePath(string actorId) => _candidatePaths.SingleOrDefault(p => p.ActorId == actorId);
@@ -47,21 +50,26 @@ public sealed partial class PlaygroundExpedition : IDurableObject {
     public IReadOnlyList<PlaygroundVisit> Visits => _visits.AsReadOnly();
     public PlaygroundEnvironment? Environment => _environment;
     public PlaygroundExpedition(string scenarioId, GraphSpatialState spatial, IEnumerable<PlaygroundVisit> visits,
-        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null, IEnumerable<PlaygroundPath>? candidatePaths = null) {
+        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null, IEnumerable<PlaygroundPath>? candidatePaths = null, IEnumerable<PlaygroundNavigation>? navigations = null) {
+        _navigations = navigations?.ToList() ?? [];
         _candidatePaths = candidatePaths?.ToList() ?? [];
         _scenarioId = scenarioId; _spatial = spatial; _visits = [.. visits];
         _environment = environment; _confirmedPassages = confirmedPassages?.ToList() ?? [];
     }
     internal PlaygroundExpedition Change(GraphSpatialState spatial, IEnumerable<PlaygroundVisit> visits,
-        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null, string? candidateActorId = null, PlaygroundPath? candidatePath = null, IEnumerable<string>? retiredActors = null) {
+        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null, string? candidateActorId = null, PlaygroundPath? candidatePath = null, IEnumerable<string>? retiredActors = null, PlaygroundNavigationChange? navigationChange = null) {
         var replacements = visits.ToDictionary(v => (v.ActorId, v.PlaceId));
         return new(ScenarioId, spatial, Visits.Where(v => !replacements.ContainsKey((v.ActorId, v.PlaceId)))
             .Concat(replacements.Values).OrderBy(v => v.ActorId, StringComparer.Ordinal).ThenBy(v => v.PlaceId, StringComparer.Ordinal),
             environment ?? Environment, ConfirmedPassages.Concat(confirmedPassages ?? []).Distinct().OrderBy(k => k.ActorId, StringComparer.Ordinal).ThenBy(k => k.PassageId, StringComparer.Ordinal),
             CandidatePaths.Where(p => p.ActorId != candidateActorId).Concat(candidatePath is null ? [] : new[] { candidatePath })
-                .Where(p => !(retiredActors ?? []).Contains(p.ActorId)).OrderBy(p => p.ActorId, StringComparer.Ordinal));
+                .Where(p => !(retiredActors ?? []).Contains(p.ActorId)).OrderBy(p => p.ActorId, StringComparer.Ordinal),
+            Navigations.Where(n => n.Path.ActorId != navigationChange?.ActorId)
+                .Concat(navigationChange?.Navigation is { } active ? new[] { active } : [])
+                .Where(n => !(retiredActors ?? []).Contains(n.Path.ActorId)).OrderBy(n => n.Path.ActorId, StringComparer.Ordinal));
     }
     internal bool SameState(PlaygroundExpedition other) => ScenarioId == other.ScenarioId && Spatial.Equals(other.Spatial) &&
+        Navigations.Count == other.Navigations.Count && Navigations.Zip(other.Navigations).All(p => PlaygroundNavigation.Same(p.First, p.Second)) &&
         CandidatePaths.Count == other.CandidatePaths.Count && CandidatePaths.Zip(other.CandidatePaths).All(p => PlaygroundPath.Same(p.First, p.Second)) &&
         Visits.SequenceEqual(other.Visits) && ConfirmedPassages.SequenceEqual(other.ConfirmedPassages) && ReferenceEquals(Environment, other.Environment);
     internal void Validate(PlaygroundBusinessState business) {
@@ -81,6 +89,7 @@ public sealed partial class PlaygroundExpedition : IDurableObject {
             }
         }
         PlaygroundPathRules.ValidateCandidates(business);
+        PlaygroundNavigationRules.ValidateState(business);
         GraphSpatialStateValidator.ValidateComplete(business.Definition.Runtime.Graph, Spatial);
         Environment?.Validate(business.Time, business.Characters, business.Definition);
         if (Environment is not null && business.Characters.Any(c => c.Survival is null)) {

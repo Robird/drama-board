@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)的实施 Goal 进行中。入口与个人知识见[切片 A](docs/experiments/character-navigation-a-acceptance.md)，map/path 与持久候选见[切片 B](docs/experiments/character-navigation-b-acceptance.md)。下一片用不可变 PlaygroundPath 实现 navigate、逐站 continue 与只清剩余行程的 cancel，统一单段校验/危险预览/执行，并保留提醒、跟随及恢复语义；由工程与体验两种视角审视。剩余分片及验收合同见[实施计划](docs/design/character-navigation/implementation-plan.md)，尚未验收的目标不得当成现有能力。
+**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)的实施 Goal 进行中。入口与知识、求路候选、逐站导航的工程证据见[切片 A](docs/experiments/character-navigation-a-acceptance.md)、[B](docs/experiments/character-navigation-b-acceptance.md)、[C](docs/experiments/character-navigation-c-acceptance.md)。下一片验证实际 lookahead 分支的知识/候选/导航隔离、正式采用只执行一次、真实 LLM 完整命令与历史/续局；再按 N1–N12 审计并提供独立试玩 home。由工程与体验两种视角审视，剩余验收合同见[实施计划](docs/design/character-navigation/implementation-plan.md)；尚未验证的目标不视为完成。
 
 [预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及 [Playground 单分支预取](docs/research/playground-speculative-lookahead/results/summary.md)已完成原定验收并纳入本地主线，默认关闭；采用仅限完整请求/目标匹配，仍由唯一 Kernel 串行提交。[Human 等待与真实模型测量](docs/research/playground-speculative-lookahead/results/real-performance.md)保留收益及额外调用/远端取消未知的证据边界，研究暂无施工待办，见[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)。
 

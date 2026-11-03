@@ -6,7 +6,7 @@ namespace DramaBoard.Playground;
 /// <summary>Checks recorded explanations against authoritative endpoints, without planning or replacing material.</summary>
 internal static class PlaygroundObservedEventValidation {
     internal static void Validate(PlaygroundBusinessState before, PlaygroundBusinessState after, PlaygroundFact fact) {
-        if (fact.Kind is PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried) {
+        if (fact.Kind is PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted) {
             if (fact.ObservedEvents.Count != 0) { throw new InvalidOperationException("This boundary has no observed-event stream."); }
             return;
         }

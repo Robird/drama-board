@@ -378,7 +378,7 @@ public sealed partial class PendingAdvance : IDurableObject {
         // A following Continue may have no timed association; its acceptance fact checks the relation.
         bool validAssociation = Command?.Kind switch {
             PlaygroundCommandKind.Wait or PlaygroundCommandKind.Gather or PlaygroundCommandKind.Produce => ActivityId is not null && MovementGeneration is null,
-            PlaygroundCommandKind.Go => ActivityId is null && MovementGeneration is not null,
+            PlaygroundCommandKind.Go or PlaygroundCommandKind.Navigate => ActivityId is null && MovementGeneration is not null,
             PlaygroundCommandKind.Follow => ActivityId is null && MovementGeneration is null,
             PlaygroundCommandKind.Continue => ActivityId is null || MovementGeneration is null,
             _ => false

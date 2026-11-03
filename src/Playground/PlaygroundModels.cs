@@ -5,13 +5,13 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.Playground;
 
-[DurableType("DramaBoard.Playground.EventKind", 2)]
+[DurableType("DramaBoard.Playground.EventKind", 3)]
 public enum PlaygroundEventKind {
     ResourceRegenerated, LightChanged, ResourceDestroyed, WaitStarted, WaitCompleted,
     GatherStarted, GatherYielded, GatherFinished, ActivityCancelled, AttentionAcknowledged, MoveStarted, MoveArrived,
     SurvivalWarning, SurvivalFailed, ItemUsed, WeatherResolved, HandoffEdited, DecisionContextOpened, OperationRejected, SpeechSent, ItemGiven, GoalOperation,
     FollowStarted, FollowEnded, FollowersDismissed, SpeechShouted,
-    MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven, TradeOffered, TradeAccepted, TradeRejected, TradeWithdrawn, TradesExpired, MapQueried, PathQueried
+    MarketBought, MarketSold, ProductionStarted, ProductionCompleted, MarketRefreshed, MoneyGiven, TradeOffered, TradeAccepted, TradeRejected, TradeWithdrawn, TradesExpired, MapQueried, PathQueried, NavigationCancelled, NavigationCompleted
 }
 public enum PlaygroundPredictionKind { SurvivalFatal, RegenerateResource, ChangeLight, DestroyResource, SpatialOccurrence, Weather, CompleteActivity, MarketRefresh, TradesExpire, SurvivalWarning, RequestDecision }
 public enum PredictionMode { Incremental, Full }

@@ -2,7 +2,7 @@ namespace DramaBoard.Playground;
 
 /// <summary>Application semantics version, independent of durable schema and simulation WorldVersion.</summary>
 public static class PlaygroundGameRevision {
-    public const int Current = 24;
+    public const int Current = 25;
 
     /// <summary>Upgrades restored representations without executing or publishing pending work.</summary>
     /// <remarks>

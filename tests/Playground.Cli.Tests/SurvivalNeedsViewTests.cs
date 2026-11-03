@@ -102,7 +102,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("生存警告（历史记录，待确认）", warningView);
         Assert.Contains("use item.water", warningView);
         Assert.DoesNotContain("- `cancel`", warningView);
-        Assert.Contains("移动途中不可 cancel", warningView);
+        Assert.Contains("本段移动不可取消", warningView);
         Assert.Null(warned.Check(PlaygroundCommand.Use("item.water")));
         Assert.Null(warned.Check(PlaygroundCommand.Continue()));
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {

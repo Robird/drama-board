@@ -16,7 +16,7 @@ public sealed class LlmCharacterController : IPlaygroundCharacterController {
         + "检查同回合反馈：已成功的操作不要重复，拒绝原因未变化时不要原样重试。没有需要记录的新变化时直接行动，无需输出检查清单或完整推理。"
         + "需要补给时可使用界面提供的即时 use 行动。不要调用 Console 元命令。";
 
-    private const string NavigationGuidance = "go 只接受当前可见的本端入口 ID；未完整走通过的入口去向未知。已知地图中的连接来自本人实际走通，去过两个地点不证明两地相连；他人话语和自己的猜测不会增加地图知识。map 和 path 是普通角色命令，不是 Console 元命令；path <目标地点ID> [from <起点地点ID>] 只使用已知地图，途中规划需显式 from。候选只是一份规划，不会自动出发；当前没有自动导航命令，各段仍须实际到当地后使用本地 go。成功 path 替换候选，已知地图中无路清空候选，语法或未知地点拒绝保留原候选。起终点相同只表示规划无需移动，不证明本人已经到达。行程合计不含确认停留、补给与他人干预，不保证安全；map/path 不确认提醒或放行时间。";
+    private const string NavigationGuidance = "go 只接受当前可见的本端入口 ID；未完整走通过的入口去向未知。已知地图中的连接来自本人实际走通，去过两个地点不证明两地相连；他人话语和自己的猜测不会增加地图知识。map 和 path 是普通角色命令，不是 Console 元命令；path <目标地点ID> [from <起点地点ID>] 只使用已知地图，途中规划需显式 from。候选只是一份规划，不会自动出发；navigate <路径ID> 在实际起点空闲且未跟随时启动当前候选，首段立即出发，每到中间地点先观察再用 continue 确认下一段。活动路线独立保存，新 path 不会改动它。成功 path 替换候选，已知地图中无路清空候选，语法或未知地点拒绝保留原候选。起终点相同只表示规划无需移动，不证明本人已经到达。行程合计不含确认停留、补给与他人干预，不保证安全；map/path 不确认提醒或放行时间。导航中间点的 continue 会尝试启动下一段并确认提醒，失败保留路线与提醒；途中 continue 只确认提醒、维持原段期限。cancel 只清剩余导航，不中止已开始的路段，也不自动确认提醒；途中取消后可补给或查询，再 continue，抵达本段终点后停下。仅在已有提醒或抵达等正常决策窗口输入，不提供随时异步输入。活动导航期间 go、follow、采集、生产和等待须先 cancel；途中 cancel 后本段仍不可取消。";
 
     private const string EconomyGuidance = "在镇里可按当前界面买卖与生产。市场的买入价是你付款，卖出价是市场向你付款；库存和收购额度有限，以提交结果为准。"
         + "生产开始时预留全部投入，完成时取得产物；cancel 退回本次未完成生产的预留材料，不产生成品。买卖、补给和通信不会重置原活动期限。"
@@ -41,8 +41,8 @@ public sealed class LlmCharacterController : IPlaygroundCharacterController {
         + "新通信改变你采纳的分工或承诺时，若草稿尚未覆盖，先更新一次 handoff：记明谁承诺何物、自己的下一步及待核实事项。"
         + "旧回合完整对话不会自动带入下一回合；无新增关键信息时直接行动，不重复改写草稿。交接是主观笔记，不是确认过的世界事实。";
 
-    private const string FollowingGuidance = "结伴出行可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、gather、produce 或 wait。"
-        + "领队普通 go 带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
+    private const string FollowingGuidance = "结伴出行可用 follow 主动集合，把移动交给领队；跟随期间不可独立 go、navigate、gather、produce 或 wait。"
+        + "领队 go 和导航每段都带实际队员一起走；抵达不会自动脱队。在工作地点用 unfollow 或 dismiss-followers 分头工作，完成或取消活动后再集合。"
         + "跟随者收到提醒仍需处理，可 use 补给后 continue 继续跟随；say / give 仍仅限同地，途中不能改变跟随关系。";
 
     private const string ShoutGuidance = "地点内的决策窗口可用 shout 大喊召集：署名话语覆盖本地点及声音连接的一跳地点，不继续传播，途中不能发送或接收。"

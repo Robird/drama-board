@@ -95,7 +95,7 @@ internal static class PlaygroundInteractionValidation {
                 "A decision opening requires an unstarted or closed character at an input boundary.");
         }
         PlaygroundCharacter actor = after.GetCharacter(prior.ActorId);
-        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || PlaygroundActions.IsTravelling(after, prior.ActorId);
+        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || PlaygroundActions.IsTravelling(after, prior.ActorId) || after.Expedition?.Navigation(actor.Id) is not null;
         Require(context.Opening.ActivityState == (terminal ? PlaygroundOutcomeActivityState.Terminal : ongoing
             ? PlaygroundOutcomeActivityState.Ongoing : PlaygroundOutcomeActivityState.Completed), "The opening must describe the recorded activity endpoint.");
         ValidateObservation(after, prior.ActorId, context.Opening.Observation);
@@ -107,7 +107,8 @@ internal static class PlaygroundInteractionValidation {
         PendingAdvance pending = next.PendingAdvance ?? throw new InvalidOperationException("A release requires a pending action.");
         bool kindMatches = (pending.Command.Kind, fact.Kind) is
             (PlaygroundCommandKind.Wait, PlaygroundEventKind.WaitStarted) or (PlaygroundCommandKind.Gather, PlaygroundEventKind.GatherStarted) or
-            (PlaygroundCommandKind.Go, PlaygroundEventKind.MoveStarted) or (PlaygroundCommandKind.Continue, PlaygroundEventKind.AttentionAcknowledged) or
+            (PlaygroundCommandKind.Go, PlaygroundEventKind.MoveStarted) or (PlaygroundCommandKind.Navigate, PlaygroundEventKind.MoveStarted) or
+            (PlaygroundCommandKind.Continue, PlaygroundEventKind.MoveStarted) or (PlaygroundCommandKind.Continue, PlaygroundEventKind.AttentionAcknowledged) or
             (PlaygroundCommandKind.Follow, PlaygroundEventKind.FollowStarted) or (PlaygroundCommandKind.Produce, PlaygroundEventKind.ProductionStarted);
         SpatialEntity? entity = after.Expedition?.Spatial.Entities.Single(e => e.Id.Value == prior.ActorId);
         Require(kindMatches && pending.ActorId == fact.ActorId && pending.SourceContextSequence == prior.CurrentContext!.ContextSequence &&
@@ -126,8 +127,8 @@ internal static class PlaygroundInteractionValidation {
                 activity.SelectedAll == pending.Command.All && activity.TargetCount == (pending.Command.All
                     ? before.GetResource(fact.ResourceId!).Stock : pending.Command.Count),
                 "The recorded gathering target and frozen count must match the accepted activity.");
-        } else if (pending.Command.Kind == PlaygroundCommandKind.Go) {
-            Require(entity?.Location is TraversingLocation movement && before.Definition.GetEntrances(((AtPlaceLocation)PlaygroundActions.Location(before, prior.ActorId)!).PlaceId.Value).Any(p => p.Id == movement.PassageId.Value && p.EntranceId == pending.Command.EntranceId),
+        } else if (fact.Kind == PlaygroundEventKind.MoveStarted) {
+            Require(entity?.Location is TraversingLocation movement && PlaygroundNavigationRules.NextEntrance(before, prior.ActorId, pending.Command)?.Id == movement.PassageId.Value,
                 "The recorded passage does not match the movement.");
         } else if (pending.Command.Kind == PlaygroundCommandKind.Wait) {
             Require(pending.Command == PlaygroundCommand.Wait(pending.Command.Hours) &&
@@ -273,6 +274,7 @@ internal static class PlaygroundInteractionValidation {
             PlaygroundCommandKind.Buy => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.BuyPrice > 0),
             PlaygroundCommandKind.Sell => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.SellPrice > 0),
             PlaygroundCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),
+            PlaygroundCommandKind.Navigate => observation.CandidatePath?.Id == entry.Command.PathId,
             PlaygroundCommandKind.Map => observation.IsExpedition,
             PlaygroundCommandKind.Path => observation.KnownMap.Any(p => p.Id == entry.Command.TargetPlaceId) &&
                 (entry.Command.OriginPlaceId is null || observation.KnownMap.Any(p => p.Id == entry.Command.OriginPlaceId)),
@@ -317,6 +319,7 @@ internal static class PlaygroundInteractionValidation {
     }
 
     private static void ValidateKnownGeography(PlaygroundBusinessState state, string actorId, string? place, PlaygroundObservation observation) {
+        Require(PlaygroundNavigation.Same(observation.Navigation, state.Expedition?.Navigation(actorId)), "The recorded navigation must be the personal active route.");
         Require(PlaygroundPath.Same(observation.CandidatePath, state.Expedition?.CandidatePath(actorId)), "The recorded candidate must be the actor current candidate.");
         Require(PlaygroundKnownMap.Same(observation.KnownMap, PlaygroundKnownMap.Observe(state, actorId)), "The recorded map must match only personal confirmed knowledge.");
         PlaygroundVisit[] visits = state.Expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];

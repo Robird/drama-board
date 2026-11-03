@@ -16,8 +16,11 @@ internal static class PlaygroundUpdateRenderer {
                 text.AppendLine($"- {update.Label(pair.Key)}：{value}");
             }
             text.Append(RenderCommandStates(update.CurrentValues));
-            if (update.CurrentValues.Keys.Any(key => key.Category == "navigation")) {
+            if (update.CurrentValues.Keys.Any(key => key.Category == "navigation" && key.Field == "candidate")) {
                 text.Append(NavigationView.RenderCandidate(update.Snapshot.Observation));
+            }
+            if (update.CurrentValues.Keys.Any(key => key.Category == "navigation" && key.Field == "active")) {
+                text.Append(NavigationView.RenderActive(update.Snapshot.Observation));
             }
         }
         if (update.GoalsChanged) {
@@ -165,6 +168,7 @@ internal static class PlaygroundUpdateRenderer {
                 nameof(PlaygroundCommandKind.Give) => $"give {parts[7]} {parts[6]} {parts[3]}",
                 nameof(PlaygroundCommandKind.Follow) => $"follow {parts[7]}",
                 nameof(PlaygroundCommandKind.DismissFollowers) => "dismiss-followers",
+                nameof(PlaygroundCommandKind.Navigate) => $"navigate {parts[17]}",
                 nameof(PlaygroundCommandKind.Map) => "map",
                 nameof(PlaygroundCommandKind.Path) => $"path {parts[15]}" + (parts[16].Length > 0 ? $" from {parts[16]}" : ""),
                 nameof(PlaygroundCommandKind.Go) => $"go {parts[5]}", nameof(PlaygroundCommandKind.Use) => $"use {parts[6]}",

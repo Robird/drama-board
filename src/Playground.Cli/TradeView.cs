@@ -24,7 +24,7 @@ internal static class TradeView {
         text.AppendLine("### 居民报价交易");
         text.AppendLine("`offer <actor-id> <asset> <amount> for <asset> <amount> [hours]`：向同地居民提出用前一资产换后一资产。asset 为 money 或物品 ID；钱为正整数，物品数量为 1–1000；hours 为 1–24 整数小时，省略为 6。报价不预留资产，也不证明对方拥有索取物。");
         text.AppendLine("`accept <trade-id>`：收件人尝试接受同地的有效报价；提交时双方资产、容量与到期条件仍须满足。`reject <trade-id>`：收件人拒绝；`withdraw <trade-id>`：发起方撤回。拒绝与撤回可在不同地点进行，途中仍不能处理报价。");
-        text.AppendLine("这些操作不耗模拟时间、不结束采集或生产、不重置原活动期限、不解除跟随，也不确认已有警告；处理后 continue 保留原期限。只有发起 offer 消耗共享通信发送额度。非成交终态不会转移资产。");
+        text.AppendLine("这些操作不耗模拟时间、不结束采集或生产、不重置原活动期限、不解除跟随，也不确认已有警告；处理后 continue 的含义见当前行动说明。只有发起 offer 消耗共享通信发送额度。非成交终态不会转移资产。");
         foreach (PlaygroundCommandCheck check in observation.Commands.Where(check => check.Command.Kind is PlaygroundCommandKind.Offer or PlaygroundCommandKind.Accept or PlaygroundCommandKind.Reject or PlaygroundCommandKind.Withdraw)) {
             string condition = check.Rejection is { } reason ? "受阻：" + reason
                 : check.Command.Kind == PlaygroundCommandKind.Accept ? "可尝试接受；成交以提交结果为准" : "当前条件允许";

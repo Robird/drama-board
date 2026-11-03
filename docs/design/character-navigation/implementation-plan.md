@@ -1,10 +1,10 @@
 # 实施与验收计划
 
-状态：实施 Goal 进行中，剩余 C–D。入口与个人连接知识见[切片 A](../../experiments/character-navigation-a-acceptance.md)，求路与持久候选见[切片 B](../../experiments/character-navigation-b-acceptance.md)；功能合同见 [设计](design.md)，来源与自主边界见 [入口](README.md)。下列全功能验收仍是目标，不代表已经全部通过。
+状态：实施 Goal 进行中，剩余 D。入口与个人知识、求路候选、逐站导航的工程证据分别见[切片 A](../../experiments/character-navigation-a-acceptance.md)、[切片 B](../../experiments/character-navigation-b-acceptance.md)、[切片 C](../../experiments/character-navigation-c-acceptance.md)；功能合同见 [设计](design.md)，来源与自主边界见 [入口](README.md)。下列全功能验收仍需最终逐项审计，不代表已经全部通过。
 
 ## 1. 实施方式
 
-每个切片由领域实施、呈现接线与独立工程/游戏体验审视协作推进。主线程统一构建、schema 生成与验收；角色协议使用入口身份，Spatial 和原始事实保留 PassageId。下一片将已有不可变 PlaygroundPath 接到活动导航；扩展命令与预览时保持单段移动、确认提醒和跟随的共同校验入口。
+每个切片由领域实施、呈现接线与独立工程/游戏体验审视协作推进。主线程统一构建、schema 生成与验收；角色协议使用入口身份，Spatial 和原始事实保留 PassageId。下一片围绕实际预取分支和真实控制器验收，不再扩充导航玩法。核对同刻到达的实际仲裁顺序，不能把角色名字顺序当作测试前提。
 
 先读取当前 AGENTS.md、PROJECT-STATE 与本目录全部文档，确认源码变化。每轮选择一个有可运行闭环的切片；由有界子任务隔离调查/实现/审阅，主代理独立核验。共享可写构建图的 dotnet 操作串行，不让多个代理同时生成 schema/构建同一图。
 
@@ -14,10 +14,11 @@
 
 | 切片 | 可交付闭环 | 验收重点 |
 | --- | --- | --- |
-| C：导航执行 | navigate 启动首段，逐站唤醒，continue 下一段，cancel 只清剩余路线 | 单段逻辑复用、提醒和失败原子性、跟随同刻到达、终局/互斥/途中取消。 |
 | D：组合验收 | 实际 CLI 与真实 LLM 试玩，lookahead 与 history/恢复闭环，文档与示例命令 | 同一角色视角材料、独立试玩证据、分支不污染、可继续/可取消的可理解性。 |
 
 各切片都应覆盖自己的持久化和呈现闭环，不能把所有恢复工作推到 D。首次 schema/content 变化明确当前版本，按仓库工具生成并 Verify，不手改生成物。
+
+D 的剩余接缝：实际 lookahead 分支中新增知识、求路和推进导航后丢弃，正式根不变；输入变化/一致时分别拒绝/采用预取，采用仍只执行正式命令一次；继承的候选可在分叉中启动，活动路线与候选替换保持隔离。结合真实 LLM 与 Human 入口覆盖完整命令、即时交互、历史导出和续局，再逐项复核 N1–N12，提供独立试玩 home 与命令。已有代理脚本 Console 证据不冒充实际人类体验。
 
 ## 3. 必须通过的场景
 

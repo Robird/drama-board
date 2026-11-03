@@ -27,7 +27,7 @@ internal static class PlayView {
             foreach (string warning in needs.PendingWarnings) { text.AppendLine($"  - {warning}"); }
             text.AppendLine("- 这些警告记录已经发生的危险；即使已经补给也会保留，当前余量以“身体状态”为准。" +
                 (observation.Outcome == PlaygroundExpeditionOutcome.Exploring
-                    ? "use 只补充食物或饮水；continue 确认警告，保留原活动和行程期限。" : "旅程已经结束，无需再确认。"));
+                    ? "use 只补充食物或饮水；" + NavigationView.ContinueMeaning(observation) : "旅程已经结束，无需再确认。"));
         }
         if (!observation.IsExpedition && character.LastResult is { } result) {
             text.AppendLine($"- 上次结果（记录当时状态）：{result}");
@@ -47,7 +47,7 @@ internal static class PlayView {
             text.AppendLine(ended ? "## 结束时的位置" : "## 当前位置");
             text.AppendLine(observation.ArrivalDue is { } arrival
                 ? ended ? $"结束时仍在途中；{JourneyView.Route(observation.Journey!)}；原计划于 {FormatTime(arrival)} 到达，本段行程未完成，不再推进。"
-                    : $"正在途中；{JourneyView.Route(observation.Journey!)}；预计 {FormatTime(arrival)} 到达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）。移动途中不可 cancel；查看或继续不会重置行程。"
+                    : $"正在途中；{JourneyView.Route(observation.Journey!)}；预计 {FormatTime(arrival)} 到达（剩余 {Minutes(arrival.Ticks - observation.Time.Ticks)} 分钟）。本段移动不可取消；活动导航可 cancel 剩余路线，当前路段和期限保持不变。"
                 : $"{observation.PlaceName}：{observation.PlaceDescription}");
             text.AppendLine();
         }
@@ -73,9 +73,11 @@ internal static class PlayView {
                 text.AppendLine("- 此角色已停止安排活动；原推进及中断情况见终局记录。");
             }
         } else if (observation.ArrivalDue is { } due) {
-            text.AppendLine($"- 正在移动，预计 {FormatTime(due)} 到达；当前不可采集、等待或取消移动。");
+            text.AppendLine($"- 正在移动，预计 {FormatTime(due)} 到达；当前不可采集或等待；本段不能取消，导航 cancel 只清剩余路线。");
         } else if (observation.FollowingLeaderId is not null) {
             text.AppendLine("- 正在跟随，等候领队安排行程；处理提醒后 continue 可继续同行。");
+        } else if (observation.Navigation is not null) {
+            text.AppendLine("- 导航在此等待确认；continue 尝试下一段，cancel 清除剩余路线。");
         } else if (character.Activity is not { } activity) {
             text.AppendLine(observation.Outcome != PlaygroundExpeditionOutcome.Exploring ? "- 无待执行的活动。" :
                 observation.IsExpedition ? "- 空闲。可以沿可见通路移动、采集当前位置的资源，或等待。" :
@@ -152,6 +154,7 @@ internal static class PlayView {
         }
         text.Append(NavigationView.RenderMap(observation));
         text.Append(NavigationView.RenderCandidate(observation));
+        text.Append(NavigationView.RenderActive(observation));
         if (observation.Memories.Count > 0) {
             text.AppendLine("## 曾到访地点（历史观察）");
             text.AppendLine("以下是经历留下的记录，保留观察时间；远处余量可能已改变，不表示当前事实。");
@@ -215,19 +218,18 @@ internal static class PlayView {
         EconomyView.RenderCommands(text, observation);
         TradeView.RenderCommands(text, observation);
         text.Append(NavigationView.RenderHelp(observation));
+        text.Append(NavigationView.RenderNavigateCommands(observation));
         if (observation.IsExpedition) {
-            text.AppendLine("- `go <entrance-id>`：沿当前可见入口移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
+            text.AppendLine("- `go <entrance-id>`：沿当前可见入口移动。耗时如下；描述是眼前线索，不保证目的地或安全。已经开始的路段不能取消，活动导航的 cancel 只清除剩余路线。");
             foreach (PlaygroundPassageObservation passage in observation.Passages) {
                 AppendCommand(text, observation, $"go {passage.Id}", PlaygroundCommand.Go(passage.Id),
                     $"{passage.Description}；耗时 {Minutes(passage.DurationTicks)} 分钟" +
                     (passage.KnownDestinationName is { } known ? $"；已确认通向：{known}" : "；这条入口去向未确认"));
             }
         }
-        AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), "确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间");
-        if (observation.ArrivalDue is null) {
-            AppendCommand(text, observation, "cancel", PlaygroundCommand.Cancel(), observation.IsExpedition
-                ? "取消当前活动：采集保留已获物品，生产退回预留投入，等待直接结束；移动不能取消"
-                : "取消当前活动，保留已经获得的物品；随后按轮转选择新活动");
+        AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), NavigationView.ContinueMeaning(observation));
+        if (observation.ArrivalDue is null || observation.Navigation is not null) {
+            AppendCommand(text, observation, "cancel", PlaygroundCommand.Cancel(), NavigationView.CancelMeaning(observation));
         }
         if (observation.Survival is not null) {
             text.AppendLine("- `use <item-id>`：消耗背包内 1 份物品补给，不消耗时间，不改变活动或行程期限，也不确认历史警告。");

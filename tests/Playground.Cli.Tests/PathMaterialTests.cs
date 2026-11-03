@@ -34,7 +34,7 @@ public sealed class PathMaterialTests {
                 Assert.Contains("60 分钟", candidateText);
                 Assert.Contains("不保证安全", candidateText);
                 Assert.DoesNotContain("trail-1", candidateText);
-                Assert.DoesNotContain("navigate", layout.RenderActionHelp(accepted.CurrentContext.LatestObservation));
+                Assert.Contains("navigate", layout.RenderActionHelp(accepted.CurrentContext.LatestObservation));
 
                 await Until(kernel, world => HasItem(world, "map"));
                 CharacterContextItem map = kernel.World.Business.InteractionStates["a"].CurrentContext!.Items.Single(item => item.RawInput == "map");
@@ -83,7 +83,7 @@ public sealed class PathMaterialTests {
         Assert.Contains("行程合计：0 分钟", material);
         Assert.DoesNotContain("已在", material);
         Assert.DoesNotContain("已抵达", material);
-        Assert.DoesNotContain("navigate", layout.RenderActionHelp(planned));
+        Assert.Contains("navigate", layout.RenderActionHelp(planned));
 
         // Isolate the view contract for a no-route result. Domain tests prove which queries clear the slot.
         PlaygroundObservation cleared = WithoutCandidate(planned);

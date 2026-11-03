@@ -55,10 +55,13 @@ public sealed class LlmCharacterControllerTests {
         string gathering = client.Requests[1].PromptPrefix.SystemPrompt;
         Assert.Contains("map 和 path 是普通角色命令", goals);
         Assert.Contains("途中规划需显式 from", goals);
-        Assert.Contains("当前没有自动导航命令", goals);
+        Assert.Contains("navigate <路径ID>", goals);
+        Assert.Contains("活动路线独立保存，新 path 不会改动它", goals);
+        Assert.Contains("cancel 只清剩余导航", goals);
+        Assert.Contains("途中 continue 只确认提醒", goals);
         Assert.Contains("已知地图中无路清空候选", goals);
         Assert.Contains("不证明本人已经到达", goals);
-        Assert.DoesNotContain("navigate", goals);
+
         Assert.Contains("go 只接受当前可见的本端入口 ID", goals);
         Assert.Contains("去过两个地点不证明两地相连", goals);
         Assert.Contains("他人话语和自己的猜测不会增加地图知识", goals);

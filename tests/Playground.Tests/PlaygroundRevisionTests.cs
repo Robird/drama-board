@@ -20,7 +20,7 @@ public sealed class PlaygroundRevisionTests {
         WriteBoundary(store.StorePath, root, hasPending ? new(RecordedYield(root), root.Business.Definition, PlaygroundGameRevision.Current - 1) : null);
         string[] before = DiskFingerprint(store.StorePath);
 
-        Assert.Equal(24, PlaygroundGameRevision.Current);
+        Assert.Equal(25, PlaygroundGameRevision.Current);
         Assert.Throws<InvalidDataException>(() => PlaygroundDurableHistory.Open(store.StorePath));
 
         Assert.Equal(before, DiskFingerprint(store.StorePath));

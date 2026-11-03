@@ -58,6 +58,7 @@ public static class PlaygroundCommandParser {
             return PlaygroundCommand.Give(targetActorId, itemId, itemCount);
         }
         return parts switch {
+            ["navigate", var pathId] => PlaygroundCommand.Navigate(pathId),
             ["map"] => PlaygroundCommand.Map(),
             ["path", var destination] => PlaygroundCommand.Path(destination),
             ["path", var destination, "from", var origin] => PlaygroundCommand.Path(destination, origin),
@@ -76,6 +77,7 @@ public static class PlaygroundCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(PlaygroundCommand command) => command.Kind switch {
+        PlaygroundCommandKind.Navigate => $"navigate {command.PathId}",
         PlaygroundCommandKind.Map => "map",
         PlaygroundCommandKind.Path => $"path {command.TargetPlaceId}" + (command.OriginPlaceId is null ? "" : $" from {command.OriginPlaceId}"),
         PlaygroundCommandKind.Offer => $"offer {command.TargetActorId} {command.GiveAsset!.AssetId} {command.GiveAsset.Amount.ToString(CultureInfo.InvariantCulture)} for {command.WantAsset!.AssetId} {command.WantAsset.Amount.ToString(CultureInfo.InvariantCulture)} {command.Hours.ToString(CultureInfo.InvariantCulture)}",

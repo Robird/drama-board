@@ -121,7 +121,7 @@ public sealed class AttributeForecastViewTests {
         Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = commands ?? source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages, KnownMap = source.KnownMap, CandidatePath = source.CandidatePath,
+        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages, KnownMap = source.KnownMap, CandidatePath = source.CandidatePath, Navigation = source.Navigation,
         Memories = source.Memories, Outcome = outcome ?? source.Outcome, EndingReason = source.EndingReason,
         Survival = survival, Weather = source.Weather
     };

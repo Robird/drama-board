@@ -17,6 +17,7 @@ internal static class PlaygroundFactApplication {
         ValidateRecordedVisits(business, result, fact);
         ValidateRecordedKnowledge(business, fact);
         PlaygroundPathRules.Validate(business, result, fact);
+        PlaygroundNavigationRules.Validate(business, result, fact);
         PlaygroundObservedEventValidation.Validate(business, result, fact);
         PlaygroundGoalInteractionRules.Validate(business, result, fact);
         PlaygroundInteractionValidation.Validate(business, result, fact);
@@ -24,7 +25,7 @@ internal static class PlaygroundFactApplication {
     }
     private static void ValidateRecordedVisits(PlaygroundBusinessState before, PlaygroundBusinessState after, PlaygroundFact fact) {
         if (before.Expedition is null || fact.Kind is PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected or
-            PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.SpeechShouted) {
+            PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted or PlaygroundEventKind.SpeechShouted) {
             if (fact.Visits.Count != 0) { throw new InvalidOperationException("This event cannot create geographic knowledge."); }
             return;
         }
@@ -69,7 +70,7 @@ internal static class PlaygroundFactApplication {
             }
             expedition = expedition.Change(spatial, fact.Visits, fact.Environment, fact.ConfirmedPassages,
                 fact.Kind == PlaygroundEventKind.PathQueried ? fact.ActorId : null, fact.CandidatePath,
-                fact.ChangedCharacters.Where(c => !c.IsActive).Select(c => c.Id));
+                fact.ChangedCharacters.Where(c => !c.IsActive).Select(c => c.Id), fact.NavigationChange);
         }
         return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
             fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges, fact.Economy);
@@ -98,7 +99,7 @@ internal static class PlaygroundFactApplication {
         }
         bool actorEffect = fact.ActorId is not null && fact.ChangedCharacters.Any(c => c.Id == fact.ActorId);
         bool oneResource = fact.ChangedResources.Count == 1 && fact.ChangedResources[0].Id == fact.ResourceId;
-        bool successfulDecision = fact.Kind is PlaygroundEventKind.WaitStarted or PlaygroundEventKind.GatherStarted or PlaygroundEventKind.ActivityCancelled or PlaygroundEventKind.AttentionAcknowledged or PlaygroundEventKind.MoveStarted or PlaygroundEventKind.ItemUsed or PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.SpeechSent or PlaygroundEventKind.ItemGiven or PlaygroundEventKind.SpeechShouted or
+        bool successfulDecision = fact.Kind is PlaygroundEventKind.WaitStarted or PlaygroundEventKind.GatherStarted or PlaygroundEventKind.ActivityCancelled or PlaygroundEventKind.AttentionAcknowledged or PlaygroundEventKind.MoveStarted or PlaygroundEventKind.ItemUsed or PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted or PlaygroundEventKind.SpeechSent or PlaygroundEventKind.ItemGiven or PlaygroundEventKind.SpeechShouted or
             PlaygroundEventKind.FollowStarted or PlaygroundEventKind.FollowEnded or PlaygroundEventKind.FollowersDismissed or PlaygroundEventKind.MarketBought or PlaygroundEventKind.MarketSold or PlaygroundEventKind.ProductionStarted or PlaygroundEventKind.MoneyGiven or PlaygroundEventKind.TradeOffered or PlaygroundEventKind.TradeAccepted or PlaygroundEventKind.TradeRejected or PlaygroundEventKind.TradeWithdrawn;
         bool rejected = fact.Kind == PlaygroundEventKind.OperationRejected;
         bool operation = successfulDecision || rejected;
@@ -117,6 +118,10 @@ internal static class PlaygroundFactApplication {
             (PlaygroundCommandKind.Cancel, PlaygroundEventKind.ActivityCancelled) or
             (PlaygroundCommandKind.Continue, PlaygroundEventKind.AttentionAcknowledged) or
             (PlaygroundCommandKind.Go, PlaygroundEventKind.MoveStarted) or
+            (PlaygroundCommandKind.Navigate, PlaygroundEventKind.MoveStarted) or
+            (PlaygroundCommandKind.Continue, PlaygroundEventKind.MoveStarted) or
+            (PlaygroundCommandKind.Navigate, PlaygroundEventKind.NavigationCompleted) or
+            (PlaygroundCommandKind.Cancel, PlaygroundEventKind.NavigationCancelled) or
             (PlaygroundCommandKind.Use, PlaygroundEventKind.ItemUsed) or
             (PlaygroundCommandKind.Handoff, PlaygroundEventKind.HandoffEdited) or
             (PlaygroundCommandKind.Goal, PlaygroundEventKind.GoalOperation) or
@@ -162,7 +167,7 @@ internal static class PlaygroundFactApplication {
             PlaygroundEventKind.GatherYielded => actorEffect && oneResource && fact.Light is null && fact.Script is null,
             PlaygroundEventKind.GatherStarted or PlaygroundEventKind.GatherFinished => actorEffect && fact.ResourceId is not null && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null,
             PlaygroundEventKind.WaitStarted or PlaygroundEventKind.WaitCompleted or PlaygroundEventKind.ActivityCancelled or PlaygroundEventKind.AttentionAcknowledged or
-                PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected =>
+                PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted or PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected =>
                 actorEffect && fact.ChangedCharacters.Count == 1 && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
             PlaygroundEventKind.MoveStarted or PlaygroundEventKind.MoveArrived or PlaygroundEventKind.FollowStarted or PlaygroundEventKind.FollowEnded or PlaygroundEventKind.FollowersDismissed =>
                 actorEffect && fact.ChangedResources.Count == 0 && fact.Light is null && fact.Script is null && fact.ResourceId is null,
@@ -179,7 +184,7 @@ internal static class PlaygroundFactApplication {
         if (!valid) { throw new InvalidOperationException("Recorded effects do not match the event shape."); }
         ValidateFollowingChanges(business, fact);
         ValidateCommunicationState(business, fact, communication);
-        if (fact.Kind is PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected) {
+        if (fact.Kind is PlaygroundEventKind.HandoffEdited or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted or PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.OperationRejected) {
             PlaygroundCharacter before = business.GetCharacter(fact.ActorId!);
             PlaygroundCharacter after = fact.ChangedCharacters[0];
             if (fact.At != business.Time || !PlaygroundActions.NeedsDecision(business, before.Id) ||
@@ -410,7 +415,7 @@ internal static class PlaygroundFactApplication {
                 if (!prior.IsActive || prior.Activity is not null ||
                     PlaygroundActions.Location(business, prior.Id) is not AtPlaceLocation atPlace ||
                     fact.SpatialFacts[memberIndex] is not TraversalStartedFact start || start.EntityId.Value != prior.Id ||
-                    business.Definition.GetEntrances(atPlace.PlaceId.Value).SingleOrDefault(p => p.EntranceId == command.EntranceId)?.Id != start.PassageId.Value || start.FromPlaceId != atPlace.PlaceId || start.SpeedSnapshot != 1) {
+                    PlaygroundNavigationRules.NextEntrance(business, fact.ActorId!, command)?.Id != start.PassageId.Value || start.FromPlaceId != atPlace.PlaceId || start.SpeedSnapshot != 1) {
                     throw new InvalidOperationException("Every recorded member must start the selected passage from their actual place at the common speed.");
                 }
                 bool own = prior.Id == fact.ActorId;

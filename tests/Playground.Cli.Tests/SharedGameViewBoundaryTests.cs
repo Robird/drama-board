@@ -105,7 +105,7 @@ public sealed class SharedGameViewBoundaryTests {
             Actor = initial.Actor, Resources = initial.Resources, HarvestDurations = initial.HarvestDurations,
             WorldName = initial.WorldName, ItemUseDescriptions = initial.ItemUseDescriptions, ItemNames = initial.ItemNames, OtherCharacters = initial.OtherCharacters, Notices = initial.Notices,
             Commands = initial.Commands, IsExpedition = true, PlaceId = initial.PlaceId, PlaceName = initial.PlaceName,
-            PlaceDescription = initial.PlaceDescription, Passages = initial.Passages, KnownMap = initial.KnownMap, CandidatePath = initial.CandidatePath,
+            PlaceDescription = initial.PlaceDescription, Passages = initial.Passages, KnownMap = initial.KnownMap, CandidatePath = initial.CandidatePath, Navigation = initial.Navigation,
             Survival = initial.Survival, Weather = initial.Weather,
             Outcome = terminal ? PlaygroundExpeditionOutcome.Dead : PlaygroundExpeditionOutcome.Exploring,
             EndingReason = terminal ? "测试终局" : null

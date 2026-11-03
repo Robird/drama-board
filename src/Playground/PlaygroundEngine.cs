@@ -154,6 +154,10 @@ public static class PlaygroundEngine {
                     return new([PlaygroundInteractionRules.Reject(world, prediction.TargetId, operation, rejection)]);
                 }
                 if (command is null) { throw new InvalidOperationException("A successful parse requires an action."); }
+                if (command.Kind == PlaygroundCommandKind.Cancel && world.Expedition?.Navigation(prediction.TargetId) is not null ||
+                    command.Kind == PlaygroundCommandKind.Navigate && world.Expedition?.CandidatePath(prediction.TargetId)?.Steps.Count == 0) {
+                    return new([PlaygroundNavigationRules.Instant(world, prediction.TargetId, command, operation)]);
+                }
                 if (command.Kind is PlaygroundCommandKind.Map or PlaygroundCommandKind.Path) {
                     return new([PlaygroundPathRules.Plan(world, prediction.TargetId, command, operation)]);
                 }

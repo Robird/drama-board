@@ -82,7 +82,11 @@ public sealed class PlayViewTests {
         PlaygroundCharacter viewer = new("a", "Alice", activity: Gather(1), notices: [Joined()], nextActivityId: 2);
         PlaygroundWorld world = World(viewer, new("b", "Bob"));
         string commands = RenderCommands(world, "a");
-        Assert.Contains("- `continue`：确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间；可执行。", commands);
+        string continueLine = Assert.Single(commands.Split('\n'), line => line.StartsWith("- `continue`", StringComparison.Ordinal));
+        Assert.Contains("确认感知与通信", continueLine);
+        Assert.Contains("原期限", continueLine);
+        Assert.Contains("闲置时确认不推进时间", continueLine);
+        Assert.Contains("可执行", continueLine);
         Assert.Contains("- `gather sunflower all`", commands);
         Assert.Contains("受阻：已有耗时活动，请先 cancel。", commands);
         Assert.Contains("小时数 1–24 受阻", commands);

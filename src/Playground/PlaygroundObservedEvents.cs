@@ -6,7 +6,7 @@ namespace DramaBoard.Playground;
 /// <summary>Application-specific explanatory material, assembled after every business enrichment.</summary>
 internal static class PlaygroundObservedEvents {
     internal static PlaygroundFact Attach(PlaygroundWorld world, PlaygroundFact fact, string? draftAfter = null) {
-        if (fact.Kind is PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried) { return fact; }
+        if (fact.Kind is PlaygroundEventKind.DecisionContextOpened or PlaygroundEventKind.GoalOperation or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried or PlaygroundEventKind.NavigationCancelled or PlaygroundEventKind.NavigationCompleted) { return fact; }
         var events = new List<PlaygroundObservedEvent>();
         GraphSpatialState? afterSpatial = world.Expedition?.Spatial;
         foreach (GraphSpatialFact movement in fact.SpatialFacts) {

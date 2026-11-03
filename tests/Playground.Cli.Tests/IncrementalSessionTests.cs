@@ -91,7 +91,7 @@ public sealed class IncrementalSessionTests {
             Commands = original.Commands.Select(entry => entry.Command == PlaygroundCommand.Wait(24)
                 ? entry with { Warning = "长等待专属风险" } : entry).ToArray(),
             IsExpedition = true, PlaceId = original.PlaceId, PlaceName = original.PlaceName, PlaceDescription = original.PlaceDescription,
-            Passages = original.Passages, KnownMap = original.KnownMap, CandidatePath = original.CandidatePath, Survival = original.Survival, Weather = original.Weather,
+            Passages = original.Passages, KnownMap = original.KnownMap, CandidatePath = original.CandidatePath, Navigation = original.Navigation, Survival = original.Survival, Weather = original.Weather,
             Memories = [new("旧果园", original.Time, [new PlaygroundResource("old-berries", "旧果树", "item.food", true,
                 PlaygroundTime.Hour, 9, 7)], "old-orchard")]
         };

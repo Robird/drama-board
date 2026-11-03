@@ -106,6 +106,7 @@ internal static class PlaygroundInteractionRules {
     }
 
     internal static bool ReleasesSimulation(PlaygroundBusinessState candidate, string actorId, PlaygroundCommand command) =>
+        command.Kind == PlaygroundCommandKind.Navigate && PlaygroundActions.IsTravelling(candidate, actorId) ||
         command.Kind is PlaygroundCommandKind.Go or PlaygroundCommandKind.Wait or PlaygroundCommandKind.Gather or PlaygroundCommandKind.Follow or PlaygroundCommandKind.Produce ||
         command.Kind == PlaygroundCommandKind.Continue && !PlaygroundActions.NeedsDecision(candidate, actorId);
 
@@ -122,7 +123,7 @@ internal static class PlaygroundInteractionRules {
         long contextSequence = checked((state.CurrentContext?.ContextSequence ?? 0) + 1);
         PlaygroundObservation observation = PlaygroundDecisionContext.ObserveOpening(world, state.ActorId, contextSequence);
         PlaygroundCharacter actor = world.GetCharacter(state.ActorId);
-        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || PlaygroundActions.IsTravelling(world, state.ActorId);
+        bool ongoing = actor.Activity is not null || actor.FollowingLeaderId is not null || PlaygroundActions.IsTravelling(world, state.ActorId) || world.Expedition?.Navigation(actor.Id) is not null;
         var opening = new CharacterContextOpening(PlaygroundBackground.For(observation), observation, state.PendingAdvance,
             world.Time, terminal ? PlaygroundOutcomeActivityState.Terminal : ongoing ? PlaygroundOutcomeActivityState.Ongoing : PlaygroundOutcomeActivityState.Completed,
             experiences);
@@ -144,6 +145,9 @@ internal static class PlaygroundInteractionRules {
     }
 
     internal static string DescribeAdvance(PlaygroundCommand command, PlaygroundObservation known, bool travelling) => command.Kind switch {
+            PlaygroundCommandKind.Navigate => "沿导航首段出发：" + known.Passages.Single(p => p.Id == known.CandidatePath!.Steps[0].EntranceId).Description,
+            PlaygroundCommandKind.Continue when known.ArrivalDue is null && known.Navigation is { } active =>
+                "确认并出发下一段：" + known.Passages.Single(p => p.Id == active.Path.Steps[active.CompletedSteps].EntranceId).Description,
             PlaygroundCommandKind.Go => known.Passages.Single(p => p.Id == command.EntranceId).Description,
             PlaygroundCommandKind.Gather => $"采集{known.Resources.Single(r => r.Id == command.ResourceId).Name}",
             PlaygroundCommandKind.Wait => $"在原地等待 {command.Hours} 小时",

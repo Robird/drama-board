@@ -1,6 +1,6 @@
 # 功能与实现设计
 
-状态：入口与个人连接知识见[切片 A](../../experiments/character-navigation-a-acceptance.md)，map/path 与持久候选见[切片 B](../../experiments/character-navigation-b-acceptance.md)；导航执行待实施。要求来源见 [需求账本](README.md)。本篇为完整目标的规范性正文；尚未实施部分的命名不表示存在同名 API。
+状态：入口与个人知识、map/path 与持久候选、逐站导航分别见[切片 A](../../experiments/character-navigation-a-acceptance.md)、[切片 B](../../experiments/character-navigation-b-acceptance.md)、[切片 C](../../experiments/character-navigation-c-acceptance.md)。核心实现已落地，预取隔离、真实模型与最终组合验收仍待完成。要求来源见 [需求账本](README.md)，本篇为完整目标的规范性正文。
 
 ## 1. 用户体验与知识边界
 
