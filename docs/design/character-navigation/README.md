@@ -1,6 +1,6 @@
 # 角色地图知识与导航
 
-状态：实施 Goal 进行中。入口与个人连接知识见[切片 A](../../experiments/character-navigation-a-acceptance.md)，map/path 与持久候选见[切片 B](../../experiments/character-navigation-b-acceptance.md)，逐站导航见[切片 C](../../experiments/character-navigation-c-acceptance.md)；剩余预取隔离、真实模型运行和最终组合验收见实施计划。
+状态：实施 Goal 已完成；N1–N12 的当前组合证据、真实模型运行与边界见[最终验收](../../experiments/character-navigation-d-acceptance.md)。历史分片证据为[入口与知识 A](../../experiments/character-navigation-a-acceptance.md)、[求路候选 B](../../experiments/character-navigation-b-acceptance.md)、[逐站导航 C](../../experiments/character-navigation-c-acceptance.md)。可直接使用[试玩指南](playtest.md)。
 
 最小模型：**每个角色保存自己的空间知识，用已知连接求路，保存一份候选路径与一份活动导航计划，按现有移动规则逐段走，每到中间点由角色确认继续。未走通的通道只暴露本端入口。**
 

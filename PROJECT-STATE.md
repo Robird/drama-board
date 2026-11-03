@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)的实施 Goal 进行中。入口与知识、求路候选、逐站导航的工程证据见[切片 A](docs/experiments/character-navigation-a-acceptance.md)、[B](docs/experiments/character-navigation-b-acceptance.md)、[C](docs/experiments/character-navigation-c-acceptance.md)。下一片验证实际 lookahead 分支的知识/候选/导航隔离、正式采用只执行一次、真实 LLM 完整命令与历史/续局；再按 N1–N12 审计并提供独立试玩 home。由工程与体验两种视角审视，剩余验收合同见[实施计划](docs/design/character-navigation/implementation-plan.md)；尚未验证的目标不视为完成。
+**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)已完成实现与[组合验收](docs/experiments/character-navigation-d-acceptance.md)，可从[独立试玩 home](docs/design/character-navigation/playtest.md)体验；当前无导航施工待办。静态个人地图、逐站确认与同版本恢复保持为合同。真实模型在复合任务中曾沿用过期目标进度，一次正常 Console 阶段纠正后完成收尾；该证据作为后续经历管理/目标消费研究输入，不据此开启自动摘要或目标执行器。下一步按实际试玩反馈选择机制实验，原有独立真人合作验收仍保留。
 
 [预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及 [Playground 单分支预取](docs/research/playground-speculative-lookahead/results/summary.md)已完成原定验收并纳入本地主线，默认关闭；采用仅限完整请求/目标匹配，仍由唯一 Kernel 串行提交。[Human 等待与真实模型测量](docs/research/playground-speculative-lookahead/results/real-performance.md)保留收益及额外调用/远端取消未知的证据边界，研究暂无施工待办，见[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)。
 
@@ -63,7 +63,7 @@ Mud 体验复用见[可行性调查](docs/research/mud-experience-portability.md
 
 **操作身份**：[PlaygroundOperationAudit](src/Playground.Cli/PlaygroundOperationAudit.cs) 在解析前保存 Console 操作的隐式 ToolCallId（带外 `:feedback` 在 Receive 前分流），覆盖查询/拒绝/元命令；结果同 ID 配对并由唯一 [HostJournal](src/Playground.Cli/PlaygroundHostJournal.cs) 刷盘。宿主日志与 E/S 各自提交，冷开仅对账当前分支自己的输入及世界提交，不重做动作、不恢复已裁剪拒绝；LLM 保留 Completion 交付值，端点格式映射仍归兄弟项目 Completion。
 
-**初始化与修订**：[PlaygroundGameFactory](src/Playground/PlaygroundGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 22](src/Playground/Persistence/PlaygroundGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
+**初始化与修订**：[PlaygroundGameFactory](src/Playground/PlaygroundGameFactory.cs) 统一内存/磁盘新游戏边界；[加载编排](docs/design/game-initialization-and-revision.md) 分离还原、内存修订与运行就绪，S/E 各自带 `GameRevision`，加载不执行事件、不推进游标、不写游戏 E/S。State 转换独立于 pending，跨图用领域 ID；[验收](docs/experiments/game-revision-acceptance.md)覆盖中断窗口。生产只接受[修订 25](src/Playground/Persistence/PlaygroundGameRevision.cs)，大喊相关 Schema 边界见[大喊验收](docs/experiments/spatial-shout-acceptance.md)；旧开发存档不兼容，跨版本转换仅为夹具。CLI 在加载后恢复 pending 并修复宿主操作结果；多模块版本和通用框架按真实需求重开。
 
 当前构建包含三个核心、Inventory、Goals、CharacterControl.Completion、CharacterGym、Playground 领域/Completion 适配/Console 及测试；其余旧应用层采用固定 tag 与[仓内归档](docs/archive/player-runtime.md)保存，不因新实例方向自动解冻。
 

@@ -77,7 +77,7 @@
 
 ## 角色地图与导航
 
-以下术语见[地图与导航设计](design/character-navigation/README.md)。入口、个人知识、冻结地图、候选与活动导航已实现；全功能组合验收仍在进行。活动导航持有不可变 PlaygroundPath 与完成段数，候选替换不会修改活动路线。
+以下术语见[地图与导航设计](design/character-navigation/README.md)。入口、个人知识、冻结地图、候选与活动导航已实现；[全功能组合验收](experiments/character-navigation-d-acceptance.md)已完成。活动导航持有不可变 PlaygroundPath 与完成段数，候选替换不会修改活动路线。
 
 | 术语 | 含义与边界 |
 | --- | --- |

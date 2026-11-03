@@ -35,6 +35,64 @@ public sealed class CharacterMapKnowledgeTests {
     }
 
     [Fact]
+    public async Task First_traversal_warning_map_and_cold_state_do_not_confirm_the_destination_before_real_arrival() {
+        using var store = new TemporaryStore();
+        PlaygroundWorld initial = PlaygroundGameFactory.CreateSurvival(Hour(8), enableNeeds: true, enableWeather: false).World;
+        PlaygroundCharacter actor = initial.GetCharacter("a");
+        var body = new PlaygroundSurvival(initial.Time, 100 * PlaygroundSurvival.Scale, 29 * PlaygroundSurvival.Scale,
+            100 * PlaygroundSurvival.Scale, Rate(0), PlaygroundSurvivalRules.WaterRate, Rate(0));
+        initial = PlaygroundEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [actor.WithSurvival(body)]), initial.Time);
+        Assert.False(initial.Expedition!.KnowsPassage("a", "trail-1"));
+        KernelCursor savedCursor;
+        TraversingLocation savedSegment;
+        string savedState;
+        using (var history = PlaygroundDurableHistory.Create(store.StorePath, initial, InitialCursor(initial))) {
+            var kernel = PlaygroundEngine.CreateKernel(history, characterController: Commands(PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Map()));
+            await Until(kernel, PlaygroundEventKind.MoveStarted);
+            await Until(kernel, PlaygroundEventKind.SurvivalWarning);
+            Assert.True(kernel.World.GetCharacter("a").Survival!.PendingMask > 0);
+            Assert.False(kernel.World.Expedition!.KnowsPassage("a", "trail-1"));
+            Assert.Null(PlaygroundDecisionContext.Observe(kernel.World, "a").Journey!.KnownDestinationName);
+            savedSegment = Assert.IsType<TraversingLocation>(PlaygroundActions.Location(kernel.World, "a"));
+            string warning = MaterialSnapshot(kernel.World.GetCharacter("a").Survival);
+            await Until(kernel, PlaygroundEventKind.MapQueried);
+            Assert.Equal(warning, MaterialSnapshot(kernel.World.GetCharacter("a").Survival));
+            Assert.Equal(savedSegment, PlaygroundActions.Location(kernel.World, "a"));
+            Assert.False(kernel.World.Expedition!.KnowsPassage("a", "trail-1"));
+            PlaygroundObservation mapResult = kernel.World.Business.InteractionStates["a"].CurrentContext!.LatestObservation;
+            Assert.Null(mapResult.Journey!.KnownDestinationName);
+            Assert.Equal("camp", Assert.Single(mapResult.KnownMap).Id);
+            Assert.Null(Assert.Single(mapResult.KnownMap[0].Entrances, entry => entry.Id == "e-c7").KnownDestinationId);
+            Assert.DoesNotContain("溪流湾", kernel.LastCompletion!.Event.Facts.Single().Result!);
+            savedCursor = history.Cursor;
+            savedState = MaterialSnapshot(history.State.Business);
+            Assert.Null(history.PendingEvent);
+        }
+        using (var reopened = PlaygroundDurableHistory.Open(store.StorePath)) {
+            Assert.Equal(savedCursor, reopened.Cursor);
+            Assert.Equal(savedState, MaterialSnapshot(reopened.State.Business));
+            Assert.False(reopened.State.Expedition!.KnowsPassage("a", "trail-1"));
+            Assert.Equal(savedSegment, PlaygroundActions.Location(reopened.State, "a"));
+            PlaygroundObservation restored = reopened.State.Business.InteractionStates["a"].CurrentContext!.LatestObservation;
+            Assert.Null(restored.Journey!.KnownDestinationName);
+            Assert.Equal("camp", Assert.Single(restored.KnownMap).Id);
+            Assert.True(reopened.State.GetCharacter("a").Survival!.PendingMask > 0);
+            var resumed = PlaygroundEngine.CreateKernel(reopened, characterController: new PathQueryTests.RawScript("continue"));
+            Assert.False(resumed.RecoverPending());
+            await Until(resumed, PlaygroundEventKind.AttentionAcknowledged);
+            Assert.Equal(savedSegment, PlaygroundActions.Location(resumed.World, "a"));
+            Assert.False(resumed.World.Expedition!.KnowsPassage("a", "trail-1"));
+            Assert.Null(PlaygroundDecisionContext.Observe(resumed.World, "a").Journey!.KnownDestinationName);
+            await Until(resumed, PlaygroundEventKind.MoveArrived);
+            Assert.Equal(Hour(9), resumed.World.Time);
+            Assert.Equal("stream", PlaygroundActions.CurrentPlace(resumed.World, "a"));
+            Assert.Equal(new PlaygroundConfirmedPassage("a", "trail-1"), Assert.Single(resumed.World.Expedition!.ConfirmedPassages));
+            PlaygroundObservation arrived = PlaygroundDecisionContext.Observe(resumed.World, "a");
+            Assert.Equal("林间营地", Assert.Single(arrived.Passages, entry => entry.Id == "e-n4").KnownDestinationName);
+        }
+    }
+
+    [Fact]
     public async Task Actually_reaching_both_ends_via_a_detour_does_not_confirm_an_untravelled_shortcut() {
         PlaygroundWorld initial = PlaygroundGameFactory.CreateSurvival(Hour(8), enableNeeds: false, enableWeather: false).World;
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(

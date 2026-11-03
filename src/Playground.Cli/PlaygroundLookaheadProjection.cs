@@ -31,7 +31,7 @@ internal static class PlaygroundLookaheadProjection {
         }
         var initial = PlaygroundDecisionContext.Create(source, actorId);
         var actor = source.GetCharacter(actorId);
-        bool continuing = actor.Activity is not null || actor.FollowingLeaderId is not null ||
+        bool continuing = actor.Activity is not null || actor.FollowingLeaderId is not null || source.Expedition?.Navigation(actorId) is not null ||
             PlaygroundActions.Location(source, actorId) is DramaBoard.Spatial.TraversingLocation;
         PlaygroundCommand predicted = continuing ? PlaygroundCommand.Continue() : PlaygroundCommand.Wait(1);
         if (initial.Check(predicted) is not null) { return Finish(StopReason.CannotPredict); }
