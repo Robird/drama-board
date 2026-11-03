@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：前期[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md) 已完成 C1–C8。用户已确认下一阶段[Playground 单分支推演与 LLM 预取](docs/research/playground-speculative-lookahead/README.md)：在 `experiment/playground-speculative-lookahead` 分支准备实际宿主连续运行原型；预测 A 的一个合法动作，完整输入匹配才复用 B 的响应，保留唯一 Kernel 串行提交且默认关闭。当前只有初始方案，等待用户启动新 Goal；唯一施工入口为专题[工作计划](docs/research/playground-speculative-lookahead/work-plan.md)。最终按连续运行的收益、浪费和维护成本提出合并建议，不自动合并主线。
+**当前焦点与下一步**：前期[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md) 已完成 C1–C8。用户已确认下一阶段[Playground 单分支推演与 LLM 预取](docs/research/playground-speculative-lookahead/README.md)：在 `experiment/playground-speculative-lookahead` 分支准备实际宿主连续运行原型；预测 A 的一个合法动作，完整输入匹配才复用 B 的响应，保留唯一 Kernel 串行提交且默认关闭。新 Goal 已启动，正在接线默认关闭的实际宿主预取与统一物理预算；唯一施工入口为专题[工作计划](docs/research/playground-speculative-lookahead/work-plan.md)。最终按连续运行的收益、浪费和维护成本提出合并建议，不自动合并主线。
 
 [home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 

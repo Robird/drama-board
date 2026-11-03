@@ -5,4 +5,4 @@ internal sealed record PlaygroundHostOptions(int MaxCalls = 128, int MaxFailures
     string? LogPath = null, bool? Gym = null, string? Branch = null,
     ModelTime? Until = null, int MaxSteps = 10_000, string? Content = null,
     string? ConnectionsPath = null, string? CharacterControlsPath = null, string? HomePath = null,
-    CharacterControlConfiguration? Controls = null);
+    CharacterControlConfiguration? Controls = null, bool Lookahead = false);

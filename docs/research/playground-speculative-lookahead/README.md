@@ -1,6 +1,6 @@
 # Playground 单分支推演与 LLM 预取
 
-2026-11-03。用户已确认本方向；本轮仅创建实验分支和初始文档，后续由用户启动新的 Codex Goal 实施。当前没有新增运行时实现或本阶段实验结果。
+2026-11-03。用户已启动 Codex Goal 实施本研究。当前施工状态见[工作计划](work-plan.md)；以下 G1–G7 保持原定完成合同。
 
 - 仓库：`E:/repos/Atelia-org/drama-board`。
 - 实验分支：`experiment/playground-speculative-lookahead`，起点 `3ddc384`。

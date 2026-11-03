@@ -56,6 +56,8 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 每次模型调用收到角色保留的 Context，并通过 `act` 提交操作。领域层负责校验与提交。`--max-calls` 默认 128，`--max-failures` 默认 3，`--max-context-chars` 默认 200000；调用预算、连续协议失败、取消或失败响应会暂停宿主，不替角色选择替代行动。每次运行的模型原始审计在首次调用时懒建为 `llm-runs/<RunId>.jsonl`，`--llm-log PATH` 可指定位置；全 Human 不创建模型文件。统一宿主日志内联保存人物阅读需要的材料，实际 actor、connection、model 与 protocol 不进入世界。启动参数以当前 `--help` 为准。
 
+实验分支支持 `--lookahead on|off`（默认 `off`），也可在 `playground.json` 写 `"lookahead": "on"`，CLI 优先。开启后在独立内存世界预测一个合法动作，提前请求下一位合适角色；实际完整输入匹配才采用响应。所有需求、预取及工具续轮共用 `--max-calls` 物理调用预算，采用已有响应不再次扣除；未采用内容只在 raw 的 `lookahead-event` 中记录。仅使用本次运行已就绪的连接，不为预取单独触发认证。该模式仍在[单分支预取研究](docs/research/playground-speculative-lookahead/README.md)验收中，尚无性能或合并结论。
+
 ## 操作与个人材料
 
 使用界面显示的当前地点通路、资源和角色编号行动：

@@ -32,6 +32,8 @@
 
 捕获快照和启动候选的精确插入点由第一工作包确认。不要为触发预取而新增第二个世界写者，或从仍在构造、尚未发布的 A 事实建立来源。
 
+P0 接线裁决：在实际 `ChooseCommandAsync` 栈内一次性捕获 `history.State/Cursor`，其上层 Kernel 尚在等待 Plan、未发布本步 E；client gate 先调用需求 provider，再推演此快照。采用身份包括预计与实际的 `ContextSequence`、`LastOperationSequence`、角色、时间及运行/分支身份，不要求来源全局 cursor 相等，也不硬编码操作序号为 0。独立普通控制器捕获 B 的首请求后立即退出，不获得物理响应。完整请求首版限定为普通首轮的 Observation、空 Tail 及现有标量工具合同；不支持的形状停止预取，实际需求仍正常执行。
+
 ## 默认预测器
 
 首版把“持续当前活动”作为假设，不把它称为保守安全证明。预测成功率只影响浪费率，正确性归实际采用验证。
@@ -63,6 +65,10 @@
 
 沿用实际调用总预算和连接池；审计现有控制器逻辑次数与宿主物理调用计数，避免预取收费一次、采用时又重复计数，也不能让预取绕过上限。复用响应不借用另一个仍在使用的 ToolSession。单次请求期限由宿主 token 控制，不在 transport 添加超时或自动重试。
 
+P0 已确认旧 `MaxCalls` 仅是共享 `LlmDecisionLoop` 的逻辑计数。开启预取时由运行级协调器统一控制物理调用上限，普通 loop 不再以相同额度对采用重复扣账；需求、候选、纠正及反馈续轮都经过物理准入。`LlmRawAudit.RecordLookahead` 以同一写锁记录独立 `lookahead-event`，普通 host/session Trace 仍只由实际串行控制器调用。raw 的物理完成与实际逻辑交付不可相加计算 usage。
+
+P1/P2 的具体取舍：预取仅使用本次运行中已由真实需求解析成功的连接，以配置 connectionId 缓存其 binding；目标连接尚未就绪就跳过。这样不同连接可在各自被实际使用后参与预取，不让投机准备触发慢认证。完成且不再被候选持有的 Task/响应/CTS 在下一服务或调用前观察并释放，不保留全运行响应集合。停止时只取消仍在途请求，并在连接池销毁前观察全部剩余任务。默认推演上限为 128 步、24 模型小时、250ms；墙钟限制为步骤间协作式检查，不能抢占单次同步规则或渲染。
+
 预计请求与真实采用边界分别记录。候选未采用前，其 reasoning/response/假设操作不能进入角色经历；采用时关联既有物理请求，保留实际边界。尽量扩展现有 raw/host 诊断接缝，不建设第二份恢复权威或重复写世界事件。
 
 暂停、EOF、取消、异常和进程冷开要分别定义。正常结束观察/排空本地任务后释放连接，主错与清理错分别保留；进程中断后的物理结果可能未知，冷开不恢复候选、不自动补发。已持久的 pending E 仍只应用保存事实。原有 Human 等待边界不被推演跨越；首版不为 Human 预测并执行真实输入。
@@ -72,6 +78,8 @@
 首先在 Playground 宿主层放一个小的预取协调对象，组合预测控制器、内存 Kernel 和 Completion 响应复用。可以在实际需求出现时提取纯推演辅助类；不要先新增程序集或宽泛 public API。
 
 模式属于运行时 home 配置或 CLI 覆盖，沿用现有优先级和严格校验；不入 DurableGraph Schema。首版只需关闭/开启两个模式，数量上限和预测器可以先固定并进入实验 manifest，不必把所有内部常量都暴露为用户选项。最终实际命令和配置示例须在交接时记录。
+
+当前实现为 `--lookahead on|off`，home 的 `playground.json` 顶层字段为 `"lookahead": "on"|"off"`，省略默认为 off，CLI 优先。raw 的 `lookahead-event` 内含种类、运行内单调时间、在途计数及细节；`actual-dispatch` 把真实逻辑 RequestId 与 PhysicalId 关联，采用缓存、协议纠正和反馈续轮分别保留关联。物理 usage 只按 `physical-completed` 统计。累计 Service/Demand/Projection/Comparison/RemainingResponseWait 存在嵌套与并发，不能相加冒充工作墙钟。
 
 ## 实验顺序和口径
 

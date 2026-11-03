@@ -27,6 +27,7 @@ try {
               --until-hour N      绝对模拟小时上界；达到后暂停
               --steps N           提交转换上限（默认 10000）
               --gym off|record     详细角色/模型记录；持久运行默认 record，内存运行默认 off
+              --lookahead off|on   LLM 预取；默认 off，覆盖 home 的 lookahead 配置
               --branches          列出分支，不运行游戏
               --feedbacks         列出独立反馈 JSONL；可选 --branch / --actor；--ephemeral 查询 home 内存运行报告
               --gym-export FILE   导出角色 history 到新文件；需 --actor，可选 --branch

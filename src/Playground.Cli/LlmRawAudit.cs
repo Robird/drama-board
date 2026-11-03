@@ -19,6 +19,7 @@ internal sealed class LlmRawAudit : IDisposable {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters = { new JsonStringEnumConverter() }
     };
+    private readonly object _gate = new();
     private readonly string? _path;
     private readonly string _runId;
     private readonly Func<Stream>? _openForTesting;
@@ -38,9 +39,13 @@ internal sealed class LlmRawAudit : IDisposable {
 
     internal static LlmRawAudit CreateForTesting(Stream stream, string runId) => new(stream, runId);
 
-    public bool IsFaulted => _faulted;
+    public bool IsFaulted { get { lock (_gate) { return _faulted; } } }
 
     public long? Trace(LlmControllerTrace trace) {
+        lock (_gate) { return TraceCore(trace); }
+    }
+
+    private long? TraceCore(LlmControllerTrace trace) {
         RequireUsable();
         ArgumentNullException.ThrowIfNull(trace);
         if (trace.Kind == LlmControllerTraceKind.Feedback || _path is null && _openForTesting is null) { return null; }
@@ -70,19 +75,41 @@ internal sealed class LlmRawAudit : IDisposable {
             if (trace.Kind != LlmControllerTraceKind.Request) {
                 throw new InvalidOperationException("Raw model evidence must start with a constructed request.");
             }
-            try {
-                if (_openForTesting is not null) { _stream = _openForTesting(); }
-                else {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_path!)!);
-                    _stream = new FileStream(_path!, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-                }
-                Append("metadata", new { FormatVersion = 1, RunId = _runId, Purpose = "completion-raw-audit" });
-            } catch {
-                _faulted = true;
-                throw;
-            }
+            EnsureOpened();
         }
         return Append(kind, payload);
+    }
+
+    /// <summary>Records physical lookahead evidence independently of actual character delivery.</summary>
+    public long? RecordLookahead(string kind, object payload) {
+        lock (_gate) {
+            RequireUsable();
+            if (!IsLookaheadKind(kind)) {
+                throw new ArgumentException("Lookahead evidence kinds must start with lookahead- and include a name.", nameof(kind));
+            }
+            ArgumentNullException.ThrowIfNull(payload);
+            if (_path is null && _openForTesting is null) { return null; }
+            EnsureOpened();
+            return Append("lookahead-event", new { Kind = kind, Data = payload });
+        }
+    }
+
+    private static bool IsLookaheadKind(string? kind) => kind is not null &&
+        kind.StartsWith("lookahead-", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(kind[10..]);
+
+    private void EnsureOpened() {
+        if (_stream is not null) { return; }
+        try {
+            if (_openForTesting is not null) { _stream = _openForTesting(); }
+            else {
+                Directory.CreateDirectory(Path.GetDirectoryName(_path!)!);
+                _stream = new FileStream(_path!, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+            }
+            Append("metadata", new { FormatVersion = 1, RunId = _runId, Purpose = "completion-raw-audit" });
+        } catch {
+            _faulted = true;
+            throw;
+        }
     }
 
     private long Append(string kind, object payload) {
@@ -132,8 +159,14 @@ internal sealed class LlmRawAudit : IDisposable {
                     if (record.FormatVersion != 1 || record.Sequence != line.Sequence || string.IsNullOrWhiteSpace(record.RunId) ||
                         record.Payload.ValueKind != JsonValueKind.Object ||
                         (records.Count == 0) != (record.Kind == "metadata") ||
-                        record.Kind is not ("metadata" or "model-request" or "model-response" or "model-failure")) {
+                        record.Kind is not ("metadata" or "model-request" or "model-response" or "model-failure" or "lookahead-event")) {
                         throw new InvalidDataException("Invalid raw audit record metadata.");
+                    }
+                    if (record.Kind == "lookahead-event" &&
+                        (!record.Payload.TryGetProperty("Kind", out JsonElement eventKind) ||
+                         eventKind.ValueKind != JsonValueKind.String || !IsLookaheadKind(eventKind.GetString()) ||
+                         !record.Payload.TryGetProperty("Data", out _))) {
+                        throw new InvalidDataException("Invalid lookahead raw audit event.");
                     }
                     if (runId is null) {
                         runId = record.RunId;
@@ -164,6 +197,10 @@ internal sealed class LlmRawAudit : IDisposable {
     }
 
     public void Dispose() {
+        lock (_gate) { DisposeCore(); }
+    }
+
+    private void DisposeCore() {
         if (_disposed) { return; }
         _disposed = true;
         // A failed flush already determines the outcome. Disposal must not replace that original error.

@@ -133,7 +133,7 @@ internal static class PlaygroundHost {
             string bindingSummary = string.Join("，", bindings.Select(pair => $"{pair.Key} = {pair.Value}"));
             output.WriteLine($"山野镇 / Hillside · home：{options.HomePath ?? "(程序注入)"} · store：{store ?? "(内存)"} · branch：{durable?.CurrentBranch.BranchId ?? "(内存)"}\n"
                 + $"内容：{kernel.World.Definition.ContentId} / {kernel.World.Definition.Fingerprint} · 角色绑定：{bindingSummary}\n"
-                + $"预算：calls={options.MaxCalls}, failures={options.MaxFailures}, context={options.MaxContextCharacters}, steps={options.MaxSteps}, until={options.Until} · Gym：{(detailed ? "record" : "off")}\n"
+                + $"预算：calls={options.MaxCalls}, failures={options.MaxFailures}, context={options.MaxContextCharacters}, steps={options.MaxSteps}, until={options.Until} · Gym：{(detailed ? "record" : "off")} · Lookahead：{(options.Lookahead ? "on" : "off")}\n"
                 + $"连接配置：{options.ConnectionsPath ?? "(程序注入)"} · 控制配置：{options.CharacterControlsPath ?? "(默认/程序注入)"} · 模型原始审计：{(logPath is null ? "(未配置位置)" : Path.GetFullPath(logPath))}（首次调用创建）。Ctrl+C 暂停。");
             if (recovered) { output.WriteLine("已完成上次中断时保存的行动；没有重新询问控制器。"); }
             if (journal.DiscardedTailBytes > 0) { output.WriteLine($"宿主记录末尾 {journal.DiscardedTailBytes} 字节未完整写入；已丢弃未完成尾，游戏进度按已提交 E/S 恢复。"); }
@@ -148,80 +148,113 @@ internal static class PlaygroundHost {
                 }
             }
             bool publishingDiagnostics = false;
-            try {
-                forwarding.Inner = new LlmCharacterController(async (actorId, token) => {
-                    if (configuration is not null) {
-                        return await pool!.GetAsync(((CharacterControlBinding.Llm)bindings[actorId]).ConnectionId, token);
-                    }
-                    if (suppliedClient is not null) { return new LlmDecisionBinding(suppliedClient, "fixture-model", "fixture"); }
-                    throw new ArgumentException("LLM 决策需要显式连接配置。");
-                }, context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
-                    new LlmControllerOptions { MaxCalls = options.MaxCalls, MaxConsecutiveProtocolFailures = options.MaxFailures,
-                        MaxContextCharacters = options.MaxContextCharacters, MaxFeedbackCharacters = FeedbackRecord.MaxTextCharacters }, Trace,
-                    feedbackSink: feedback is null ? null : feedback.SaveLlm);
-                int completed = 0;
-                while (true) {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    DeliverTerminals();
-                    if (!kernel.World.Characters.Any(character => character.IsActive)) {
-                        Stop("summary");
-                        presenter.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, WorldHost.Summary(kernel.World));
-                        return 0;
-                    }
-                    if (completed >= options.MaxSteps || options.Until is { } limit && kernel.CurrentModelTime >= limit) {
-                        Stop(completed >= options.MaxSteps ? "step-budget" : "time-budget");
-                        output.WriteLine("本次宿主预算已到，世界暂停；可从同一存档继续。");
-                        return 0;
-                    }
-                    StepStatus status = await kernel.StepAsync(options.Until ?? new ModelTime(long.MaxValue), cancellationToken);
-                    if (status != StepStatus.Committed) {
-                        Stop(status.ToString());
-                        output.WriteLine($"世界暂停：{status}。保留最后完成事件的时刻，可从同一存档继续。");
-                        return 0;
-                    }
-                    completed++;
-                    publishingDiagnostics = true;
-                    PlaygroundContextDiagnostics.Publish(kernel.LastCompletion!, diagnosticSink);
-                    publishingDiagnostics = false;
-                    PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
-                    session.CaptureCommitted(kernel.World);
-                    foreach (PlaygroundFact fact in kernel.LastCompletion!.Event.Facts) {
-                        presenter.Write("committed", new { At = fact.At.Ticks, Kind = fact.Kind.ToString(), fact.ActorId,
-                            fact.ToolCallId, fact.OperationRecordId, Disposition = fact.OperationDisposition?.ToString(),
-                            Result = fact.OperationRecordId is null ? null : PlaygroundOperationResults.Describe(fact),
-                            Version = kernel.Version.ToString() },
-                            $"{fact.At} · {fact.Kind}" + (fact.OperationRecordId is null ? "" : $" · {fact.OperationDisposition}\n{PlaygroundOperationResults.Describe(fact)}"));
-                    }
+            var controllerOptions = new LlmControllerOptions { MaxCalls = options.MaxCalls,
+                MaxConsecutiveProtocolFailures = options.MaxFailures, MaxContextCharacters = options.MaxContextCharacters,
+                MaxFeedbackCharacters = FeedbackRecord.MaxTextCharacters };
+            async ValueTask<LlmDecisionBinding> ResolveBinding(string actorId, CancellationToken token) {
+                if (configuration is not null) {
+                    return await pool!.GetAsync(((CharacterControlBinding.Llm)bindings[actorId]).ConnectionId, token);
                 }
-            } catch (PlayConsole.PlayEndedException) {
-                StopAfterFailure("human-session-ended");
-                output.WriteLine("Human 会话已结束；世界暂停。续局使用同一实例与所需控制配置。");
-                return journal.IsFaulted ? 1 : 0;
-            } catch (LlmControllerPausedException error) {
-                StopAfterFailure(error.ReasonCode);
-                output.WriteLine($"LLM 已暂停（{error.ReasonCode}），未代选行动。已提交状态保持；续局需重新指定连接与预算。");
-                return journal.IsFaulted ? 1 : 2;
-            } catch (OperationCanceledException) {
-                StopAfterFailure("cancelled");
-                output.WriteLine(store is null ? "宿主已取消（cancelled）；本次内存进度未保存。" : "宿主已取消（cancelled）；已提交进度保存在同一 --store 中。");
-                return 130;
-            } catch (Exception error) when (!publishingDiagnostics) {
-                // Provider/configuration exception messages may contain endpoint payloads. Never print them here.
-                string reason = error switch {
-                    CodexSubscriptionCredentialException credential => "credential/" + credential.Reason,
-                    FileNotFoundException => "configuration-file-missing",
-                    UnauthorizedAccessException => "access-denied",
-                    InvalidDataException => "invalid-configuration-or-data",
-                    ArgumentException => "invalid-configuration",
-                    IOException => "io-failure",
-                    _ => "host-failure"
-                };
-                StopAfterFailure(reason);
-                Console.Error.WriteLine($"宿主已停止（{error.GetType().Name} / {reason}）；已提交结果保留，未自动重试。");
-                output.WriteLine($"宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
-                return 1;
+                if (suppliedClient is not null) { return new LlmDecisionBinding(suppliedClient, "fixture-model", "fixture"); }
+                throw new ArgumentException("LLM 决策需要显式连接配置。");
             }
+            (PlaygroundWorld World, KernelCursor Cursor) CaptureLookaheadSource() {
+                if (history.PendingEvent is not null || !ReferenceEquals(history.State, kernel.World) || history.Cursor != kernel.Cursor) {
+                    throw new InvalidOperationException("Lookahead requires the current completed world and cursor.");
+                }
+                return (history.State, history.Cursor);
+            }
+            var lookahead = options.Lookahead ? new PlaygroundLookaheadController(
+                CaptureLookaheadSource, bindings, ResolveBinding, controllerOptions, Trace,
+                feedbackSink: feedback is null ? null : feedback.SaveLlm,
+                evidence: (kind, payload) => raw.RecordLookahead(kind, payload), runId: runId, branchId: session.BranchId) : null;
+            async Task<int> RunLoopAsync() {
+                try {
+                    forwarding.Inner = lookahead ?? (IPlaygroundCharacterController)new LlmCharacterController(ResolveBinding,
+                        context => CharacterContextRenderer.RenderFull(context.InteractionState, new DecisionPlayLayout()),
+                        controllerOptions, Trace, feedbackSink: feedback is null ? null : feedback.SaveLlm);
+                    int completed = 0;
+                    while (true) {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        DeliverTerminals();
+                        if (!kernel.World.Characters.Any(character => character.IsActive)) {
+                            Stop("summary");
+                            presenter.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, WorldHost.Summary(kernel.World));
+                            return 0;
+                        }
+                        if (completed >= options.MaxSteps || options.Until is { } limit && kernel.CurrentModelTime >= limit) {
+                            Stop(completed >= options.MaxSteps ? "step-budget" : "time-budget");
+                            output.WriteLine("本次宿主预算已到，世界暂停；可从同一存档继续。");
+                            return 0;
+                        }
+                        StepStatus status = await kernel.StepAsync(options.Until ?? new ModelTime(long.MaxValue), cancellationToken);
+                        if (status != StepStatus.Committed) {
+                            Stop(status.ToString());
+                            output.WriteLine($"世界暂停：{status}。保留最后完成事件的时刻，可从同一存档继续。");
+                            return 0;
+                        }
+                        completed++;
+                        publishingDiagnostics = true;
+                        PlaygroundContextDiagnostics.Publish(kernel.LastCompletion!, diagnosticSink);
+                        publishingDiagnostics = false;
+                        PlayConsole.CompleteOperations(operations, kernel.LastCompletion!);
+                        session.CaptureCommitted(kernel.World);
+                        foreach (PlaygroundFact fact in kernel.LastCompletion!.Event.Facts) {
+                            presenter.Write("committed", new { At = fact.At.Ticks, Kind = fact.Kind.ToString(), fact.ActorId,
+                                fact.ToolCallId, fact.OperationRecordId, Disposition = fact.OperationDisposition?.ToString(),
+                                Result = fact.OperationRecordId is null ? null : PlaygroundOperationResults.Describe(fact),
+                                Version = kernel.Version.ToString() },
+                                $"{fact.At} · {fact.Kind}" + (fact.OperationRecordId is null ? "" : $" · {fact.OperationDisposition}\n{PlaygroundOperationResults.Describe(fact)}"));
+                        }
+                    }
+                } catch (PlayConsole.PlayEndedException) {
+                    StopAfterFailure("human-session-ended");
+                    output.WriteLine("Human 会话已结束；世界暂停。续局使用同一实例与所需控制配置。");
+                    return journal.IsFaulted ? 1 : 0;
+                } catch (LlmControllerPausedException error) {
+                    StopAfterFailure(error.ReasonCode);
+                    output.WriteLine($"LLM 已暂停（{error.ReasonCode}），未代选行动。已提交状态保持；续局需重新指定连接与预算。");
+                    return journal.IsFaulted ? 1 : 2;
+                } catch (OperationCanceledException) {
+                    StopAfterFailure("cancelled");
+                    output.WriteLine(store is null ? "宿主已取消（cancelled）；本次内存进度未保存。" : "宿主已取消（cancelled）；已提交进度保存在同一 --store 中。");
+                    return 130;
+                } catch (Exception error) when (!publishingDiagnostics) {
+                    // Provider/configuration exception messages may contain endpoint payloads. Never print them here.
+                    string reason = error switch {
+                        CodexSubscriptionCredentialException credential => "credential/" + credential.Reason,
+                        FileNotFoundException => "configuration-file-missing",
+                        UnauthorizedAccessException => "access-denied",
+                        InvalidDataException => "invalid-configuration-or-data",
+                        ArgumentException => "invalid-configuration",
+                        IOException => "io-failure",
+                        _ => "host-failure"
+                    };
+                    StopAfterFailure(reason);
+                    Console.Error.WriteLine($"宿主已停止（{error.GetType().Name} / {reason}）；已提交结果保留，未自动重试。");
+                    output.WriteLine($"宿主已停止（{error.GetType().Name}）；未自动代选行动。请检查配置或证据记录后重开。");
+                    return 1;
+                }
+            }
+            return await RunWithOwnedLookaheadAsync(lookahead, RunLoopAsync);
         });
+    }
+
+    private static async Task<int> RunWithOwnedLookaheadAsync(PlaygroundLookaheadController? lookahead, Func<Task<int>> run) {
+        async Task<bool> DrainAsync() {
+            if (lookahead is null) { return true; }
+            try { await lookahead.DisposeAsync(); return true; }
+            catch (Exception error) when (error is not OutOfMemoryException and not StackOverflowException and not AccessViolationException) {
+                try { Console.Error.WriteLine($"预取清理失败（{error.GetType().Name}）；已提交世界保留，不自动重试。"); }
+                catch (Exception diagnosticError) when (diagnosticError is IOException or ObjectDisposedException) { }
+                return false;
+            }
+        }
+        int result;
+        try { result = await run(); }
+        catch { await DrainAsync(); throw; }
+        bool drained = await DrainAsync();
+        return !drained && result == 0 ? 1 : result;
     }
 
     private static async Task<int> RunWithOwnedPoolAsync(LlmConnectionPool? pool, Func<Task<int>> run) {

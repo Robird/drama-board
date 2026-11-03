@@ -16,7 +16,7 @@ internal sealed class Options {
         string[] flags = ["--help", "--ephemeral", "--no-character-controls", "--branches", "--feedbacks"];
         string[] valued = ["--home", "--store", "--branch", "--content", "--characters", "--until-hour", "--steps", "--gym",
             "--llm-connections", "--character-controls", "--llm-log", "--max-calls", "--max-failures", "--max-context-chars",
-            "--actor", "--gym-export", "--fork-feedback", "--gym-fork-request", "--fork-label"];
+            "--actor", "--gym-export", "--fork-feedback", "--gym-fork-request", "--fork-label", "--lookahead"];
         for (int i = 0; i < args.Length; i++) {
             string name = args[i];
             string? value = null;
@@ -56,7 +56,8 @@ internal sealed class Options {
             MaxContextCharacters: Number("--max-context-chars") ?? home.MaxContextCharacters,
             LogPath: PathValue("--llm-log"), Gym: gym == GymMode.Record,
             Branch: branch, Until: until, MaxSteps: Number("--steps") ?? home.Steps, Content: Get("--content"),
-            ConnectionsPath: PathValue("--llm-connections") ?? HomeFile(home.LlmConnections), CharacterControlsPath: controls, HomePath: home.HomePath);
+            ConnectionsPath: PathValue("--llm-connections") ?? HomeFile(home.LlmConnections), CharacterControlsPath: controls, HomePath: home.HomePath,
+            Lookahead: Get("--lookahead") is { } lookahead ? PlaygroundHome.ParseLookahead(lookahead) : home.Lookahead);
         return new(store, host, Number("--characters"), branch, null, home.HomePath);
     }
     private void Validate() {
@@ -70,6 +71,7 @@ internal sealed class Options {
         if (Number("--characters") > 3) { throw new ArgumentException("--characters 必须为 1、2 或 3。"); }
         if (Get("--content") is { } content && content is not ("hillside" or "gentle")) { throw new ArgumentException("--content 必须为 hillside 或 gentle。"); }
         if (Get("--gym") is { } gym) { PlaygroundHome.ParseGym(gym); }
+        if (Get("--lookahead") is { } lookahead) { PlaygroundHome.ParseLookahead(lookahead); }
         if (Get("--until-hour") is { } hour && (!long.TryParse(hour, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) || parsed > long.MaxValue / 3600000)) { throw new ArgumentException("--until-hour 必须为有效非负整数小时。"); }
         if (Help) { return; }
         if (Init) {

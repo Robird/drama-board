@@ -123,9 +123,11 @@ public sealed class LlmHostTests {
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Pending_E_or_saved_S_is_recovered_and_receipt_repaired_before_next_model_input(bool saveState) {
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Pending_E_or_saved_S_is_recovered_and_receipt_repaired_before_next_model_input(bool saveState, bool lookahead) {
         using var files = new Files(createStore: false);
         var initial = PlaygroundGameFactory.CreateSurvival();
         var operation = new PlaygroundControllerOperation("persisted-provider-id", "use item.water", "persisted-record-id");
@@ -145,7 +147,16 @@ public sealed class LlmHostTests {
         }
         var client = new Client("handoff 已恢复");
         using var output = new StringWriter();
-        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(), default, output, client));
+        if (lookahead) {
+            PlaygroundHostOptions recoveryOnly = files.Options() with { Lookahead = true, Until = opened.Time };
+            Assert.Equal(0, await PlaygroundHost.RunAsync(files.Store, recoveryOnly, default, output, client));
+            Assert.Empty(client.Requests);
+            Assert.False(File.Exists(recoveryOnly.LogPath));
+            using var recovered = PlaygroundDurableHistory.Open(files.Store);
+            Assert.Null(recovered.PendingEvent);
+            Assert.Equal(90 * PlaygroundSurvival.Scale, recovered.State.GetCharacter("a").Survival!.WaterUnits);
+        }
+        Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Lookahead = lookahead }, default, output, client));
         string material = Assert.IsType<ObservationMessage>(Assert.Single(client.Requests.Single().PromptPrefix.SharedContextMessages)).Content!;
         Assert.Contains("use item.water", material);
         using var final = PlaygroundDurableHistory.Open(files.Store);
@@ -160,13 +171,15 @@ public sealed class LlmHostTests {
         Assert.Single(client.Requests);
     }
 
-    [Fact]
-    public async Task Cancelled_provider_call_is_a_host_pause_without_game_operation() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancelled_provider_call_is_a_host_pause_without_game_operation(bool lookahead) {
         using var files = new Files();
         using var source = new CancellationTokenSource();
         var client = new Client { OnCall = (_, token) => { source.Cancel(); token.ThrowIfCancellationRequested(); return null!; } };
         using var output = new StringWriter();
-        Assert.Equal(130, await PlaygroundHost.RunAsync(files.Store, files.Options(), source.Token, output, client));
+        Assert.Equal(130, await PlaygroundHost.RunAsync(files.Store, files.Options() with { Lookahead = lookahead }, source.Token, output, client));
         Assert.Contains("cancelled", output.ToString());
         using var final = PlaygroundDurableHistory.Open(files.Store);
         Assert.Null(final.PendingEvent);

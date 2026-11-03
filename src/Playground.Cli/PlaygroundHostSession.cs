@@ -33,7 +33,7 @@ internal sealed class PlaygroundHostSession {
             DetailedRecording, AuditPath = LocationHint(auditPath, store),
             Coverage = "Recording starts at this completed State; earlier external operations and detailed history are not inferred.",
             GameRevision = PlaygroundGameRevision.Current,
-            options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps,
+            options.MaxCalls, options.MaxFailures, options.MaxContextCharacters, options.Until, options.MaxSteps, options.Lookahead,
             Home = options.HomePath, Store = store,
             Version = new { world.Time.Ticks, LineageId = _history?.Cursor.Version.LineageId,
                 TransitionCount = _history?.Cursor.Version.TransitionCount },
