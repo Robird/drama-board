@@ -1,6 +1,6 @@
 # Playground 单分支推演与 LLM 预取
 
-2026-11-03。用户已启动 Codex Goal 实施本研究。当前施工状态见[工作计划](work-plan.md)；以下 G1–G7 保持原定完成合同。
+2026-11-03。本研究已完成原定 G1–G7，见[最终报告与证据索引](results/summary.md)。[工作计划](work-plan.md)已收敛为交接与重开条件；以下原始完成合同保留不变。
 
 - 仓库：`E:/repos/Atelia-org/drama-board`。
 - 实验分支：`experiment/playground-speculative-lookahead`，起点 `3ddc384`。
@@ -50,9 +50,9 @@
 
 最终交付包括：实际宿主代码与测试、开关用法、固定响应复现入口、在线接线证据、五类主要成本、G1–G7 验收索引和合并/保留实验建议。失败或被淘汰的尝试保留必要原件，但不强求保留无用实现。
 
-## 下一轮 Goal 提示词
+## 原始 Goal 提示词
 
-以下是用户下一轮可直接使用的任务文本；本轮不启动 Goal。工作范围和调用授权以用户实际提交的提示词及当时上层约定为准。
+以下是本研究启动时使用的任务文本，保留用于核对原定范围。该 Goal 已完成；后续扩展或合并应另行确定目标，不把历史授权当作自动继续的指令。
 
 ```text
 在 E:/repos/Atelia-org/drama-board 的 experiment/playground-speculative-lookahead 分支，

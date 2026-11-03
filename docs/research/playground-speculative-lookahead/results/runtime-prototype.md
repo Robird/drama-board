@@ -2,6 +2,8 @@
 
 2026-11-03。实际 Playground 宿主已接入单分支预取；本报告是中间工程验收，不是 G1–G7 总结，不提供性能结论。本批全部离线，没有真实模型请求。
 
+后续工程、连续矩阵与在线接线已完成，当前结论见[最终报告](summary.md)。下文保留本批中间验收的原始范围与计数。
+
 ## 实现与已验证行为
 
 - [宿主](../../../../src/Playground.Cli/PlaygroundHost.cs)沿用 home、控制绑定、连接池、日志和 pending 恢复；`--lookahead on|off` 或 home 顶层同名字符串显式选择，默认 off。恢复完成后才可能创建物理请求。来源检查当前 history/kernel world 引用、cursor 和无 pending E。

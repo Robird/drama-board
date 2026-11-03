@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-02；山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
+> 最近整理：2026-11-03；山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：前期[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md) 已完成 C1–C8。用户已确认下一阶段[Playground 单分支推演与 LLM 预取](docs/research/playground-speculative-lookahead/README.md)：在 `experiment/playground-speculative-lookahead` 分支准备实际宿主连续运行原型；预测 A 的一个合法动作，完整输入匹配才复用 B 的响应，保留唯一 Kernel 串行提交且默认关闭。新 Goal 正在验收：实际宿主预取、统一物理预算与连续实验入口已接线，在线批次已结算，下一步完成固定工作量正式矩阵和独立工程验收；唯一施工入口为专题[工作计划](docs/research/playground-speculative-lookahead/work-plan.md)。最终按连续运行的收益、浪费和维护成本提出合并建议，不自动合并主线。
+**当前焦点与下一步**：前期[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及后续[Playground 单分支推演与 LLM 预取](docs/research/playground-speculative-lookahead/results/summary.md)均已完成原定验收。实验分支 `experiment/playground-speculative-lookahead` 提供默认关闭的实际宿主能力：预测 A 一个合法动作，只在 B 完整请求与目标身份匹配时采用响应，保留唯一 Kernel 串行提交。连续对照支持低耦合且有独立服务容量时获益，高耦合、瓶颈与短服务的负结果也已留证；建议仅作为显式启用的实验能力考虑合并，未自动合并或推送。后续范围与重开条件见专题[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)，当前没有本研究施工待办。
 
 [home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
