@@ -25,6 +25,7 @@ internal sealed class LlmRawAudit : IDisposable {
     private readonly Func<Stream>? _openForTesting;
     private Stream? _stream;
     private long _sequence;
+    private long _writeTicks;
     private string _lastHash = "";
     private bool _disposed;
     private bool _faulted;
@@ -40,9 +41,15 @@ internal sealed class LlmRawAudit : IDisposable {
     internal static LlmRawAudit CreateForTesting(Stream stream, string runId) => new(stream, runId);
 
     public bool IsFaulted { get { lock (_gate) { return _faulted; } } }
+    /// <summary>Cumulative serialized audit work including projection and flush, excluding lock wait.</summary>
+    public TimeSpan TotalWriteTime { get { lock (_gate) { return TimeSpan.FromSeconds((double)_writeTicks / System.Diagnostics.Stopwatch.Frequency); } } }
 
     public long? Trace(LlmControllerTrace trace) {
-        lock (_gate) { return TraceCore(trace); }
+        lock (_gate) {
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { return TraceCore(trace); }
+            finally { _writeTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started; }
+        }
     }
 
     private long? TraceCore(LlmControllerTrace trace) {
@@ -83,15 +90,21 @@ internal sealed class LlmRawAudit : IDisposable {
     /// <summary>Records physical lookahead evidence independently of actual character delivery.</summary>
     public long? RecordLookahead(string kind, object payload) {
         lock (_gate) {
-            RequireUsable();
-            if (!IsLookaheadKind(kind)) {
-                throw new ArgumentException("Lookahead evidence kinds must start with lookahead- and include a name.", nameof(kind));
-            }
-            ArgumentNullException.ThrowIfNull(payload);
-            if (_path is null && _openForTesting is null) { return null; }
-            EnsureOpened();
-            return Append("lookahead-event", new { Kind = kind, Data = payload });
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { return RecordLookaheadCore(kind, payload); }
+            finally { _writeTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started; }
         }
+    }
+
+    private long? RecordLookaheadCore(string kind, object payload) {
+        RequireUsable();
+        if (!IsLookaheadKind(kind)) {
+            throw new ArgumentException("Lookahead evidence kinds must start with lookahead- and include a name.", nameof(kind));
+        }
+        ArgumentNullException.ThrowIfNull(payload);
+        if (_path is null && _openForTesting is null) { return null; }
+        EnsureOpened();
+        return Append("lookahead-event", new { Kind = kind, Data = payload });
     }
 
     private static bool IsLookaheadKind(string? kind) => kind is not null &&

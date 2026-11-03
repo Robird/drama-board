@@ -87,7 +87,7 @@ internal static class PlaygroundHost {
         using FeedbackSession? feedback = feedbackDirectory is null ? null
             : new FeedbackSession(FeedbackSession.JournalPath(feedbackDirectory), durable, runId, store);
         // The forwarding controller cannot invoke a provider until recovery and reconciliation finish.
-        var forwarding = new RecordedController(operations);
+        var forwarding = new RecordedController(operations, options.ServiceCompleted);
         var human = humanActors.Length > 0 ? new PlayConsole.ConsoleCharacterController(PlayPresentation.ForMode(true), ConsoleMetaCommands.HumanDefault,
             inputReader: inputReader, outputWriter: output, writeBoundary: ReferenceEquals(output, Console.Out) ? PlayConsole.WriteBoundary : null, operations: operations,
             worldVersion: () => $"{history.Cursor.Version.LineageId}:{history.Cursor.Version.TransitionCount}",
@@ -109,7 +109,7 @@ internal static class PlaygroundHost {
         // Pool construction does not resolve credentials or instantiate a provider, and it occurs
         // only after pending recovery. A terminal LLM actor and early Human EOF require no client.
         LlmConnectionPool? pool = configuration is null ? null : new(configuration, clientFactory);
-        return await RunWithOwnedPoolAsync(pool, async () => {
+        int result = await RunWithOwnedPoolAsync(pool, async () => {
             void Trace(LlmControllerTrace trace) {
                 long? rawSequence = raw.Trace(trace);
                 try {
@@ -177,6 +177,12 @@ internal static class PlaygroundHost {
                     while (true) {
                         cancellationToken.ThrowIfCancellationRequested();
                         DeliverTerminals();
+                        // Programmatic experiment hosts can stop at an observed committed boundary.
+                        // The predicate has no access to install a world or interrupt a publication.
+                        if (options.StopRequested?.Invoke() == true) {
+                            Stop("requested-stop");
+                            return 0;
+                        }
                         if (!kernel.World.Characters.Any(character => character.IsActive)) {
                             Stop("summary");
                             presenter.Write("summary", new { Outcome = kernel.World.ExpeditionSummary.ToString() }, WorldHost.Summary(kernel.World));
@@ -238,6 +244,9 @@ internal static class PlaygroundHost {
             }
             return await RunWithOwnedLookaheadAsync(lookahead, RunLoopAsync);
         });
+        options.RawAuditCompleted?.Invoke(raw.TotalWriteTime);
+        options.HostJournalCompleted?.Invoke(journal.TotalAppendTime);
+        return result;
     }
 
     private static async Task<int> RunWithOwnedLookaheadAsync(PlaygroundLookaheadController? lookahead, Func<Task<int>> run) {
@@ -322,11 +331,14 @@ internal static class PlaygroundHost {
         }
     }
 
-    private sealed class RecordedController(PlaygroundOperationAudit operations) : IPlaygroundCharacterController {
+    private sealed class RecordedController(PlaygroundOperationAudit operations,
+        Action<PlaygroundDecisionContext, TimeSpan>? serviceCompleted = null) : IPlaygroundCharacterController {
         public IPlaygroundCharacterController? Inner { get; set; }
         public async ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) {
+            long started = serviceCompleted is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
             PlaygroundControllerOperation operation = await (Inner ?? throw new InvalidOperationException("Recovery must precede model binding."))
                 .ChooseCommandAsync(context, cancellationToken);
+            serviceCompleted?.Invoke(context, System.Diagnostics.Stopwatch.GetElapsedTime(started));
             cancellationToken.ThrowIfCancellationRequested();
             operations.Receive("llm/" + operation.OperationRecordId, operation.ToolCallId, context.InteractionState.ActorId,
                 context.Context.ContextSequence, LlmCharacterController.ToolName, operation.RawInput, operation.OperationRecordId);

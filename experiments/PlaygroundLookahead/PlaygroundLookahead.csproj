@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>DramaBoard.PlaygroundLookahead</AssemblyName></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Playground.Cli/Playground.Cli.csproj" /></ItemGroup>
+</Project>

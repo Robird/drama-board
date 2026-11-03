@@ -25,6 +25,7 @@ internal sealed class PlaygroundHostJournal : IDisposable {
     private readonly IReadOnlyList<PlaygroundHostRecord> _records;
     private bool _disposed;
     private bool _faulted;
+    private long _appendTicks;
 
     private PlaygroundHostJournal(Stream? stream) {
         _stream = stream;
@@ -73,6 +74,8 @@ internal sealed class PlaygroundHostJournal : IDisposable {
     public IReadOnlyList<PlaygroundHostRecord> Records { get { RequireUsable(); return _records; } }
     public bool IsFaulted => _faulted;
     public long DiscardedTailBytes { get; }
+    /// <summary>Cumulative append projection, validation, hashing, flush and index installation.</summary>
+    public TimeSpan TotalAppendTime => TimeSpan.FromSeconds((double)_appendTicks / System.Diagnostics.Stopwatch.Frequency);
 
     public PlaygroundHostRecord Append(string kind, string? runId, string? branchId, string? actorId,
         long? contextSequence, object payload) {
@@ -100,6 +103,13 @@ internal sealed class PlaygroundHostJournal : IDisposable {
     }
 
     private PlaygroundHostRecord AppendCore(string kind, string? runId, string? branchId, string? actorId,
+        long? contextSequence, object payload) {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try { return AppendMeasured(kind, runId, branchId, actorId, contextSequence, payload); }
+        finally { _appendTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started; }
+    }
+
+    private PlaygroundHostRecord AppendMeasured(string kind, string? runId, string? branchId, string? actorId,
         long? contextSequence, object payload) {
         ArgumentNullException.ThrowIfNull(payload);
         long sequence = checked((long)_state.Records.Count + 1);

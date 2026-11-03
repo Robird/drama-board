@@ -182,12 +182,22 @@ internal sealed class PlaygroundLookaheadController : IPlaygroundCharacterContro
             try { result = await binding.Client.StreamCompletionAsync(request, null, token); }
             catch (Exception error) {
                 try { Emit("failure", new { PhysicalId = id, Error = error.GetType().FullName,
-                    RemoteOutcomeUnknown = error is OperationCanceledException }); }
+                    Failure = (error as CompletionFailureException)?.Failure,
+                    RemoteOutcomeUnknown = error is not CompletionRequestRejectedException }); }
                 catch (Exception diagnostic) { throw new AggregateException("Provider and evidence failures.", error, diagnostic); }
                 throw;
             }
-            Emit("physical-completed", new { PhysicalId = id, Result = new { Message = GymMessageProjection.Message(result.Message),
-                result.Invocation, result.Termination, result.Usage, result.Failure, result.Errors } });
+            object outcome;
+            try {
+                outcome = new { PhysicalId = id, Result = new { Message = GymMessageProjection.Message(result.Message),
+                    result.Invocation, result.Termination, result.Usage, result.Failure, result.Errors } };
+            } catch (Exception error) {
+                // A result arrived, but its evidence could not be represented. Do not silently
+                // classify this as a discarded provider failure and admit more requests.
+                Interlocked.CompareExchange(ref _evidenceError, error, null);
+                throw;
+            }
+            Emit("physical-completed", outcome);
             return result;
         } finally { Interlocked.Decrement(ref _inFlight); }
     }
