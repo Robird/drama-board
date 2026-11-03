@@ -120,7 +120,7 @@ public sealed class TradeViewTests {
         Commands = source.Commands.Select(check => check.Command.TradeId == trade.Id
             ? check with { Rejection = "报价已经关闭。" } : check).ToArray(),
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, Passages = source.Passages, KnownMap = source.KnownMap, Memories = source.Memories,
+        PlaceDescription = source.PlaceDescription, Passages = source.Passages, KnownMap = source.KnownMap, CandidatePath = source.CandidatePath, Memories = source.Memories,
         Outcome = source.Outcome, Survival = source.Survival, Weather = source.Weather,
         Communication = source.Communication, Goals = source.Goals, Trades = [trade]
     };

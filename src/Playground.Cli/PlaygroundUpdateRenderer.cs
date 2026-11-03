@@ -8,7 +8,7 @@ internal static class PlaygroundUpdateRenderer {
         var text = new StringBuilder(RenderEvents(update));
         if (update.CurrentValues.Count > 0) {
             text.AppendLine("当前：");
-            foreach (var pair in update.CurrentValues.Where(pair => pair.Key.Category != "command")) {
+            foreach (var pair in update.CurrentValues.Where(pair => pair.Key.Category is not ("command" or "navigation"))) {
                 if (update.Snapshot.RateExplanations.ContainsKey(pair.Key)) { continue; }
                 var rateKey = new PlaygroundStateKey(pair.Key.Category, pair.Key.ObjectId, pair.Key.Field + "-rate");
                 string value = update.Snapshot.RateExplanations.TryGetValue(rateKey, out var attribute)
@@ -16,6 +16,9 @@ internal static class PlaygroundUpdateRenderer {
                 text.AppendLine($"- {update.Label(pair.Key)}：{value}");
             }
             text.Append(RenderCommandStates(update.CurrentValues));
+            if (update.CurrentValues.Keys.Any(key => key.Category == "navigation")) {
+                text.Append(NavigationView.RenderCandidate(update.Snapshot.Observation));
+            }
         }
         if (update.GoalsChanged) {
             text.Append(update.Snapshot.Observation.Goals is null ? "目标能力当前不可用。\n" : GoalView.RenderDefault(update.Snapshot.Observation.Goals));
@@ -162,6 +165,8 @@ internal static class PlaygroundUpdateRenderer {
                 nameof(PlaygroundCommandKind.Give) => $"give {parts[7]} {parts[6]} {parts[3]}",
                 nameof(PlaygroundCommandKind.Follow) => $"follow {parts[7]}",
                 nameof(PlaygroundCommandKind.DismissFollowers) => "dismiss-followers",
+                nameof(PlaygroundCommandKind.Map) => "map",
+                nameof(PlaygroundCommandKind.Path) => $"path {parts[15]}" + (parts[16].Length > 0 ? $" from {parts[16]}" : ""),
                 nameof(PlaygroundCommandKind.Go) => $"go {parts[5]}", nameof(PlaygroundCommandKind.Use) => $"use {parts[6]}",
                 _ => parts[0].ToLowerInvariant()
             };

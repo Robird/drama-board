@@ -6,7 +6,7 @@ namespace DramaBoard.Playground;
 internal static class PlaygroundObservationEquality {
     internal static bool Same(PlaygroundObservation a, PlaygroundObservation b) =>
         ReferenceEquals(a, b) ||
-        PlaygroundKnownMap.Same(a.KnownMap, b.KnownMap) && a.WorldName == b.WorldName && SameDictionary(a.ItemUseDescriptions, b.ItemUseDescriptions) &&
+        PlaygroundPath.Same(a.CandidatePath, b.CandidatePath) && PlaygroundKnownMap.Same(a.KnownMap, b.KnownMap) && a.WorldName == b.WorldName && SameDictionary(a.ItemUseDescriptions, b.ItemUseDescriptions) &&
         a.Time == b.Time && a.IsDay == b.IsDay && a.NextLightChange == b.NextLightChange &&
         SameActor(a.Actor, b.Actor) && SameList(a.Resources, b.Resources, SameResource) &&
         SameList(a.MarketQuotes, b.MarketQuotes, (x, y) => x == y) &&

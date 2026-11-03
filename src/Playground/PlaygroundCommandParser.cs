@@ -58,6 +58,9 @@ public static class PlaygroundCommandParser {
             return PlaygroundCommand.Give(targetActorId, itemId, itemCount);
         }
         return parts switch {
+            ["map"] => PlaygroundCommand.Map(),
+            ["path", var destination] => PlaygroundCommand.Path(destination),
+            ["path", var destination, "from", var origin] => PlaygroundCommand.Path(destination, origin),
             ["accept", var accepted] => PlaygroundCommand.Accept(accepted),
             ["reject", var rejected] => PlaygroundCommand.Reject(rejected),
             ["withdraw", var withdrawn] => PlaygroundCommand.Withdraw(withdrawn),
@@ -73,6 +76,8 @@ public static class PlaygroundCommandParser {
     }
     /// <summary>Canonical syntax for scripted controllers and visible command catalogues.</summary>
     public static string Format(PlaygroundCommand command) => command.Kind switch {
+        PlaygroundCommandKind.Map => "map",
+        PlaygroundCommandKind.Path => $"path {command.TargetPlaceId}" + (command.OriginPlaceId is null ? "" : $" from {command.OriginPlaceId}"),
         PlaygroundCommandKind.Offer => $"offer {command.TargetActorId} {command.GiveAsset!.AssetId} {command.GiveAsset.Amount.ToString(CultureInfo.InvariantCulture)} for {command.WantAsset!.AssetId} {command.WantAsset.Amount.ToString(CultureInfo.InvariantCulture)} {command.Hours.ToString(CultureInfo.InvariantCulture)}",
         PlaygroundCommandKind.Accept => $"accept {command.TradeId}",
         PlaygroundCommandKind.Reject => $"reject {command.TradeId}",

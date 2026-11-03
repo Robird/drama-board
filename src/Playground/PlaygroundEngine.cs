@@ -154,6 +154,9 @@ public static class PlaygroundEngine {
                     return new([PlaygroundInteractionRules.Reject(world, prediction.TargetId, operation, rejection)]);
                 }
                 if (command is null) { throw new InvalidOperationException("A successful parse requires an action."); }
+                if (command.Kind is PlaygroundCommandKind.Map or PlaygroundCommandKind.Path) {
+                    return new([PlaygroundPathRules.Plan(world, prediction.TargetId, command, operation)]);
+                }
                 if (command.Kind == PlaygroundCommandKind.Goal) {
                     return new([PlaygroundGoalInteractionRules.Plan(world, prediction.TargetId, command.Goal!, operation)]);
                 }

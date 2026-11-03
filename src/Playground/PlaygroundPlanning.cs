@@ -93,7 +93,7 @@ internal static class PlaygroundPlanning {
 
     /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>
     internal static PlaygroundFact Observe(PlaygroundWorld world, PlaygroundFact fact) {
-        if (world.Expedition is null || fact.Kind == PlaygroundEventKind.SpeechShouted) { return fact; }
+        if (world.Expedition is null || fact.Kind is PlaygroundEventKind.SpeechShouted or PlaygroundEventKind.MapQueried or PlaygroundEventKind.PathQueried) { return fact; }
         GraphSpatialState spatial = world.Expedition.Spatial;
         foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
             spatial = world.Definition.Runtime.Reducer.Apply(spatial, new(fact.At, 0), spatialFact);

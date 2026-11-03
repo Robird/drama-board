@@ -11,6 +11,7 @@ internal static class PlaygroundVisibleEndpointChanges {
     internal static bool Changed(PlaygroundBusinessState before, PlaygroundBusinessState after, string actorId) {
         if (before.Time != after.Time || before.Light.IsDay != after.Light.IsDay ||
             before.Light.NextChange != after.Light.NextChange) { return true; }
+        if (!PlaygroundPath.Same(before.Expedition?.CandidatePath(actorId), after.Expedition?.CandidatePath(actorId))) { return true; }
         if (!before.InteractionStates[actorId].Goals.SameAs(after.InteractionStates[actorId].Goals)) { return true; }
         if (!PlaygroundEconomyObservation.Trades(before, actorId).SequenceEqual(PlaygroundEconomyObservation.Trades(after, actorId))) { return true; }
         PlaygroundCharacter a = before.GetCharacter(actorId), b = after.GetCharacter(actorId);

@@ -63,6 +63,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
         FollowingView.RenderCommands(text, observation);
         EconomyView.RenderCommands(text, observation);
         TradeView.RenderCommands(text, observation);
+        text.Append(NavigationView.RenderHelp(observation));
         AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), "确认通信、消息与历史警告，保留活动及原定期限；跟随时确认后继续同行，闲置时确认不推进时间");
         if (observation.Actor.Activity is not null && observation.ArrivalDue is null) {
             AppendCommand(text, observation, "cancel", PlaygroundCommand.Cancel(), "取消当前活动：采集保留已获物品，生产退回预留投入，等待直接结束");

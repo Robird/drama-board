@@ -99,6 +99,10 @@ public sealed class PlaygroundDecisionContext {
             commands.Add(PlaygroundCommand.Gather(resource.Id));
             commands.Add(PlaygroundCommand.GatherAll(resource.Id));
         }
+        if (expedition is not null) {
+            commands.Add(PlaygroundCommand.Map());
+            commands.AddRange(PlaygroundKnownMap.Observe(world.Business, actorId).Select(p => PlaygroundCommand.Path(p.Id)));
+        }
         commands.AddRange(Enumerable.Range(1, 24).Select(PlaygroundCommand.Wait));
         commands.AddRange(passages.Select(passage => PlaygroundCommand.Go(passage.EntranceId)));
         if (expedition is not null) {
@@ -167,6 +171,7 @@ public sealed class PlaygroundDecisionContext {
             PlaceName = expedition is not null && place is not null ? world.Definition.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? world.Definition.GetPlace(place).Description : null,
             ArrivalDue = arrival,
+            CandidatePath = expedition?.CandidatePath(actorId),
             KnownMap = PlaygroundKnownMap.Observe(world.Business, actorId),
             Journey = PlaygroundJourneyObservation.Observe(world.Definition, expedition, actorId, location),
             Passages = Array.AsReadOnly(passages.Select(passage => new PlaygroundPassageObservation(passage.EntranceId, passage.Description,

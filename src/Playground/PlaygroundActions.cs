@@ -5,11 +5,11 @@ using DramaBoard.Spatial;
 
 namespace DramaBoard.Playground;
 
-[DurableType("DramaBoard.Playground.CommandKind", 1)]
-public enum PlaygroundCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout, Buy, Sell, Produce, GiveMoney, Offer, Accept, Reject, Withdraw }
+[DurableType("DramaBoard.Playground.CommandKind", 2)]
+public enum PlaygroundCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout, Buy, Sell, Produce, GiveMoney, Offer, Accept, Reject, Withdraw, Map, Path }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.Playground.Command", 2)]
+[DurableType("DramaBoard.Playground.Command", 3)]
 public sealed partial record PlaygroundCommand(
     [field: DurableField(1)] PlaygroundCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
@@ -26,7 +26,11 @@ public sealed partial record PlaygroundCommand(
     [field: DurableField(13)] long MoneyAmount = 0,
     [field: DurableField(14)] PlaygroundTradeAsset? GiveAsset = null,
     [field: DurableField(15)] PlaygroundTradeAsset? WantAsset = null,
-    [field: DurableField(16)] string? TradeId = null) : IDurableObject {
+    [field: DurableField(16)] string? TradeId = null,
+    [field: DurableField(17)] string? TargetPlaceId = null,
+    [field: DurableField(18)] string? OriginPlaceId = null) : IDurableObject {
+    public static PlaygroundCommand Map() => new(PlaygroundCommandKind.Map);
+    public static PlaygroundCommand Path(string targetPlaceId, string? originPlaceId = null) => new(PlaygroundCommandKind.Path, TargetPlaceId: targetPlaceId, OriginPlaceId: originPlaceId);
     public static PlaygroundCommand Offer(string targetActorId, PlaygroundTradeAsset give, PlaygroundTradeAsset want, int hours = 6) =>
         new(PlaygroundCommandKind.Offer, Hours: hours, TargetActorId: targetActorId, GiveAsset: give, WantAsset: want);
     public static PlaygroundCommand Accept(string tradeId) => new(PlaygroundCommandKind.Accept, TradeId: tradeId);
@@ -102,7 +106,8 @@ public static class PlaygroundActions {
         if (!actor.IsActive) { return "旅程已经结束。"; }
         if (!NeedsDecision(world, actorId)) { return "角色正在活动，当前没有需要响应的感知。"; }
         bool travelling = IsTravelling(world, actorId);
-        if (travelling && command.Kind is not (PlaygroundCommandKind.Continue or PlaygroundCommandKind.Use or PlaygroundCommandKind.Handoff or PlaygroundCommandKind.Goal)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
+        if (travelling && command.Kind is not (PlaygroundCommandKind.Continue or PlaygroundCommandKind.Use or PlaygroundCommandKind.Handoff or PlaygroundCommandKind.Goal or PlaygroundCommandKind.Map or PlaygroundCommandKind.Path)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
+        if (command.Kind != PlaygroundCommandKind.Path && (command.TargetPlaceId is not null || command.OriginPlaceId is not null)) { return "这个行动不接受地图地点参数。"; }
         if (command.Kind != PlaygroundCommandKind.Goal && command.Goal is not null) { return "这个行动不接受目标操作。"; }
         if (command.Kind != PlaygroundCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
         if (command.Kind != PlaygroundCommandKind.Go && command.EntranceId is not null) { return "这个行动不接受通路参数。"; }
@@ -119,6 +124,8 @@ public static class PlaygroundActions {
         }
         if (!PlaygroundTradeRules.IsTradeCommand(command) && (command.GiveAsset is not null || command.WantAsset is not null || command.TradeId is not null)) { return "这个行动不接受报价参数。"; }
         switch (command.Kind) {
+            case PlaygroundCommandKind.Map or PlaygroundCommandKind.Path:
+                return PlaygroundPathRules.Check(world.Business, actorId, command);
             case PlaygroundCommandKind.Offer or PlaygroundCommandKind.Accept or PlaygroundCommandKind.Reject or PlaygroundCommandKind.Withdraw:
                 return visibleOnly ? PlaygroundTradeRules.CheckVisible(world, actorId, command) : PlaygroundTradeRules.Check(world, actorId, command);
             case PlaygroundCommandKind.Buy or PlaygroundCommandKind.Sell or PlaygroundCommandKind.Produce or PlaygroundCommandKind.GiveMoney:

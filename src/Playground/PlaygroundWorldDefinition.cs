@@ -223,6 +223,7 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
             Body.ShelteredWarmthPerHour is < 0 or > 100 || Body.DayWarmthPerHour is < 0 or > 100 ||
             Body.NightWarmthPerHour is < -100 or > 0) { Invalid(); }
         Unique(_places.Select(p => p.Id)); Unique(_passages.Select(p => p.Id)); Unique(_resources.Select(r => r.Id));
+        if (_places.Any(p => p.Id.Any(char.IsWhiteSpace))) { Invalid(); }
         Unique(_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }));
         if (_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }).Any(id =>
             id.Any(char.IsWhiteSpace) || _passages.Any(p => p.Id == id))) { Invalid(); }

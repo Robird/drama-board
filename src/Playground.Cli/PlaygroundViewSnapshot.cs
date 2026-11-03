@@ -187,6 +187,9 @@ internal sealed class PlaygroundViewSnapshot {
             Add("resource", r.Id, "day-growth", PlaygroundVisibleValue.Flag(r.GrowsInDaylight), prefix + "白天生长");
             Add("resource", r.Id, "required-level", PlaygroundVisibleValue.Numeric(r.RequiredLevel), prefix + "所需等级");
         }
+        if (o.IsExpedition) {
+            Add("navigation", actor, "candidate", Text(NavigationView.RenderCandidate(o)), "当前候选路径");
+        }
         foreach (var place in o.KnownMap) {
             Add("known-place", place.Id, "name", Text(place.Name), "已知地点 " + place.Id);
             foreach (var entrance in place.Entrances) {
@@ -244,7 +247,7 @@ internal sealed class PlaygroundViewSnapshot {
     internal static string CommandId(PlaygroundCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
         c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.EntranceId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture),
         c.TradeId ?? "", c.GiveAsset?.AssetId ?? "", c.GiveAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "",
-        c.WantAsset?.AssetId ?? "", c.WantAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "");
+        c.WantAsset?.AssetId ?? "", c.WantAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "", c.TargetPlaceId ?? "", c.OriginPlaceId ?? "");
     internal static string CommandSyntax(PlaygroundCommand c) => c.Kind switch {
         PlaygroundCommandKind.Offer => $"offer {c.TargetActorId} {c.GiveAsset!.AssetId} {c.GiveAsset.Amount} for {c.WantAsset!.AssetId} {c.WantAsset.Amount} {c.Hours}",
         PlaygroundCommandKind.Accept => $"accept {c.TradeId}", PlaygroundCommandKind.Reject => $"reject {c.TradeId}", PlaygroundCommandKind.Withdraw => $"withdraw {c.TradeId}",
@@ -253,6 +256,8 @@ internal sealed class PlaygroundViewSnapshot {
         PlaygroundCommandKind.Produce => $"produce {c.RecipeId} {c.Count}", PlaygroundCommandKind.GiveMoney => $"give {c.TargetActorId} money {c.MoneyAmount}",
         PlaygroundCommandKind.Give => $"give {c.TargetActorId} {c.ItemId} {c.Count}",
         PlaygroundCommandKind.Follow => $"follow {c.TargetActorId}", PlaygroundCommandKind.DismissFollowers => "dismiss-followers",
+        PlaygroundCommandKind.Map => "map",
+        PlaygroundCommandKind.Path => $"path {c.TargetPlaceId}" + (c.OriginPlaceId is { } origin ? $" from {origin}" : ""),
         PlaygroundCommandKind.Go => $"go {c.EntranceId}", PlaygroundCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
     };
 

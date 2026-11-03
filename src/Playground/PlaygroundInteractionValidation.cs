@@ -273,6 +273,9 @@ internal static class PlaygroundInteractionValidation {
             PlaygroundCommandKind.Buy => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.BuyPrice > 0),
             PlaygroundCommandKind.Sell => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.SellPrice > 0),
             PlaygroundCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),
+            PlaygroundCommandKind.Map => observation.IsExpedition,
+            PlaygroundCommandKind.Path => observation.KnownMap.Any(p => p.Id == entry.Command.TargetPlaceId) &&
+                (entry.Command.OriginPlaceId is null || observation.KnownMap.Any(p => p.Id == entry.Command.OriginPlaceId)),
             PlaygroundCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.EntranceId),
             PlaygroundCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
             PlaygroundCommandKind.Use => actor.Survival is not null && observation.ItemUseDescriptions.ContainsKey(entry.Command.ItemId!) && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
@@ -314,6 +317,7 @@ internal static class PlaygroundInteractionValidation {
     }
 
     private static void ValidateKnownGeography(PlaygroundBusinessState state, string actorId, string? place, PlaygroundObservation observation) {
+        Require(PlaygroundPath.Same(observation.CandidatePath, state.Expedition?.CandidatePath(actorId)), "The recorded candidate must be the actor current candidate.");
         Require(PlaygroundKnownMap.Same(observation.KnownMap, PlaygroundKnownMap.Observe(state, actorId)), "The recorded map must match only personal confirmed knowledge.");
         PlaygroundVisit[] visits = state.Expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
         PlaygroundPassageDefinition[] passages = place is null ? [] : state.Definition.GetEntrances(place).ToArray();

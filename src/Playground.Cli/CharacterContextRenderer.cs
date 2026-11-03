@@ -78,7 +78,11 @@ internal static class CharacterContextRenderer {
                     text.AppendLine("提交内容（原始输入，仅为记录）：");
                     text.AppendLine("> " + DataLiteral(item.RawInput!));
                     text.AppendLine("结果：");
-                    if (item.Experiences.Count == 0) { text.AppendLine("> " + DataLiteral(item.Result!)); }
+                    if (item.Experiences.Count == 0) {
+                        // Query receipts may contain a complete map or route. Quote each saved line as
+                        // data so replay remains readable without treating content as Markdown structure.
+                        foreach (string line in item.Result!.Split('\n')) { text.AppendLine("> " + DataLiteral(line.TrimEnd('\r'))); }
+                    }
                 } else {
                     text.AppendLine("### 新的可感知信息");
                 }

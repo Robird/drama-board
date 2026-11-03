@@ -9,7 +9,7 @@ namespace DramaBoard.Playground;
 public enum PlaygroundOperationDisposition { Succeeded, Rejected }
 
 /// <summary>Concrete recorded replacements. Restore applies these values without replaying Player or planning.</summary>
-[DurableType("DramaBoard.Playground.Fact", 2)]
+[DurableType("DramaBoard.Playground.Fact", 3)]
 public sealed partial class PlaygroundFact : IDurableObject {
     [DurableField(1)] private PlaygroundEventKind _kind;
     [DurableField(2)] private ModelTime _at;
@@ -38,6 +38,8 @@ public sealed partial class PlaygroundFact : IDurableObject {
     [DurableField(27)] private GoalReceipt? _goalOperation;
     [DurableField(28)] private PlaygroundEconomyState? _economy;
     [DurableField(29)] private long _moneyAmount;
+    [DurableField(32)] private PlaygroundPath? _candidatePath;
+    public PlaygroundPath? CandidatePath => _candidatePath;
     [DurableField(31)] private List<PlaygroundConfirmedPassage> _confirmedPassages;
     public IReadOnlyList<PlaygroundConfirmedPassage> ConfirmedPassages => _confirmedPassages.AsReadOnly();
     [DurableField(30)] private List<PlaygroundTradeOffer> _tradeChanges;
@@ -77,7 +79,8 @@ public sealed partial class PlaygroundFact : IDurableObject {
         string? toolCallId = null, string? operationRecordId = null, PlaygroundGatherStopReason? gatherStopReason = null, IEnumerable<PlaygroundObservedEvent>? observedEvents = null,
         IEnumerable<CharacterInteractionState>? interactionChanges = null, string? rawInput = null, PlaygroundOperationDisposition? operationDisposition = null,
         string? targetActorId = null, string? speechText = null, string? itemId = null, int itemCount = 0, GoalReceipt? goalOperation = null,
-        PlaygroundEconomyState? economy = null, long moneyAmount = 0, IEnumerable<PlaygroundTradeOffer>? tradeChanges = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null) {
+        PlaygroundEconomyState? economy = null, long moneyAmount = 0, IEnumerable<PlaygroundTradeOffer>? tradeChanges = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null, PlaygroundPath? candidatePath = null) {
+        _candidatePath = candidatePath;
         _confirmedPassages = confirmedPassages?.ToList() ?? [];
         _tradeChanges = tradeChanges?.ToList() ?? [];
         _economy = economy; _moneyAmount = moneyAmount;
@@ -93,23 +96,23 @@ public sealed partial class PlaygroundFact : IDurableObject {
         _toolCallId = toolCallId; _operationRecordId = operationRecordId; _gatherStopReason = gatherStopReason; _observedEvents = observedEvents?.ToList() ?? [];
     }
     internal PlaygroundFact WithVisits(IEnumerable<PlaygroundVisit> visits) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithCharacters(IEnumerable<PlaygroundCharacter> characters) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        ChangedResources, Script, characters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithOperation(PlaygroundControllerOperation operation, PlaygroundOperationDisposition disposition = PlaygroundOperationDisposition.Succeeded) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        operation.ToolCallId, operation.OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, operation.RawInput, disposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithObservedEvents(IEnumerable<PlaygroundObservedEvent> events) => new(Kind, At, ActorId, ResourceId, Light,
-        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment, ToolCallId, OperationRecordId, GatherStopReason, events, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithInteractions(IEnumerable<CharacterInteractionState> changes) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, changes, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithEconomy(PlaygroundEconomyState economy) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, economy, MoneyAmount, TradeChanges, ConfirmedPassages);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, economy, MoneyAmount, TradeChanges, ConfirmedPassages, CandidatePath);
     internal PlaygroundFact WithTradeChanges(IEnumerable<PlaygroundTradeOffer> changes) => new(Kind, At, ActorId, ResourceId, Light,
         ChangedResources, Script, ChangedCharacters, LastServedActorId, Result, SpatialFacts, Visits, Environment,
-        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, changes, ConfirmedPassages);
+        ToolCallId, OperationRecordId, GatherStopReason, ObservedEvents, InteractionChanges, RawInput, OperationDisposition, TargetActorId, SpeechText, ItemId, ItemCount, GoalOperation, Economy, MoneyAmount, changes, ConfirmedPassages, CandidatePath);
     public override string ToString() => $"{Kind}@{At.Ticks};actor={ActorId};resource={ResourceId};light={Light};resources=[{string.Join(';', _changedResources)}];script={Script};characters=[{string.Join(';', _changedCharacters)}];served={LastServedActorId};result={Result};spatial=[{string.Join(';', _spatialFacts.Select(f => f.GetType().Name))}];visits=[{string.Join(';', Visits)}]" +
         (Environment is null ? "" : $";environment={Environment}") + $";call={ToolCallId};operation={OperationRecordId};stop={GatherStopReason};disposition={OperationDisposition};target={TargetActorId};speech={SpeechText};item={ItemId}:{ItemCount}";
 }

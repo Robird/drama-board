@@ -150,19 +150,8 @@ internal static class PlayView {
             foreach (string rule in background.Rules) { text.AppendLine(rule); }
             text.AppendLine();
         }
-        if (observation.KnownMap.Count > 0) {
-            text.AppendLine("## 已知地图");
-            text.AppendLine("只含本人去过的地点和实际走通的连接；未知入口的线索不证明去向。");
-            foreach (var place in observation.KnownMap) {
-                text.AppendLine($"- **{place.Name}** `{place.Id}`");
-                foreach (var entrance in place.Entrances) {
-                    string destination = entrance.KnownDestinationId is { } id
-                        ? $"已确认 → {entrance.KnownDestinationName}（`{id}`）" : "去向未知";
-                    text.AppendLine($"  - 入口 `{entrance.Id}`：{entrance.Description}；耗时 {Minutes(entrance.DurationTicks)} 分钟；{destination}。");
-                }
-            }
-            text.AppendLine();
-        }
+        text.Append(NavigationView.RenderMap(observation));
+        text.Append(NavigationView.RenderCandidate(observation));
         if (observation.Memories.Count > 0) {
             text.AppendLine("## 曾到访地点（历史观察）");
             text.AppendLine("以下是经历留下的记录，保留观察时间；远处余量可能已改变，不表示当前事实。");
@@ -225,6 +214,7 @@ internal static class PlayView {
         FollowingView.RenderCommands(text, observation);
         EconomyView.RenderCommands(text, observation);
         TradeView.RenderCommands(text, observation);
+        text.Append(NavigationView.RenderHelp(observation));
         if (observation.IsExpedition) {
             text.AppendLine("- `go <entrance-id>`：沿当前可见入口移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (PlaygroundPassageObservation passage in observation.Passages) {
