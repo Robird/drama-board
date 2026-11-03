@@ -27,7 +27,9 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：前期[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及后续[Playground 单分支推演与 LLM 预取](docs/research/playground-speculative-lookahead/results/summary.md)均已完成原定验收。本地主线已合入 `experiment/playground-speculative-lookahead` 的默认关闭宿主能力：预测 A 一个合法动作，只在 B 完整请求与目标身份匹配时采用响应，保留唯一 Kernel 串行提交。连续对照支持低耦合且有独立服务容量时获益，高耦合、瓶颈与短服务的负结果也已留证；按用户授权纳入本地主线，保持显式启用，未推送。后续 [Human Console 来源预取与真实模型测量](docs/research/playground-speculative-lookahead/results/real-performance.md)也已落地：输入等待期间可准备冷连接目标，保留完整采用校验；真实观察显示等待可被提前覆盖，但额外调用、不同轨迹及取消的远端未知结果均须计入。当前没有本研究施工待办，后续范围见专题[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)。
+**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)处于设计阶段，供后续 Goal 实施。用户已确定未走通前只展示本端入口身份，角色仅在已确认连接上求路，导航逐站确认；最小模型及验收见专题文档。本轮只做设计，尚未实现新命令或启动 Goal。
+
+[预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及 [Playground 单分支预取](docs/research/playground-speculative-lookahead/results/summary.md)已完成原定验收并纳入本地主线，默认关闭；采用仅限完整请求/目标匹配，仍由唯一 Kernel 串行提交。[Human 等待与真实模型测量](docs/research/playground-speculative-lookahead/results/real-performance.md)保留收益及额外调用/远端取消未知的证据边界，研究暂无施工待办，见[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)。
 
 [home 与角色控制](docs/design/playground-home.md)、[独立宿主反馈](docs/design/independent-feedback.md)及[统一宿主日志与角色 history](docs/design/character-history-and-diagnostics.md)均已落地；`host/events.jsonl` 合并操作/Gym并内联人物材料，raw 懒创建、反馈独立，持久默认 record。操作恢复仅匹配当前分支提交，history 才继承可证明的祖先前缀；旧宿主格式明确拒绝，保留旧 store 后用新 store 启动。故障、只读管理、无 raw 导出和真实混合运行证据见[实施验收](docs/experiments/character-history-and-diagnostics-acceptance.md)。记忆回灌等延期边界不变；Playground 重命名和融合的既有证据见[重命名说明](docs/implementation/playground-rename.md)与[总验收](docs/codex-goals/living-world/acceptance.md)。
 
