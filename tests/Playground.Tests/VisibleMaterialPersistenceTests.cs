@@ -84,7 +84,7 @@ public sealed class VisibleMaterialPersistenceTests {
                 activity: new(PlaygroundActivityKind.Wait, 1, Hour(8), PlaygroundTime.Hour, Hour(9)), nextActivityId: 2)
         ]).World;
         PlaygroundWorld survival = PlaygroundGameFactory.CreateSurvival().World;
-        var moving = PlaygroundEngine.CreateKernel(Memory(survival), characterController: Commands(PlaygroundCommand.Go("trail-1")));
+        var moving = PlaygroundEngine.CreateKernel(Memory(survival), characterController: Commands(PlaygroundCommand.Go("e-c7")));
         await StepWorldEvent(moving);
         PlaygroundObservation[] snapshots = [PlaygroundDecisionContext.Observe(gathering, "a"),
             PlaygroundDecisionContext.Observe(survival, "a"), PlaygroundDecisionContext.Observe(moving.World, "a")];
@@ -99,7 +99,7 @@ public sealed class VisibleMaterialPersistenceTests {
         Assert.NotNull(snapshots[1].Survival!.FoodForecast.WarningAt);
         Assert.NotNull(snapshots[2].ArrivalDue);
         Assert.Null(snapshots[2].PlaceId);
-        Assert.Equal(new PlaygroundJourneyObservation(PlaygroundExpeditionMap.GetPlace("camp").Name, "trail-1", "沿溪水声下坡", null), snapshots[2].Journey);
+        Assert.Equal(new PlaygroundJourneyObservation(PlaygroundExpeditionMap.GetPlace("camp").Name, "e-c7", "沿溪水声下坡", null), snapshots[2].Journey);
         Assert.Null(snapshots[1].Journey);
 
         using var store = new TemporaryStore();
@@ -185,9 +185,11 @@ public sealed class VisibleMaterialPersistenceTests {
                 PlaygroundSurvival.Scale * 481 / 8, PlaygroundSurvivalRules.FoodRate, PlaygroundSurvivalRules.WaterRate, PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: 1, pendingMask: 1, pendingSince: Minute(920)));
         var spatial = GraphSpatialState.Create(PlaygroundExpeditionMap.Graph, [new(new("a"), new("stream"))]);
         var expedition = new PlaygroundExpedition(PlaygroundExpeditionMap.ScenarioId, spatial, [
+            // The rich persistence fixture has actually travelled camp-stream; cabin is a separate visit.
             new("a", "camp", Hour(14), []),
+            new("a", "stream", Minute(930), initial.Resources.Where(resource => PlaygroundExpeditionMap.GetResourcePlace(resource.Id) == "stream")),
             new("a", "cabin", Hour(13), initial.Resources.Where(resource => PlaygroundExpeditionMap.GetResourcePlace(resource.Id) == "cabin"))
-        ], environment: new(0, 1, Minute(990), Minute(870), true, [new("a", PlaygroundSurvival.Scale * 17 / 2, false)]));
+        ], environment: new(0, 1, Minute(990), Minute(870), true, [new("a", PlaygroundSurvival.Scale * 17 / 2, false)]), confirmedPassages: [new("a", "trail-1")]);
         return PlaygroundEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters: [actor], expedition: expedition), initial.Time);
     }
 

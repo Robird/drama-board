@@ -14,9 +14,9 @@ public sealed class FollowingObservationTests {
         PlaygroundObservation frozen = PlaygroundDecisionContext.Observe(initial, "a");
         Assert.Equal(new[] { "b", "c" }, frozen.Followers.Keys.Order().ToArray());
         Assert.All(frozen.OtherCharacters, other => Assert.Equal("a", other.FollowingLeaderId));
-        Assert.Equal("风口山脊", Assert.Single(frozen.Passages, passage => passage.Id == "trail-2").KnownDestinationName);
+        Assert.Null(Assert.Single(frozen.Passages, passage => passage.Id == "e-b9").KnownDestinationName);
 
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-2")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-b9")));
         var (before, departure) = await UntilFact(kernel, PlaygroundEventKind.MoveStarted);
         Assert.Equal("a", departure.ActorId);
         Assert.Equal("call_fixture_1", departure.ToolCallId);
@@ -37,7 +37,7 @@ public sealed class FollowingObservationTests {
                 Assert.Null(kernel.World.Business.InteractionStates[actor].PendingAdvance);
             }
         }
-        Assert.Equal("风口山脊", PlaygroundDecisionContext.Observe(kernel.World, "a").Journey!.KnownDestinationName);
+        Assert.Null(PlaygroundDecisionContext.Observe(kernel.World, "a").Journey!.KnownDestinationName);
         Assert.Null(frozen.ArrivalDue); // Previously delivered material remains frozen.
         Assert.Equal("camp", frozen.PlaceId);
 
@@ -95,7 +95,7 @@ public sealed class FollowingObservationTests {
             PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: 2);
         initial = PlaygroundEngine.Rebuild(initial.Business.Replace(initial.Time, changedCharacters:
             [new PlaygroundCharacter(a.Id, a.Name, survival: needs)]), initial.Time);
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-2")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-b9")));
         var (_, death) = await UntilFact(kernel, PlaygroundEventKind.SurvivalFailed);
         Assert.False(kernel.World.GetCharacter("a").IsActive);
         Assert.True(kernel.World.GetCharacter("b").IsActive);

@@ -211,13 +211,13 @@ try {
     $secondAudit = Join-Path $outputRoot '07-child-travel.audit.jsonl'
     # Successful a handoff yields fairly to b. The second process opens b's context,
     # then commits b's move; neither transition needs an LLM controller.
-    $secondOutput = Invoke-GymCli '07-child-travel' ($common + @('--character-controls', $controlsB, '--steps', '2', '--llm-log', $secondAudit)) @('go home-workshop')
+    $secondOutput = Invoke-GymCli '07-child-travel' ($common + @('--character-controls', $controlsB, '--steps', '2', '--llm-log', $secondAudit)) @('go e-r6')
     Assert-True ($firstOutput.Contains('山野镇住处') -and -not $secondOutput.Contains('gym-child-private')) 'Selected location was lost or actor b saw actor a private handoff.'
     Assert-True (-not (Test-Path -LiteralPath $firstAudit) -and -not (Test-Path -LiteralPath $secondAudit)) 'Human-only cold runs created raw model audits.'
     $childOperations = @(Read-EnvelopeRecords $journalPath | Where-Object BranchId -CEQ $child)
     $received = @($childOperations | Where-Object Kind -CEQ 'operation-received')
     $ordinary = @($received | Where-Object { -not $_.Payload.ToolName.StartsWith(':', [StringComparison]::Ordinal) })
-    Assert-True (($ordinary.Payload.RawInput -join "`n") -ceq "handoff gym-child-private`ngo home-workshop") 'Child ordinary commands were missing, duplicated, or associated with another branch.'
+    Assert-True (($ordinary.Payload.RawInput -join "`n") -ceq "handoff gym-child-private`ngo e-r6") 'Child ordinary commands were missing, duplicated, or associated with another branch.'
     Assert-True (($received.Payload.ActorId -join ',') -ceq 'a,b') 'Child operations were not exactly actor a handoff followed by actor b travel.'
     foreach ($operation in $ordinary) {
         $completed = @($childOperations | Where-Object { $_.Kind -ceq 'operation-completed' -and $_.Payload.OperationRecordId -ceq $operation.Payload.OperationRecordId })

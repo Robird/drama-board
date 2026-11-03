@@ -67,7 +67,7 @@ public sealed partial record PlaygroundCommandCheck(
 /// <remarks>Resource and inventory values are immutable snapshots. Hidden geography, distant current
 /// stock, continuity and validation delegates are deliberately absent. Saved materials never capture
 /// a controller or world; this projection is not a security sandbox.</remarks>
-[DurableType("DramaBoard.Playground.Observation", 1)]
+[DurableType("DramaBoard.Playground.Observation", 2)]
 public sealed partial class PlaygroundObservation : IDurableObject {
     [DurableField(1)] private ModelTime _time;
     public required ModelTime Time { get => _time; init => _time = value; }
@@ -141,6 +141,8 @@ public sealed partial class PlaygroundObservation : IDurableObject {
         get => new ReadOnlyDictionary<string, string>(_itemUseDescriptions);
         init => _itemUseDescriptions = new(value, StringComparer.Ordinal);
     }
+    [DurableField(34)] private List<PlaygroundKnownPlace> _knownMap = [];
+    public IReadOnlyList<PlaygroundKnownPlace> KnownMap { get => _knownMap.AsReadOnly(); init => _knownMap = new(value); }
     internal void ValidateEconomy() {
         if (string.IsNullOrWhiteSpace(WorldName) || ItemUseDescriptions.Any(pair => !ItemNames.ContainsKey(pair.Key) || string.IsNullOrWhiteSpace(pair.Value))) {
             throw new InvalidOperationException("Frozen world and item-use descriptions require visible identities and nonempty material.");

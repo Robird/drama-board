@@ -288,7 +288,7 @@ public sealed class GoalPresentationTests(ITestOutputHelper output) {
             Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
             OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = source.Commands,
             IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-            PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Passages = source.Passages,
+            PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Passages = source.Passages, KnownMap = source.KnownMap,
             Memories = source.Memories, Outcome = source.Outcome, EndingReason = source.EndingReason,
             Survival = source.Survival, Weather = source.Weather, Journey = source.Journey, Communication = source.Communication,
             Goals = goals

@@ -15,6 +15,7 @@ internal static class PlaygroundFactApplication {
         PlaygroundEconomyValidation.Validate(business, fact);
         PlaygroundBusinessState result = ApplyReplacements(business, instant, fact);
         ValidateRecordedVisits(business, result, fact);
+        ValidateRecordedKnowledge(business, fact);
         PlaygroundObservedEventValidation.Validate(business, result, fact);
         PlaygroundGoalInteractionRules.Validate(business, result, fact);
         PlaygroundInteractionValidation.Validate(business, result, fact);
@@ -45,6 +46,18 @@ internal static class PlaygroundFactApplication {
             }
         }
     }
+    private static void ValidateRecordedKnowledge(PlaygroundBusinessState before, PlaygroundFact fact) {
+        PlaygroundConfirmedPassage[] expected = [];
+        if (fact.Kind == PlaygroundEventKind.MoveArrived && fact.SpatialFacts.Count == 1 &&
+            fact.SpatialFacts[0] is TraversalArrivedFact arrived && fact.ActorId == arrived.EntityId.Value &&
+            PlaygroundActions.Location(before, arrived.EntityId.Value) is TraversingLocation movement &&
+            !before.Expedition!.KnowsPassage(arrived.EntityId.Value, movement.PassageId.Value)) {
+            expected = [new(arrived.EntityId.Value, movement.PassageId.Value)];
+        }
+        if (!expected.SequenceEqual(fact.ConfirmedPassages)) {
+            throw new InvalidOperationException("Only the traveller's recorded complete arrival can confirm a passage.");
+        }
+    }
     // Planning-only candidate: no material validation until the event and interaction replacements exist.
     internal static PlaygroundBusinessState ApplyReplacements(PlaygroundBusinessState business, LogicalInstant instant, PlaygroundFact fact) {
         PlaygroundExpedition? expedition = business.Expedition;
@@ -53,7 +66,7 @@ internal static class PlaygroundFactApplication {
             foreach (GraphSpatialFact spatialFact in fact.SpatialFacts) {
                 spatial = business.Definition.Runtime.Reducer.Apply(spatial, instant, spatialFact);
             }
-            expedition = expedition.Change(spatial, fact.Visits, fact.Environment);
+            expedition = expedition.Change(spatial, fact.Visits, fact.Environment, fact.ConfirmedPassages);
         }
         return business.Replace(fact.At, fact.Light, fact.ChangedResources, fact.Script,
             fact.ChangedCharacters, fact.LastServedActorId, expedition, fact.InteractionChanges, fact.Economy);
@@ -392,7 +405,7 @@ internal static class PlaygroundFactApplication {
                 if (!prior.IsActive || prior.Activity is not null ||
                     PlaygroundActions.Location(business, prior.Id) is not AtPlaceLocation atPlace ||
                     fact.SpatialFacts[memberIndex] is not TraversalStartedFact start || start.EntityId.Value != prior.Id ||
-                    start.PassageId.Value != command.PassageId || start.FromPlaceId != atPlace.PlaceId || start.SpeedSnapshot != 1) {
+                    business.Definition.GetEntrances(atPlace.PlaceId.Value).SingleOrDefault(p => p.EntranceId == command.EntranceId)?.Id != start.PassageId.Value || start.FromPlaceId != atPlace.PlaceId || start.SpeedSnapshot != 1) {
                     throw new InvalidOperationException("Every recorded member must start the selected passage from their actual place at the common speed.");
                 }
                 bool own = prior.Id == fact.ActorId;

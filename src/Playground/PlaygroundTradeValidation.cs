@@ -117,7 +117,7 @@ internal static class PlaygroundTradeValidation {
     }
 
     private static void ValidateShape(PlaygroundCommand command) {
-        Require(command.ResourceId is null && command.Count == 0 && !command.All && command.PassageId is null && command.ItemId is null &&
+        Require(command.ResourceId is null && command.Count == 0 && !command.All && command.EntranceId is null && command.ItemId is null &&
             command.HandoffText is null && command.SpeechText is null && command.Goal is null && command.RecipeId is null && command.MoneyAmount == 0,
             "Trade command contains unrelated arguments.");
         Require(command.Kind == PlaygroundCommandKind.Offer ? command.TradeId is null : command.Hours == 0 && command.TargetActorId is null &&

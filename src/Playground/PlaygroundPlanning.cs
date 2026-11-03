@@ -54,11 +54,13 @@ internal static class PlaygroundPlanning {
             case PlaygroundCommandKind.Gather:
                 return StartGather(world, actor, command);
             case PlaygroundCommandKind.Go: {
-                string result = $"沿通路 {command.PassageId} 出发；本段移动不可取消。";
+                PlaygroundPassageDefinition entrance = world.Definition.GetEntrances(PlaygroundActions.CurrentPlace(world, actorId)!)
+                    .Single(p => p.EntranceId == command.EntranceId);
+                string result = $"沿入口 {entrance.EntranceId} 出发；本段移动不可取消。";
                 PlaygroundCharacter[] members = PlaygroundFollowingRules.MovingMembers(world.Business, actorId).ToArray();
                 GraphSpatialFact[] movements = members.SelectMany(member =>
                     ((SpatialPlanAccepted)world.Definition.Runtime.Planner.TryStartTraversal(
-                        world.Expedition!.Spatial, new(member.Id), new(command.PassageId!), 1, world.Time)).Facts).ToArray();
+                        world.Expedition!.Spatial, new(member.Id), new(entrance.Id), 1, world.Time)).Facts).ToArray();
                 return new(PlaygroundEventKind.MoveStarted, world.Time, actorId,
                     changedCharacters: members.Select(member => member.Id == actorId
                         ? member.Change(null, notices: [], result: result, communication: member.Communication.Acknowledge())
@@ -85,7 +87,8 @@ internal static class PlaygroundPlanning {
         string result = $"抵达{place.Name}。{place.Description}";
         PlaygroundCharacter changed = actor.Change(null, result: result);
         return new(PlaygroundEventKind.MoveArrived, at, actor.Id, changedCharacters: [changed],
-            result: result, spatialFacts: facts);
+            result: result, spatialFacts: facts, confirmedPassages: world.Expedition.KnowsPassage(actor.Id, traversal.PassageId.Value)
+                ? [] : [new(actor.Id, traversal.PassageId.Value)]);
     }
 
     /// <summary>Records direct observations in the planned fact; Fold never discovers new knowledge.</summary>

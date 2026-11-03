@@ -36,7 +36,7 @@ public sealed class PlaygroundLookaheadTemporalTests {
             environment: new PlaygroundEnvironment(123, 0, Hour(20)));
         var business = new PlaygroundBusinessState(time, initial.World.Light, initial.World.Resources, initial.World.Script, actors, expedition: expedition);
         var history = new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(PlaygroundEngine.Rebuild(business, time), initial.Cursor);
-        var setup = PlaygroundEngine.CreateKernel(history, characterController: new Script(_ => Operation("go trail-1")));
+        var setup = PlaygroundEngine.CreateKernel(history, characterController: new Script(_ => Operation("go e-c7")));
         await Until(setup, history, () => IsOpening(history, "b"));
         var source = history.State;
         var cursor = history.Cursor;
@@ -129,7 +129,7 @@ public sealed class PlaygroundLookaheadTemporalTests {
         // Ordinary Host operation examines it sooner; this explicitly tests delayed reuse safety.
         bool firstA = true;
         var prelude = PlaygroundEngine.CreateKernel(history, characterController: new Script(context => {
-            if (context.InteractionState.ActorId == "b") { return Operation("go trail-5"); }
+            if (context.InteractionState.ActorId == "b") { return Operation("go e-t4"); }
             if (firstA) { firstA = false; return first; }
             return Operation("wait 3");
         }));

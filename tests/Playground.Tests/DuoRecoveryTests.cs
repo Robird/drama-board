@@ -229,7 +229,7 @@ public sealed class DuoRecoveryTests {
             int call = _calls.GetValueOrDefault(actor) + 1;
             _calls[actor] = call;
             PlaygroundCommand command = call == 1 ? PlaygroundCommand.Handoff("private-" + actor) : call == 2
-                ? actor == "a" ? PlaygroundCommand.Go(longRoute ? "trail-4" : "trail-2") : PlaygroundCommand.Wait(8)
+                ? actor == "a" ? PlaygroundCommand.Go(longRoute ? "e-s3" : "e-b9") : PlaygroundCommand.Wait(8)
                 : throw new InvalidOperationException("The fixture must stop before requesting another decision.");
             Assert.Null(context.Check(command));
             return ValueTask.FromResult(new PlaygroundControllerOperation($"call/{actor}/{call}", PlaygroundCommandParser.Format(command), $"duo/{actor}/{call}"));

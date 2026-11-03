@@ -59,7 +59,7 @@ function Get-StoreHashes {
     return ($hashes | ConvertTo-Json -Compress)
 }
 
-$first = Invoke-ContentConsole '01-gentle-production' @('go home-workshop', 'produce ration 1', 'go market-workshop', 'sell item.ration 1', ':look', ':quit') @('--content', 'gentle', '--characters', '1')
+$first = Invoke-ContentConsole '01-gentle-production' @('go e-r6', 'produce ration 1', 'go e-a9', 'sell item.ration 1', ':look', ':quit') @('--content', 'gentle', '--characters', '1')
 if (-not $first.Output.Contains('hillside-gentle-v1') -or -not $first.Output.Contains('山野镇·舒缓') -or
     -not $first.Output.Contains('30 分钟') -or -not $first.Output.Contains('余额：26 钱')) {
     throw 'Gentle content identity, recipe duration, or sale proceeds were not visible through Console.'
@@ -77,7 +77,7 @@ $matching = Invoke-ContentConsole '04-explicit-match' @(':look', ':quit') @('--c
 if (-not $matching.Output.Contains('hillside-gentle-v1')) { throw 'Explicit matching content failed.' }
 $records = @(Read-HostJournalRecords (Join-Path $storePath 'host/events.jsonl'))
 $received = @($records | Where-Object { $_.Kind -ceq 'operation-received' -and -not $_.Payload.ToolName.StartsWith(':', [StringComparison]::Ordinal) })
-$expected = @('go home-workshop', 'produce ration 1', 'go market-workshop', 'sell item.ration 1')
+$expected = @('go e-r6', 'produce ration 1', 'go e-a9', 'sell item.ration 1')
 if (($received.Payload.RawInput -join "`n") -cne ($expected -join "`n")) { throw 'Ordinary commands differ from the plan.' }
 foreach ($record in $received) {
     $result = @($records | Where-Object { $_.Kind -ceq 'operation-completed' -and $_.Payload.OperationRecordId -eq $record.Payload.OperationRecordId })

@@ -127,7 +127,7 @@ internal static class PlaygroundInteractionValidation {
                     ? before.GetResource(fact.ResourceId!).Stock : pending.Command.Count),
                 "The recorded gathering target and frozen count must match the accepted activity.");
         } else if (pending.Command.Kind == PlaygroundCommandKind.Go) {
-            Require(entity?.Location is TraversingLocation movement && pending.Command == PlaygroundCommand.Go(movement.PassageId.Value),
+            Require(entity?.Location is TraversingLocation movement && before.Definition.GetEntrances(((AtPlaceLocation)PlaygroundActions.Location(before, prior.ActorId)!).PlaceId.Value).Any(p => p.Id == movement.PassageId.Value && p.EntranceId == pending.Command.EntranceId),
                 "The recorded passage does not match the movement.");
         } else if (pending.Command.Kind == PlaygroundCommandKind.Wait) {
             Require(pending.Command == PlaygroundCommand.Wait(pending.Command.Hours) &&
@@ -273,7 +273,7 @@ internal static class PlaygroundInteractionValidation {
             PlaygroundCommandKind.Buy => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.BuyPrice > 0),
             PlaygroundCommandKind.Sell => observation.MarketQuotes.Any(quote => quote.ItemId == entry.Command.ItemId && quote.SellPrice > 0),
             PlaygroundCommandKind.Produce => observation.Recipes.Any(recipe => recipe.Id == entry.Command.RecipeId),
-            PlaygroundCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.PassageId),
+            PlaygroundCommandKind.Go => observation.Passages.Any(p => p.Id == entry.Command.EntranceId),
             PlaygroundCommandKind.Gather => visible.Any(r => r.Id == entry.Command.ResourceId),
             PlaygroundCommandKind.Use => actor.Survival is not null && observation.ItemUseDescriptions.ContainsKey(entry.Command.ItemId!) && (actor.Backpack.Items.ContainsKey(entry.Command.ItemId!) || visible.Any(r => r.ItemId == entry.Command.ItemId)),
             PlaygroundCommandKind.Follow => state.Expedition is not null && others.Any(other => other.Id == entry.Command.TargetActorId),
@@ -314,11 +314,12 @@ internal static class PlaygroundInteractionValidation {
     }
 
     private static void ValidateKnownGeography(PlaygroundBusinessState state, string actorId, string? place, PlaygroundObservation observation) {
+        Require(PlaygroundKnownMap.Same(observation.KnownMap, PlaygroundKnownMap.Observe(state, actorId)), "The recorded map must match only personal confirmed knowledge.");
         PlaygroundVisit[] visits = state.Expedition?.Visits.Where(visit => visit.ActorId == actorId).ToArray() ?? [];
-        PlaygroundPassageDefinition[] passages = place is null ? [] : state.Definition.GetPassages(place).ToArray();
+        PlaygroundPassageDefinition[] passages = place is null ? [] : state.Definition.GetEntrances(place).ToArray();
         Require(observation.Passages.Count == passages.Length && observation.Passages.Zip(passages).All(pair =>
-            pair.First.Id == pair.Second.Id && pair.First.Description == pair.Second.Description && pair.First.DurationTicks == pair.Second.DurationTicks &&
-            pair.First.KnownDestinationName == (visits.Any(visit => visit.PlaceId == pair.Second.To) ? state.Definition.GetPlace(pair.Second.To).Name : null)),
+            pair.First.Id == pair.Second.EntranceId && pair.First.Description == pair.Second.Description && pair.First.DurationTicks == pair.Second.DurationTicks &&
+            pair.First.KnownDestinationName == (state.Expedition!.KnowsPassage(actorId, pair.Second.Id) ? state.Definition.GetPlace(pair.Second.To).Name : null)),
             "Recorded passages must expose only currently visible clues and previously learned destinations.");
         PlaygroundVisit[] memories = visits.Where(visit => visit.PlaceId != place).ToArray();
         Require(observation.Memories.Count == memories.Length && observation.Memories.Zip(memories).All(pair =>

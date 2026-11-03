@@ -11,7 +11,7 @@ public sealed class FollowingMovementTests {
         PlaygroundWorld initial = FollowingRulesTests.World(leaders: [null, "a", "a"]);
         // Movement generations are local histories, not a shared party identity.
         initial = WithGenerations(initial, [2, 9, 0]);
-        var controller = Commands(PlaygroundCommand.Go("trail-1"));
+        var controller = Commands(PlaygroundCommand.Go("e-c7"));
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: controller);
         await UntilFact(kernel, PlaygroundEventKind.MoveStarted);
         PlaygroundFact move = Assert.Single(kernel.LastCompletion!.Event.Facts);
@@ -47,7 +47,7 @@ public sealed class FollowingMovementTests {
     public void A_followers_exhausted_movement_identity_refuses_departure_for_everyone() {
         PlaygroundWorld world = WithGenerations(FollowingRulesTests.World(leaders: [null, "a", "a"]), [0, long.MaxValue, 0]);
         string before = world.DescribeState();
-        Assert.NotNull(PlaygroundActions.Check(world, "a", PlaygroundCommand.Go("trail-1")));
+        Assert.NotNull(PlaygroundActions.Check(world, "a", PlaygroundCommand.Go("e-c7")));
         Assert.Equal(before, world.DescribeState());
         Assert.All(world.Expedition!.Spatial.Entities, entity => Assert.IsType<AtPlaceLocation>(entity.Location));
     }
@@ -57,7 +57,7 @@ public sealed class FollowingMovementTests {
         PlaygroundSurvival Body() => new(Hour(8), 20 * PlaygroundSurvival.Scale, 100 * PlaygroundSurvival.Scale, 100 * PlaygroundSurvival.Scale,
             Rate(0), Rate(0), PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: 1, pendingMask: 1, pendingSince: Hour(8));
         PlaygroundWorld initial = FollowingRulesTests.World(leaders: [null, "a", "a"], attention: [true, true, true], bodies: [Body(), Body(), Body()]);
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-1")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-c7")));
         await UntilFact(kernel, PlaygroundEventKind.MoveStarted);
         Assert.False(kernel.World.GetCharacter("a").Communication.AttentionPending);
         Assert.Equal(0, kernel.World.GetCharacter("a").Survival!.PendingMask);
@@ -76,7 +76,7 @@ public sealed class FollowingMovementTests {
             (id == dying ? 8 : 100) * PlaygroundSurvival.Scale, 100 * PlaygroundSurvival.Scale, Rate(0),
             id == dying ? PlaygroundSurvivalRules.WaterRate : Rate(0), PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: id == dying ? 2 : 0);
         PlaygroundWorld initial = FollowingRulesTests.World(leaders: [null, "a", "a"], bodies: [Body("a"), Body("b"), Body("c")]);
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-2")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-b9")));
         await UntilFact(kernel, PlaygroundEventKind.MoveStarted);
         await UntilFact(kernel, PlaygroundEventKind.SurvivalFailed);
         PlaygroundFact death = Assert.Single(kernel.LastCompletion!.Event.Facts);
@@ -109,7 +109,7 @@ public sealed class FollowingMovementTests {
     [Fact]
     public async Task Former_exit_arrival_preserves_all_members_and_following_for_return_travel() {
         PlaygroundWorld initial = FollowingRulesTests.World(leaders: [null, "a", "a"], places: ["ravine", "ravine", "ravine"]);
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-4"), PlaygroundCommand.Go("trail-4")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-s3"), PlaygroundCommand.Go("e-z6")));
         await UntilFact(kernel, PlaygroundEventKind.MoveStarted);
         while (kernel.World.Characters.Any(c => PlaygroundActions.CurrentPlace(kernel.World, c.Id) != "road")) { await Commit(kernel); }
         Assert.Equal(PlaygroundExpeditionSummary.Exploring, kernel.World.ExpeditionSummary);
@@ -127,7 +127,7 @@ public sealed class FollowingMovementTests {
     [Fact]
     public async Task Three_characters_complete_two_legs_work_independently_regroup_and_depart_again() {
         var queues = new Dictionary<string, Queue<PlaygroundCommand>> {
-            ["a"] = new([PlaygroundCommand.Wait(1), PlaygroundCommand.Go("trail-2"), PlaygroundCommand.Go("trail-5"), PlaygroundCommand.DismissFollowers(), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Say("b", "工作结束，准备集合。"), PlaygroundCommand.Go("trail-5")]),
+            ["a"] = new([PlaygroundCommand.Wait(1), PlaygroundCommand.Go("e-b9"), PlaygroundCommand.Go("e-u8"), PlaygroundCommand.DismissFollowers(), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Say("b", "工作结束，准备集合。"), PlaygroundCommand.Go("e-t4")]),
             ["b"] = new([PlaygroundCommand.Follow("a"), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Follow("a")]),
             ["c"] = new([PlaygroundCommand.Follow("a"), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Follow("a")])
         };

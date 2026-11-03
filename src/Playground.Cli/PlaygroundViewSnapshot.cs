@@ -187,6 +187,16 @@ internal sealed class PlaygroundViewSnapshot {
             Add("resource", r.Id, "day-growth", PlaygroundVisibleValue.Flag(r.GrowsInDaylight), prefix + "白天生长");
             Add("resource", r.Id, "required-level", PlaygroundVisibleValue.Numeric(r.RequiredLevel), prefix + "所需等级");
         }
+        foreach (var place in o.KnownMap) {
+            Add("known-place", place.Id, "name", Text(place.Name), "已知地点 " + place.Id);
+            foreach (var entrance in place.Entrances) {
+                string id = place.Id + "/" + entrance.Id;
+                Add("known-entrance", id, "description", Text(entrance.Description), place.Name + "（" + place.Id + "）入口 " + entrance.Id + " · 线索");
+                Add("known-entrance", id, "duration", PlaygroundVisibleValue.Numeric(entrance.DurationTicks, "duration"), place.Name + "（" + place.Id + "）入口 " + entrance.Id + " · 耗时");
+                Add("known-entrance", id, "destination", Text(entrance.KnownDestinationId is { } destination
+                    ? entrance.KnownDestinationName + "（" + destination + "）" : "去向未知"), place.Name + "（" + place.Id + "）入口 " + entrance.Id + " · 已知连接");
+            }
+        }
         foreach (var p in o.Passages) {
             Add("passage", p.Id, "description", Text(p.Description), "通路 " + p.Id + " · 线索");
             Add("passage", p.Id, "duration", PlaygroundVisibleValue.Numeric(p.DurationTicks, "duration"), "通路 " + p.Id + " · 耗时");
@@ -232,7 +242,7 @@ internal sealed class PlaygroundViewSnapshot {
     }
 
     internal static string CommandId(PlaygroundCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
-        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.PassageId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture),
+        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.EntranceId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture),
         c.TradeId ?? "", c.GiveAsset?.AssetId ?? "", c.GiveAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "",
         c.WantAsset?.AssetId ?? "", c.WantAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "");
     internal static string CommandSyntax(PlaygroundCommand c) => c.Kind switch {
@@ -243,7 +253,7 @@ internal sealed class PlaygroundViewSnapshot {
         PlaygroundCommandKind.Produce => $"produce {c.RecipeId} {c.Count}", PlaygroundCommandKind.GiveMoney => $"give {c.TargetActorId} money {c.MoneyAmount}",
         PlaygroundCommandKind.Give => $"give {c.TargetActorId} {c.ItemId} {c.Count}",
         PlaygroundCommandKind.Follow => $"follow {c.TargetActorId}", PlaygroundCommandKind.DismissFollowers => "dismiss-followers",
-        PlaygroundCommandKind.Go => $"go {c.PassageId}", PlaygroundCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
+        PlaygroundCommandKind.Go => $"go {c.EntranceId}", PlaygroundCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
     };
 
     private static string FieldLabel(string field) => field switch {

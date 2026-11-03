@@ -16,6 +16,8 @@ public sealed class LlmCharacterController : IPlaygroundCharacterController {
         + "检查同回合反馈：已成功的操作不要重复，拒绝原因未变化时不要原样重试。没有需要记录的新变化时直接行动，无需输出检查清单或完整推理。"
         + "需要补给时可使用界面提供的即时 use 行动。不要调用 Console 元命令。";
 
+    private const string NavigationGuidance = "go 只接受当前可见的本端入口 ID；未完整走通过的入口去向未知。已知地图中的连接来自本人实际走通，去过两个地点不证明两地相连；他人话语和自己的猜测不会增加地图知识。";
+
     private const string EconomyGuidance = "在镇里可按当前界面买卖与生产。市场的买入价是你付款，卖出价是市场向你付款；库存和收购额度有限，以提交结果为准。"
         + "生产开始时预留全部投入，完成时取得产物；cancel 退回本次未完成生产的预留材料，不产生成品。买卖、补给和通信不会重置原活动期限。"
         + "只使用眼前提供的市场、配方和物品标识；use 可使用界面列出的补给，物品效果以当前冻结材料为准。"
@@ -47,7 +49,7 @@ public sealed class LlmCharacterController : IPlaygroundCharacterController {
         + "shout 与 say / give 共用发送额度，一次大喊只扣一次，无人听见也成功；回执不提供听众名单或接收确认。"
         + "听到大喊不取消原活动，也不自动集合；完成或取消活动后再自主返回和跟随。听见远处角色不代表同地可赠与或跟随，话语不等于世界证实。";
 
-    private static string GuidanceFor(PlaygroundObservation observation) => $"当前世界：{observation.WorldName}。" + PromptBody + (observation.IsExpedition ? FollowingGuidance + ShoutGuidance + EconomyGuidance + TradeGuidance : "") + (observation.Goals is not null
+    private static string GuidanceFor(PlaygroundObservation observation) => $"当前世界：{observation.WorldName}。" + PromptBody + (observation.IsExpedition ? NavigationGuidance + FollowingGuidance + ShoutGuidance + EconomyGuidance + TradeGuidance : "") + (observation.Goals is not null
         ? GoalGuidance : observation.Commands.Any(entry => entry.Command.Kind == PlaygroundCommandKind.Handoff) ? HandoffGuidance : "");
 
     private readonly LlmDecisionLoop _loop;

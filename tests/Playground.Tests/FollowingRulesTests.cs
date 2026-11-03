@@ -42,7 +42,7 @@ public sealed class FollowingRulesTests {
         Assert.NotNull(PlaygroundActions.Check(world, "c", PlaygroundCommand.Follow("b")));
         Assert.NotNull(PlaygroundActions.Check(world, "b", PlaygroundCommand.Wait(1)));
         Assert.NotNull(PlaygroundActions.Check(world, "b", PlaygroundCommand.Gather("berries")));
-        Assert.NotNull(PlaygroundActions.Check(world, "b", PlaygroundCommand.Go("trail-1")));
+        Assert.NotNull(PlaygroundActions.Check(world, "b", PlaygroundCommand.Go("e-c7")));
     }
 
     [Fact]

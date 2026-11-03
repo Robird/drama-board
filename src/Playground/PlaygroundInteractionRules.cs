@@ -144,7 +144,7 @@ internal static class PlaygroundInteractionRules {
     }
 
     internal static string DescribeAdvance(PlaygroundCommand command, PlaygroundObservation known, bool travelling) => command.Kind switch {
-            PlaygroundCommandKind.Go => known.Passages.Single(p => p.Id == command.PassageId).Description,
+            PlaygroundCommandKind.Go => known.Passages.Single(p => p.Id == command.EntranceId).Description,
             PlaygroundCommandKind.Gather => $"采集{known.Resources.Single(r => r.Id == command.ResourceId).Name}",
             PlaygroundCommandKind.Wait => $"在原地等待 {command.Hours} 小时",
             PlaygroundCommandKind.Produce => $"在工坊生产 {command.RecipeId} ×{command.Count} 批",

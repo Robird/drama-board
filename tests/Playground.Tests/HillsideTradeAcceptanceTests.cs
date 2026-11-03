@@ -181,7 +181,7 @@ public sealed class HillsideTradeAcceptanceTests {
         var kernel = PlaygroundEngine.CreateKernel(history, characterController: driver);
         await Act(kernel, driver, "a", PlaygroundCommand.Offer("b", new("item.food", 1), new("money", 5), 4));
         string id = Assert.Single(kernel.World.Business.Economy!.Trades.Offers).Id;
-        await Act(kernel, driver, "b", PlaygroundCommand.Go("market-home"));
+        await Act(kernel, driver, "b", PlaygroundCommand.Go("e-m2"));
         await Act(kernel, driver, "c", PlaygroundCommand.Wait(4));
         await Act(kernel, driver, "a", PlaygroundCommand.Wait(4));
         await Until(kernel, world => !world.GetCharacter("a").IsActive);

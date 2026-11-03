@@ -32,8 +32,8 @@ public sealed class PlaygroundDecisionContext {
             if (command?.Kind == PlaygroundCommandKind.Gather && !observation.Resources.Any(resource => resource.Id == command.ResourceId)) {
                 return "当前不可见或不可用的资源点。";
             }
-            if (command?.Kind == PlaygroundCommandKind.Go && !observation.Passages.Any(passage => passage.Id == command.PassageId)) {
-                return "当前不可见或不可用的通路。";
+            if (command?.Kind == PlaygroundCommandKind.Go && !observation.Passages.Any(passage => passage.Id == command.EntranceId)) {
+                return "当前没有可用的这个入口；请使用当前入口列表中的编号。";
             }
             return PlaygroundActions.Check(world, actorId, command, null, visibleOnly: true);
         }
@@ -60,13 +60,13 @@ public sealed class PlaygroundDecisionContext {
         PlaygroundResource[] resources = world.Resources.Where(resource => expedition is null ||
             place is not null && world.Definition.GetResourcePlace(resource.Id) == place).ToArray();
         PlaygroundPassageDefinition[] passages = expedition is not null && place is not null
-            ? [.. world.Definition.GetPassages(place)] : [];
+            ? [.. world.Definition.GetEntrances(place)] : [];
         string? Check(PlaygroundCommand? command) {
             if (command?.Kind == PlaygroundCommandKind.Gather && !resources.Any(resource => resource.Id == command.ResourceId)) {
                 return "当前不可见或不可用的资源点。";
             }
-            if (command?.Kind == PlaygroundCommandKind.Go && !passages.Any(passage => passage.Id == command.PassageId)) {
-                return "当前不可见或不可用的通路。";
+            if (command?.Kind == PlaygroundCommandKind.Go && !passages.Any(passage => passage.EntranceId == command.EntranceId)) {
+                return "当前没有可用的这个入口；请使用当前入口列表中的编号。";
             }
             return PlaygroundActions.Check(world, actorId, command, contextSequence);
         }
@@ -100,7 +100,7 @@ public sealed class PlaygroundDecisionContext {
             commands.Add(PlaygroundCommand.GatherAll(resource.Id));
         }
         commands.AddRange(Enumerable.Range(1, 24).Select(PlaygroundCommand.Wait));
-        commands.AddRange(passages.Select(passage => PlaygroundCommand.Go(passage.Id)));
+        commands.AddRange(passages.Select(passage => PlaygroundCommand.Go(passage.EntranceId)));
         if (expedition is not null) {
             commands.AddRange(others.Select(other => PlaygroundCommand.Follow(other.Id)));
             commands.Add(PlaygroundCommand.Unfollow());
@@ -167,9 +167,10 @@ public sealed class PlaygroundDecisionContext {
             PlaceName = expedition is not null && place is not null ? world.Definition.GetPlace(place).Name : null,
             PlaceDescription = expedition is not null && place is not null ? world.Definition.GetPlace(place).Description : null,
             ArrivalDue = arrival,
+            KnownMap = PlaygroundKnownMap.Observe(world.Business, actorId),
             Journey = PlaygroundJourneyObservation.Observe(world.Definition, expedition, actorId, location),
-            Passages = Array.AsReadOnly(passages.Select(passage => new PlaygroundPassageObservation(passage.Id, passage.Description,
-                passage.DurationTicks, visits.Any(visit => visit.PlaceId == passage.To) ? world.Definition.GetPlace(passage.To).Name : null)).ToArray()),
+            Passages = Array.AsReadOnly(passages.Select(passage => new PlaygroundPassageObservation(passage.EntranceId, passage.Description,
+                passage.DurationTicks, expedition!.KnowsPassage(actorId, passage.Id) ? world.Definition.GetPlace(passage.To).Name : null)).ToArray()),
             Memories = Array.AsReadOnly(visits.Where(visit => visit.PlaceId != place).Select(visit =>
                 new PlaygroundPlaceMemory(world.Definition.GetPlace(visit.PlaceId).Name, visit.At,
                     Array.AsReadOnly(visit.Resources.ToArray()), visit.PlaceId)).ToArray()),

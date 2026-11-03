@@ -64,8 +64,8 @@ public sealed class TradeHostTests {
         using var files = new Files();
         var initial = PlaygroundGameFactory.CreateLivingWorld(characterCount: 2, enableWeather: false);
         var controller = new Commands(new Dictionary<string, Queue<string>> {
-            ["a"] = new(["go home-workshop", "produce ration 1"]),
-            ["b"] = new(["go home-workshop", "offer a money 2 for item.water 1"])
+            ["a"] = new(["go e-r6", "produce ration 1"]),
+            ["b"] = new(["go e-r6", "offer a money 2 for item.water 1"])
         });
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
             characterController: controller);

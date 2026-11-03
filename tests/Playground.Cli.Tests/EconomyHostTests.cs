@@ -12,8 +12,8 @@ public sealed class EconomyHostTests {
     [Fact]
     public async Task Model_can_buy_produce_sell_and_consume_then_resume_from_exact_frozen_material() {
         using var files = new Files();
-        var client = new Client("go market-home", "buy item.food 2", "go market-workshop", "produce ration 1",
-            "go market-workshop", "sell item.ration 1", "use item.ration", "handoff economic-loop-complete");
+        var client = new Client("go e-m2", "buy item.food 2", "go e-v4", "produce ration 1",
+            "go e-a9", "sell item.ration 1", "use item.ration", "handoff economic-loop-complete");
         using var output = new StringWriter();
         Assert.Equal(2, await PlaygroundHost.RunAsync(files.Store, files.Options(8), default, output, client, characterCount: 1));
         Assert.Equal(8, client.Requests.Count);
@@ -88,8 +88,8 @@ public sealed class EconomyHostTests {
         using var files = new Files();
         var initial = PlaygroundGameFactory.CreateLivingWorld(characterCount: 2, enableWeather: false);
         var controller = new Commands(new Dictionary<string, Queue<string>> {
-            ["a"] = new(["go home-workshop", "produce ration 1"]),
-            ["b"] = new(["go home-workshop", "say a production-checkpoint"])
+            ["a"] = new(["go e-r6", "produce ration 1"]),
+            ["b"] = new(["go e-r6", "say a production-checkpoint"])
         });
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
             characterController: controller);

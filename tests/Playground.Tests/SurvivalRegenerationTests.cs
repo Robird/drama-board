@@ -10,7 +10,7 @@ public sealed class SurvivalRegenerationTests {
     public async Task Morning_explorer_can_harvest_eat_and_wait_for_natural_regeneration_across_weather_and_cold_open() {
         // A directed mechanism probe using the production scenario, not a blind playthrough.
         var initial = PlaygroundGameFactory.CreateSurvival(Hour(8));
-        string passage = Assert.Single(PlaygroundExpeditionMap.GetPassages("camp"), p => p.To == "stream").Id;
+        string passage = Assert.Single(PlaygroundExpeditionMap.GetEntrances("camp"), p => p.To == "stream").EntranceId;
         var controller = new CheckedScriptController(
             PlaygroundCommand.Go(passage), PlaygroundCommand.Continue(), PlaygroundCommand.Gather("berries", 2),
             PlaygroundCommand.Use("item.food"), PlaygroundCommand.Use("item.water"), PlaygroundCommand.Wait(3));

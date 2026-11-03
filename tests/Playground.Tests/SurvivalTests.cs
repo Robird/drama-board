@@ -110,6 +110,8 @@ public sealed class SurvivalTests {
         await Advance(kernel);
         Assert.Equal(PlaygroundEventKind.SurvivalWarning, LastKind(kernel));
         Assert.Equal(Minute(510), kernel.World.Time);
+        Assert.Empty(kernel.World.Expedition!.ConfirmedPassages);
+        Assert.Null(PlaygroundDecisionContext.Observe(kernel.World, "a").Journey!.KnownDestinationName);
         await Advance(kernel);
         Assert.Equal(PlaygroundEventKind.ItemUsed, LastKind(kernel));
         Assert.Equal(1, kernel.World.GetCharacter("a").Backpack.Count("item.water"));
@@ -121,6 +123,7 @@ public sealed class SurvivalTests {
         await AdvanceUntil(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "stream");
         Assert.Equal(Hour(9), kernel.World.Time);
         Assert.Equal(66 * PlaygroundSurvival.Scale, Body(kernel.World).WaterUnits);
+        Assert.True(kernel.World.Expedition!.KnowsPassage("a", "trail-1"));
         Assert.Equal(3, source.Calls);
     }
 
@@ -346,7 +349,7 @@ public sealed class SurvivalTests {
     private static PlaygroundSurvival Body(PlaygroundWorld world) => world.GetCharacter("a").Survival!.Project(world.Time);
     private static PlaygroundActivity Wait(ModelTime at, int hours) =>
         new(PlaygroundActivityKind.Wait, 1, at, hours * PlaygroundTime.Hour, new(at.Ticks + hours * PlaygroundTime.Hour));
-    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetPassages(from), p => p.To == to).Id;
+    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetEntrances(from), p => p.To == to).EntranceId;
     private static PlaygroundEventKind LastKind(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) =>
         Assert.Single(kernel.LastCompletion!.Event.Facts).Kind;
     private static PlaygroundWorld World(ModelTime time, PlaygroundSurvival needs, PlaygroundActivity? activity = null,

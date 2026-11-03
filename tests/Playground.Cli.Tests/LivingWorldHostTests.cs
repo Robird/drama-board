@@ -114,7 +114,7 @@ public sealed class LivingWorldHostTests {
     public async Task Pending_gather_beyond_host_time_budget_recovers_once_before_pausing_without_model_calls() {
         using var files = new Files();
         var initial = PlaygroundGameFactory.CreateLivingWorld(characterCount: 1, enableWeather: false);
-        var commands = new Queue<string>(["go market-home", "gather well 1"]);
+        var commands = new Queue<string>(["go e-m2", "gather well 1"]);
         var planned = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
             characterController: new ScriptedController(commands));
         PlaygroundWorld before = initial.World;

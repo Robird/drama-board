@@ -12,7 +12,7 @@ public static class PlaygroundTradeRules {
         if (world.Business.Economy is not { } economy) { return "此世界尚未启用交易。"; }
         PlaygroundCharacter actor = world.GetCharacter(actorId);
         if (!actor.IsActive) { return "角色已无法行动。"; }
-        if (command.ResourceId is not null || command.Count != 0 || command.All || command.PassageId is not null ||
+        if (command.ResourceId is not null || command.Count != 0 || command.All || command.EntranceId is not null ||
             command.ItemId is not null || command.HandoffText is not null || command.SpeechText is not null ||
             command.Goal is not null || command.RecipeId is not null || command.MoneyAmount != 0) { return "交易只接受声明的参数。"; }
         if (command.Kind == PlaygroundCommandKind.Offer) {

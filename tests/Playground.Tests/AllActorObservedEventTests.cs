@@ -127,7 +127,7 @@ public sealed class AllActorObservedEventTests {
     [Fact]
     public async Task Expedition_without_needs_keeps_movement_and_arrival_experiences() {
         PlaygroundWorld initial = PlaygroundGameFactory.CreateSurvival(Hour(8), enableNeeds: false, enableWeather: false).World;
-        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("trail-1")));
+        var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: Commands(PlaygroundCommand.Go("e-c7")));
         PlaygroundFact started;
         do { started = await Advance(kernel); } while (started.Kind == PlaygroundEventKind.DecisionContextOpened);
         Assert.Equal(PlaygroundObservedEventKind.MoveStarted, Assert.Single(started.ObservedEvents).Kind);

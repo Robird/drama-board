@@ -15,7 +15,7 @@ public sealed class SurvivalNeedsViewTests {
         int food, int water, int warmth, string attributes) {
         var initial = PreparedNeeds(PlaygroundSurvival.Create(new ModelTime(19 * PlaygroundTime.Hour), food, water, warmth));
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9")));
         await Until(kernel, world => world.Business.InteractionStates["a"].CurrentContext?.ContextSequence == 2);
         var state = kernel.World.Business.InteractionStates["a"];
         var opening = state.CurrentContext!.Opening;
@@ -39,7 +39,7 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Known_reverse_route_is_rendered_from_frozen_material(string layoutId) {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false, enableWeather: false);
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-1"), PlaygroundCommand.Go("trail-1")));
+            characterController: new Commands(PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Go("e-n4")));
         for (int i = 0; i < 30; i++) {
             await Step(kernel);
             var observation = PlaygroundDecisionContext.Observe(kernel.World, "a");
@@ -80,7 +80,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.DoesNotContain("预计最早致命时刻", text);
         Assert.Null(context.Check(PlaygroundCommand.Wait(24)));
         Assert.Null(context.Warning(PlaygroundCommand.Wait(24)));
-        Assert.Null(context.Warning(PlaygroundCommand.Go("trail-6")));
+        Assert.Null(context.Warning(PlaygroundCommand.Go("e-x5")));
         Assert.Null(context.Warning(PlaygroundCommand.Gather("water")));
         Assert.NotNull(context.Check(PlaygroundCommandParser.Parse("use missing")!));
         Assert.NotNull(context.Check(PlaygroundCommandParser.Parse("use item.wood")!));
@@ -91,7 +91,7 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Travel_warning_and_replenished_state_remain_distinct_until_continue() {
         var initial = PreparedNeeds();
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Wait(4), PlaygroundCommand.Go("trail-2"),
+            characterController: new Commands(PlaygroundCommand.Wait(4), PlaygroundCommand.Go("e-b9"),
                 PlaygroundCommand.Use("item.water"), PlaygroundCommand.Continue()));
         await Until(kernel, world => PlaygroundActions.IsTravelling(world, "a") &&
             PlaygroundDecisionContext.Observe(world, "a").Survival!.PendingWarnings.Count > 0);
@@ -109,8 +109,8 @@ public sealed class SurvivalNeedsViewTests {
             string rendered = layout.Render(warned.Observation, warned.InteractionState);
             Assert.Contains("返回原因：身体警告（饮水触及警戒线）", rendered);
             Assert.Contains("从林间营地出发", rendered);
-            Assert.Contains("未知目的地（尚未探索）", rendered);
-            Assert.Contains("trail-2", rendered);
+            Assert.Contains("另一端未知（这条入口去向未确认）", rendered);
+            Assert.Contains("e-b9", rendered);
             Assert.Contains("沿窄径攀上风口", rendered);
             Assert.DoesNotContain("风口山脊", rendered);
         }
@@ -145,7 +145,7 @@ public sealed class SurvivalNeedsViewTests {
             PlaygroundSurvivalRules.FoodRate, PlaygroundSurvivalRules.WaterRate,
             warmthRate: new RateBreakdown([new("test-cold", "测试散热", -12)])));
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9")));
         await Until(kernel, world => PlaygroundDecisionContext.Observe(world, "a").Survival!.WarmthWarningPending);
         PlaygroundObservation observation = PlaygroundDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.ArrivalDue);
@@ -177,7 +177,7 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Shelter_observation_explains_warming_without_promising_free_food_or_water() {
         var initial = PreparedNeeds();
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2"), PlaygroundCommand.Go("trail-5")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9"), PlaygroundCommand.Go("e-u8")));
         await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "cabin");
         PlaygroundObservation observation = PlaygroundDecisionContext.Create(kernel.World, "a").Observation;
         Assert.True(observation.Survival!.Sheltered);
@@ -198,8 +198,8 @@ public sealed class SurvivalNeedsViewTests {
     public async Task Carried_wood_has_no_unsupported_use_command_after_leaving_its_resource_point() {
         var initial = PreparedNeeds();
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2"), PlaygroundCommand.Go("trail-5"),
-                PlaygroundCommand.Use("item.water"), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Go("trail-5")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9"), PlaygroundCommand.Go("e-u8"),
+                PlaygroundCommand.Use("item.water"), PlaygroundCommand.Gather("wood"), PlaygroundCommand.Go("e-t4")));
         await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "ridge" && world.GetCharacter("a").Backpack.Count("item.wood") > 0);
         PlaygroundObservation observation = PlaygroundDecisionContext.Create(kernel.World, "a").Observation;
         Assert.DoesNotContain(observation.Resources, resource => resource.ItemId == "item.wood");
@@ -241,7 +241,7 @@ public sealed class SurvivalNeedsViewTests {
             PlaygroundSurvivalRules.FoodRate, PlaygroundSurvivalRules.WaterRate,
             PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: 2));
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9")));
         await Until(kernel, world => world.GetCharacter("a").Ending?.Outcome == PlaygroundExpeditionOutcome.Dead);
         PlaygroundObservation observation = PlaygroundDecisionContext.Create(kernel.World, "a").Observation;
         Assert.NotNull(observation.ArrivalDue);
@@ -251,7 +251,7 @@ public sealed class SurvivalNeedsViewTests {
         Assert.Contains("本段行程未完成，不再推进", text);
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             string ended = layout.Render(observation);
-            Assert.Contains("从林间营地出发 → 未知目的地（尚未探索）", ended);
+            Assert.Contains("从林间营地出发 → 另一端未知（这条入口去向未确认）", ended);
             Assert.Contains("沿窄径攀上风口", ended);
             Assert.Contains("原计划", ended);
             Assert.DoesNotContain("风口山脊", ended);

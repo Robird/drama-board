@@ -29,7 +29,8 @@ internal static class PlaygroundVisibleEndpointChanges {
         if (oldPlace != newPlace || Arrival(before, actorId) != Arrival(after, actorId)) { return true; }
         if (oldPlace == before.Definition.MarketPlaceId && !(before.Economy?.Market.SameState(after.Economy?.Market) ?? after.Economy is null)) { return true; }
         if (oldExpedition is not null && newExpedition is not null &&
-            (!SameWeather(oldExpedition.Environment, newExpedition.Environment, actorId) ||
+            (!oldExpedition.ConfirmedPassages.Where(k => k.ActorId == actorId).SequenceEqual(newExpedition.ConfirmedPassages.Where(k => k.ActorId == actorId)) ||
+            !SameWeather(oldExpedition.Environment, newExpedition.Environment, actorId) ||
             !SameList(HistoricalVisits(oldExpedition, actorId, oldPlace), HistoricalVisits(newExpedition, actorId, newPlace), SameVisit))) {
             return true;
         }

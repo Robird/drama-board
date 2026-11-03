@@ -42,7 +42,7 @@ public sealed class DecisionContinuityTests {
     [Fact]
     public async Task Travelling_handoff_preserves_warning_and_segment_then_continue_closes_same_context() {
         var initial = PlaygroundGameFactory.CreateSurvival(Hour(8), enableWeather: false);
-        string passage = Assert.Single(PlaygroundExpeditionMap.GetPassages("camp"), p => p.To == "ridge").Id;
+        string passage = Assert.Single(PlaygroundExpeditionMap.GetEntrances("camp"), p => p.To == "ridge").EntranceId;
         var source = Commands(PlaygroundCommand.Go(passage), PlaygroundCommand.Handoff("抵达后找庇护"), PlaygroundCommand.Continue());
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial.World), characterController: source);
         await UntilIncoming(kernel);

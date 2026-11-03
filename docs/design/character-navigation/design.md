@@ -1,6 +1,6 @@
 # 功能与实现设计
 
-状态：设计，尚未实施。要求来源见 [需求账本](README.md)。本篇为规范性正文；命名为拟议命名，不表示存在同名 API。
+状态：入口与个人连接知识已落地，见[切片 A 验收](../../experiments/character-navigation-a-acceptance.md)；求路与导航待实施。要求来源见 [需求账本](README.md)。本篇为完整目标的规范性正文；尚未实施部分的命名不表示存在同名 API。
 
 ## 1. 用户体验与知识边界
 
@@ -120,9 +120,9 @@ lookahead 中的候选路径/知识/导航只修改分支根；正式采用仍�
 
 同版本 S 冷开、E-only/pending、Gym 分叉必须保留。允许提升当前 GameRevision、更新 schema/内容 fingerprint 并拒绝旧开发存档；不要增加本阶段无人需要的旧格式迁移。历史日志不原地重写，新角色材料不能继续泄漏。
 
-## 7. 当前实现证据与改动面
+## 7. 设计起点与后续源码入口
 
-以下均为本轮源码阅读，不代表已运行测试：
+以下记录设计起点（`6cfcf5c`）的源码接缝，保留为改动依据；其中入口与连接知识问题已由[切片 A](../../experiments/character-navigation-a-acceptance.md)解决，不作为当前待办。求路与导航实施前仍须核对当前源码：
 
 - [PlaygroundExpedition](../../../src/Playground/PlaygroundExpedition.cs)：Visits 按角色/地点保存；[Planning.Observe](../../../src/Playground/PlaygroundPlanning.cs) 在 Plan 记录本地资源快照。
 - [Observation](../../../src/Playground/PlaygroundObservation.cs) 与 [JourneyObservation](../../../src/Playground/PlaygroundJourneyObservation.cs)：当前按目的地 Visits 显示名称，须改为连接知识判定。

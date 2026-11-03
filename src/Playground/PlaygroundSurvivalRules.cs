@@ -103,7 +103,7 @@ public static class PlaygroundSurvivalRules {
         }
         string? place = PlaygroundActions.CurrentPlace(world, actorId);
         if (place is null) { return null; }
-        PlaygroundPassageDefinition passage = world.Definition.GetPassages(place).Single(p => p.Id == command.PassageId);
+        PlaygroundPassageDefinition passage = world.Definition.GetEntrances(place).Single(p => p.EntranceId == command.EntranceId);
         ModelTime end = new(checked(world.Time.Ticks + passage.DurationTicks));
         PlaygroundSurvival body = anchor.Project(world.Time);
         PlaygroundAttributeForecast exposed = ForecastWarmth(world.Definition, body.WarmthUnits, world.Time, sheltered: false);

@@ -66,7 +66,7 @@ public static class PlaygroundCommandParser {
             ["dismiss-followers"] => PlaygroundCommand.DismissFollowers(),
             ["continue"] => PlaygroundCommand.Continue(),
             ["cancel"] => PlaygroundCommand.Cancel(),
-            ["go", var passageId] => PlaygroundCommand.Go(passageId),
+            ["go", var entranceId] => PlaygroundCommand.Go(entranceId),
             ["use", var usedItemId] => PlaygroundCommand.Use(usedItemId),
             _ => null,
         };
@@ -90,7 +90,7 @@ public static class PlaygroundCommandParser {
         PlaygroundCommandKind.Give => $"give {command.TargetActorId} {command.ItemId} {command.Count.ToString(CultureInfo.InvariantCulture)}",
         PlaygroundCommandKind.Wait => $"wait {command.Hours.ToString(CultureInfo.InvariantCulture)}",
         PlaygroundCommandKind.Gather => $"gather {command.ResourceId} {(command.All ? "all" : command.Count.ToString(CultureInfo.InvariantCulture))}",
-        PlaygroundCommandKind.Go => $"go {command.PassageId}",
+        PlaygroundCommandKind.Go => $"go {command.EntranceId}",
         PlaygroundCommandKind.Use => $"use {command.ItemId}",
         PlaygroundCommandKind.Handoff => command.HandoffText is null ? "handoff --clear" : $"handoff {command.HandoffText}",
         PlaygroundCommandKind.Continue => "continue",

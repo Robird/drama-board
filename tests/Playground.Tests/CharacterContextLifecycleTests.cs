@@ -12,7 +12,7 @@ public sealed class CharacterContextLifecycleTests {
     [Fact]
     public async Task Instant_feedback_belongs_to_open_context_but_release_and_arrival_are_delivered_in_next_opening() {
         var initial = PlaygroundGameFactory.CreateSurvival(Hour(8), enableWeather: false);
-        var controller = Commands(PlaygroundCommand.Use("item.water"), PlaygroundCommand.Handoff("抵达后观察"), PlaygroundCommand.Go("trail-1"));
+        var controller = Commands(PlaygroundCommand.Use("item.water"), PlaygroundCommand.Handoff("抵达后观察"), PlaygroundCommand.Go("e-c7"));
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial.World), characterController: controller);
         Assert.Null(initial.World.Business.InteractionStates["a"].CurrentContext);
 
@@ -59,7 +59,7 @@ public sealed class CharacterContextLifecycleTests {
         Assert.Equal("fixture/3", closedState.PendingAdvance.OperationRecordId);
         Assert.Equal("抵达后观察", closedState.PendingAdvance.Handoff);
         Assert.Equal(opening.Opening.Observation.PlaceName, closedState.PendingAdvance.OriginPlaceName);
-        Assert.Contains(opening.Opening.Observation.Passages.Single(passage => passage.Id == "trail-1").Description,
+        Assert.Contains(opening.Opening.Observation.Passages.Single(passage => passage.Id == "e-c7").Description,
             closedState.PendingAdvance.Description);
         Assert.DoesNotContain("溪流湾", closedState.PendingAdvance.Description);
         Assert.Equal(1, closedState.PendingAdvance.SourceContextSequence);
@@ -86,7 +86,7 @@ public sealed class CharacterContextLifecycleTests {
         Assert.Equal("call_fixture_3", current.Opening.PreviousAdvance!.ToolCallId);
         Assert.Equal("抵达后观察", current.Opening.PreviousAdvance.Handoff);
         Assert.Equal(closedState.PendingAdvance.Description, current.Opening.PreviousAdvance.Description);
-        Assert.DoesNotContain(current.Opening.Observation.Passages.Single(passage => passage.Id == "trail-1").Description,
+        Assert.DoesNotContain(current.Opening.Observation.Passages.Single(passage => passage.Id == "e-n4").Description,
             current.Opening.PreviousAdvance.Description);
         Assert.Contains(current.Opening.Experiences, experience => experience.Event.Kind == PlaygroundObservedEventKind.MoveStarted);
         Assert.Contains(current.Opening.Experiences, experience => experience.Event.Kind == PlaygroundObservedEventKind.MoveArrived);

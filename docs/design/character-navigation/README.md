@@ -1,6 +1,6 @@
 # 角色地图知识与导航
 
-状态：2026-11-03 设计阶段，尚未实施。本文组用于后续 Codex Goal 迭代；本轮只编写与审议文档，不启动 Goal。
+状态：实施 Goal 进行中。切片 A（入口身份与个人连接知识）已通过[工程验收](../../experiments/character-navigation-a-acceptance.md)；求路、逐站导航与组合验收仍待完成，见实施计划。
 
 最小模型：**每个角色保存自己的空间知识，用已知连接求路，保存一份候选路径与一份活动导航计划，按现有移动规则逐段走，每到中间点由角色确认继续。未走通的通道只暴露本端入口。**
 
@@ -18,7 +18,7 @@
 | U4 | 用户明确要求 | 试求路径接受目标及可选起点，返回路径 ID 与内容；路径 ID 可启动导航；每到中间地点先观察、唤醒，再确认下一段。 |
 | U5 | 用户采纳前轮建议 | 首版一份候选路径、一份活动导航；复用 continue；中间点天然等待确认，不另设挂起/恢复协议；取消剩余行程不取消已开始的路段；不边走边制造。 |
 | U6 | 用户采纳前轮建议 | 跟随者自行获得实际走过的知识，不提前继承领队地图；分支预取不能污染真实角色知识、路径或导航进度。 |
-| C1 | 当前源码：PlaygroundExpedition/Observation/JourneyObservation | 已有各角色 Visits 与资源快照；当前凭目的地访问记录披露连接，不能视为新需求已实现。 |
+| C1 | 当前源码：PlaygroundExpedition/Observation/JourneyObservation | 各角色 Visits 与资源快照独立于 ConfirmedPassages；连接披露依据本人完整穿越，冻结 KnownMap 保存本人可见地图。 |
 | C2 | 当前源码：Actions/Planning/InteractionRules、Following 系列测试 | 普通 go 经唯一空间 planner；移动与其他耗时活动互斥；continue 当前主要确认感知，需实质扩展；队伍出发原子、同刻到达先于输入。 |
 | C3 | 当前源码：持久 adapter、CharacterContext、lookahead | 单 Kernel 串行提交，E/S 发布与 pending 重放，控制器不藏跨回合记忆；角色材料冻结，候选预取只在输入/身份匹配时交付。 |
 | C4 | PROJECT-STATE 与既有用户授权 | 早期实验，无旧开发存档/命令兼容包袱；当前同版本冷开、pending、分叉必须保留，不等于可以破坏恢复合同。 |

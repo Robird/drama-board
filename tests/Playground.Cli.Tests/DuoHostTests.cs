@@ -30,7 +30,7 @@ public sealed class DuoHostTests {
     public async Task Decision_layout_omits_character_who_left_the_place() {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false, characterCount: 2);
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(actor => actor == "a" ? "wait 1" : "go trail-2"));
+            characterController: new Commands(actor => actor == "a" ? "wait 1" : "go e-b9"));
         for (int index = 0; PlaygroundActions.CurrentPlace(kernel.World, "b") is not null && index < 8; index++) { await Step(kernel); }
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(kernel.World, "a");
         Assert.Empty(observation.OtherCharacters);
@@ -174,7 +174,7 @@ public sealed class DuoHostTests {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false, characterCount: 1);
         using (var save = PlaygroundDurableHistory.Create(files.Store, initial.World, initial.Cursor)) { }
         using var output = new StringWriter();
-        using var input = new StringReader("go trail-1\ngo trail-3\ngo trail-4\n");
+        using var input = new StringReader("go e-c7\ngo e-h5\ngo e-s3\n");
         Assert.Equal(0, await HostFixture.RunHumanAsync(files.Store, default, inputReader: input, outputWriter: output));
         ModelTime arrival;
         using (var final = PlaygroundDurableHistory.Open(files.Store)) {

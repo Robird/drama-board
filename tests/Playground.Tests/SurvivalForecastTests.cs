@@ -137,7 +137,7 @@ public sealed class SurvivalForecastTests {
     [Fact]
     public void Shelter_departure_shows_only_in_segment_warmth_exception_without_hidden_destination() {
         PlaygroundWorld world = World(PlaygroundSurvival.Create(Hour(20), warmth: 30), "cabin", weather: true);
-        string warning = PlaygroundSurvivalRules.ActionWarning(world, "a", PlaygroundCommand.Go("trail-7"))!;
+        string warning = PlaygroundSurvivalRules.ActionWarning(world, "a", PlaygroundCommand.Go("e-o7"))!;
         Assert.Contains("失去庇护", warning);
         Assert.Contains($"温暖预计降至 25：{Minute(1225)}", warning);
         Assert.Contains($"温暖预计耗尽至 0：{Minute(1350)}", warning);
@@ -146,10 +146,10 @@ public sealed class SurvivalForecastTests {
         Assert.DoesNotContain("溪流湾", warning);
         Assert.Null(PlaygroundSurvivalRules.ActionWarning(world, "a", PlaygroundCommand.Wait(24)));
         PlaygroundWorld highWarmth = World(PlaygroundSurvival.Create(Hour(20), warmth: 100), "cabin");
-        string highWarning = PlaygroundSurvivalRules.ActionWarning(highWarmth, "a", PlaygroundCommand.Go("trail-7"))!;
+        string highWarning = PlaygroundSurvivalRules.ActionWarning(highWarmth, "a", PlaygroundCommand.Go("e-o7"))!;
         Assert.Contains("失去庇护", highWarning);
         Assert.DoesNotContain("预计", highWarning);
-        Assert.Null(PlaygroundSurvivalRules.ActionWarning(World(PlaygroundSurvival.Create(Hour(20))), "a", PlaygroundCommand.Go("trail-1")));
+        Assert.Null(PlaygroundSurvivalRules.ActionWarning(World(PlaygroundSurvival.Create(Hour(20))), "a", PlaygroundCommand.Go("e-c7")));
     }
 
     [Fact]

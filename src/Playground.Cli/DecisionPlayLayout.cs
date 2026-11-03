@@ -82,7 +82,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
                 foreach (PlaygroundPassageObservation passage in group) {
                     AppendCommand(text, observation, $"go {passage.Id}", PlaygroundCommand.Go(passage.Id),
                         $"{passage.Description}；耗时 {Minutes(passage.DurationTicks)} 分钟；" +
-                        (passage.KnownDestinationName is { } known ? $"曾到访目的地：{known}" : "目的地未探索，线索不保证安全"), includeWarning: false);
+                        (passage.KnownDestinationName is { } known ? $"已确认通向：{known}" : "这条入口去向未确认，线索不保证安全"), includeWarning: false);
                 }
                 if (group.Key is { } warning) {
                     text.AppendLine($"  {string.Join(" / ", group.Select(passage => passage.Id))} 行动提示（不禁止）：{warning}");

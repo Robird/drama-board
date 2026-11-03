@@ -76,8 +76,8 @@ public sealed class HillsideContentDefinitionTests {
         PlaygroundWorldDefinition gentle = PlaygroundWorldDefinitions.Named("gentle", characterCount: 1);
         Assert.Same(normal.Runtime, normal.Runtime);
         Assert.NotSame(normal.Runtime, gentle.Runtime);
-        Assert.Equal(PlaygroundTime.Hour, normal.GetPassages("road").Single(p => p.Id == "road-camp").DurationTicks);
-        Assert.Equal(PlaygroundTime.Hour / 2, gentle.GetPassages("road").Single(p => p.Id == "road-camp").DurationTicks);
+        Assert.Equal(PlaygroundTime.Hour, normal.GetEntrances("road").Single(p => p.Id == "road-camp").DurationTicks);
+        Assert.Equal(PlaygroundTime.Hour / 2, gentle.GetEntrances("road").Single(p => p.Id == "road-camp").DurationTicks);
         Assert.Equal(PlaygroundTime.Hour, normal.Runtime.Graph.GetPassage(new("road-camp")).Length);
         Assert.Equal(PlaygroundTime.Hour / 2, gentle.Runtime.Graph.GetPassage(new("road-camp")).Length);
         PlaygroundWorld world = PlaygroundGameFactory.Create(gentle).World;

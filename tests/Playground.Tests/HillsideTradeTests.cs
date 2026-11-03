@@ -81,7 +81,7 @@ public sealed class HillsideTradeTests {
     [Fact]
     public async Task Travelling_offer_participant_sees_close_commands_as_unavailable() {
         var kernel = Kernel(new Driver(new() {
-            ["a"] = new([Offer(), PlaygroundCommand.Go("market-home")]),
+            ["a"] = new([Offer(), PlaygroundCommand.Go("e-m2")]),
             ["b"] = new([PlaygroundCommand.Wait(24)])
         }));
         await Find(kernel, PlaygroundEventKind.MoveStarted);

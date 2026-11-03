@@ -66,7 +66,7 @@ public sealed class CharacterContextRejectionTests {
     [Fact]
     public async Task Distant_and_unknown_targets_receive_same_visible_rejection() {
         var world = PlaygroundGameFactory.CreateSurvival(Hour(8), enableWeather: false).World;
-        var source = new RawController("gather berries 1", "gather secret-missing 1", "go trail-7", "go secret-missing");
+        var source = new RawController("gather berries 1", "gather secret-missing 1", "go e-y2", "go secret-missing");
         var kernel = PlaygroundEngine.CreateKernel(Memory(world), characterController: source);
         await Advance(kernel);
         var results = new List<string>();
@@ -85,7 +85,7 @@ public sealed class CharacterContextRejectionTests {
     public async Task Window_counts_success_and_release_but_preserves_successes_and_stable_item_identities() {
         var world = PlaygroundGameFactory.CreateSurvival(Hour(8), enableWeather: false).World;
         var source = new RawController("bad-1", "bad-2", "bad-3", "bad-4", "  use   item.water  ",
-            "bad-6", "handoff  留给下轮的记录", "handoff  更新后的记录", "  go   trail-1  ");
+            "bad-6", "handoff  留给下轮的记录", "handoff  更新后的记录", "  go   e-c7  ");
         var kernel = PlaygroundEngine.CreateKernel(Memory(world), characterController: source);
         await Advance(kernel);
         for (int index = 0; index < 3; index++) { await Advance(kernel); }
@@ -115,7 +115,7 @@ public sealed class CharacterContextRejectionTests {
         Assert.Equal(new long[] { 5, 7, 8 }, state.CurrentContext.Items.Select(item => item.ItemSequence));
         Assert.Same(supply, state.CurrentContext.Items[0]);
         Assert.Equal(9, state.CurrentContext.NextItemSequence);
-        Assert.Equal("  go   trail-1  ", state.PendingAdvance!.RawInput);
+        Assert.Equal("  go   e-c7  ", state.PendingAdvance!.RawInput);
         Assert.Equal("provider/9", state.PendingAdvance.ToolCallId);
         Assert.Equal("raw/9", state.PendingAdvance.OperationRecordId);
         Assert.Equal("更新后的记录", state.PendingAdvance.Handoff);

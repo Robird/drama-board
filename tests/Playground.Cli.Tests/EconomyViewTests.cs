@@ -12,7 +12,7 @@ public sealed class EconomyViewTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task Local_market_explains_payment_direction_inventory_demand_and_unsupported_directions(bool decision) {
-        PlaygroundWorld world = await RunUntil(["go market-home"], world => OpenAt(world, "market"));
+        PlaygroundWorld world = await RunUntil(["go e-m2"], world => OpenAt(world, "market"));
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(world, "a");
         Assert.NotEmpty(observation.MarketQuotes);
         Assert.Empty(observation.Recipes);
@@ -42,7 +42,7 @@ public sealed class EconomyViewTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task Workshop_lists_frozen_recipe_inputs_outputs_duration_and_cancellation_contract(bool decision) {
-        PlaygroundWorld world = await RunUntil(["go home-workshop"], world => OpenAt(world, "workshop"));
+        PlaygroundWorld world = await RunUntil(["go e-r6"], world => OpenAt(world, "workshop"));
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(world, "a");
         Assert.NotEmpty(observation.Recipes);
         Assert.Empty(observation.MarketQuotes);
@@ -91,7 +91,7 @@ public sealed class EconomyViewTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task In_progress_production_shows_reserved_inputs_output_and_original_deadline(bool decision) {
-        PlaygroundWorld world = await RunUntil(["go home-workshop", "produce ration 1"], world => world.GetCharacter("a").Activity?.Kind == PlaygroundActivityKind.Produce);
+        PlaygroundWorld world = await RunUntil(["go e-r6", "produce ration 1"], world => world.GetCharacter("a").Activity?.Kind == PlaygroundActivityKind.Produce);
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(world, "a");
         PlaygroundActivity activity = Assert.IsType<PlaygroundActivity>(observation.Actor.Activity);
         PlaygroundProductionOrder production = Assert.IsType<PlaygroundProductionOrder>(activity.Production);
@@ -110,7 +110,7 @@ public sealed class EconomyViewTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task Produced_ration_is_a_visible_usable_supply(bool decision) {
-        PlaygroundWorld world = await RunUntil(["go home-workshop", "produce ration 1"], world =>
+        PlaygroundWorld world = await RunUntil(["go e-r6", "produce ration 1"], world =>
             world.GetCharacter("a").Backpack.Count("item.ration") > 0 && OpenAt(world, "workshop"));
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(world, "a");
         Assert.Null(observation.CheckDisplayed(PlaygroundCommand.Use("item.ration")));
@@ -125,9 +125,9 @@ public sealed class EconomyViewTests {
     [InlineData(true)]
     public async Task Immediate_purchase_delta_updates_personal_balance_and_local_market_stock(bool decision) {
         PlaygroundObservation before = PlaygroundDecisionContext.Observe(
-            await RunUntil(["go market-home"], world => OpenAt(world, "market")), "a");
+            await RunUntil(["go e-m2"], world => OpenAt(world, "market")), "a");
         PlaygroundObservation after = PlaygroundDecisionContext.Observe(
-            await RunUntil(["go market-home", "buy item.food 1"], world => world.GetCharacter("a").Money == 9), "a");
+            await RunUntil(["go e-m2", "buy item.food 1"], world => world.GetCharacter("a").Money == 9), "a");
         var update = PlaygroundViewUpdate.Create(PlaygroundViewSnapshot.Create(before), PlaygroundViewSnapshot.Create(after), [],
             PlayDeliveryPhase.ControllerInput);
         Assert.Equal(9, update.CurrentValues[new("money", "a", "balance")].Number);

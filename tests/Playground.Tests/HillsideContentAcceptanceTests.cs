@@ -80,7 +80,7 @@ public sealed class HillsideContentAcceptanceTests {
         using (var child = PlaygroundDurableHistory.Open(store.StorePath, PlaygroundDurableHistory.ParseBranchId(fork.Branch.BranchId), variant)) {
             Assert.Equal(variant.Fingerprint, child.State.Definition.Fingerprint);
             Assert.Null(child.State.Business.InteractionStates["a"].DraftHandoff);
-            var kernel = PlaygroundEngine.CreateKernel(child, characterController: new QueueController("child", PlaygroundCommand.Go("home-workshop")));
+            var kernel = PlaygroundEngine.CreateKernel(child, characterController: new QueueController("child", PlaygroundCommand.Go("e-j3")));
             await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "home");
             Assert.Equal(3, kernel.World.Business.Economy!.Totals.Produced["item.ration"]);
             childState = MaterialSnapshot(kernel.World.Business);
@@ -242,7 +242,7 @@ public sealed class HillsideContentAcceptanceTests {
         public bool Done => _commands.Count == 0 && PlaygroundActions.CurrentPlace(Kernel.World, "a") == "home";
         public Journey(PlaygroundWorldDefinition definition, string session) {
             _definition = definition; _session = session;
-            PlaygroundCommand Go(string from, string to) => PlaygroundCommand.Go(definition.GetPassages(from).Single(passage => passage.To == to).Id);
+            PlaygroundCommand Go(string from, string to) => PlaygroundCommand.Go(definition.GetEntrances(from).Single(passage => passage.To == to).EntranceId);
             _commands = new([
                 Go("home", "market"), Go("market", "road"), Go("road", "camp"), Go("camp", "stream"),
                 PlaygroundCommand.Gather("berries"), PlaygroundCommand.Gather("water"), Go("stream", "camp"),
@@ -273,7 +273,7 @@ public sealed class HillsideContentAcceptanceTests {
         }
         public void AssertEffectiveDefinition() {
             Assert.True(Kernel.World.GetCharacter("a").IsActive);
-            var firstGo = _trace.First(entry => entry.Fact.RawInput == "go market-home");
+            var firstGo = _trace.First(entry => entry.Fact.RawInput == "go e-m2");
             TraversingLocation moving = Assert.IsType<TraversingLocation>(PlaygroundActions.Location(firstGo.After, "a"));
             Assert.Equal(_definition.Passages.Single(passage => passage.Id == "market-home").DurationTicks,
                 moving.ArrivalDue.Ticks - firstGo.Fact.At.Ticks);

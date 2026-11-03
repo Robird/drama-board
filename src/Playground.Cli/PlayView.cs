@@ -150,6 +150,19 @@ internal static class PlayView {
             foreach (string rule in background.Rules) { text.AppendLine(rule); }
             text.AppendLine();
         }
+        if (observation.KnownMap.Count > 0) {
+            text.AppendLine("## 已知地图");
+            text.AppendLine("只含本人去过的地点和实际走通的连接；未知入口的线索不证明去向。");
+            foreach (var place in observation.KnownMap) {
+                text.AppendLine($"- **{place.Name}** `{place.Id}`");
+                foreach (var entrance in place.Entrances) {
+                    string destination = entrance.KnownDestinationId is { } id
+                        ? $"已确认 → {entrance.KnownDestinationName}（`{id}`）" : "去向未知";
+                    text.AppendLine($"  - 入口 `{entrance.Id}`：{entrance.Description}；耗时 {Minutes(entrance.DurationTicks)} 分钟；{destination}。");
+                }
+            }
+            text.AppendLine();
+        }
         if (observation.Memories.Count > 0) {
             text.AppendLine("## 曾到访地点（历史观察）");
             text.AppendLine("以下是经历留下的记录，保留观察时间；远处余量可能已改变，不表示当前事实。");
@@ -213,11 +226,11 @@ internal static class PlayView {
         EconomyView.RenderCommands(text, observation);
         TradeView.RenderCommands(text, observation);
         if (observation.IsExpedition) {
-            text.AppendLine("- `go <passage-id>`：沿当前可见通路移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
+            text.AppendLine("- `go <entrance-id>`：沿当前可见入口移动。耗时如下；描述是眼前线索，不保证目的地或安全。途中不支持 cancel。");
             foreach (PlaygroundPassageObservation passage in observation.Passages) {
                 AppendCommand(text, observation, $"go {passage.Id}", PlaygroundCommand.Go(passage.Id),
                     $"{passage.Description}；耗时 {Minutes(passage.DurationTicks)} 分钟" +
-                    (passage.KnownDestinationName is { } known ? $"；曾到访的目的地：{known}" : "；目的地尚未探索"));
+                    (passage.KnownDestinationName is { } known ? $"；已确认通向：{known}" : "；这条入口去向未确认"));
             }
         }
         AppendCommand(text, observation, "continue", PlaygroundCommand.Continue(), "确认感知与通信，保留活动、进度及原期限；闲置时确认不推进时间");

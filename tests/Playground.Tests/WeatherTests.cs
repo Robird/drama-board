@@ -302,7 +302,7 @@ public sealed class WeatherTests {
 
     private static PlaygroundEnvironment Environment(PlaygroundWorld world) => world.Expedition!.Environment!;
     private static PlaygroundSurvival Body(PlaygroundWorld world) => world.GetCharacter("a").Survival!.Project(world.Time);
-    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetPassages(from), p => p.To == to).Id;
+    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetEntrances(from), p => p.To == to).EntranceId;
     private static PlaygroundEventKind LastKind(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) =>
         Assert.Single(kernel.LastCompletion!.Event.Facts).Kind;
 

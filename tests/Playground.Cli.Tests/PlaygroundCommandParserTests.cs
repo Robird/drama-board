@@ -11,7 +11,7 @@ public sealed class PlaygroundCommandParserTests {
         { "gather sunflower all", PlaygroundCommand.GatherAll("sunflower") },
         { "continue", PlaygroundCommand.Continue() },
         { "cancel", PlaygroundCommand.Cancel() },
-        { "go trail-1", PlaygroundCommand.Go("trail-1") },
+        { "go e-c7", PlaygroundCommand.Go("e-c7") },
         { "use item.water", PlaygroundCommand.Use("item.water") },
         { " \tuse\titem.food  ", PlaygroundCommand.Use("item.food") },
         { "handoff 抵达后  先检查保暖。", PlaygroundCommand.Handoff("抵达后  先检查保暖。") },
@@ -50,7 +50,7 @@ public sealed class PlaygroundCommandParserTests {
     [InlineData(":continue")]
     [InlineData(":cancel")]
     [InlineData(":wait 1")]
-    [InlineData(":go trail-1")]
+    [InlineData(":go e-c7")]
     [InlineData(":use item.water")]
     [InlineData(":gather sunflower 1")]
     [InlineData("WAIT 1")]
@@ -73,7 +73,7 @@ public sealed class PlaygroundCommandParserTests {
     [InlineData("wait １")]
     [InlineData("unknown")]
     [InlineData("go")]
-    [InlineData("go trail-1 extra")]
+    [InlineData("go e-c7 extra")]
     [InlineData("Go trail-1")]
     [InlineData("use")]
     [InlineData("use item.water 2")]

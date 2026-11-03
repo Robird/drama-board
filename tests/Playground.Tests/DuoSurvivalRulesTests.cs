@@ -12,7 +12,7 @@ public sealed class DuoSurvivalRulesTests {
             water * PlaygroundSurvival.Scale, 60 * PlaygroundSurvival.Scale, Rate(0), PlaygroundSurvivalRules.WaterRate,
             PlaygroundSurvivalRules.WarmthRate(sheltered, true), warnedMask: 2);
         PlaygroundWorld initial = World("ravine", "cabin", waitingB: 12, aNeeds: Needs(8, false), bNeeds: Needs(24, true));
-        var controller = Commands(PlaygroundCommand.Go("trail-4"));
+        var controller = Commands(PlaygroundCommand.Go("e-s3"));
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: controller);
         await UntilState(kernel, world => !world.GetCharacter("a").IsActive);
         PlaygroundCharacter escaped = kernel.World.GetCharacter("a");
@@ -40,7 +40,7 @@ public sealed class DuoSurvivalRulesTests {
             8 * PlaygroundSurvival.Scale, 100 * PlaygroundSurvival.Scale, Rate(0), PlaygroundSurvivalRules.WaterRate,
             PlaygroundSurvivalRules.WarmthRate(false, true), warnedMask: 2));
         var history = Memory(initial);
-        var kernel = PlaygroundEngine.CreateKernel(history, characterController: Commands(PlaygroundCommand.Go("trail-2")));
+        var kernel = PlaygroundEngine.CreateKernel(history, characterController: Commands(PlaygroundCommand.Go("e-b9")));
         await UntilState(kernel, world => !world.GetCharacter("a").IsActive);
         PlaygroundCharacter dead = kernel.World.GetCharacter("a");
         Assert.Equal(Hour(9), dead.Ending!.At);
@@ -131,7 +131,7 @@ public sealed class DuoSurvivalRulesTests {
             bNeeds: new(Hour(8), 100 * PlaygroundSurvival.Scale, 32 * PlaygroundSurvival.Scale, 60 * PlaygroundSurvival.Scale,
                 Rate(0), PlaygroundSurvivalRules.WaterRate, PlaygroundSurvivalRules.WarmthRate(true, true)));
         var controller = new StubCharacterController((observation, actor) => actor == "a"
-            ? observation.PlaceId == "ravine" ? PlaygroundCommand.Go("trail-4") : PlaygroundCommand.Wait(4)
+            ? observation.PlaceId == "ravine" ? PlaygroundCommand.Go("e-s3") : PlaygroundCommand.Wait(4)
             : PlaygroundCommand.Continue());
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: controller);
         await UntilState(kernel, world => !world.GetCharacter("b").IsActive);

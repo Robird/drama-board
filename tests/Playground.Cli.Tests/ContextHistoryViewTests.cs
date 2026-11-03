@@ -21,7 +21,7 @@ public sealed class ContextHistoryViewTests {
     [Fact]
     public void Both_layouts_render_frozen_action_and_ordered_experiences_with_current_draft() {
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(PlaygroundGameFactory.CreateSurvival().World, "a");
-        var action = new PendingAdvance("a", 1, 1, PlaygroundCommand.Go("trail-1"), "go trail-1", "endpoint-call", "record",
+        var action = new PendingAdvance("a", 1, 1, PlaygroundCommand.Go("e-c7"), "go e-c7", "endpoint-call", "record",
             new ModelTime(14 * PlaygroundTime.Hour), "接受时的旧通路线索", "历史出发点", movementGeneration: 1,
             handoff: "交接：先检查保暖");
         var first = new CharacterExperience(1, new PlaygroundObservedEvent(0, "a", PlaygroundObservedEventKind.WeatherResolved,
@@ -37,7 +37,7 @@ public sealed class ContextHistoryViewTests {
 
         foreach (IPlayLayout layout in new IPlayLayout[] { new ClassicPlayLayout(), new DecisionPlayLayout() }) {
             string rendered = layout.Render(observation, state);
-            Assert.Contains("`go trail-1`", rendered);
+            Assert.Contains("`go e-c7`", rendered);
             Assert.Contains("接受时的旧通路线索", rendered);
             Assert.Contains("历史出发点", rendered);
             Assert.Contains(action.Handoff!, rendered);

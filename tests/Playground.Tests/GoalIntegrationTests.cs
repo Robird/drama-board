@@ -152,7 +152,7 @@ public sealed class GoalIntegrationTests {
         PlaygroundCharacter actor = original.GetCharacter("a");
         PlaygroundWorld initial = PlaygroundEngine.Rebuild(original.Business.Replace(original.Time,
             changedCharacters: [actor.WithSurvival(PlaygroundSurvival.Create(original.Time, food: 80, water: 33, warmth: 80))]), original.Time);
-        var commands = new RawController(["go trail-2", Create, "show-goal {}"]);
+        var commands = new RawController(["go e-b9", Create, "show-goal {}"]);
         var kernel = PlaygroundEngine.CreateKernel(Memory(initial), characterController: commands);
         await NextOperation(kernel);
         await UntilFact(kernel, fact => fact.Kind == PlaygroundEventKind.SurvivalWarning);

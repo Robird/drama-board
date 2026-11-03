@@ -96,7 +96,7 @@ public sealed class DecisionOutcomeSummaryTests {
     [Fact]
     public async Task Unknown_destination_stays_unknown_in_saved_opening_and_original_action_description() {
         var fresh = PlaygroundGameFactory.CreateSurvival(Hour(8), enableWeather: false);
-        string route = Assert.Single(PlaygroundExpeditionMap.GetPassages("camp"), p => p.To == "ridge").Id;
+        string route = Assert.Single(PlaygroundExpeditionMap.GetEntrances("camp"), p => p.To == "ridge").EntranceId;
         PlaygroundObservation knownAtAcceptance = PlaygroundDecisionContext.Observe(fresh.World, "a");
         var travel = PlaygroundEngine.CreateKernel(Memory(fresh.World), characterController: Commands(PlaygroundCommand.Go(route)));
         for (int count = 0; travel.World.Business.InteractionStates["a"].CurrentContext?.Opening.PreviousAdvance is null; count++) {

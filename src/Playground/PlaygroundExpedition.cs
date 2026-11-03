@@ -24,36 +24,54 @@ public sealed partial class PlaygroundVisit : IDurableObject {
     public override string ToString() => $"{ActorId}:{PlaceId}@{At.Ticks}[{string.Join(';', Resources)}]";
 }
 
+[DurableType("DramaBoard.Playground.ConfirmedPassage", 1)]
+public sealed partial record PlaygroundConfirmedPassage(
+    [field: DurableField(1)] string ActorId,
+    [field: DurableField(2)] string PassageId) : IDurableObject;
+
 /// <summary>Persistent scenario identity, active spatial subgraph, observations and shared environment.</summary>
-[DurableType("DramaBoard.Playground.Expedition", 1)]
+[DurableType("DramaBoard.Playground.Expedition", 2)]
 public sealed partial class PlaygroundExpedition : IDurableObject {
     [DurableField(1)] private string _scenarioId;
     [DurableField(2)] private GraphSpatialState _spatial;
     [DurableField(3)] private List<PlaygroundVisit> _visits;
     [DurableField(6)] private PlaygroundEnvironment? _environment;
+    [DurableField(7)] private List<PlaygroundConfirmedPassage> _confirmedPassages;
+    public IReadOnlyList<PlaygroundConfirmedPassage> ConfirmedPassages => _confirmedPassages.AsReadOnly();
+    public bool KnowsPassage(string actorId, string passageId) => _confirmedPassages.Any(k => k.ActorId == actorId && k.PassageId == passageId);
     public string ScenarioId => _scenarioId;
     public GraphSpatialState Spatial => _spatial;
     public IReadOnlyList<PlaygroundVisit> Visits => _visits.AsReadOnly();
     public PlaygroundEnvironment? Environment => _environment;
     public PlaygroundExpedition(string scenarioId, GraphSpatialState spatial, IEnumerable<PlaygroundVisit> visits,
-        PlaygroundEnvironment? environment = null) {
+        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null) {
         _scenarioId = scenarioId; _spatial = spatial; _visits = [.. visits];
-        _environment = environment;
+        _environment = environment; _confirmedPassages = confirmedPassages?.ToList() ?? [];
     }
     internal PlaygroundExpedition Change(GraphSpatialState spatial, IEnumerable<PlaygroundVisit> visits,
-        PlaygroundEnvironment? environment = null) {
+        PlaygroundEnvironment? environment = null, IEnumerable<PlaygroundConfirmedPassage>? confirmedPassages = null) {
         var replacements = visits.ToDictionary(v => (v.ActorId, v.PlaceId));
         return new(ScenarioId, spatial, Visits.Where(v => !replacements.ContainsKey((v.ActorId, v.PlaceId)))
             .Concat(replacements.Values).OrderBy(v => v.ActorId, StringComparer.Ordinal).ThenBy(v => v.PlaceId, StringComparer.Ordinal),
-            environment ?? Environment);
+            environment ?? Environment, ConfirmedPassages.Concat(confirmedPassages ?? []).Distinct().OrderBy(k => k.ActorId, StringComparer.Ordinal).ThenBy(k => k.PassageId, StringComparer.Ordinal));
     }
     internal bool SameState(PlaygroundExpedition other) => ScenarioId == other.ScenarioId && Spatial.Equals(other.Spatial) &&
-        Visits.SequenceEqual(other.Visits) && ReferenceEquals(Environment, other.Environment);
+        Visits.SequenceEqual(other.Visits) && ConfirmedPassages.SequenceEqual(other.ConfirmedPassages) && ReferenceEquals(Environment, other.Environment);
     internal void Validate(PlaygroundBusinessState business) {
         if (ScenarioId != business.Definition.ContentId || business.Characters.Count < 1 ||
             Spatial.Entities.Count != business.Characters.Count(c => c.IsActive) || Spatial.ScheduledPassageEntryChanges.Count != 0 ||
             Visits.Select(v => (v.ActorId, v.PlaceId)).Distinct().Count() != Visits.Count) {
             throw new InvalidOperationException("Invalid expedition scenario, participants, observations or ending.");
+        }
+        if (ConfirmedPassages.Distinct().Count() != ConfirmedPassages.Count || ConfirmedPassages.Any(k => !business.Characters.Any(c => c.Id == k.ActorId) || !business.Definition.Passages.Any(p => p.Id == k.PassageId))) {
+            throw new InvalidOperationException("Invalid confirmed passage knowledge.");
+        }
+        foreach (PlaygroundConfirmedPassage known in ConfirmedPassages) {
+            PlaygroundPassageDefinition passage = business.Definition.Passages.Single(p => p.Id == known.PassageId);
+            if (!Visits.Any(v => v.ActorId == known.ActorId && v.PlaceId == passage.From) ||
+                !Visits.Any(v => v.ActorId == known.ActorId && v.PlaceId == passage.To)) {
+                throw new InvalidOperationException("Confirmed passage endpoints require the traveller's own visits.");
+            }
         }
         GraphSpatialStateValidator.ValidateComplete(business.Definition.Runtime.Graph, Spatial);
         Environment?.Validate(business.Time, business.Characters, business.Definition);

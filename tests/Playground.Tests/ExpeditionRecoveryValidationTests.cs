@@ -36,7 +36,7 @@ public sealed class ExpeditionRecoveryValidationTests {
                 ending = new(PlaygroundExpeditionOutcome.Dead, Hour(8), "Death cannot leave ordinary timed work pending.", new AtPlaceLocation(new("road")));
                 break;
             case "scheduled-passage-change":
-                string passage = PlaygroundExpeditionMap.GetPassages("camp")[0].Id;
+                string passage = PlaygroundExpeditionMap.GetEntrances("camp")[0].Id;
                 // Valid in Spatial, but this application has no rule for applying scheduled access changes.
                 spatial = GraphSpatialState.Restore(PlaygroundExpeditionMap.Graph, spatial.Entities,
                     spatial.PassageEntryAccessOverrides, [new(new(passage), Hour(9), new(false, null))], spatial.ConsumedContacts);

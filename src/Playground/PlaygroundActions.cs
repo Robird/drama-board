@@ -9,14 +9,14 @@ namespace DramaBoard.Playground;
 public enum PlaygroundCommandKind { Wait, Gather, Continue, Cancel, Go, Use, Handoff, Say, Give, Goal, Follow, Unfollow, DismissFollowers, Shout, Buy, Sell, Produce, GiveMoney, Offer, Accept, Reject, Withdraw }
 
 /// <summary>Intent also recorded in a frozen visible command catalogue; execution still requires validation.</summary>
-[DurableType("DramaBoard.Playground.Command", 1)]
+[DurableType("DramaBoard.Playground.Command", 2)]
 public sealed partial record PlaygroundCommand(
     [field: DurableField(1)] PlaygroundCommandKind Kind,
     [field: DurableField(2)] int Hours = 0,
     [field: DurableField(3)] string? ResourceId = null,
     [field: DurableField(4)] int Count = 0,
     [field: DurableField(5)] bool All = false,
-    [field: DurableField(6)] string? PassageId = null,
+    [field: DurableField(6)] string? EntranceId = null,
     [field: DurableField(7)] string? ItemId = null,
     [field: DurableField(8)] string? HandoffText = null,
     [field: DurableField(9)] string? TargetActorId = null,
@@ -45,7 +45,7 @@ public sealed partial record PlaygroundCommand(
     public static PlaygroundCommand GatherAll(string resourceId) => new(PlaygroundCommandKind.Gather, ResourceId: resourceId, All: true);
     public static PlaygroundCommand Continue() => new(PlaygroundCommandKind.Continue);
     public static PlaygroundCommand Cancel() => new(PlaygroundCommandKind.Cancel);
-    public static PlaygroundCommand Go(string passageId) => new(PlaygroundCommandKind.Go, PassageId: passageId);
+    public static PlaygroundCommand Go(string entranceId) => new(PlaygroundCommandKind.Go, EntranceId: entranceId);
     public static PlaygroundCommand Use(string itemId) => new(PlaygroundCommandKind.Use, ItemId: itemId);
     public static PlaygroundCommand Handoff(string? text) => new(PlaygroundCommandKind.Handoff, HandoffText: text);
     public static PlaygroundCommand Follow(string targetActorId) => new(PlaygroundCommandKind.Follow, TargetActorId: targetActorId);
@@ -105,7 +105,7 @@ public static class PlaygroundActions {
         if (travelling && command.Kind is not (PlaygroundCommandKind.Continue or PlaygroundCommandKind.Use or PlaygroundCommandKind.Handoff or PlaygroundCommandKind.Goal)) { return "正在途中；本段移动不可取消，也不能同时开始其他耗时行动。"; }
         if (command.Kind != PlaygroundCommandKind.Goal && command.Goal is not null) { return "这个行动不接受目标操作。"; }
         if (command.Kind != PlaygroundCommandKind.Handoff && command.HandoffText is not null) { return "这个行动不接受交接文字。"; }
-        if (command.Kind != PlaygroundCommandKind.Go && command.PassageId is not null) { return "这个行动不接受通路参数。"; }
+        if (command.Kind != PlaygroundCommandKind.Go && command.EntranceId is not null) { return "这个行动不接受通路参数。"; }
         if (command.Kind is not (PlaygroundCommandKind.Use or PlaygroundCommandKind.Give or PlaygroundCommandKind.Buy or PlaygroundCommandKind.Sell) && command.ItemId is not null) { return "这个行动不接受物品参数。"; }
         if (command.Kind is not (PlaygroundCommandKind.Say or PlaygroundCommandKind.Give or PlaygroundCommandKind.GiveMoney or PlaygroundCommandKind.Follow or PlaygroundCommandKind.Offer) && command.TargetActorId is not null) { return "这个行动不接受角色参数。"; }
         if (command.Kind != PlaygroundCommandKind.Produce && command.RecipeId is not null || command.Kind != PlaygroundCommandKind.GiveMoney && command.MoneyAmount != 0) { return "这个行动不接受生产或资金参数。"; }
@@ -178,18 +178,18 @@ public static class PlaygroundActions {
                 return null;
             case PlaygroundCommandKind.Go:
                 if (actor.Activity is not null) { return "已有耗时活动，请先 cancel。"; }
-                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.PassageId)) { return "移动需要一个当前可见的通路编号。"; }
+                if (command.Hours != 0 || command.ResourceId is not null || command.Count != 0 || command.All || string.IsNullOrWhiteSpace(command.EntranceId)) { return "移动需要一个当前可见的入口编号。"; }
                 string? place = CurrentPlace(world, actorId);
-                if (place is null || !world.Definition.GetPassages(place).Any(p => p.Id == command.PassageId)) { return "当前地点没有这条通路。"; }
+                if (place is null || !world.Definition.GetEntrances(place).Any(p => p.EntranceId == command.EntranceId)) { return "当前没有可用的这个入口；请使用当前入口列表中的编号。"; }
                 foreach (PlaygroundCharacter member in PlaygroundFollowingRules.MovingMembers(world.Business, actorId)) {
                     if (!member.IsActive || member.Activity is not null || CurrentPlace(world, member.Id) != place || member.DecisionGeneration >= long.MaxValue - 2 ||
-                        world.Definition.Runtime.Planner.TryStartTraversal(world.Expedition!.Spatial, new(member.Id), new(command.PassageId), 1, world.Time) is not SpatialPlanAccepted) {
+                        world.Definition.Runtime.Planner.TryStartTraversal(world.Expedition!.Spatial, new(member.Id), new(world.Definition.GetEntrances(place!).Single(p => p.EntranceId == command.EntranceId).Id), 1, world.Time) is not SpatialPlanAccepted) {
                         return $"同行成员 {member.Name} 当前无法出发；所有人保持原状。";
                     }
                 }
                 return null;
             case PlaygroundCommandKind.Use:
-                if (command.Hours != 0 || command.ResourceId is not null || command.PassageId is not null || command.Count != 0 || command.All ||
+                if (command.Hours != 0 || command.ResourceId is not null || command.EntranceId is not null || command.Count != 0 || command.All ||
                     string.IsNullOrWhiteSpace(command.ItemId)) { return "使用补给需要一个物品编号。"; }
                 if (actor.Survival is null || PlaygroundSurvivalRules.UseDescription(world.Definition, command.ItemId) is null) { return "这个物品不能用于补给。"; }
                 if (actor.Backpack.Count(command.ItemId) == 0) { return "背包中没有这个物品。"; }

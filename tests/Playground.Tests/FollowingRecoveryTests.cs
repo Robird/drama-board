@@ -36,6 +36,7 @@ public sealed class FollowingRecoveryTests {
             if (boundary is "departed" or "arrival-middle") {
                 await UntilState(resumed, world => AllAt(world, "stream"));
                 Assert.Equal(Hour(9), resumed.World.Time);
+                Assert.All(new[] { "a", "b", "c" }, id => Assert.True(resumed.World.Expedition!.KnowsPassage(id, "trail-1")));
                 foreach (string actor in new[] { "b", "c" }) {
                     Assert.Equal("a", resumed.World.GetCharacter(actor).FollowingLeaderId);
                     Assert.Equal(CharacterContextStatus.Closed, Interaction(resumed.World, actor).CurrentContext!.Status);
@@ -147,6 +148,10 @@ public sealed class FollowingRecoveryTests {
                 Assert.Equal(Hour(9), world.Time);
                 Assert.Single(world.Expedition!.Spatial.Entities, entity => entity.Location is AtPlaceLocation);
                 Assert.Equal(2, world.Expedition.Spatial.Entities.Count(entity => entity.Location is TraversingLocation));
+                foreach (SpatialEntity entity in world.Expedition.Spatial.Entities) {
+                    Assert.Equal(entity.Location is AtPlaceLocation, world.Expedition.KnowsPassage(entity.Id.Value, "trail-1"));
+                }
+                Assert.Single(world.Expedition.ConfirmedPassages);
             }
         }
         foreach (string actor in new[] { "b", "c" }) {

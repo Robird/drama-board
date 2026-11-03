@@ -192,9 +192,9 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
             marketPlaceId ?? MarketPlaceId, workshopPlaceId ?? WorkshopPlaceId, marketRefreshTicks ?? MarketRefreshTicks);
 
     public PlaygroundPlaceDefinition GetPlace(string id) => _places.Single(p => p.Id == id);
-    public IReadOnlyList<PlaygroundPassageDefinition> GetPassages(string placeId) => _passages
+    public IReadOnlyList<PlaygroundPassageDefinition> GetEntrances(string placeId) => _passages
         .Where(p => p.From == placeId || p.To == placeId).Select(p => p.From == placeId ? p
-            : new(p.Id, p.To, p.From, p.ReverseDescription, p.DurationTicks, p.Description)).ToArray();
+            : p with { From = p.To, To = p.From, Description = p.ReverseDescription, ReverseDescription = p.Description, EntranceId = p.ReverseEntranceId, ReverseEntranceId = p.EntranceId }).ToArray();
     public string? GetResourcePlace(string id) => _resources.SingleOrDefault(r => r.Id == id)?.PlaceId;
     public PlaygroundRecipe? Recipe(string id) => _recipes.SingleOrDefault(r => r.Id == id);
     public int BuyPrice(string id) => _buyPrices.GetValueOrDefault(id);
@@ -223,6 +223,9 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
             Body.ShelteredWarmthPerHour is < 0 or > 100 || Body.DayWarmthPerHour is < 0 or > 100 ||
             Body.NightWarmthPerHour is < -100 or > 0) { Invalid(); }
         Unique(_places.Select(p => p.Id)); Unique(_passages.Select(p => p.Id)); Unique(_resources.Select(r => r.Id));
+        Unique(_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }));
+        if (_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }).Any(id =>
+            id.Any(char.IsWhiteSpace) || _passages.Any(p => p.Id == id))) { Invalid(); }
         Unique(_recipes.Select(r => r.Id)); Unique(_initialCharacters.Select(c => c.Id));
         var placeIds = _places.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         if (!placeIds.Contains(MarketPlaceId) || !placeIds.Contains(WorkshopPlaceId) ||
@@ -265,9 +268,9 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
     public string ComputeFingerprint() {
         using var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true), leaveOpen: true)) {
-            writer.Write("Hillside.WorldDefinition/v1"); writer.Write(ContentId); writer.Write(Name); writer.Write(StartTime.Ticks);
+            writer.Write("Hillside.WorldDefinition/v2"); writer.Write(ContentId); writer.Write(Name); writer.Write(StartTime.Ticks);
             WriteList(_places.OrderBy(p => p.Id, StringComparer.Ordinal), p => { writer.Write(p.Id); writer.Write(p.Name); writer.Write(p.Description); writer.Write(p.IsExit); writer.Write(p.Sheltered); });
-            WriteList(_passages.OrderBy(p => p.Id, StringComparer.Ordinal), p => { writer.Write(p.Id); writer.Write(p.From); writer.Write(p.To); writer.Write(p.Description); writer.Write(p.DurationTicks); writer.Write(p.ReverseDescription); });
+            WriteList(_passages.OrderBy(p => p.Id, StringComparer.Ordinal), p => { writer.Write(p.Id); writer.Write(p.From); writer.Write(p.To); writer.Write(p.Description); writer.Write(p.DurationTicks); writer.Write(p.ReverseDescription); writer.Write(p.EntranceId); writer.Write(p.ReverseEntranceId); });
             WriteList(_relations.OrderBy(r => r.EndpointA, StringComparer.Ordinal).ThenBy(r => r.EndpointB, StringComparer.Ordinal), r => { writer.Write(r.EndpointA); writer.Write(r.EndpointB); writer.Write(r.Flags); });
             WriteList(_resources.OrderBy(r => r.Id, StringComparer.Ordinal), r => { writer.Write(r.Id); writer.Write(r.Name); writer.Write(r.ItemId); writer.Write(r.PlaceId); writer.Write(r.GrowsInDaylight); writer.Write(r.RegenerationTicks); writer.Write(r.Capacity); writer.Write(r.Stock); writer.Write(r.HarvestTicks); writer.Write(r.SkillId); writer.Write(r.RequiredLevel); });
             WriteList(_initialCharacters, c => { writer.Write(c.Id); writer.Write(c.Name); writer.Write(c.PlaceId); writer.Write(c.SkillLevel); writer.Write(c.Money); writer.Write(c.Food); writer.Write(c.Water); writer.Write(c.Warmth); WriteInts(c.Backpack); writer.Write(c.UnitCapacity.HasValue); if (c.UnitCapacity is { } capacity) { writer.Write(capacity); } });

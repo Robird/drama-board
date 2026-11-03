@@ -60,13 +60,13 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 ## 操作与个人材料
 
-使用界面显示的当前地点通路、资源和角色编号行动：
+使用界面显示的当前地点入口、资源和角色编号行动：
 
 | 意图 | 命令 |
 | --- | --- |
 | 重新查看、帮助、退出 | `:look`、`:help`、`:quit` |
 | 向开发者提交反馈 | `:feedback <text>` |
-| 移动 | `go <passage-id>` |
+| 移动 | `go <entrance-id>`（当前地点的入口编号） |
 | 采集 | `gather <resource-id> <count\|all>` |
 | 等待 | `wait <1–24 小时>` |
 | 使用补给 | `use item.food`、`use item.water`、`use item.ration` |
@@ -101,7 +101,7 @@ dotnet run --project src/Playground.Cli -c Release -- --home artifacts/my-hillsi
 
 一个 DurableGraph 根保存业务子图与 Kernel 游标。派生预测在冷开时重建，在业务事实提交后增量维护。E 已提交、S 尚未完成的中断恢复只应用保存的事实及纯派生完成，不重新询问控制器或重新执行规划。机制见[运行时预测与恢复](docs/design/runtime-derived-predictions.md)。
 
-当前游戏修订仍为 22；Playground 持久类型与 Inventory.ItemInventory 使用新的 Schema v1 身份，不兼容重命名前存档。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
+当前游戏修订为 23；入口身份与个人连接知识改变了角色命令和持久材料，旧开发存档不迁移，请使用新的 store。完整有效内容及 SHA-256 指纹随 S 保存，E 绑定规划前态内容；冷开和分叉验证身份，运行中禁止替换定义。改变代码中的默认内容只影响新建世界；同修订旧局仍使用保存定义。
 
 除带外 `:feedback` 外，每个非空 Console 操作提交拥有隐式 ToolCallId。`store/host/events.jsonl` 是所有分支、所有运行共用的有序宿主日志，保存操作接收与结果，包括查询与拒绝。冷开只对账当前分支自己的操作，依据已提交世界事实补齐遗漏结果，不重做动作。世界 E/S 继续是游戏恢复权威；宿主日志不提供跨文件事务或模型原生会话恢复。
 

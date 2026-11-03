@@ -67,13 +67,16 @@ public sealed class ExpeditionTests {
     public async Task Return_journey_retains_known_destination_and_reverse_direction() {
         var initial = PlaygroundGameFactory.CreateSurvival(Hour(10), enableNeeds: false, enableWeather: false);
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: Commands(PlaygroundCommand.Go("trail-1"), PlaygroundCommand.Go("trail-1")));
+            characterController: Commands(PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Go("e-n4")));
         await StepWorldEvent(kernel);
         await Advance(kernel);
         await StepWorldEvent(kernel);
         PlaygroundObservation observation = PlaygroundDecisionContext.Observe(kernel.World, "a");
-        Assert.Equal(new PlaygroundJourneyObservation("溪流湾", "trail-1", "沿林间缓坡向上", PlaygroundExpeditionMap.GetPlace("camp").Name), observation.Journey);
+        Assert.Equal(new PlaygroundJourneyObservation("溪流湾", "e-n4", "沿林间缓坡向上", PlaygroundExpeditionMap.GetPlace("camp").Name), observation.Journey);
         Assert.Equal(Hour(12), observation.ArrivalDue);
+        Assert.Single(kernel.World.Expedition!.ConfirmedPassages);
+        await AdvanceUntil(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "camp");
+        Assert.Single(kernel.World.Expedition!.ConfirmedPassages);
     }
 
     [Fact]
@@ -278,7 +281,7 @@ public sealed class ExpeditionTests {
     }
 
     private static SpatialLocation Location(PlaygroundWorld world) => Assert.Single(world.Expedition!.Spatial.Entities).Location;
-    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetPassages(from), passage => passage.To == to).Id;
+    private static string Passage(string from, string to) => Assert.Single(PlaygroundExpeditionMap.GetEntrances(from), passage => passage.To == to).EntranceId;
     private static void AssertSpatialFacts(OccurrenceEvent<PlaygroundFact> expected, OccurrenceEvent<PlaygroundFact> actual) =>
         Assert.Equal(expected.Facts.SelectMany(fact => fact.SpatialFacts), actual.Facts.SelectMany(fact => fact.SpatialFacts));
 

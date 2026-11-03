@@ -250,7 +250,7 @@ public sealed class HillsideEconomyAcceptanceTests {
             economy: new PlaygroundEconomyState(market ?? PlaygroundMarket.Fresh(basis.Definition, Hour(24)), totals)), basis.Time);
     }
 
-    private static PlaygroundCommand Go(string from, string to) => PlaygroundCommand.Go(PlaygroundExpeditionMap.GetPassages(from).Single(p => p.To == to).Id);
+    private static PlaygroundCommand Go(string from, string to) => PlaygroundCommand.Go(PlaygroundExpeditionMap.GetEntrances(from).Single(p => p.To == to).EntranceId);
 
     private static async Task UntilState(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel, Func<PlaygroundWorld, bool> reached) {
         for (int step = 0; step < 500; step++) {

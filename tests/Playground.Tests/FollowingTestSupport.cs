@@ -10,7 +10,7 @@ internal static class FollowingTestSupport {
         enableNeeds: false, enableWeather: false, characterCount: count).World;
 
     public static Script TwoLegScript() => new(
-        [PlaygroundCommand.Handoff("集合后出发"), PlaygroundCommand.Go("trail-1"), PlaygroundCommand.Go("trail-3"),
+        [PlaygroundCommand.Handoff("集合后出发"), PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Go("e-h5"),
             PlaygroundCommand.DismissFollowers(), PlaygroundCommand.Wait(1)],
         [PlaygroundCommand.Follow("a"), PlaygroundCommand.Wait(1)],
         [PlaygroundCommand.Follow("a"), PlaygroundCommand.Wait(1)]);

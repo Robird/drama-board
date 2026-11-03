@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)处于设计阶段，供后续 Goal 实施。用户已确定未走通前只展示本端入口身份，角色仅在已确认连接上求路，导航逐站确认；最小模型及验收见专题文档。本轮只做设计，尚未实现新命令或启动 Goal。
+**当前焦点与下一步**：[角色地图知识与导航](docs/design/character-navigation/README.md)的实施 Goal 进行中。入口身份与个人连接知识已通过[切片 A 验收](docs/experiments/character-navigation-a-acceptance.md)，下一片贯通 map/path、已知图寻路与候选持久化，再实现逐站导航；由软件工程与游戏体验两种视角审视。角色只能在本人已确认连接上求路，导航逐站确认；剩余分片及验收合同见[实施计划](docs/design/character-navigation/implementation-plan.md)，尚未验收的目标不得当成现有能力。
 
 [预测式时间并行研究](docs/research/predictive-time-parallelism/results/summary.md)及 [Playground 单分支预取](docs/research/playground-speculative-lookahead/results/summary.md)已完成原定验收并纳入本地主线，默认关闭；采用仅限完整请求/目标匹配，仍由唯一 Kernel 串行提交。[Human 等待与真实模型测量](docs/research/playground-speculative-lookahead/results/real-performance.md)保留收益及额外调用/远端取消未知的证据边界，研究暂无施工待办，见[交接计划](docs/research/playground-speculative-lookahead/work-plan.md)。
 

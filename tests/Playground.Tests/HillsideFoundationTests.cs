@@ -112,5 +112,5 @@ public sealed class HillsideFoundationTests {
         }
     }
 
-    private static string Passage(string from, string to) => PlaygroundExpeditionMap.GetPassages(from).Single(passage => passage.To == to).Id;
+    private static string Passage(string from, string to) => PlaygroundExpeditionMap.GetEntrances(from).Single(passage => passage.To == to).EntranceId;
 }

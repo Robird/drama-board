@@ -101,8 +101,8 @@ public sealed class AttributeForecastViewTests {
     [Fact]
     public void Only_removal_of_a_real_action_exception_emits_a_clearing_message() {
         var initial = Observation();
-        var before = WithSurvival(initial, initial.Survival!, commands: [new(PlaygroundCommand.Go("trail-1"), null, "离开庇护")]);
-        var after = WithSurvival(initial, initial.Survival!, commands: [new(PlaygroundCommand.Go("trail-1"), null, null)]);
+        var before = WithSurvival(initial, initial.Survival!, commands: [new(PlaygroundCommand.Go("e-c7"), null, "离开庇护")]);
+        var after = WithSurvival(initial, initial.Survival!, commands: [new(PlaygroundCommand.Go("e-c7"), null, null)]);
         string delta = PlaygroundUpdateRenderer.Render(Update(before, after));
         Assert.Contains("原行动提示已不再适用", delta);
         Assert.DoesNotContain("风险：无", delta);
@@ -121,7 +121,7 @@ public sealed class AttributeForecastViewTests {
         Resources = source.Resources, HarvestDurations = source.HarvestDurations, WorldName = source.WorldName, ItemUseDescriptions = source.ItemUseDescriptions, ItemNames = source.ItemNames,
         OtherCharacters = source.OtherCharacters, Notices = source.Notices, Commands = commands ?? source.Commands,
         IsExpedition = source.IsExpedition, PlaceId = source.PlaceId, PlaceName = source.PlaceName,
-        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages,
+        PlaceDescription = source.PlaceDescription, ArrivalDue = source.ArrivalDue, Journey = source.Journey, Passages = source.Passages, KnownMap = source.KnownMap,
         Memories = source.Memories, Outcome = outcome ?? source.Outcome, EndingReason = source.EndingReason,
         Survival = survival, Weather = source.Weather
     };

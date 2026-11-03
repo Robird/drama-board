@@ -61,19 +61,19 @@ function Invoke-Console([string]$Name, [string[]]$Commands, [bool]$NewWorld) {
 }
 
 $first = @(
-    'go home-workshop', 'produce ration 1', 'use item.ration',
-    'go market-workshop', 'sell item.ration 1', 'buy item.food 2', 'buy item.water 1',
-    'use item.water', 'go market-road', 'go road-camp', 'go trail-1',
+    'go e-r6', 'produce ration 1', 'use item.ration',
+    'go e-a9', 'sell item.ration 1', 'buy item.food 2', 'buy item.water 1',
+    'use item.water', 'go e-d8', 'go e-w2', 'go e-c7',
     'gather berries 2', 'gather water 1', 'use item.water', 'use item.food',
-    'go trail-1', 'go road-camp', 'go market-road', 'go market-home'
+    'go e-n4', 'go e-g6', 'go e-p5', 'go e-k7'
 )
 $second = @(
-    'go market-home', 'buy item.food 1', 'use item.food', 'use item.water',
-    'go market-road', 'go road-camp', 'go trail-1', 'gather berries 2',
+    'go e-m2', 'buy item.food 1', 'use item.food', 'use item.water',
+    'go e-d8', 'go e-w2', 'go e-c7', 'gather berries 2',
     'use item.food', 'gather water 1', 'use item.water',
-    'go trail-1', 'go road-camp', 'go market-road', 'go market-workshop',
-    'produce ration 1', 'use item.ration', 'go market-workshop',
-    'sell item.ration 1', 'go market-home'
+    'go e-n4', 'go e-g6', 'go e-p5', 'go e-v4',
+    'produce ration 1', 'use item.ration', 'go e-a9',
+    'sell item.ration 1', 'go e-k7'
 )
 if ($Scenario -eq 'Trade') {
     $first = @('offer b item.water 1 for money 2 4')

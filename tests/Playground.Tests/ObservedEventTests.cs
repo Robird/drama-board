@@ -36,7 +36,7 @@ public sealed class ObservedEventTests {
         PlaygroundCommand command = commandKind switch {
             PlaygroundCommandKind.Wait => PlaygroundCommand.Wait(1),
             PlaygroundCommandKind.Gather => PlaygroundCommand.Gather("water"),
-            PlaygroundCommandKind.Go => PlaygroundCommand.Go("trail-1"),
+            PlaygroundCommandKind.Go => PlaygroundCommand.Go("e-n4"),
             PlaygroundCommandKind.Cancel => PlaygroundCommand.Cancel(),
             _ => PlaygroundCommand.Continue()
         };
@@ -207,7 +207,7 @@ public sealed class ObservedEventTests {
         PlaygroundCommand command = commandKind switch {
             PlaygroundCommandKind.Wait => PlaygroundCommand.Wait(1),
             PlaygroundCommandKind.Gather => PlaygroundCommand.Gather("water"),
-            PlaygroundCommandKind.Go => PlaygroundCommand.Go("trail-1"),
+            PlaygroundCommandKind.Go => PlaygroundCommand.Go("e-n4"),
             _ => PlaygroundCommand.Continue()
         };
         PlaygroundWorld initial = World(PendingWater(), activity: commandKind == PlaygroundCommandKind.Continue ? Wait(Hour(8), 2) : null,

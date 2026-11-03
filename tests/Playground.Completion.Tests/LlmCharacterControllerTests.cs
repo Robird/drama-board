@@ -53,6 +53,9 @@ public sealed class LlmCharacterControllerTests {
 
         string goals = client.Requests[0].PromptPrefix.SystemPrompt;
         string gathering = client.Requests[1].PromptPrefix.SystemPrompt;
+        Assert.Contains("go 只接受当前可见的本端入口 ID", goals);
+        Assert.Contains("去过两个地点不证明两地相连", goals);
+        Assert.Contains("他人话语和自己的猜测不会增加地图知识", goals);
         Assert.Contains("界面已提供目标管理", goals);
         Assert.Contains("不必再次抄写", goals);
         Assert.DoesNotContain("先用 handoff", goals);

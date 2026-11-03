@@ -13,8 +13,8 @@ public sealed class SurvivalViewTests {
         string text = PlayView.Render(context.Observation, context.InteractionState);
         Assert.Contains("# 山野镇", text);
         Assert.Contains("林间营地", text);
-        Assert.Contains("go trail-1", text);
-        Assert.Contains("go trail-2", text);
+        Assert.Contains("go e-c7", text);
+        Assert.Contains("go e-b9", text);
         Assert.Contains("耗时 60 分钟", text);
         Assert.Contains("耗时 120 分钟", text);
         foreach (string hidden in new[] { "山脚镇口", "巡山信号站", "溪流湾", "废弃林屋", "berries", "ridge-herbs", "trail-6" }) {
@@ -24,14 +24,14 @@ public sealed class SurvivalViewTests {
         Assert.Empty(context.Observation.Resources);
         Assert.All(context.Observation.Passages, passage => Assert.Null(passage.KnownDestinationName));
         Assert.Equal(context.Check(PlaygroundCommand.Gather("missing")), context.Check(PlaygroundCommand.Gather("berries")));
-        Assert.Equal(context.Check(PlaygroundCommand.Go("missing")), context.Check(PlaygroundCommand.Go("trail-6")));
+        Assert.Equal(context.Check(PlaygroundCommand.Go("missing")), context.Check(PlaygroundCommand.Go("e-x5")));
     }
 
     [Fact]
     public async Task Leaving_a_place_shows_timestamped_history_not_live_distant_stock() {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false);
         var history = new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor);
-        var kernel = PlaygroundEngine.CreateKernel(history, characterController: new Commands(PlaygroundCommand.Go("trail-1"), PlaygroundCommand.Go("trail-1")));
+        var kernel = PlaygroundEngine.CreateKernel(history, characterController: new Commands(PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Go("e-n4")));
         await Step(kernel); // leave camp
         await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "stream");
         PlaygroundDecisionContext atStream = PlaygroundDecisionContext.Create(kernel.World, "a");
@@ -44,7 +44,7 @@ public sealed class SurvivalViewTests {
         Assert.Contains("## 曾到访地点", text);
         Assert.Contains("历史观察", text);
         Assert.Contains("溪流湾（第", text);
-        Assert.Contains("曾到访的目的地：溪流湾", text);
+        Assert.Contains("已确认通向：溪流湾", text);
         Assert.DoesNotContain("gather berries", text);
         Assert.Empty(atCamp.Observation.Resources);
         Assert.Equal("当前不可见或不可用的资源点。", atCamp.Check(PlaygroundCommand.Gather("berries")));
@@ -55,7 +55,7 @@ public sealed class SurvivalViewTests {
     public async Task Shared_item_identity_does_not_reveal_an_unvisited_producer() {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-2")));
+            characterController: new Commands(PlaygroundCommand.Go("e-b9")));
         await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "ridge");
         PlaygroundObservation observation = PlaygroundDecisionContext.Create(kernel.World, "a").Observation;
         Assert.Equal("食物", observation.ItemNames["item.food"]);
@@ -69,7 +69,7 @@ public sealed class SurvivalViewTests {
     public async Task Arrival_at_town_keeps_the_resident_active_with_available_actions() {
         var initial = PlaygroundGameFactory.CreateSurvival(enableNeeds: false);
         var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
-            characterController: new Commands(PlaygroundCommand.Go("trail-1"), PlaygroundCommand.Go("trail-3"), PlaygroundCommand.Go("trail-4")));
+            characterController: new Commands(PlaygroundCommand.Go("e-c7"), PlaygroundCommand.Go("e-h5"), PlaygroundCommand.Go("e-s3")));
         await Until(kernel, world => PlaygroundActions.CurrentPlace(world, "a") == "road");
         PlaygroundDecisionContext context = PlaygroundDecisionContext.Create(kernel.World, "a");
         string text = PlayView.Render(context.Observation, context.InteractionState);

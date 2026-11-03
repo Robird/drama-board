@@ -16,7 +16,7 @@ public static class PlaygroundEconomyRules {
     internal static string? Check(PlaygroundWorld world, string actorId, PlaygroundCommand command) {
         if (world.Business.Economy is not { } economy) { return "此世界尚未启用经济。"; }
         PlaygroundCharacter actor = world.GetCharacter(actorId);
-        if (command.Hours != 0 || command.ResourceId is not null || command.All || command.PassageId is not null ||
+        if (command.Hours != 0 || command.ResourceId is not null || command.All || command.EntranceId is not null ||
             command.HandoffText is not null || command.SpeechText is not null || command.Goal is not null) {
             return "经济行动只接受声明的参数。";
         }

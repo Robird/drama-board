@@ -117,7 +117,7 @@ public sealed class CommunicationRulesTests {
         string target = targetKind == "unknown" ? "hidden-id" : targetKind == "self" ? "a" : "b";
         var aCommands = new List<PlaygroundCommand>();
         var bCommands = new List<PlaygroundCommand>();
-        if (targetKind == "traversing") { aCommands.Add(PlaygroundCommand.Wait(1)); bCommands.Add(PlaygroundCommand.Go("trail-3")); }
+        if (targetKind == "traversing") { aCommands.Add(PlaygroundCommand.Wait(1)); bCommands.Add(PlaygroundCommand.Go("e-h5")); }
         if (targetKind == "ended") { aCommands.Add(PlaygroundCommand.Wait(4)); }
         aCommands.Add(PlaygroundCommand.Say(target, "private text"));
         aCommands.Add(PlaygroundCommand.Give(target, "item.water", 1));

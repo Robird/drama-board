@@ -19,7 +19,7 @@ public sealed partial class PredictiveTimeParallelismTests {
         var fallback = new ImmediateClient(Act("handoff fresh-after-departure"));
         var gate = new AdoptionClient(candidate, fallback);
         var kernel = PlaygroundEngine.CreateKernel(run.History, characterController: new ActualController(run,
-            Controller(new ImmediateClient(Act("go trail-1"))), Controller(gate)));
+            Controller(new ImmediateClient(Act("go e-c7"))), Controller(gate)));
         await TemporalUntil(kernel, () => run.History.State.Business.InteractionStates["b"].DraftHandoff == "fresh-after-departure");
         PlaygroundDecisionContext observed = PlaygroundDecisionContext.Create(run.History.State, "b");
         Assert.Equal(expected.Observation.Time, observed.Observation.Time);
@@ -38,7 +38,7 @@ public sealed partial class PredictiveTimeParallelismTests {
     public async Task Remote_staggered_service_discards_input_after_a_new_actor_arrives_at_the_exact_tick() {
         using var run = new Run(TemporalInitial(TemporalHour(10), ["camp", "cabin"]));
         var prelude = PlaygroundEngine.CreateKernel(run.History, characterController: new ActualController(run,
-            Controller(new ImmediateClient(Act("go trail-2"), Act("go trail-5"), Act("wait 3"))),
+            Controller(new ImmediateClient(Act("go e-b9"), Act("go e-u8"), Act("wait 3"))),
             Controller(new ImmediateClient(Act("wait 5")))));
         await TemporalUntil(prelude, () => run.History.State.Business.InteractionStates["b"].CurrentContext?.Status == CharacterContextStatus.Open);
         PlaygroundDecisionContext oldContext = PlaygroundDecisionContext.Create(run.History.State, "b");
@@ -209,7 +209,7 @@ public sealed partial class PredictiveTimeParallelismTests {
     public async Task Same_target_time_and_context_still_discard_a_counterfactual_that_misses_the_new_entrant() {
         using var run = new Run(TemporalInitial(TemporalHour(10), ["camp", "cabin"]));
         var prelude = PlaygroundEngine.CreateKernel(run.History, characterController: new ActualController(run,
-            Controller(new ImmediateClient(Act("go trail-2"), Act("go trail-5"), Act("wait 3"))),
+            Controller(new ImmediateClient(Act("go e-b9"), Act("go e-u8"), Act("wait 3"))),
             Controller(new ImmediateClient(Act("wait 5")))));
         await TemporalUntil(prelude, () => run.History.State.Business.InteractionStates["b"].CurrentContext?.Status == CharacterContextStatus.Closed);
         PlaygroundWorld source = run.History.State;

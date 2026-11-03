@@ -20,7 +20,7 @@ internal static class PlaygroundEconomyValidation {
         if (economicOperation) {
             if (actor is null || command is null || fact.At != before.Time || !PlaygroundActions.NeedsDecision(before, actor.Id) ||
                 PlaygroundActions.Location(before, actor.Id) is not AtPlaceLocation || actor.DecisionGeneration >= long.MaxValue - 2 ||
-                command.Hours != 0 || command.ResourceId is not null || command.All || command.PassageId is not null ||
+                command.Hours != 0 || command.ResourceId is not null || command.All || command.EntranceId is not null ||
                 command.HandoffText is not null || command.Goal is not null || command.SpeechText is not null) {
                 Fail("Economic operations require an active decision and only their declared parameters.");
             }

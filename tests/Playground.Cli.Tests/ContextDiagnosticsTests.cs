@@ -26,7 +26,7 @@ public sealed class ContextDiagnosticsTests {
                 string store = Path.Combine(directory, name);
                 var initial = PlaygroundGameFactory.CreateSurvival();
                 using (var saved = PlaygroundDurableHistory.Create(store, initial.World, initial.Cursor)) { }
-                using var input = new StringReader("use item.water\ninvalid\nhandoff 等待查看溪谷\ngo trail-1\n:exit\n");
+                using var input = new StringReader("use item.water\ninvalid\nhandoff 等待查看溪谷\ngo e-c7\n:exit\n");
                 using var output = new StringWriter();
                 Assert.Equal(0, await HostFixture.RunHumanAsync(store, default, diagnosticSink: sink,
                     inputReader: input, outputWriter: output));
@@ -220,7 +220,7 @@ public sealed class ContextDiagnosticsTests {
             string raw = _calls++ switch {
                 0 => "use item.water",
                 1 => "handoff 保留经历",
-                2 => "go trail-1",
+                2 => "go e-c7",
                 _ => throw new InvalidOperationException("No further input is expected.")
             };
             return ValueTask.FromResult(new PlaygroundControllerOperation("call-" + _calls, raw, "record-" + _calls));

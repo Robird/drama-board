@@ -136,7 +136,7 @@ public sealed class ShoutRecoveryTests {
         var history = Memory(initial);
         var script = new Script(
             [PlaygroundCommand.Wait(1), PlaygroundCommand.Shout(Words)],
-            [PlaygroundCommand.Go("trail-1")],
+            [PlaygroundCommand.Go("e-c7")],
             [PlaygroundCommand.Wait(2)]);
         var kernel = PlaygroundEngine.CreateKernel(history, characterController: script);
         await UntilFact(kernel, fact => fact.Kind == PlaygroundEventKind.MoveStarted);

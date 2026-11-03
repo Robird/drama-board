@@ -91,7 +91,7 @@ public sealed class FollowingContextTests {
 
     [Fact]
     public async Task Leader_departure_updates_an_open_follower_context_without_consuming_its_draft_or_inventing_an_operation() {
-        var script = new Script([PlaygroundCommand.Handoff("领队准备"), PlaygroundCommand.Say("b", "路上再回应"), PlaygroundCommand.Go("trail-1")],
+        var script = new Script([PlaygroundCommand.Handoff("领队准备"), PlaygroundCommand.Say("b", "路上再回应"), PlaygroundCommand.Go("e-c7")],
             [PlaygroundCommand.Follow("a"), PlaygroundCommand.Handoff("队员自己的计划"), PlaygroundCommand.Continue()]);
         var kernel = PlaygroundEngine.CreateKernel(Memory(World(2)), characterController: script);
         await UntilFact(kernel, fact => fact.Kind == PlaygroundEventKind.HandoffEdited && fact.ActorId == "b");
