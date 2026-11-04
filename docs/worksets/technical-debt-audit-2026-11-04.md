@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 10 轮，TD-01（含水合结构附记）至 TD-09 均已处理；TD-10 继续保留。
-- **当前结果**：TD-09 已独立复核并验收；纯协议、反馈和本地 Responses wire 测试可直接运行共享项目，游戏身份／材料／提交仍由适配集成测试保护。逐用例数据与断言映射、独立依赖边界及两项目回归已核验，没有未验收的本轮代码改动。
-- **下一步**：处理 TD-10 活跃文档导航，再对本 Goal 的十项整改及三项观察的裁决做最终复核；不以已处理九项缩小 Goal。
+- **执行方式**：本次 Goal 共完成 11 轮，TD-01（含独立水合结构附记）至 TD-10 均已处理；逐轮与 subagent 讨论、实施并独立验收，最后按原十项问题和观察边界做整体复核。
+- **当前结果**：十项常规债务已关闭，整仓构建／测试和无模型进程验收通过，详见下文最终验收；本 Goal 范围内没有剩余施工项。
+- **后续**：三项性能观察按下述测量或实际消费者条件重开；新玩法与既有独立体验验收仍以 PROJECT-STATE 为入口，不从历史任务文字自动延续施工。
 - **保留事项**：三项性能观察保持测量或实际消费者触发后裁决；既有玩法、记忆和框架延期边界不变。
 
 ## 范围与结论
@@ -29,7 +29,7 @@
 | TD-07 | P3 | CLI／领域 | 已处理：两布局共用冻结采集周期 | 实际 Gather／冷开、材料消费及真实 Console |
 | TD-08 | P3 | 反馈日志 | 已处理：反馈首错保留与流所有权 | 双失败注入、退役／重开及真实反馈进程 |
 | TD-09 | P3 | Completion | 已处理：共享协议回归归入共享测试项目 | 原数据／断言映射、独立项目运行与逐类 TRX |
-| TD-10 | P3 | 文档入口 | 活跃导航仍把已实现能力和旧参数写成旧状态 | 与当前代码、主入口交叉核对 |
+| TD-10 | P3 | 文档入口 | 已处理：活跃导航与当前能力／入口对齐 | 三入口文档、源码与真实帮助／旧参数拒绝 |
 
 ## TD-01：时间边界与水合结构检查（已处理）
 
@@ -115,27 +115,35 @@
 - **游戏边界**：[适配 controller](../../tests/Playground.Completion.Tests/LlmCharacterControllerTests.cs) 保留真实 Kernel／角色绑定、能力指引、新 renderer 材料与操作转换、领域拒绝／提交和 renderer 串行／预取消保护；[适配 feedback](../../tests/Playground.Completion.Tests/LlmFeedbackTests.cs) 只验证实际角色／ContextSequence 转交、冻结 Context 不变和返回游戏操作。删除迁走的旧 wire 文件与无消费者的假客户端 OnCall；产品代码、项目引用、包依赖及持久化合同均未改。[共享 README](../../src/CharacterControl.Completion/README.md#operational-boundaries) 同步测试职责。
 - **验收范围**：独立 subagent 对照固定 `423b75c` 的原数据集、断言及合并映射静态复核无阻断意见；主线程复核集成源码并在尾修后以 Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 串行验证两项目，共享 **56**（协议 22、反馈 18、wire 3、loop 5、原连接 8）＋适配 **6**，共 **62 通过、0 失败、0 跳过**。总案例从 64 减少到 62 仅因两项重复预算合同合并；[TRX 逐类核对](../../artifacts/td09-test-results/verification.json) 与源码分组一致。artifacts 不随 Git 保存。未运行完整 solution、新 CLI 进程 smoke、真实模型或 Linux；本轮不改运行时行为。
 
-## TD-10：活跃文档导航保留过时能力状态
+## TD-10：活跃文档导航保留过时能力状态（已处理）
 
-- **证据 A**：[docs/README.md:67](../README.md#L67) 仍称 lookahead 在实验分支计划中、等待新 Goal；[根 README:67](../../README.md#L67)、[专题入口](../research/playground-speculative-lookahead/README.md) 与当前 Host 已提供主线默认关闭的实现。
-- **证据 B**：[docs/README.md:51](../README.md#L51) 仍用现在时描述 `--play`／`--duo`；[根 README:130](../../README.md#L130) 明确旧模式退出 CLI，[DuoHostTests.cs:51](../../tests/Playground.Cli.Tests/DuoHostTests.cs#L51) 专门验证旧开关拒绝。
-- **影响**：维护者从文档导航进入时可能误判能力或选择错误入口，多个位置的状态摘要已发生实际漂移。
-- **最小建议与验收**：只修活跃导航摘要，链接当前能力和专题；旧验收正文继续保留历史语境，Slice B 继续延期。核对主入口、状态页、docs 导航和 --help 一致，并检查修改链接。
+- **原问题**：docs 导航曾把已纳入主线的 lookahead 写成等待新 Goal 的计划，用现在时保留已移除的 `--play`／`--duo` 入口，并把历史切片“不实现 LLM adapter”的范围句放在活跃能力摘要中。与当前代码、根 README 和状态页发生真实漂移。
+- **修正**：[导航](../README.md#current-work) 采用统一 Playground Host 与 `:mode full|delta`，旧模式明确退出当前入口；Slice B 保持延期。[研究摘要](../README.md#application-research) 同步 lookahead 主线默认关闭、显式启用、LLM／Human 等待、完整请求与目标匹配及串行提交，链接现有最终报告和性能限制；Human 边界链接已实现的共享 loop／adapter。只改活跃摘要，历史验收正文保留原版本语境。
+- **实际入口**：[四进程 manifest](../../artifacts/technical-debt-final-entry/manifest.json) 验证 `--help` 与 `--lookahead on --help` 均 exit 0，`--play --help`／`--duo --help` 均 exit 1 且 stderr 指明未知参数；帮助列出 lookahead 默认 off，不广告旧模式。使用有坏配置的独立 CWD，帮助不读取／改写配置、不创建世界；与 [Options](../../src/Playground.Cli/Options.cs)、[home 默认值](../../src/Playground.Cli/PlaygroundHome.cs) 和 [Program](../../src/Playground.Cli/Program.cs#L30) 相符。
+- **验收**：subagent 参与最小方案讨论，另一 subagent 对集成 diff、主入口／状态页／专题／源码和链接独立静态复核无阻断意见；主线程检查受影响链接、锚点及实际进程。最终整仓验收覆盖既有旧开关拒绝与 lookahead 合同。本轮不增加能力或重开研究施工。
 
 ## 观察项：有结构性成本，尚无瓶颈证据
 
 这些不计入上述十项的整改优先级；先测量或等待实际消费者。
 
 1. **角色材料 Capture 重复遍历前缀**：[CharacterHistoryProjection.cs:26](../../src/Playground.Cli/CharacterHistoryProjection.cs#L26) 对每个 Item 构造 prefix；[CharacterContext.cs:92](../../src/Playground/CharacterContext.cs#L92) 复制列表，[CharacterContextRenderer.cs:50](../../src/Playground.Cli/CharacterContextRenderer.cs#L50) 再遍历。单次 Capture 的遍历随 Items 呈二次增长。成功／感知 Item 没有独立总数上界，但有同刻转换、LLM 字符预算等间接护栏。先测 n=32/128/512 的时间和分配；当前全量日志、delta 和容量延期已有明确设计，不直接登记为已发生性能故障。
-2. **导航语义值使用完整 Markdown**：[ViewSnapshot.cs:191](../../src/Playground.Cli/PlaygroundViewSnapshot.cs#L191) 把 RenderCandidate／RenderActive 的文本用于变化比较，输出时又渲染。可维护性与 Capture 重复工作相互叠加，但没有性能实测或漏报复现。仅在导航投影改造或测得成本时，考虑复用 [ObservationEquality](../../src/Playground/PlaygroundObservationEquality.cs) 的结构化路径比较。
+2. **导航语义值使用完整 Markdown**：[ViewSnapshot.cs:196](../../src/Playground.Cli/PlaygroundViewSnapshot.cs#L196) 把 RenderCandidate／RenderActive 的文本用于变化比较，输出时又渲染。可维护性与 Capture 重复工作相互叠加，但没有性能实测或漏报复现。仅在导航投影改造或测得成本时，考虑复用 [ObservationEquality](../../src/Playground/PlaygroundObservationEquality.cs) 的结构化路径比较；必须同时覆盖已知地点名、ArrivalDue 与行进阶段，不能只比较路径对象而漏报可见变化。
 3. **不可变内容在世界验证边界重复验证／计算指纹**：[PlaygroundModels.cs:116](../../src/Playground/PlaygroundModels.cs#L116) 调 Definition.Validate，后者重新 ValidateStructure、BuildGraph、编码并 SHA；[Engine.Rebuild](../../src/Playground/PlaygroundEngine.cs#L32) 还会在后续 Validate 再走一次。仅确认重复工作，未测占比；如要缓存，必须保留创建／水合后的指纹篡改拒绝合同，不能仅为少一次哈希削弱冷开校验。
+
+## Goal 最终验收（2026-11-04）
+
+- **原范围复核**：按 TD-01–10 各自问题与验收要求逐条检查当前源码、测试和工件；两位独立 subagent 分别复核 TD-01–05、TD-06–10，无剩余必做或阻断。主线程复核关键入口、候选／命令身份、共享 payload reader、反馈所有权、CI 接线及测试归属。第三位 subagent 复核三项观察的结构性成本与延期边界；尚无测量依据裁决优化，保留条件式重开，不把它们宣称已修复或升级为性能故障。
+- **构建基线**：代码为 `1c4239c`，本轮收尾仅改文档；SDK `10.0.201`，DG `f7f0c28bacaa`、Storage `9ad39fc51a42`、Completion `d1dd88d61cce`。`dotnet build DramaBoard.slnx -c Release --no-restore -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify` 成功，0 warning／0 error，Schema Verify 通过；完整输出保留在忽略的 artifacts。
+- **完整测试**：`dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1 --logger trx --results-directory artifacts/technical-debt-final-results` 完成；[逐项目核对](../../artifacts/technical-debt-final-results/verification.json) 确认 TRX 恰好覆盖 solution 全部 10 个测试项目，共 **1,838 通过、0 失败、0 跳过**。[原问题回归门槛](../../artifacts/technical-debt-final-results/regression-gates.json) 额外核对水合／pending、内容、命令呈现、预测身份、宿主 payload、采集解释、反馈与共享协议等指定测试类确实执行，未仅凭总数作完成判断。
+- **最终进程**：[Home](../../artifacts/technical-debt-final-home-smoke/manifest.json) 13＋[反馈](../../artifacts/technical-debt-final-feedback-smoke/manifest.json) 10＋[入口](../../artifacts/technical-debt-final-entry/manifest.json) 4，共 **27 个真实 CLI 进程**按预期退出、无超时，成功进程 stderr 为空，模型记录／raw 文件均为 0。[汇总](../../artifacts/technical-debt-final-results/process-verification.json) 与最终 CLI SHA 相同；包括冷开、只读管理／导出源哈希、独立反馈分叉与历史隔离。TD-06 原 Windows／WSL 各 13 场景及五类进程故障证据已按[当前脚本 SHA 回读核对](../../artifacts/technical-debt-final-results/td06-cross-platform-verification.json)。
+- **证据范围**：最终整仓与新进程回归在 Windows 完成；WSL 证据仍限于 TD-06 当轮源码及其明确边界，不冒充本轮完整 Linux 回归、GitHub runner 或上传实测。未推送、未调用真实模型或长期压力测试。独立真人体验验收保持原项目边界；本 Goal 不据工程回归替代它们。artifacts 不随 Git 保存，正文结论、测试源码及提交保留可复验依据。
 
 ## 已排除与未覆盖
 
 - 没有将当前选择的相邻源码依赖、精确 SDK、Storage pin、两种布局、无旧开发存档兼容，或“先游戏层验证再提取模块”列为债务。
 - 自动摘要／记忆回灌、历史 delta／索引、动态拓扑、更强空间索引、通用框架、任意倒带、并发分支、完整原生模型会话恢复等明确延期能力不转成缺陷；真正人类参与的独立试玩验收仍保持原边界。
 - Kernel 的 E/S 发布与故障锁定、S 成功才安装、pending 不重做 Plan、同刻转换预算；lookahead 的完整请求／目标匹配、共享物理预算、未合作取消占槽均有实现及专门测试反证，未发现可确认绕过。这里只是本轮有界审查，不表示整个模块没有其他技术债。
-- 不审计归档应用内部，也不把上游仓库全部纳入调查；没有运行真实模型、长期压力测试、完整 solution 测试或 Linux 验证。
+- 不审计归档应用内部，也不把上游仓库全部纳入调查。初始调查未运行完整 solution 或 Linux 验证；后续整改与最终整体验收以对应章节为准，未调用真实模型或长期压力测试。
 
 ## 初始调查的验证与复现（整改前）
 
@@ -176,4 +184,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；收敛文档导航后做范围内最终复核，不因此启动整仓重构。
+十项整改均已关闭；后续按三项观察的触发条件及 PROJECT-STATE 的现行方向选择工作，不从本次历史任务自动启动整仓重构。

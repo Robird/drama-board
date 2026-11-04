@@ -1,7 +1,7 @@
 # DramaBoard 当前项目状态
 
 > 跨会话入口；维护方式见 [AGENTS.md](AGENTS.md)。按本文件选择下一处阅读，不必顺读历史记录。
-> 最近整理：2026-11-04；当前逐项处理技术债。山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
+> 最近整理：2026-11-04；本轮常规技术债整改已收敛。山野镇融合阶段已通过 [C1–C8 总验收](docs/codex-goals/living-world/acceptance.md)，工程、三日真实模型运行和两场自由游玩分别留证；本阶段停止扩展，Gym 二期继续延期。
 
 ## 最终目标
 
@@ -27,7 +27,7 @@
 
 Kernel/Spatial 的缓存与恢复闭环已落地：不可变运行时 wrapper 与持久 Business 分离，全量 oracle、实际 S/E-only 冷开及 S 成功后安装合同的证据见[缓存验收](docs/experiments/runtime-derived-predictions-acceptance.md)。没有旧存档兼容要求。
 
-**当前焦点与下一步**：按[临时技术债整改文档](docs/worksets/technical-debt-audit-2026-11-04.md)逐项处理可由一般工程经验裁决的问题；每轮与 subagent 讨论、实施和独立验收，局部状态只维护在该文档。用户允许无旧版本兼容负担、按需 Git 提交；不因此重开已延期玩法或框架。
+**当前焦点与下一步**：[临时技术债整改文档](docs/worksets/technical-debt-audit-2026-11-04.md)中的十项常规债务已收敛；本轮没有剩余施工待办，验收与三项性能观察的重开条件只维护在该文档。后续按实际玩法／UI 反馈选择工作，既有独立试玩验收与玩法、记忆和框架延期边界保持。
 
 [角色地图知识与导航](docs/design/character-navigation/README.md)已完成实现与[组合验收](docs/experiments/character-navigation-d-acceptance.md)，可从[独立试玩 home](docs/design/character-navigation/playtest.md)体验；当前无导航施工待办。静态个人地图、逐站确认与同版本恢复保持为合同。真实模型在复合任务中曾沿用过期目标进度，一次正常 Console 阶段纠正后完成收尾；该证据作为后续经历管理/目标消费研究输入，不据此开启自动摘要或目标执行器。玩法扩展仍依据实际试玩反馈选择机制实验，原有独立真人合作验收仍保留。
 
