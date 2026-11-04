@@ -1,3 +1,5 @@
+using Atelia.DurableGraph;
+using Atelia.DurableGraph.Persistence;
 using DramaBoard.Kernel.Journal;
 using DramaBoard.Kernel.Scheduling;
 using DramaBoard.Kernel.Simulation;
@@ -112,6 +114,108 @@ public sealed class SpatialPredictionBoundaryTests {
         Assert.Empty(simulation.Rebuild(business, ModelTime.Zero).Contacts.Entries);
 
         Assert.Throws<InvalidOperationException>(() => simulation.Rebuild(business, GraphTestWorld.Time(11)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9)]
+    public void Completed_boundary_rejects_a_future_traversal_anchor_at_all_entry_points(long ticks) {
+        var (definition, business) = AnchoredTraversal();
+        var simulation = new SpatialSimulation(definition);
+        var world = new SpatialSimulationState(business, new SpatialContactPredictions([]));
+        ModelTime boundary = GraphTestWorld.Time(ticks);
+        var cursor = new KernelCursor(new WorldVersion(17, 0), boundary, null, null);
+        var history = new InMemoryOccurrenceHistory<SpatialSimulationState, GraphSpatialFact>(world, cursor);
+
+        Assert.Throws<InvalidOperationException>(() => simulation.Validate(world, boundary));
+        Assert.Throws<InvalidOperationException>(() => simulation.Rebuild(business, boundary));
+        Assert.Throws<InvalidOperationException>(() => simulation.CreateKernel(Rules, history));
+        Assert.Throws<InvalidOperationException>(() => SimulationReplay.Replay<SpatialSimulationState, GraphSpatialFact>(
+            world, 17, boundary, [], simulation.Fold, simulation.Complete, simulation.Validate));
+    }
+
+    [Theory]
+    [InlineData(10, 0)]
+    [InlineData(15, 5)]
+    [InlineData(20, 10)]
+    public void Completed_boundary_keeps_the_entire_active_traversal_interval_queryable(long ticks, long offset) {
+        var (definition, business) = AnchoredTraversal();
+        var simulation = new SpatialSimulation(definition);
+        ModelTime boundary = GraphTestWorld.Time(ticks);
+
+        SpatialSimulationState world = simulation.Rebuild(business, boundary);
+        var location = Assert.IsType<TraversingView>(new SpatialQueries(definition).GetLocation(
+            world.Business, new EntityId("traveller"), boundary));
+
+        Assert.Equal(offset, location.Offset);
+        Assert.Equal(GraphTestWorld.Time(20), location.ArrivalDue);
+        Assert.Empty(world.Contacts.Entries);
+    }
+
+    [Fact]
+    public void Boundary_checks_every_active_traversal_and_keeps_both_interval_endpoints() {
+        var (definition, later) = AnchoredTraversal();
+        GraphSpatialState business = GraphSpatialState.Restore(definition, [
+            new SpatialEntity(new EntityId("earlier"), 1, new TraversingLocation(
+                GraphTestWorld.Bridge, 0, ModelTime.Zero, GraphTestWorld.B, 1, GraphTestWorld.Time(10))),
+            .. later.Entities,
+        ], [], [], []);
+        var simulation = new SpatialSimulation(definition);
+
+        Assert.Throws<InvalidOperationException>(() => simulation.Rebuild(business, ModelTime.Zero));
+
+        ModelTime sharedBoundary = GraphTestWorld.Time(10);
+        SpatialSimulationState world = simulation.Rebuild(business, sharedBoundary);
+        var queries = new SpatialQueries(definition);
+        Assert.Empty(world.Contacts.Entries);
+        Assert.Equal(10, Assert.IsType<TraversingView>(queries.GetLocation(
+            world.Business, new EntityId("earlier"), sharedBoundary)).Offset);
+        Assert.Equal(0, Assert.IsType<TraversingView>(queries.GetLocation(
+            world.Business, new EntityId("traveller"), sharedBoundary)).Offset);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(9, false)]
+    [InlineData(10, true)]
+    [InlineData(15, true)]
+    [InlineData(20, true)]
+    [InlineData(21, false)]
+    public void Cold_open_requires_the_saved_cursor_inside_the_active_traversal_interval(long ticks, bool valid) {
+        using var store = new TemporaryStore();
+        var (definition, business) = AnchoredTraversal();
+        ModelTime boundary = GraphTestWorld.Time(ticks);
+        var cursor = new KernelCursor(new WorldVersion(17, 0), boundary, null, null);
+        var models = new StateModelRegistry();
+        SpatialTestDurableModels.Register(models);
+        using (Repository repository = Repository.CreateNew(store.Path, models)) {
+            // Save the actual business/cursor pair without running the adapter's Rebuild first.
+            repository.CreateRootBranchFromState("traversal-boundary", new SpatialDurableRoot(business, cursor));
+        }
+
+        var simulation = new SpatialSimulation(definition);
+        if (!valid) {
+            Assert.Throws<InvalidOperationException>(() => {
+                using var unexpected = SpatialDurableHistory.Open(store.Path, simulation);
+            });
+            return;
+        }
+
+        using var reopened = SpatialDurableHistory.Open(store.Path, simulation);
+        Assert.Equal(cursor, reopened.Cursor);
+        Assert.NotSame(business, reopened.State.Business);
+        Assert.Equal(ticks - 10, Assert.IsType<TraversingView>(new SpatialQueries(definition).GetLocation(
+            reopened.State.Business, new EntityId("traveller"), boundary)).Offset);
+    }
+
+    private static (GraphDefinition Definition, GraphSpatialState Business) AnchoredTraversal() {
+        var definition = GraphDefinition.Create([GraphTestWorld.A, GraphTestWorld.B],
+            [GraphTestWorld.Passage(GraphTestWorld.Bridge, GraphTestWorld.A, GraphTestWorld.B, length: 10)]);
+        var business = GraphSpatialState.Restore(definition, [
+            new SpatialEntity(new EntityId("traveller"), 1, new TraversingLocation(
+                GraphTestWorld.Bridge, 0, GraphTestWorld.Time(10), GraphTestWorld.B, 1, GraphTestWorld.Time(20))),
+        ], [], [], []);
+        return (definition, business);
     }
 
     private static SpatialSimulationState WithInvalidContact(SpatialSimulationState initial,

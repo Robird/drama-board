@@ -104,7 +104,13 @@ public sealed class SpatialSimulation {
             RequireNotPast(prediction.Due, at);
         }
         foreach (SpatialEntity entity in world.Business.Entities) {
-            if (entity.Location is TraversingLocation traversal) { RequireNotPast(traversal.ArrivalDue, at); }
+            if (entity.Location is TraversingLocation traversal) {
+                if (traversal.AnchorTime > at) {
+                    throw new InvalidOperationException(
+                        $"Entity '{entity.Id}' traversal anchor at {traversal.AnchorTime} cannot follow the completed boundary {at}.");
+                }
+                RequireNotPast(traversal.ArrivalDue, at);
+            }
         }
         foreach (ScheduledPassageEntryChange schedule in world.Business.ScheduledPassageEntryChanges) {
             RequireNotPast(schedule.Due, at);

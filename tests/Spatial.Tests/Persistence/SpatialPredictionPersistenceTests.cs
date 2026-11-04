@@ -199,6 +199,11 @@ public sealed class SpatialPredictionPersistenceTests {
             Assert.Equal(expected, Assert.Single(recovering.World.Contacts.Entries));
             Assert.NotSame(expected, Assert.Single(recovering.World.Contacts.Entries));
             Assert.Equal(baseline.Cursor, recovering.Cursor);
+            var newcomer = Assert.IsType<TraversingLocation>(recovering.World.Business.Entities
+                .Single(entity => entity.Id == new EntityId("bob")).Location);
+            Assert.Equal(recovering.CurrentModelTime, newcomer.AnchorTime);
+            Assert.Equal(20, Assert.IsType<TraversingView>(new SpatialQueries(definition).GetLocation(
+                recovering.World.Business, new EntityId("bob"), recovering.CurrentModelTime)).Offset);
             // Derivation creates a new runtime cache; previously published snapshots remain unchanged.
             EqualWorld(initial, beforeRecovery);
             Assert.NotSame(beforeRecovery, recovering.World);
