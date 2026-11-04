@@ -43,3 +43,17 @@ jobs:
         run: dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
       - name: Test
         run: dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
+      - name: Smoke real CLI processes without models
+        shell: pwsh
+        run: ./scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifacts/ci-home-smoke
+      - name: Upload CLI smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-home-smoke-${{ matrix.os }}
+          path: |
+            drama-board/artifacts/ci-home-smoke/manifest.json
+            drama-board/artifacts/ci-home-smoke/*.input.txt
+            drama-board/artifacts/ci-home-smoke/*.stdout.txt
+            drama-board/artifacts/ci-home-smoke/*.stderr.txt
+          if-no-files-found: warn

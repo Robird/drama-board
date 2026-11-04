@@ -28,27 +28,75 @@ function Invoke-Cli([string]$Name, [string]$Cwd, [string[]]$Arguments, [string[]
     $null = $start.Environment.Remove('DRAMABOARD_HOME_FORBIDDEN_KEY')
     $inputText = ($Commands -join "`n") + "`n"
     [IO.File]::WriteAllText((Join-Path $root "$Name.input.txt"), $inputText, $utf8)
-    $entry = [ordered]@{ Name = $Name; Cwd = $Cwd; Arguments = $Arguments; Commands = $Commands }
+    $entry = [ordered]@{
+        Name = $Name; Cwd = $Cwd; Arguments = $Arguments; Commands = $Commands
+        StartedUtc = [DateTime]::UtcNow.ToString('O'); ExpectedExit = $ExpectedExit
+        ProcessId = $null; Status = 'running'; ExitCode = $null; TimedOut = $false
+    }
     $runs.Add($entry)
     Save-Report
-    $p = [Diagnostics.Process]::Start($start)
+    $p = [Diagnostics.Process]::new()
+    $p.StartInfo = $start
+    $started = $false
+    $outTask = $null
+    $errTask = $null
+    $failure = $null
+    $cleanupErrors = [Collections.Generic.List[string]]::new()
+    $stdout = ''
+    $stderr = ''
     try {
+        $started = $p.Start()
+        if (-not $started) { throw "$Name did not start a CLI process." }
+        $entry.ProcessId = $p.Id
         $outTask = $p.StandardOutput.ReadToEndAsync()
         $errTask = $p.StandardError.ReadToEndAsync()
+        Save-Report
         $p.StandardInput.Write($inputText)
         $p.StandardInput.Close()
-        $timeout = -not $p.WaitForExit(45000)
-        if ($timeout) { $p.Kill($true); $p.WaitForExit() }
-        $stdout = $outTask.GetAwaiter().GetResult()
-        $stderr = $errTask.GetAwaiter().GetResult()
-        [IO.File]::WriteAllText((Join-Path $root "$Name.stdout.txt"), $stdout, $utf8)
-        [IO.File]::WriteAllText((Join-Path $root "$Name.stderr.txt"), $stderr, $utf8)
-        $entry.ExitCode = $p.ExitCode
-        $entry.TimedOut = $timeout
-        Assert (-not $timeout -and $p.ExitCode -eq $ExpectedExit) "$Name failed; inspect preserved stdout/stderr."
-        if ($ExpectedExit -eq 0) { Assert ([string]::IsNullOrEmpty($stderr)) "$Name unexpected stderr." }
-        return $stdout
-    } finally { Save-Report; $p.Dispose() }
+        $entry.TimedOut = -not $p.WaitForExit(45000)
+        if ($entry.TimedOut) { throw "$Name exceeded 45 seconds; inspect preserved stdout/stderr." }
+    } catch { $failure = $_ } finally {
+        if ($started) {
+            try {
+                if (-not $p.HasExited) {
+                    try { $p.Kill($true) } catch { if (-not $p.HasExited) { throw } }
+                    if (-not $p.WaitForExit(5000)) { throw 'CLI process did not exit within five seconds after termination.' }
+                }
+                $entry.ExitCode = $p.ExitCode
+            } catch { $cleanupErrors.Add("Process cleanup: $($_.Exception.Message)") }
+        }
+        foreach ($capture in @(@{ Name = 'stdout'; Task = $outTask }, @{ Name = 'stderr'; Task = $errTask })) {
+            $captureText = ''
+            try {
+                if ($null -ne $capture.Task) {
+                    if (-not $capture.Task.Wait(5000)) { throw 'Stream did not finish within five seconds.' }
+                    $captureText = $capture.Task.GetAwaiter().GetResult()
+                }
+            } catch { $cleanupErrors.Add("$($capture.Name) capture: $($_.Exception.Message)") }
+            try {
+                [IO.File]::WriteAllText((Join-Path $root "$Name.$($capture.Name).txt"), $captureText, $utf8)
+            } catch { $cleanupErrors.Add("$($capture.Name) evidence: $($_.Exception.Message)") }
+            if ($capture.Name -eq 'stdout') { $stdout = $captureText } else { $stderr = $captureText }
+        }
+        try { $p.Dispose() } catch { $cleanupErrors.Add("Process disposal: $($_.Exception.Message)") }
+    }
+    if ($null -eq $failure -and $cleanupErrors.Count -eq 0) {
+        try {
+            Assert ($entry.ExitCode -eq $ExpectedExit) "$Name failed; inspect preserved stdout/stderr."
+            if ($ExpectedExit -eq 0) { Assert ([string]::IsNullOrEmpty($stderr)) "$Name unexpected stderr." }
+        } catch { $failure = $_ }
+    }
+    $entry.EndedUtc = [DateTime]::UtcNow.ToString('O')
+    $entry.CleanupErrors = $cleanupErrors.ToArray()
+    $entry.Status = if ($null -eq $failure -and $cleanupErrors.Count -eq 0) { 'passed' } else { 'failed' }
+    if ($null -ne $failure) { $entry.Error = $failure.Exception.Message }
+    elseif ($cleanupErrors.Count -gt 0) { $entry.Error = $cleanupErrors[0] }
+    try { Save-Report } catch {
+        if ($null -eq $failure -and $cleanupErrors.Count -eq 0) { $failure = $_ }
+    }
+    if ($null -ne $failure) { throw $failure }
+    if ($cleanupErrors.Count -gt 0) { throw "$Name failed during cleanup: $($cleanupErrors -join '; ')" }
+    return $stdout
 }
 function Prepare-Home([string]$Path) {
     New-Item -ItemType Directory -Path $Path | Out-Null

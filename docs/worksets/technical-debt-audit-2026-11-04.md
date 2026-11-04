@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 5 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同、TD-04 预测身份与相等合同。
-- **当前结果**：TD-04 已独立复核并完成验收；稳定候选键、六字段身份比较和预测诊断分开，轨迹断言采用独立字段投影。领域／CLI／Completion 适配全套通过，没有未验收的本轮代码改动。
-- **下一步**：优先 TD-06 真实进程回归进入 CI；其余已确认债务继续保留，不以已完成五项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 6 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同、TD-04 预测身份与相等合同、TD-06 真实进程 CI 回归。
+- **当前结果**：TD-06 已接线并独立验收；Windows 与隔离的 Ubuntu WSL2 各 13 个真实 CLI 场景、各 5 个合成进程场景通过，actionlint 校验通过。远端 runner／artifact 上传服务尚未实际执行，不把本机结果写成远端 CI 通过；没有未验收的本轮代码改动。
+- **下一步**：先收敛 TD-01 附记的 hydrate 结构检查，然后处理 TD-08 反馈日志双失败首错；其余已确认债务继续保留，不以已完成六项缩小 Goal。
 - **保留事项**：TD-01 附记的 hydrate 结构检查与时间合同独立，仍未处理；在主项之后单独收敛，不以主项完成抹去。三项性能观察保持测量后裁决。
 
 ## 范围与结论
@@ -49,7 +49,7 @@
 - **保留行为**：Unicode、emoji、`|`、原有标点范围和 ordinal 身份保持；物品 `item:原料|甲`／`Money`、其他命名空间的 `money`、以及 `all/from/for/--clear` 均可用。名称、描述、ContentId 保留自由文本规则。不改 parser、Schema 或保存布局，不引入引号语法。
 - **回归证据**：[内容定义测试:83](../../tests/Playground.Tests/HillsideContentDefinitionTests.cs#L83) 拒绝资源、角色、配方、物品的内部／边缘空格、tab、换行、NBSP 和全角空白；[正例:111](../../tests/Playground.Tests/HillsideContentDefinitionTests.cs#L111) 创建六组合法改名内容，验证规范命令值往返及观察，经真实文本控制器、解析和 Kernel 完成采集入包。路径／交易的冒号 ID 仍可解析；自由文本的既有 Trim／handoff 清空语义不在本项扩大。
 - **真实冷开**：[HillsideContentBindingTests:29](../../tests/Playground.Tests/HillsideContentBindingTests.cs#L29) 绕过构造加入未引用的非法物品键，并重算匹配指纹后写盘；Open 必须因结构规则拒绝，磁盘哈希保持不变。新增 16 项回归在修复前 10 失败／6 通过，修复后通过，避免让旧指纹检查代替新语法校验。
-- **本轮验收**：定向内容／绑定测试 28 通过；Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Tests 全部 637、Playground.Cli.Tests 全部 691、Playground.Completion.Tests 全部 51 通过，共 1379 通过、0 失败、0 跳过。独立 diff 复核无阻断意见；未运行完整 solution、真实模型或 Linux。当前作者规则同步到 [README](../../README.md#L40)。
+- **本轮验收**：定向内容／绑定测试 28 通过；Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Tests 全部 637、Playground.Cli.Tests 全部 691、Playground.Completion.Tests 全部 51 通过，共 1379 通过、0 失败、0 跳过。独立 diff 复核无阻断意见；未运行完整 solution、真实模型或 Linux。当前作者规则同步到 [README](../../README.md#L44)。
 
 ## TD-03：命令临时身份与显示合同已修复
 
@@ -77,12 +77,14 @@
 - **真实进程证据**：[Home smoke manifest](../../artifacts/td05-home-smoke/manifest.json) 的 13 个 CLI 进程按预期退出，覆盖 Human 运行、冷开、off／ephemeral 与管理；另 [export manifest](../../artifacts/td05-home-smoke/export-manifest.json) 记录 a/b/c 三次 history 导出均 exit 0、stderr 为空，源存档逐文件哈希不变、模型记录为 0。导出材料覆盖按各角色实际保存记录检查，不替尚未打开 Context 的角色补造材料；artifacts 不随 Git 保存。
 - **验收范围**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Cli.Tests 全部 774 通过、0 失败、0 跳过，包括已有操作恢复／配对、Gym、原始编码字节、torn tail 和 I/O fault 合同。主线程核验源码、测试输出、真实进程和产物；独立静态复核无剩余阻断意见。未运行完整 solution、真实模型或 Linux。
 
-## TD-06：真实 CLI 进程回归未进入 CI
+## TD-06：真实 CLI 进程回归未进入 CI（已处理）
 
-- **证据**：[ci.yml:42](../../.github/workflows/ci.yml#L42) 只有 solution build/test；[HostFixture.cs:14](../../tests/Playground.Cli.Tests/HostFixture.cs#L14) 等测试直接调用 Options／Host，未启动真实 CLI 进程。[Program.cs:8](../../src/Playground.Cli/Program.cs#L8) 的启动分流、编码、管理入口和退出码映射不在这条联测路径上。
-- **已有可复用产物**：[Smoke-PlaygroundHome.ps1:16](../../scripts/Smoke-PlaygroundHome.ps1#L16)、[Smoke-Hillside.ps1:27](../../scripts/Smoke-Hillside.ps1#L27) 已使用真实进程、重定向标准流、超时和退出码检查。主线程本轮实际运行 Home smoke 成功。
-- **影响边界**：内部测试通过不保证 Program 接线未退化；本轮没有证明当前进程入口有故障。
-- **最小建议与验收**：在现有 CI 的 build/test 后复用一项无模型进程 smoke，保留 stdout／stderr／manifest。先覆盖全新 home、Human 操作、冷开、只读管理及错误启动退出码；Windows 与 Linux 分别验证，避免把本轮 Windows 结果当跨平台结论。
+- **原问题**：solution 内的 Host／Options 测试没有经过 Program 进程边界，现成的无模型 Home smoke 尚未接入 CI；没有证明当时进程入口已有故障。
+- **CI 接线**：[ci.yml](../../.github/workflows/ci.yml#L46) 在现有 Windows/Linux matrix 的 build/test 后，通过 pwsh 运行 [Home smoke](../../scripts/Smoke-PlaygroundHome.ps1)。`always()` 调用[官方 artifact action](https://github.com/actions/upload-artifact) v7，按平台保存根层 manifest、input、stdout、stderr 文本；uses 路径显式包含 `drama-board/`，不上传生成存档、连接配置或其他 artifacts。原 SDK／上游 checkout 策略与 Storage pin 保持不变。
+- **脚本接点**：[Invoke-Cli](../../scripts/Smoke-PlaygroundHome.ps1#L16) 把 Start／stdin／45 秒等待纳入同一异常边界，异常时终止存活进程并最多等 5 秒回收；两条流分别最多等 5 秒后保存证据，manifest 记录 PID、预期／实际退出码、起止时间、状态及 CleanupErrors。进程／流清理错误不覆盖首个执行错误；原业务断言未变。未承诺任意报告文件 I/O 失败下的全脚本首错保留，也不保证在流排空失败时抢救部分输出：该流为空并显式报告 capture 错误。
+- **双平台真实进程**：[Windows manifest](../../artifacts/td06-windows-home-smoke/manifest.json) 与 [Linux manifest](../../artifacts/td06-linux-home-smoke/manifest.json) 各 13 个场景全部通过、无清理错误；覆盖新 home、Human 操作／带空格 CWD、冷开、只读管理前后存档哈希不变、off／ephemeral、错误启动 exit 1 及模型记录为 0。Linux 为 Ubuntu 24.04.4 / WSL2、pwsh 7.5.4，Windows 为 pwsh 7.6.3；两边 SDK 均为 10.0.201。
+- **独立故障验证**：[Windows verification](../../artifacts/td06-windows-faults/verification.json) 与 [Linux verification](../../artifacts/td06-linux-faults/verification.json) 从相同脚本 SHA 提取原函数，使用临时 .NET 子进程分别验证预期非零退出、意外退出、stdin 断管、Start 失败及实际 45 秒超时。超时分别约 45.15／45.05 秒，错误正确传播、中英文双流保存、所有已启动 PID 已退出，Start 失败仍保存空双流证据；合成子进程不冒充游戏验收。artifacts 不随 Git 保存。
+- **验收范围**：Linux 使用 `/tmp` 下四个独立本地 clone，源码基于本轮前 HEAD `28768a1`、DG `f7f0c28bacaa`、Storage `9ad39fc51a42`、Completion `d1dd88d61cce`，应用相同脚本／workflow diff，避免复用 Windows bin/obj；CLI Release Schema Verify 构建 0 warning／0 error。actionlint 1.7.12 的官方发行校验和核对后，workflow 校验通过；独立静态复核无阻断意见，主线程核验源码、manifest、双流和 PID。未推送、未触发远端 CI 或实际上传、未重跑完整 solution 测试、未调用真实模型；这不是 GitHub runner 镜像的实测结论。用法同步到 [README](../../README.md#构建与测试) 与[源码接线](../source-dependencies.md#接线和边界)。
 
 ## TD-07：采集速度解释在两个布局重算领域规则
 
@@ -107,8 +109,8 @@
 
 ## TD-10：活跃文档导航保留过时能力状态
 
-- **证据 A**：[docs/README.md:67](../README.md#L67) 仍称 lookahead 在实验分支计划中、等待新 Goal；[根 README:63](../../README.md#L63)、[专题入口](../research/playground-speculative-lookahead/README.md) 与当前 Host 已提供主线默认关闭的实现。
-- **证据 B**：[docs/README.md:51](../README.md#L51) 仍用现在时描述 `--play`／`--duo`；[根 README:126](../../README.md#L126) 明确旧模式退出 CLI，[DuoHostTests.cs:51](../../tests/Playground.Cli.Tests/DuoHostTests.cs#L51) 专门验证旧开关拒绝。
+- **证据 A**：[docs/README.md:67](../README.md#L67) 仍称 lookahead 在实验分支计划中、等待新 Goal；[根 README:67](../../README.md#L67)、[专题入口](../research/playground-speculative-lookahead/README.md) 与当前 Host 已提供主线默认关闭的实现。
+- **证据 B**：[docs/README.md:51](../README.md#L51) 仍用现在时描述 `--play`／`--duo`；[根 README:130](../../README.md#L130) 明确旧模式退出 CLI，[DuoHostTests.cs:51](../../tests/Playground.Cli.Tests/DuoHostTests.cs#L51) 专门验证旧开关拒绝。
 - **影响**：维护者从文档导航进入时可能误判能力或选择错误入口，多个位置的状态摘要已发生实际漂移。
 - **最小建议与验收**：只修活跃导航摘要，链接当前能力和专题；旧验收正文继续保留历史语境，Slice B 继续延期。核对主入口、状态页、docs 导航和 --help 一致，并检查修改链接。
 
@@ -166,4 +168,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；TD-06 的进程回归可按现有工程边界收敛。其余低优先级项目随对应改动处理，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；先完成 TD-01 剩余结构边界，再分别收敛反馈清理、采集解释、共享测试归属和文档导航，不因此启动整仓重构。

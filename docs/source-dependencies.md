@@ -30,7 +30,7 @@ dotnet build src/Playground.Cli/Playground.Cli.csproj -c Release -m:1 -warnaserr
 - DG 校验 Storage HEAD 必须匹配其 `eng/StorageDependency.props` 的 `StorageSourceRevision`；Storage 提交前进时先协调 DG 声明。未提交的源码变化可直接联调，验收须记录两仓提交和工作树状态。
 - 只从 nuget.org 还原第三方包；默认构建不再读取历史候选 feed。旧包缓存与 `scripts/Prepare-DurableGraph.ps1` 保留历史用途，原验收见[固定包来源](worksets/durablegraph-package-source.md)。
 - CLI 自动读取响应文件。不读取 `Directory.Build.rsp` 的 IDE 宿主需要为还原与构建显式提供同样的全局属性，本次不宣称已验收所有 IDE。
-- CI 把本仓、DG `master`、Completion `main` 和当前匹配的 Storage 提交分别 checkout 到相邻目录，从 `drama-board` 构建唯一 solution，不打包或调用真实模型。它跟随上游变化，不是历史构建复现承诺；Storage pin 变化后相应更新 CI。
+- CI 把本仓、DG `master`、Completion `main` 和当前匹配的 Storage 提交分别 checkout 到相邻目录，从 `drama-board` 构建、测试唯一 solution，再运行 [Home CLI smoke](../scripts/Smoke-PlaygroundHome.ps1)，按 Windows/Linux 分别保存进程文本证据；不打包或调用真实模型。它跟随上游变化，不是历史构建复现承诺；Storage pin 变化后相应更新 CI。
 - 多个消费者共享上游 `bin/obj` 时串行构建，避免输出竞争。切换源码路径后重新还原和构建，不能拿旧输出证明新路径可用。
 
 ## 原源码接线验证（历史基线）

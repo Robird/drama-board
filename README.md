@@ -13,7 +13,11 @@ DramaBoard 是实验性的时空模拟引擎：**Kernel** 仲裁并提交确定�
 ```powershell
 dotnet build DramaBoard.slnx -c Release -m:1 -warnaserror -p:DurableGraphSchemaHistoryMode=Verify
 dotnet test DramaBoard.slnx -c Release --no-build --no-restore -m:1
+
+pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifacts/home-smoke-new
 ```
+
+最后一条需要 PowerShell 7，输出目录必须尚不存在。CI 在 Windows 和 Linux 的 build/test 后复用此无模型进程 smoke，验证 Human 操作、冷开、只读管理与错误退出码，并上传 manifest 和标准流文本供排错。
 
 源码根、Generator/Schema 接线与验证边界见[源码依赖](docs/source-dependencies.md)。Solution 包含核心、Inventory/Goals/控制器/Gym、Playground 系列及相应测试，也列入相邻源码项目供 IDE/LSP 导航。Microtown 已通过 [Git tag 归档](docs/archive/microtown.md)，不再参与构建或回归。常规开发不需要先发布包、Node、浏览器或旧 Player/Server。
 
