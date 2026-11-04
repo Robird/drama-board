@@ -94,7 +94,8 @@ public sealed partial class PlaygroundInitialCharacterDefinition : IDurableObjec
 
 /// <summary>The complete immutable authored definition, persisted once as a shared business subgraph.</summary>
 /// <remarks>Canonical encoding v1 uses BinaryWriter little-endian integers and length-prefixed UTF-8 strings.
-/// Unordered definitions are ordinally sorted; initial character order remains semantically significant.</remarks>
+/// Unordered definitions are ordinally sorted; initial character order remains semantically significant.
+/// Command-visible IDs contain no whitespace; the exact item ID "money" is reserved for currency.</remarks>
 [DurableType("DramaBoard.Playground.WorldDefinition", 1)]
 public sealed partial class PlaygroundWorldDefinition : IDurableObject {
     [DurableField(1)] private readonly string _contentId;
@@ -223,10 +224,8 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
             Body.ShelteredWarmthPerHour is < 0 or > 100 || Body.DayWarmthPerHour is < 0 or > 100 ||
             Body.NightWarmthPerHour is < -100 or > 0) { Invalid(); }
         Unique(_places.Select(p => p.Id)); Unique(_passages.Select(p => p.Id)); Unique(_resources.Select(r => r.Id));
-        if (_places.Any(p => p.Id.Any(char.IsWhiteSpace))) { Invalid(); }
         Unique(_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }));
-        if (_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }).Any(id =>
-            id.Any(char.IsWhiteSpace) || _passages.Any(p => p.Id == id))) { Invalid(); }
+        if (_passages.SelectMany(p => new[] { p.EntranceId, p.ReverseEntranceId }).Any(id => _passages.Any(p => p.Id == id))) { Invalid(); }
         Unique(_recipes.Select(r => r.Id)); Unique(_initialCharacters.Select(c => c.Id));
         var placeIds = _places.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         if (!placeIds.Contains(MarketPlaceId) || !placeIds.Contains(WorkshopPlaceId) ||
@@ -236,7 +235,7 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
             _relations.Any(r => !placeIds.Contains(r.EndpointA) || !placeIds.Contains(r.EndpointB) ||
                 StringComparer.Ordinal.Compare(r.EndpointA, r.EndpointB) >= 0) ||
             _relations.Select(r => (r.EndpointA, r.EndpointB)).Distinct().Count() != _relations.Count ||
-            _items.Any(p => string.IsNullOrWhiteSpace(p.Key) || string.IsNullOrWhiteSpace(p.Value))) { Invalid(); }
+            _items.Any(p => !IsCommandToken(p.Key) || p.Key == "money" || string.IsNullOrWhiteSpace(p.Value))) { Invalid(); }
         foreach (var resource in _resources) {
             if (!placeIds.Contains(resource.PlaceId) || !_items.ContainsKey(resource.ItemId) || string.IsNullOrWhiteSpace(resource.Name) ||
                 resource.RegenerationTicks <= 0 || resource.HarvestTicks <= 0 || resource.Capacity <= 0 || resource.Stock < 0 ||
@@ -291,9 +290,10 @@ public sealed partial class PlaygroundWorldDefinition : IDurableObject {
 
     private static Dictionary<string, int> Copy(IReadOnlyDictionary<string, int> source) => new(source, StringComparer.Ordinal);
     private static IReadOnlyDictionary<string, int> Read(Dictionary<string, int> source) => new ReadOnlyDictionary<string, int>(source);
+    private static bool IsCommandToken(string? value) => !string.IsNullOrEmpty(value) && !value.Any(char.IsWhiteSpace);
     private static void Unique(IEnumerable<string> ids) {
         string[] values = ids.ToArray();
-        if (values.Any(id => string.IsNullOrWhiteSpace(id) || id.Contains(':')) || values.Distinct(StringComparer.Ordinal).Count() != values.Length) { Invalid(); }
+        if (values.Any(id => !IsCommandToken(id) || id.Contains(':')) || values.Distinct(StringComparer.Ordinal).Count() != values.Length) { Invalid(); }
     }
     [DoesNotReturn]
     private static void Invalid() => throw new InvalidDataException("Invalid immutable world content definition.");

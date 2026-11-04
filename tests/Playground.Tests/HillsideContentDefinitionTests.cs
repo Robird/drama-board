@@ -1,3 +1,5 @@
+using DramaBoard.Kernel.Journal;
+using DramaBoard.Kernel.Simulation;
 using DramaBoard.Spatial;
 using static DramaBoard.Playground.Tests.PlaygroundTestSupport;
 
@@ -68,6 +70,79 @@ public sealed class HillsideContentDefinitionTests {
         Assert.Throws<InvalidDataException>(() => original.Change(weather: original.Weather with { ColdProbabilityNumerator = 3, ColdProbabilityDenominator = 2 }));
         Assert.Throws<InvalidDataException>(() => original.Change(marketPlaceId: "missing"));
         Assert.Throws<InvalidDataException>(() => original.Change(initialCharacters: [original.InitialCharacters[0].Change(unitCapacity: 1)]));
+    }
+
+    [Theory]
+    [InlineData("two words")]
+    [InlineData("two\twords")]
+    [InlineData("two\nwords")]
+    [InlineData("two\u00a0words")]
+    [InlineData("two\u3000words")]
+    [InlineData(" leading")]
+    [InlineData("trailing ")]
+    public void Command_ids_reject_whitespace_before_a_world_is_created(string id) {
+        PlaygroundWorldDefinition original = PlaygroundWorldDefinitions.LivingWorld(characterCount: 1);
+
+        Assert.Throws<InvalidDataException>(() => original.Change(resources:
+            original.Resources.Select(resource => resource.Id == "well" ? resource with { Id = id } : resource)));
+        Assert.Throws<InvalidDataException>(() => original.Change(initialCharacters:
+            [original.InitialCharacters[0].Change(id: id)]));
+        Assert.Throws<InvalidDataException>(() => original.Change(recipes:
+            original.Recipes.Select(recipe => recipe.Id == "ration" ? recipe with { Id = id } : recipe)));
+        Assert.Throws<InvalidDataException>(() => original.Change(items:
+            new Dictionary<string, string>(original.Items) { [id] = "物品名称" }));
+    }
+
+    [Fact]
+    public void Money_is_reserved_in_the_item_namespace() {
+        PlaygroundWorldDefinition original = PlaygroundWorldDefinitions.LivingWorld(characterCount: 1);
+
+        Assert.Throws<InvalidDataException>(() => original.Change(items:
+            new Dictionary<string, string>(original.Items) { ["money"] = "普通物品" }));
+    }
+
+    [Theory]
+    [InlineData("药草🌿|甲", "item:原料|甲")]
+    [InlineData("money", "Money")]
+    [InlineData("all", "all")]
+    [InlineData("from", "for")]
+    [InlineData("for", "from")]
+    [InlineData("--clear", "--clear")]
+    public async Task Single_token_content_ids_roundtrip_and_execute_through_the_controller(string id, string itemId) {
+        PlaygroundWorldDefinition original = PlaygroundWorldDefinitions.LivingWorld(characterCount: 1, enableNeeds: false, enableWeather: false);
+        PlaygroundWorldDefinition authored = original.Change(contentId: "含 空白的内容标识", name: "有 空格的世界名",
+            resources: original.Resources.Select(resource => resource.Id == "well"
+                ? resource with { Id = id, ItemId = itemId, Name = "有 空格的资源名" } : resource),
+            initialCharacters: [original.InitialCharacters[0].Change(id: id, name: "有 空格的人名", placeId: "market")],
+            recipes: original.Recipes.Select(recipe => recipe.Id == "ration" ? recipe with { Id = id } : recipe),
+            items: new Dictionary<string, string>(original.Items) { [itemId] = "有 空格的物品名" });
+        authored.Validate();
+        var initial = PlaygroundGameFactory.Create(authored);
+        string entrance = authored.GetEntrances("market")[0].EntranceId;
+        PlaygroundCommand[] commands = [
+            PlaygroundCommand.Gather(id), PlaygroundCommand.GatherAll(id), PlaygroundCommand.Produce(id),
+            PlaygroundCommand.Use(itemId), PlaygroundCommand.Buy(itemId), PlaygroundCommand.Sell(itemId),
+            PlaygroundCommand.Give(id, itemId, 1), PlaygroundCommand.GiveMoney(id, 2),
+            PlaygroundCommand.Follow(id), PlaygroundCommand.Say(id, "你好 世界"),
+            PlaygroundCommand.Offer(id, new(itemId, 1), new("money", 2)),
+            PlaygroundCommand.Go(entrance), PlaygroundCommand.Path("home", "market"),
+            PlaygroundCommand.Navigate(PlaygroundPathRules.Identity(id, 1, 1)),
+            PlaygroundCommand.Accept($"trade:{id}:1:1"), PlaygroundCommand.Reject($"trade:{id}:1:1"), PlaygroundCommand.Withdraw($"trade:{id}:1:1"),
+        ];
+        Assert.All(commands, command => Assert.Equal(command, PlaygroundCommandParser.Parse(PlaygroundCommandParser.Format(command))));
+
+        var controller = new StubCharacterController((observation, actorId) => {
+            Assert.Equal(id, actorId);
+            Assert.Contains(observation.Resources, resource => resource.Id == id && resource.ItemId == itemId);
+            return PlaygroundCommand.Gather(id);
+        });
+        var kernel = PlaygroundEngine.CreateKernel(new InMemoryOccurrenceHistory<PlaygroundWorld, PlaygroundFact>(initial.World, initial.Cursor),
+            characterController: controller);
+        for (int step = 0; step < 8 && kernel.World.GetCharacter(id).Backpack.Count(itemId) == 0; step++) {
+            Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(10)));
+        }
+        Assert.Equal(1, kernel.World.GetCharacter(id).Backpack.Count(itemId));
+        Assert.Equal(1, controller.Calls);
     }
 
     [Fact]

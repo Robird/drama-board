@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 1 轮：TD-01 时间边界主项。
-- **当前结果**：共用 Validate 检查 `AnchorTime <= at <= ArrivalDue`；公开入口、真实冷开、多运动交界与 pending 恢复已验收。业务数学夹具改选共同可用边界，未放宽生产检查。没有未验收的本轮代码改动。
-- **下一步**：选择 TD-02 的内容 ID／命令往返合同，再处理 TD-03 的结构化命令身份与标签；优先让内容定义不能产生控制器无法正确表达的可执行动作。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 2 轮：TD-01 时间边界主项、TD-02 内容 ID 合同。
+- **当前结果**：TD-02 已实施并经独立复核、定向及完整消费者测试验收。作者输入与匹配指纹的非法存档均拒绝；合法 Unicode／`|`／语法关键字 ID 保持往返，已通过文本控制器实际采集入包。没有未验收的本轮代码改动。
+- **下一步**：TD-03，收敛命令身份和 delta 标签，移除未转义分隔串反解析及固定数组下标依赖。`|` 仍是合法内容 ID 字符，不通过禁止它掩盖结构问题。
 - **保留事项**：TD-01 附记的 hydrate 结构检查与时间合同独立，仍未处理；在主项之后单独收敛，不以主项完成抹去。三项性能观察保持测量后裁决。
 
 ## 范围与结论
@@ -21,7 +21,7 @@
 | 编号 | 建议级别 | 关注点 | 问题 | 本轮证据 |
 | --- | --- | --- | --- | --- |
 | TD-01 | P2 | Spatial | 时间边界主项已修复；hydrate 结构附记仍待处理 | 公开入口、冷开、pending 与消费者回归 |
-| TD-02 | P2 | 内容／领域 | 内容 ID 合同与命令语法、保留字不一致 | 独立 .NET 探针复现 |
+| TD-02 | P2 | 内容／领域 | 已修复：内容 ID 单词元与物品 money 保留规则 | 作者拒绝、往返／实际采集、匹配指纹冷开 |
 | TD-03 | P2 | CLI | 命令身份分隔串反解析使 delta 标签失真 | 独立 .NET 探针复现 |
 | TD-04 | P2 | 预测维护 | 诊断 ToString 同时充当身份编码与相等合同 | 源码复核；未发现当前碰撞 |
 | TD-05 | P2 | 宿主日志 | 写入接受的 payload 不一定满足阅读合同 | 实际写盘、重读、导出探针 |
@@ -42,14 +42,14 @@
 
 **仍未处理的附记**：hydrate 绕过构造后，负 AnchorOffset、非规范 consumed-contact 实体顺序未被 [GraphSpatialStateValidator](../../src/Spatial/State/GraphSpatialStateValidator.cs#L45) 完整重验。这属于独立的无时间结构合同，后续应在该 Validator 配合绕过构造／真实水合夹具处理；本轮主项验收不关闭这两处缺口。
 
-## TD-02：内容 ID 与控制器命令的可表示范围不一致
+## TD-02：内容 ID 与命令语法合同已修复
 
-- **证据**：[PlaygroundWorldDefinition.cs:225](../../src/Playground/PlaygroundWorldDefinition.cs#L225) 只对地点和入口 ID 禁内部空白；资源、角色、配方的 Unique 只拒空白全串和冒号，物品键也允许内部空白。[CommandParser.cs:32](../../src/Playground/PlaygroundCommandParser.cs#L32) 按空白分词，Format 直接插入 ID；[TradeState.cs:13](../../src/Playground/PlaygroundTradeState.cs#L13) 固定将 `money` 解释为现金。
-- **复现 A**：基于内置定义将 well 改为 `town well`，角色设在市场。定义 Validate、新局创建和领域 Check 都接受；Format 得到 `gather town well 1`，Parse 返回 null。
-- **复现 B**：定义可加入物品键 `money`，但 `Give("b", "money", 1)` 经 Format→Parse 变为 GiveMoney，物品与现金无法按原意区分。
-- **影响边界**：普通 C# 内容作者可创建领域接受、当前命令入口却无法正确访问的内容。内置 hillside/gentle 未发现这种命名。
-- **最小建议与验收**：统一“会进入命令的 ID”的内容校验，禁止内部空白并声明保留字 `money`；无需因此引入带引号命令语法。补 `.Change` 的拒绝用例和各类有效 ID 的 Format→Parse 往返合同。
-- **已有防线**：[HillsideContentDefinitionTests](../../tests/Playground.Tests/HillsideContentDefinitionTests.cs#L61) 已覆盖引用、周期、容量等非法内容；这不覆盖 ID 的命令语法合同。
+- **原问题**：内容定义曾接受 `town well` 等含空白 ID，生成 `gather town well 1` 后无法解析；物品 `money` 又会被 Give／Trade 解释为现金。内置 hillside/gentle 没有这些命名，但普通 C# 内容可以产生不可准确操作的世界。
+- **方案与实现**：主线程与两位 subagent 复核，在 [WorldDefinition:293](../../src/Playground/PlaygroundWorldDefinition.cs#L293) 用共用 IsCommandToken 检查非空且不含任意 `char.IsWhiteSpace`；Unique 沿用原冒号禁令，移除地点／入口重复空白检查。[物品键:238](../../src/Playground/PlaygroundWorldDefinition.cs#L238) 另拒绝精确小写 `money`，不引入物品冒号禁令。构造、Change 与恢复的 Validate 共用此边界；引用继续通过成员关系绑定到已验证 ID，不向 DTO、Inventory、Spatial 复制命令规则。
+- **保留行为**：Unicode、emoji、`|`、原有标点范围和 ordinal 身份保持；物品 `item:原料|甲`／`Money`、其他命名空间的 `money`、以及 `all/from/for/--clear` 均可用。名称、描述、ContentId 保留自由文本规则。不改 parser、Schema 或保存布局，不引入引号语法。
+- **回归证据**：[内容定义测试:83](../../tests/Playground.Tests/HillsideContentDefinitionTests.cs#L83) 拒绝资源、角色、配方、物品的内部／边缘空格、tab、换行、NBSP 和全角空白；[正例:111](../../tests/Playground.Tests/HillsideContentDefinitionTests.cs#L111) 创建六组合法改名内容，验证规范命令值往返及观察，经真实文本控制器、解析和 Kernel 完成采集入包。路径／交易的冒号 ID 仍可解析；自由文本的既有 Trim／handoff 清空语义不在本项扩大。
+- **真实冷开**：[HillsideContentBindingTests:29](../../tests/Playground.Tests/HillsideContentBindingTests.cs#L29) 绕过构造加入未引用的非法物品键，并重算匹配指纹后写盘；Open 必须因结构规则拒绝，磁盘哈希保持不变。新增 16 项回归在修复前 10 失败／6 通过，修复后通过，避免让旧指纹检查代替新语法校验。
+- **本轮验收**：定向内容／绑定测试 28 通过；Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Tests 全部 637、Playground.Cli.Tests 全部 691、Playground.Completion.Tests 全部 51 通过，共 1379 通过、0 失败、0 跳过。独立 diff 复核无阻断意见；未运行完整 solution、真实模型或 Linux。当前作者规则同步到 [README](../../README.md#L40)。
 
 ## TD-03：delta 从未转义命令键反解析展示语法
 
@@ -104,8 +104,8 @@
 
 ## TD-10：活跃文档导航保留过时能力状态
 
-- **证据 A**：[docs/README.md:67](../README.md#L67) 仍称 lookahead 在实验分支计划中、等待新 Goal；[根 README:61](../../README.md#L61)、[专题入口](../research/playground-speculative-lookahead/README.md) 与当前 Host 已提供主线默认关闭的实现。
-- **证据 B**：[docs/README.md:51](../README.md#L51) 仍用现在时描述 `--play`／`--duo`；[根 README:124](../../README.md#L124) 明确旧模式退出 CLI，[DuoHostTests.cs:51](../../tests/Playground.Cli.Tests/DuoHostTests.cs#L51) 专门验证旧开关拒绝。
+- **证据 A**：[docs/README.md:67](../README.md#L67) 仍称 lookahead 在实验分支计划中、等待新 Goal；[根 README:63](../../README.md#L63)、[专题入口](../research/playground-speculative-lookahead/README.md) 与当前 Host 已提供主线默认关闭的实现。
+- **证据 B**：[docs/README.md:51](../README.md#L51) 仍用现在时描述 `--play`／`--duo`；[根 README:126](../../README.md#L126) 明确旧模式退出 CLI，[DuoHostTests.cs:51](../../tests/Playground.Cli.Tests/DuoHostTests.cs#L51) 专门验证旧开关拒绝。
 - **影响**：维护者从文档导航进入时可能误判能力或选择错误入口，多个位置的状态摘要已发生实际漂移。
 - **最小建议与验收**：只修活跃导航摘要，链接当前能力和专题；旧验收正文继续保留历史语境，Slice B 继续延期。核对主入口、状态页、docs 导航和 --help 一致，并检查修改链接。
 

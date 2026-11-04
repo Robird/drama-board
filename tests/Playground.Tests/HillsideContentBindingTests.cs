@@ -23,6 +23,32 @@ public sealed class HillsideContentBindingTests {
         Assert.Equal(before, HashFiles(store.StorePath));
     }
 
+    [Theory]
+    [InlineData("two words")]
+    [InlineData("money")]
+    public void Cold_open_rejects_unrepresentable_content_ids_even_with_a_matching_fingerprint(string itemId) {
+        using var store = new TemporaryStore();
+        var initial = PlaygroundGameFactory.CreateLivingWorld(characterCount: 1);
+        var items = (Dictionary<string, string>)typeof(PlaygroundWorldDefinition)
+            .GetField("_items", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(initial.World.Definition)!;
+        items.Add(itemId, "构造后加入的物品");
+        // Isolate semantic validation: a stale fingerprint must not be the reason this is rejected.
+        typeof(PlaygroundWorldDefinition).GetField("_fingerprint", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(initial.World.Definition, initial.World.Definition.ComputeFingerprint());
+        Assert.Equal(initial.World.Definition.Fingerprint, initial.World.Definition.ComputeFingerprint());
+        using (var repository = Repository.CreateNew(store.StorePath, Models())) {
+            repository.CreateRootBranchFromState("invalid-command-id",
+                PlaygroundDurableRoot.CreateRevisionCandidate(initial.World.Business, initial.Cursor, PlaygroundGameRevision.Current));
+        }
+        string[] before = HashFiles(store.StorePath);
+
+        Assert.Throws<InvalidDataException>(() => {
+            using var unexpected = PlaygroundDurableHistory.Open(store.StorePath);
+        });
+
+        Assert.Equal(before, HashFiles(store.StorePath));
+    }
+
     [Fact]
     public async Task State_publication_cannot_replace_content_even_with_an_individually_valid_world() {
         using var store = new TemporaryStore();

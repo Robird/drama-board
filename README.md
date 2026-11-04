@@ -37,6 +37,8 @@ home 示例见 [manifest](config/playground.example.json)。home 内的路径以
 
 新局可选 `--content hillside|gentle`，默认 hillside。gentle 减缓消耗、缩短镇营通路及口粮制作时间，并调整资源、市场和天气。续局省略 `--content` 会读取保存定义；显式选择不符则拒绝，不改写旧局。普通 C# 内容入口、指纹与支持范围见[内容定义](docs/codex-goals/living-world/content.md)。下文具体数值描述默认 hillside。构建后可用 `pwsh -NoProfile -File scripts/Smoke-HillsideContent.ps1` 验证命名变体与冷开。
 
+自定义内容的地点、通路、入口、资源、角色、配方和物品 ID 必须是无任何空白的非空词元，保留大小写与原字符；中文和 `|` 可用。物品 ID 的精确小写 `money` 保留给现金，`Money` 仍可表示普通物品。名称、描述和内容标识不套用命令词元规则；构造、`Change` 和恢复会校验这些约束。
+
 每个需要决策的 Human 角色由 Console 依次服务，等待输入期间世界暂停。Human Console 可以由真人或 Coding Agent 通过终端操作。默认保存到 home 下的 `store/`；`--store PATH` 可覆盖，每次成功转换自动保存。使用新路径创建新世界，已有存档不会被静默重置。旧开发修订存档不兼容，当前修订见 [PROJECT-STATE](PROJECT-STATE.md)。
 
 `:quit`、`:exit`、EOF 或 Ctrl+C 暂停当前宿主。`--steps` 默认 10000，是本次运行提交转换数的上限；`--until-hour` 是从 D0 00:00 起的**绝对模拟小时**，省略则没有该时限。预算结束不会宣告世界终局，继续运行可设置更大的时间上限。世界只跳到实际事件，若上界没有事件，时间保留在最后完成事件的位置。所有居民死亡后宿主停止；一名居民死亡不会结束其他人的生活。
