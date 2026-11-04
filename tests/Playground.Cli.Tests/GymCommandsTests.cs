@@ -141,9 +141,9 @@ public sealed class GymCommandsTests {
     public async Task Full_boundary_mismatch_rejects_before_registration() {
         using var fixture = await Fixture.Create();
         using (var journal = PlaygroundHostJournal.Open(fixture.Journal)) {
-            journal.Append("model-request", "fixture", fixture.Boundary.BranchId, "a", fixture.Boundary.ContextSequence, new {
-                RequestId = "wrong-boundary", Boundary = fixture.Boundary with { OperationSequence = fixture.Boundary.OperationSequence + 1 }
-            });
+            journal.Append("model-request", "fixture", fixture.Boundary.BranchId, "a", fixture.Boundary.ContextSequence,
+                new ModelRequestSnapshot("wrong-boundary", 1, "fixture", "fixture-model", "fixture", null,
+                    fixture.Boundary with { OperationSequence = fixture.Boundary.OperationSequence + 1 }, [], []));
         }
         string before = fixture.Fingerprint();
         Assert.Throws<InvalidDataException>(() => GymCommands.Run(fixture.Store, null,

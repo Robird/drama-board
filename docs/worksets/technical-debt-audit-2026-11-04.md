@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 3 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签。
-- **当前结果**：TD-03 已独立复核并完成验收；完整命令临时身份与结构化映射消除分隔符碰撞，显示统一使用 canonical formatter。CLI 全套和真实进程的 delta／冷开 Context 检查通过，没有未验收的本轮代码改动。
-- **下一步**：优先 TD-05 宿主日志写读合同，处理已复现的“记录可保存／重读、人物导出却失败”；之后收敛 TD-04 预测身份与相等合同。其余已确认债务继续保留，不以已完成三项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 4 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同。
+- **当前结果**：TD-05 已独立复核并完成验收；人物／模型／操作 payload 共用严格读取，缺字段、非法 null 和身份错配在写前与重读时拒绝。CLI 全套、真实进程 Human／冷开／只读导出通过，没有未验收的本轮代码改动。
+- **下一步**：优先 TD-04 预测身份与相等合同，然后 TD-06 真实进程回归进入 CI；其余已确认债务继续保留，不以已完成四项缩小 Goal。
 - **保留事项**：TD-01 附记的 hydrate 结构检查与时间合同独立，仍未处理；在主项之后单独收敛，不以主项完成抹去。三项性能观察保持测量后裁决。
 
 ## 范围与结论
@@ -67,13 +67,14 @@
 - **最小建议与验收**：显式提供候选键编码和类型化比较，ToString 只用于阅读；重构保持现有键字节与仲裁行为。验证全部身份字段参与比较，诊断显示改动不影响键或实例复用。
 - **已有防线**：[PlaygroundMaintenanceBoundaryTests.cs:78](../../tests/Playground.Tests/PlaygroundMaintenanceBoundaryTests.cs#L78) 检查等值重算复用；部分轨迹 oracle 自身也通过 Forecasts.ToString 比较，尚不能独立约束诊断／身份边界。
 
-## TD-05：宿主日志可写合同与可读合同不对称
+## TD-05：宿主日志可写合同与可读合同不对称（已处理）
 
-- **证据**：[HostJournal.cs:188](../../src/Playground.Cli/PlaygroundHostJournal.cs#L188) 对 operation kind 有 payload 专项验证，对 character-material／model-request 等主要只验通用 envelope 与对象形状；[HistoryExporter.cs:9](../../src/Playground.Cli/CharacterHistoryExporter.cs#L9) 用 required-constructor 反序列化，并在 [同文件:92](../../src/Playground.Cli/CharacterHistoryExporter.cs#L92) 消费完整 snapshot。[GymCommands.cs:138](../../src/Playground.Cli/Gym/GymCommands.cs#L138) 又单独解析 Boundary 字段。
-- **复现**：通过内部 journal 写入只有 RequestId 的 model-request，写盘和 Read 均成功；同一记录进入人物 history 时抛 JsonException。[GymCommandsTests.cs:144](../../tests/Playground.Cli.Tests/GymCommandsTests.cs#L144) 也用部分 request payload 构造夹具。
-- **影响边界**：字段或调用点演化时，错误可在 durable append 后才暴露，并中断导出。当前正常 HostSession 使用 typed projection，本轮未发现它已经生成不完整真实记录；这是内部合同和防回归债。
-- **最小建议与验收**：先为现有 model-request／character-material 共用 typed payload 与 envelope 身份校验，覆盖写入和重读；不建通用日志框架。完整可写记录应可导出，缺字段／身份错配在落盘前拒绝。
-- **已有防线**：operation 配对、分支隔离、故障退役与 E/S 对账已有专门测试；不能把本项扩大为整个日志恢复不可靠。
+- **原问题**：只有 RequestId 的 model-request 曾可写盘、重读，随后人物 history 抛 JsonException；正常 HostSession 使用 typed projection，未发现真实运行已生成这种坏记录。复核还确认 operation payload 的可空但必需构造参数同样存在两端反序列化差异，这是内部合同和防回归债。
+- **实现**：[HostHistoryPayloads](../../src/Playground.Cli/HostHistoryPayloads.cs) 统一必需构造参数、非空引用读取与 InvalidDataException；[journal 写前／重读](../../src/Playground.Cli/PlaygroundHostJournal.cs#L205)、[人物 history](../../src/Playground.Cli/CharacterHistoryExporter.cs#L85) 及 [request-fork](../../src/Playground.Cli/Gym/GymCommands.cs#L88) 共用。材料／模型 snapshot 检查各层集合元素、材料 Context 与请求 Boundary 的 envelope 身份；操作继续由现有 branch-local index 配对，feedback-saved 前置非空 FeedbackId 检查。Gym 的部分 request 夹具改为完整 snapshot，仍验证与真实世界决定前边界不一致时不注册分支。
+- **保留边界**：空 Boundary、部分为空的捕获坐标、负 LineageId、失败无 Result、未完成 Response、无候选操作、Reasoning 无 PlainText、未知内容阅读缺口仍合法。管理 kind 不新增通用 DTO／状态机。校验只读取原 payload，不改 checksum 字节、I/O 故障退役、尾行处理或领域 Schema／修订；不承担旧日志迁移。合同同步到[主日志设计](../design/character-history-and-diagnostics.md#41-信封身份与写入)。
+- **回归与复核**：[新增 67 项](../../tests/Playground.Cli.Tests/HostHistoryPayloadContractTests.cs) 覆盖 33 类负例的 Append 与有效校验链完整坏行 Read/Open 对称拒绝，以及完整投影保存、重开、导出。写前拒绝保持字节／序号不变且 writer 继续可用，完整坏行拒绝时不修复源文件；正例保留合法未知／不完整证据。独立复核发现的 `Errors:[null]` 漏项已补齐，`Errors:null` 仍合法。首轮写前夹具的 Windows 文件共享错误已修正，不作为产品缺陷证据。
+- **真实进程证据**：[Home smoke manifest](../../artifacts/td05-home-smoke/manifest.json) 的 13 个 CLI 进程按预期退出，覆盖 Human 运行、冷开、off／ephemeral 与管理；另 [export manifest](../../artifacts/td05-home-smoke/export-manifest.json) 记录 a/b/c 三次 history 导出均 exit 0、stderr 为空，源存档逐文件哈希不变、模型记录为 0。导出材料覆盖按各角色实际保存记录检查，不替尚未打开 Context 的角色补造材料；artifacts 不随 Git 保存。
+- **验收范围**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Cli.Tests 全部 774 通过、0 失败、0 跳过，包括已有操作恢复／配对、Gym、原始编码字节、torn tail 和 I/O fault 合同。主线程核验源码、测试输出、真实进程和产物；独立静态复核无剩余阻断意见。未运行完整 solution、真实模型或 Linux。
 
 ## TD-06：真实 CLI 进程回归未进入 CI
 
@@ -164,4 +165,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；TD-05 的写读合同、TD-04 的身份编码、TD-06 的进程回归均可按现有工程边界分别收敛。其余低优先级项目随对应改动处理，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；TD-04 的身份编码、TD-06 的进程回归可按现有工程边界分别收敛。其余低优先级项目随对应改动处理，不因此启动整仓重构。

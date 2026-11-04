@@ -1,16 +1,10 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using DramaBoard.Playground.Cli;
 
 /// <summary>Read-only character view over one proven host-journal prefix. Never loads model raw files or a writable world.</summary>
 internal static class CharacterHistoryExporter {
-    private static readonly JsonSerializerOptions Json = new() {
-        Converters = { new JsonStringEnumConverter() },
-        RespectRequiredConstructorParameters = true
-    };
-
     public static void Export(string journalPath, string branchId, string actorId, TextWriter output,
         string? feedbackPath = null) {
         ArgumentNullException.ThrowIfNull(output);
@@ -89,17 +83,17 @@ internal static class CharacterHistoryExporter {
                         .Append("；来源请求 ").Append(Literal(String(record.Payload, "SourceRequestId"))).AppendLine().AppendLine();
                     break;
                 case "character-material":
-                    RenderMaterial(record, Read<CharacterMaterialSnapshot>(record));
+                    RenderMaterial(record, HostHistoryPayloads.ReadMaterial(record));
                     break;
                 case "model-request":
-                    RenderRequest(record, Read<ModelRequestSnapshot>(record));
+                    RenderRequest(record, HostHistoryPayloads.ReadRequest(record));
                     break;
                 case "model-response":
                 case "model-failure":
-                    RenderOutcome(record, Read<ModelOutcomeSnapshot>(record));
+                    RenderOutcome(record, HostHistoryPayloads.ReadOutcome(record));
                     break;
                 case "operation-received":
-                    RenderReceived(record, Read<PlaygroundOperationReceipt>(record));
+                    RenderReceived(record, record.ReadPayload<PlaygroundOperationReceipt>());
                     break;
                 case "operation-completed":
                     RenderCompleted(record);
@@ -140,9 +134,6 @@ internal static class CharacterHistoryExporter {
         }
 
         void RenderMaterial(PlaygroundHostRecord record, CharacterMaterialSnapshot material) {
-            if (record.ContextSequence != material.ContextSequence) {
-                throw new InvalidDataException("Character material ContextSequence does not match its host envelope.");
-            }
             text.Append("Context 状态 ").Append(material.Status).Append("；捕获完成 S ")
                 .Append(Literal(material.StateCommitId)).AppendLine("（不是所有操作的原提交点）。").AppendLine();
             text.Append("捕获世界位置：lineage ").Append(Token(material.LineageId)).Append("；transition ")
@@ -181,10 +172,6 @@ internal static class CharacterHistoryExporter {
         }
 
         void RenderRequest(PlaygroundHostRecord record, ModelRequestSnapshot request) {
-            if (request.Boundary is { } captured && (captured.BranchId != record.BranchId ||
-                captured.ActorId != record.ActorId || captured.ContextSequence != record.ContextSequence)) {
-                throw new InvalidDataException("Model request boundary does not match its host envelope.");
-            }
             ModelIdentity(request.RequestId, request.CallNumber, request.ConnectionId, request.ModelId, request.ApiSpecId, request.RawRecordSequence);
             if (request.Boundary is { } boundary) {
                 text.Append("决定前 S ").Append(Literal(boundary.StateCommitId)).Append("；transition ")
@@ -259,9 +246,9 @@ internal static class CharacterHistoryExporter {
         }
 
         void RenderCompleted(PlaygroundHostRecord record) {
-            string id = RequiredString(record.Payload, "OperationRecordId");
-            PlaygroundOperationResult result = Required(record.Payload, "Completed").Deserialize<PlaygroundOperationResult>(Json)
-                ?? throw new InvalidDataException("An operation-completed payload is null.");
+            var completion = record.ReadPayload<PlaygroundOperationCompletion>();
+            string id = completion.OperationRecordId;
+            PlaygroundOperationResult result = completion.Completed;
             text.Append("操作回应 ").Append(Literal(id)).Append("；状态 ").Append(result.Status).Append("；ExactResult=")
                 .Append(result.ExactResult ? "true" : "false").AppendLine().AppendLine();
             Fence(text, result.Result);
@@ -274,7 +261,7 @@ internal static class CharacterHistoryExporter {
             } else {
                 text.AppendLine("回应带领域事件引用；成功/拒绝以保存结论为准，捕获 S 不替代原提交点。").AppendLine();
             }
-            if (!result.ExactResult || Boolean(record.Payload, "Recovered") == true) {
+            if (!result.ExactResult || completion.Recovered) {
                 text.AppendLine("恢复补录：使用本次追加位置，ExactResult=false 时不保证重现原始回执文本。").AppendLine();
             }
             if (!visible.Any(candidate => candidate.BranchId == record.BranchId && candidate.Kind == "operation-received" &&
@@ -407,12 +394,8 @@ internal static class CharacterHistoryExporter {
 
     private static bool HasActor(JsonElement payload, string actor) => Property(payload, "Actors") is { ValueKind: JsonValueKind.Array } actors &&
         actors.EnumerateArray().Any(entry => String(entry, "ActorId") == actor);
-    private static T Read<T>(PlaygroundHostRecord record) => record.Payload.Deserialize<T>(Json)
-        ?? throw new InvalidDataException("A host history payload is null.");
     private static JsonElement? Property(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object &&
         value.TryGetProperty(name, out JsonElement property) ? property : null;
-    private static JsonElement Required(JsonElement value, string name) => Property(value, name)
-        ?? throw new InvalidDataException("A host history payload is missing " + name + ".");
     private static string RequiredString(JsonElement value, string name) => String(value, name)
         ?? throw new InvalidDataException("A host history payload is missing " + name + ".");
     private static string? String(JsonElement value, string name) => Property(value, name) is { ValueKind: JsonValueKind.String } property

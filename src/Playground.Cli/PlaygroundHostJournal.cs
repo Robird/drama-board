@@ -6,7 +6,7 @@ using System.Text.Json;
 
 internal sealed record PlaygroundHostRecord(int FormatVersion, long Sequence, string Kind, string? RunId,
     string? BranchId, string? ActorId, long? ContextSequence, JsonElement Payload) {
-    public T ReadPayload<T>() => Payload.Deserialize<T>() ?? throw new InvalidDataException($"Host record {Sequence} has an empty payload.");
+    public T ReadPayload<T>() => HostHistoryPayloads.Read<T>(this);
 }
 
 internal sealed record PlaygroundHostJournalSnapshot(string? JournalId, IReadOnlyList<PlaygroundHostRecord> Records,
@@ -202,6 +202,7 @@ internal sealed class PlaygroundHostJournal : IDisposable {
             }
             if ((Records.Count == 0) != (record.Kind == "metadata")) { throw new InvalidDataException("Host metadata must appear exactly once at the beginning."); }
             if (record.Kind == "metadata") { _ = ReadJournalId(record); }
+            HostHistoryPayloads.Validate(record);
             if (record.Kind is "operation-received" or "operation-completed") {
                 if (record.RunId is null || record.BranchId is null || record.ActorId is null) {
                     throw new InvalidDataException("Operation records require run, branch and actor identities.");

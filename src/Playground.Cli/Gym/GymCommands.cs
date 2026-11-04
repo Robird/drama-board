@@ -85,10 +85,8 @@ internal static class GymCommands {
         } else {
             snapshot = PlaygroundHostJournal.Read(journalPath);
             request = Find(snapshot, "model-request", "RequestId", options.SourceId);
-            boundary = Boundary(request);
-            if (request.BranchId != boundary.BranchId || request.ActorId != boundary.ActorId || request.ContextSequence != boundary.ContextSequence) {
-                throw new InvalidDataException("请求记录与边界身份不一致；未创建分支。");
-            }
+            boundary = HostHistoryPayloads.ReadRequest(request).Boundary
+                ?? throw new InvalidDataException("请求没有持久决定前边界；未创建分支。");
         }
         PlaygroundDecisionBoundary actual = PlaygroundDurableHistory.InspectDecisionBoundary(store,
             boundary.BranchId, boundary.StateCommitId, boundary.ActorId);
@@ -135,18 +133,4 @@ internal static class GymCommands {
         value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
             ? value.GetString()! : throw new InvalidDataException($"宿主记录缺少 {name}。");
 
-    private static PlaygroundDecisionBoundary Boundary(PlaygroundHostRecord record) {
-        try {
-            if (record.Payload.ValueKind != JsonValueKind.Object || !record.Payload.TryGetProperty("Boundary", out JsonElement value)) {
-                throw new InvalidDataException("Gym 记录缺少决定前边界。");
-            }
-            foreach (string name in new[] { "BranchId", "StateCommitId", "ActorId" }) { _ = RequiredString(value, name); }
-            foreach (string name in new[] { "ContextSequence", "OperationSequence", "LineageId", "TransitionCount", "TimeTicks", "GameRevision" }) {
-                if (!value.TryGetProperty(name, out JsonElement number) || number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out _)) {
-                    throw new InvalidDataException($"Gym 决定前边界缺少有效的 {name}。");
-                }
-            }
-            return value.Deserialize<PlaygroundDecisionBoundary>() ?? throw new InvalidDataException("Gym 决定前边界为空。");
-        } catch (JsonException error) { throw new InvalidDataException("Gym 决定前边界格式无效。", error); }
-    }
 }

@@ -61,6 +61,7 @@
 - metadata 声明 FormatVersion=1、随机 JournalId；后者只标识日志，不是假定的世界全局 StoreId。
 - 每行有单调 Sequence、PreviousHash、原始 Payload 字符串和 Hash；校验保存字节，不重新序列化后计算。
 - Payload 使用固定 Kind 与 typed 数据，按需有 RunId、BranchId、ActorId、ContextSequence；管理记录可无 RunId，不拿当前身份补猜缺失字段。
+- [HostHistoryPayloads](../../src/Playground.Cli/HostHistoryPayloads.cs) 统一写前、重读与 history 的必需字段／非空引用读取；人物材料、模型请求／结果另检查集合元素和 envelope 身份，request-fork 复用同一请求读取。可空字段仍须按 snapshot 构造合同提供；空 Boundary、失败无结果、opaque reasoning 及未知内容的阅读缺口均合法。结构错误在 I/O 前拒绝，不退役 writer；不补造字段或改写校验用原始 Payload。
 - 宿主统一生成 RunId，传给各记录器。OperationRecordId、RequestId 仍表示各自关联；Sequence 表示追加顺序，不代替业务身份或模拟时间。
 - 有世界定位时保存捕获时完成 S、lineage/transition/tick；模型决定前保存完整 PlaygroundDecisionBoundary。捕获 S 不是操作原始提交点。
 - 全行刷盘后才安装内存状态、返回成功。写入/刷盘失败退役 writer，不自动重试。完整行损坏报错；只读不修尾，writer 重开可处理未完成尾并报告字节数。
