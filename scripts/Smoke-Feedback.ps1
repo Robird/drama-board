@@ -91,7 +91,7 @@ try {
     $beforeExport = Hash-Tree $store
     $null = Invoke-Cli '07-export' @('--store', $store, '--branch', $child[0].BranchId, '--actor', 'a', '--gym-export', $export)
     Assert ((Hash-Tree $store) -eq $beforeExport) 'Export modified source.'
-    Assert ((Get-Content -Raw -LiteralPath $export).Contains('祖先轨迹未继承')) 'Missing fork evidence must be explicit.'
+    Assert ((Get-Content -Raw -LiteralPath $export).Contains('无可证明的宿主日志切点；祖先宿主材料未继承')) 'Missing fork evidence must be explicit.'
     Assert (-not (Get-Content -Raw -LiteralPath $export).Contains('parent-future-secret')) 'Parent future leaked into child export.'
     $null = Invoke-Cli '08-ephemeral' @('--home', $playHome, '--ephemeral', '--characters', '1') @(':feedback 内存世界反馈。')
     $ephemeral = Get-Content -LiteralPath (Join-Path $playHome 'feedback.jsonl') | ConvertFrom-Json

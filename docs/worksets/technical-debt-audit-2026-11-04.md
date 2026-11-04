@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 7 轮，TD-01（含水合结构附记）至 TD-06 均已处理；TD-07 至 TD-10 继续保留。
-- **当前结果**：TD-01 水合结构附记已独立复核并验收；共享 Validator 拒绝负偏移、反序／self consumed contact 及首尾空白实体 ID，合法端点、负 anchor 时间与内部空格保留。真实 DG／生产消费者冷开及三套回归通过，没有未验收的本轮代码改动。
-- **下一步**：处理 TD-08 反馈日志双失败首错，再收敛采集解释、共享测试归属与文档导航；不以已处理六项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 8 轮，TD-01（含水合结构附记）至 TD-06 及 TD-08 均已处理；TD-07、TD-09、TD-10 继续保留。
+- **当前结果**：TD-08 首错保留与流所有权修复已独立复核并验收；真实 FileStream 双失败注入、退役／重开、CLI 回归及真实反馈进程 smoke 均通过，没有未验收的本轮代码改动。
+- **下一步**：处理 TD-07 采集解释，再收敛共享测试归属与文档导航；不以已处理七项缩小 Goal。
 - **保留事项**：三项性能观察保持测量或实际消费者触发后裁决；既有玩法、记忆和框架延期边界不变。
 
 ## 范围与结论
@@ -27,7 +27,7 @@
 | TD-05 | P2 | 宿主日志 | 已处理：写入、重读和人物阅读共用合同 | 对称拒绝、保存／重开／导出与真实进程 |
 | TD-06 | P2 | 工程 | 已接线：真实 CLI 进程 smoke 进入双平台 CI | 本机双平台／故障验证、actionlint；未跑远端 CI |
 | TD-07 | P3 | CLI／领域 | 采集速度公式在领域和两布局分别维护 | 源码三处复核 |
-| TD-08 | P3 | 反馈日志 | 故障清理异常可能覆盖首个 I/O 错误 | 控制流复核；双失败未实测 |
+| TD-08 | P3 | 反馈日志 | 已处理：反馈首错保留与流所有权 | 双失败注入、退役／重开及真实反馈进程 |
 | TD-09 | P3 | Completion | 共享协议主要回归仍依赖游戏测试夹具 | 实现／测试归属复核 |
 | TD-10 | P3 | 文档入口 | 活跃导航仍把已实现能力和旧参数写成旧状态 | 与当前代码、主入口交叉核对 |
 
@@ -98,12 +98,13 @@
 - **最小建议与验收**：领域统一提供解释数值进入冻结观察，或布局只展示现有周期。一次规则调整应使实际周期和两布局解释共同更新，布局不保留独立倍率公式。
 - **已有防线**：[PlayablePlaygroundTests.cs:195](../../tests/Playground.Tests/PlayablePlaygroundTests.cs#L195) 检查精确耗时，但所查 CLI 用例没有领域公式与两布局解释一致性合同。
 
-## TD-08：反馈日志清理可能掩盖原始错误
+## TD-08：反馈日志清理可能掩盖原始错误（已处理）
 
-- **证据**：[FeedbackJournal.cs:82](../../src/Playground.Cli/Feedback/FeedbackJournal.cs#L82) 的 catch 先 Dispose，再清空字段和重抛；若 Dispose 也失败，首个写入／刷盘异常被覆盖，字段清空也不执行。外层 Dispose 还可能再次触发。[HostJournal.cs:98](../../src/Playground.Cli/PlaygroundHostJournal.cs#L98) 已有 faulted 清理保护，可作本地参照。
-- **影响边界**：仅在写入与清理双失败时丢失首个错误和原失败位置；没有实测文件系统双失败，不据此推断正常保存损坏。
-- **最小建议与验收**：先解除字段所有权，并保护 faulted cleanup 的首个异常。使用可注入故障夹具验证写入失败＋清理失败时保留首错且 writer 退役。
-- **已有防线**：[FeedbackJournalTests.cs:58](../../tests/Playground.Cli.Tests/FeedbackJournalTests.cs#L58) 覆盖 beforeFlush 失败，不覆盖后续清理也失败。
+- **原问题**：Append 的 catch 曾先 Dispose，再清空字段和重抛；双失败时清理异常覆盖追加首错，字段继续保留，外层 using 还可能再次清理。真实 FileStream 子类注入已复现此异常替换；没有实测文件系统双失败，不据此推断正常保存损坏。
+- **实现**：[失败清理](../../src/Playground.Cli/Feedback/FeedbackJournal.cs#L81)先退役并解除流所有权，隔离次生清理异常后裸 throw，保留原始异常对象及堆栈；后续 Append 拒绝，Dispose 不重试同一流。[正常 Dispose](../../src/Playground.Cli/Feedback/FeedbackJournal.cs#L111) 同样先解除所有权，独立发生的清理异常仍透传。懒创建、输入校验边界、真实 `Flush(true)`、只读与尾行合同保持；不保证失败清理已成功释放底层资源，不改保存格式、领域 Schema 或修订。合同同步到[反馈设计](../design/independent-feedback.md#保存失败与回执)。
+- **故障回归**：内部 FileStream factory 替换旧 beforeFlush hook，不引入通用 I/O 抽象。[新增 8 项](../../tests/Playground.Cli.Tests/FeedbackJournalTests.cs#L71)覆盖 body／newline／flush 与 IOException／非 I/O 清理错误的六种组合、外层 using 和独立 Dispose。检查首错对象／堆栈、无回执、一次清理、退役后无再写及冷开处理真实尾行／完整行；夹具先释放文件再注入清理错误，flush 夹具先真实刷盘再报错，保留“未获回执但记录可能已存在”的语义。修复前 12 项中 8 失败、4 通过；六个 theory 的最终错误被旧 using 二次清理覆盖，独立 using 用例的 Assert.Same 明确证明首错被替换。修复后定向 12 项全部通过。
+- **真实进程证据**：[反馈 smoke manifest](../../artifacts/td08-feedback-smoke-verified/manifest.json) 的 10 个 CLI 进程全部 exit 0、无 stderr／超时，覆盖保存、冷开、只读查询／导出源哈希不变、独立反馈分叉、父分支未来不泄漏与 ephemeral 反馈，模型请求和 raw 文件均为 0。首次 smoke 在 8 个正常退出进程后因旧缺口文案断言失败；[脚本](../../scripts/Smoke-Feedback.ps1#L94)仅将该断言对齐当前“无可证明的宿主日志切点；祖先宿主材料未继承”合同，再从新目录完整重跑。不是弱化缺口或未来隔离检查；artifacts 不随 Git 保存。
+- **验收范围**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Cli.Tests 共 **782 通过、0 失败、0 跳过**。subagent 参与方案讨论，另一个 subagent 独立静态复核代码、故障证据及 smoke 断言修正，无阻断意见；主线程核验集成 diff、运行输出和产物。未运行完整 solution、真实模型或 Linux，不将故障注入等同特定磁盘／电源故障。
 
 ## TD-09：共享协议回归仍主要放在游戏适配测试中
 
@@ -173,4 +174,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；分别收敛反馈清理、采集解释、共享测试归属和文档导航，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；分别收敛采集解释、共享测试归属和文档导航，不因此启动整仓重构。

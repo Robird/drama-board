@@ -14,18 +14,18 @@ internal sealed class FeedbackJournal : IDisposable {
         RespectRequiredConstructorParameters = true
     };
     private readonly string _path;
-    private readonly Action<FileStream>? _beforeFlush;
+    private readonly Func<string, FileStream> _openStream;
     private FileStream? _stream;
     private bool _retired;
     private readonly HashSet<string> _ids = new(StringComparer.Ordinal);
 
-    private FeedbackJournal(string path, Action<FileStream>? beforeFlush) {
+    private FeedbackJournal(string path, Func<string, FileStream>? openStream = null) {
         _path = Path.GetFullPath(path);
-        _beforeFlush = beforeFlush;
+        _openStream = openStream ?? (static path => new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read));
     }
 
-    public static FeedbackJournal Open(string path) => new(path, null);
-    internal static FeedbackJournal Open(string path, Action<FileStream> beforeFlush) => new(path, beforeFlush);
+    public static FeedbackJournal Open(string path) => new(path);
+    internal static FeedbackJournal OpenForTesting(string path, Func<string, FileStream> openStream) => new(path, openStream);
 
     /// <summary>Ignores an unterminated tail; never creates, truncates or repairs a file.</summary>
     public static IReadOnlyList<FeedbackRecord> Read(string path) => ReadCore(path).Records;
@@ -67,7 +67,7 @@ internal sealed class FeedbackJournal : IDisposable {
         try {
             if (_stream is null) {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                _stream = new FileStream(_path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+                _stream = _openStream(_path);
                 var existing = ReadCore(_path);
                 foreach (FeedbackRecord item in existing.Records) { _ids.Add(item.FeedbackId); }
                 _stream.SetLength(existing.CompleteLength);
@@ -76,13 +76,14 @@ internal sealed class FeedbackJournal : IDisposable {
             if (!_ids.Add(record.FeedbackId)) { throw new InvalidDataException("Duplicate feedback ID."); }
             _stream.Write(line);
             _stream.WriteByte((byte)'\n');
-            _beforeFlush?.Invoke(_stream);
             _stream.Flush(flushToDisk: true);
             return record.FeedbackId;
         } catch {
             _retired = true;
-            _stream?.Dispose();
+            FileStream? stream = _stream;
             _stream = null;
+            try { stream?.Dispose(); }
+            catch { /* Preserve the original append failure, including its stack. */ }
             throw;
         }
     }
@@ -109,7 +110,8 @@ internal sealed class FeedbackJournal : IDisposable {
 
     public void Dispose() {
         _retired = true;
-        _stream?.Dispose();
+        FileStream? stream = _stream;
         _stream = null;
+        stream?.Dispose();
     }
 }
