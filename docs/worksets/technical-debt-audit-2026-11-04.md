@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 8 轮，TD-01（含水合结构附记）至 TD-06 及 TD-08 均已处理；TD-07、TD-09、TD-10 继续保留。
-- **当前结果**：TD-08 首错保留与流所有权修复已独立复核并验收；真实 FileStream 双失败注入、退役／重开、CLI 回归及真实反馈进程 smoke 均通过，没有未验收的本轮代码改动。
-- **下一步**：处理 TD-07 采集解释，再收敛共享测试归属与文档导航；不以已处理七项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 9 轮，TD-01（含水合结构附记）至 TD-08 均已处理；TD-09、TD-10 继续保留。
+- **当前结果**：TD-07 已独立复核并验收；两布局仅展示等级、冻结每份周期与已有活动期限，采集公式只保留在领域。真实 Gather／冷开、冻结材料消费、CLI 回归与实际 Console 均通过，没有未验收的本轮代码改动。
+- **下一步**：处理 TD-09 共享协议测试归属，再收敛 TD-10 文档导航；不以已处理八项缩小 Goal。
 - **保留事项**：三项性能观察保持测量或实际消费者触发后裁决；既有玩法、记忆和框架延期边界不变。
 
 ## 范围与结论
@@ -26,7 +26,7 @@
 | TD-04 | P2 | 预测维护 | 已处理：候选键、身份比较与预测诊断分离 | 固定字节、同刻仲裁、轨迹／恢复与字段 oracle |
 | TD-05 | P2 | 宿主日志 | 已处理：写入、重读和人物阅读共用合同 | 对称拒绝、保存／重开／导出与真实进程 |
 | TD-06 | P2 | 工程 | 已接线：真实 CLI 进程 smoke 进入双平台 CI | 本机双平台／故障验证、actionlint；未跑远端 CI |
-| TD-07 | P3 | CLI／领域 | 采集速度公式在领域和两布局分别维护 | 源码三处复核 |
+| TD-07 | P3 | CLI／领域 | 已处理：两布局共用冻结采集周期 | 实际 Gather／冷开、材料消费及真实 Console |
 | TD-08 | P3 | 反馈日志 | 已处理：反馈首错保留与流所有权 | 双失败注入、退役／重开及真实反馈进程 |
 | TD-09 | P3 | Completion | 共享协议主要回归仍依赖游戏测试夹具 | 实现／测试归属复核 |
 | TD-10 | P3 | 文档入口 | 活跃导航仍把已实现能力和旧参数写成旧状态 | 与当前代码、主入口交叉核对 |
@@ -91,12 +91,13 @@
 - **独立故障验证**：[Windows verification](../../artifacts/td06-windows-faults/verification.json) 与 [Linux verification](../../artifacts/td06-linux-faults/verification.json) 从相同脚本 SHA 提取原函数，使用临时 .NET 子进程分别验证预期非零退出、意外退出、stdin 断管、Start 失败及实际 45 秒超时。超时分别约 45.15／45.05 秒，错误正确传播、中英文双流保存、所有已启动 PID 已退出，Start 失败仍保存空双流证据；合成子进程不冒充游戏验收。artifacts 不随 Git 保存。
 - **验收范围**：Linux 使用 `/tmp` 下四个独立本地 clone，源码基于本轮前 HEAD `28768a1`、DG `f7f0c28bacaa`、Storage `9ad39fc51a42`、Completion `d1dd88d61cce`，应用相同脚本／workflow diff，避免复用 Windows bin/obj；CLI Release Schema Verify 构建 0 warning／0 error。actionlint 1.7.12 的官方发行校验和核对后，workflow 校验通过；独立静态复核无阻断意见，主线程核验源码、manifest、双流和 PID。未推送、未触发远端 CI 或实际上传、未重跑完整 solution 测试、未调用真实模型；这不是 GitHub runner 镜像的实测结论。用法同步到 [README](../../README.md#构建与测试) 与[源码接线](../source-dependencies.md#接线和边界)。
 
-## TD-07：采集速度解释在两个布局重算领域规则
+## TD-07：采集速度解释在两个布局重算领域规则（已处理）
 
-- **证据**：[PlaygroundActions.cs:95](../../src/Playground/PlaygroundActions.cs#L95) 的真实耗时采用 `100 + 25 * SkillLevel`；[DecisionPlayLayout.cs:50](../../src/Playground.Cli/DecisionPlayLayout.cs#L50)、[PlayView.cs:62](../../src/Playground.Cli/PlayView.cs#L62) 各自计算同一百分比。实际 HarvestDurations 已在冻结观察中。
-- **维护成本**：调整等级收益要同步三处，领域正确也可能显示过时解释；本轮没有发现当前公式不一致。
-- **最小建议与验收**：领域统一提供解释数值进入冻结观察，或布局只展示现有周期。一次规则调整应使实际周期和两布局解释共同更新，布局不保留独立倍率公式。
-- **已有防线**：[PlayablePlaygroundTests.cs:195](../../tests/Playground.Tests/PlayablePlaygroundTests.cs#L195) 检查精确耗时，但所查 CLI 用例没有领域公式与两布局解释一致性合同。
+- **原问题**：等级收益公式曾在领域与两布局分别计算，调整规则要同步三处；没有发现当前公式不一致或实际周期错误。本项关闭维护耦合，保留现有玩法数值。
+- **方案与实现**：[领域公式](../../src/Playground/PlaygroundActions.cs#L95) 保持唯一权威；[decision](../../src/Playground.Cli/DecisionPlayLayout.cs#L50) 和 [classic](../../src/Playground.Cli/PlayView.cs#L62) 删除独立全局百分比，保留本人等级、资源等级门槛、已有每份周期与活动期限。每份周期已经由观察冻结为 `HarvestDurations`，两布局及 delta 直接消费；不调用 live helper 重解旧 Context。当前没有技能点分配／成长决策，全局倍率不承担独有的行动成本信息；不为此新增持久字段、Schema、修订或速率框架。合同同步到[布局设计](../design/console-layouts.md#信息组织)。
+- **领域与冷开回归**：[新增 6 项](../../tests/Playground.Cli.Tests/HarvestDurationViewTests.cs)中，4 组合法内容使 0／1／2／3 级角色开局可采井台，以独立常量预期核对实际 Gather、冻结周期、两布局和真实磁盘冷开。60 分钟基准对应 60／48／40 分钟，3 级的非整除基准 3,600,001 ticks 精确向上取整为 2,057,144 ticks，UI 按现有两位小数显示 34.29 分钟。其余 2 项用同技能的 47→11 分钟人工冻结材料验证 full 保留前后、latest 只取最新、delta 使用保存周期；该夹具不进入真实 Business 校验，不宣称跨规则存档兼容。百分比断言仅检查采集说明行，不约束无关功能的百分比或整屏排版。
+- **真实 Console**：[四进程 manifest](../../artifacts/td07-console-probe-verified/manifest.json) 全部 exit 0、stderr 为空、模型请求为 0；市场井台实际采集区间为 08:15→08:30，两种布局在采集前后与冷开均显示每份 15 分钟及等级／门槛。冷开只做布局预览，前后完成 S 相同；这些是脚本 Console 核验，不替代独立真人体验验收。临时探针复用 Home smoke 的原进程函数，源脚本与输出位于忽略的 artifacts，不随 Git 保存。
+- **验收范围**：旧实现的 6 项新用例均因独立百分比仍被输出而失败，不作为既有耗时错误的证据；修改后定向 6 项全部通过。采纳独立复核对断言范围的建议后，最终以 Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 运行 Playground.Cli.Tests，**788 通过、0 失败、0 跳过**。subagent 参与方案质疑，另一 subagent 独立静态复核无阻断意见；主线程核验集成 diff、实际运行与产物。未重跑完整 solution、独立领域测试项目、真实模型或 Linux。
 
 ## TD-08：反馈日志清理可能掩盖原始错误（已处理）
 
@@ -174,4 +175,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；分别收敛采集解释、共享测试归属和文档导航，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；分别收敛共享测试归属和文档导航，不因此启动整仓重构。

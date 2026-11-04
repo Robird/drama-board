@@ -47,7 +47,7 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
                 : "- 没有后续天气窗口。");
         }
         RenderActivity(text, observation, ended: false);
-        text.AppendLine($"采药等级 {observation.Actor.SkillLevel}（基础速度的 {100m + 25m * observation.Actor.SkillLevel:0}%）。");
+        text.AppendLine($"采药等级 {observation.Actor.SkillLevel}。");
         text.AppendLine();
         FollowingView.RenderStatus(text, observation);
         PlayView.RenderOtherCharacters(text, observation);

@@ -59,7 +59,7 @@ internal static class PlayView {
         text.Append(ContextHistoryPlayView.RenderCurrent(observation, snapshot.Context, snapshot.DraftHandoff));
         if (snapshot.IncludeGoals) { text.Append(GoalView.RenderDefault(observation.Goals)); }
         text.AppendLine(ended ? "## 结束时的活动记录" : "## 你的活动");
-        text.AppendLine($"- 采药等级：{character.SkillLevel}；采集速度：基础的 {100m + 25m * character.SkillLevel:0}%。");
+        text.AppendLine($"- 采药等级：{character.SkillLevel}。");
         if (EconomyView.RenderProduction(text, observation, ended)) {
             // Production details above use the frozen reserved order.
         } else if (ended) {
