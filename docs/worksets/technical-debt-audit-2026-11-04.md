@@ -5,10 +5,10 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 6 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同、TD-04 预测身份与相等合同、TD-06 真实进程 CI 回归。
-- **当前结果**：TD-06 已接线并独立验收；Windows 与隔离的 Ubuntu WSL2 各 13 个真实 CLI 场景、各 5 个合成进程场景通过，actionlint 校验通过。远端 runner／artifact 上传服务尚未实际执行，不把本机结果写成远端 CI 通过；没有未验收的本轮代码改动。
-- **下一步**：先收敛 TD-01 附记的 hydrate 结构检查，然后处理 TD-08 反馈日志双失败首错；其余已确认债务继续保留，不以已完成六项缩小 Goal。
-- **保留事项**：TD-01 附记的 hydrate 结构检查与时间合同独立，仍未处理；在主项之后单独收敛，不以主项完成抹去。三项性能观察保持测量后裁决。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 7 轮，TD-01（含水合结构附记）至 TD-06 均已处理；TD-07 至 TD-10 继续保留。
+- **当前结果**：TD-01 水合结构附记已独立复核并验收；共享 Validator 拒绝负偏移、反序／self consumed contact 及首尾空白实体 ID，合法端点、负 anchor 时间与内部空格保留。真实 DG／生产消费者冷开及三套回归通过，没有未验收的本轮代码改动。
+- **下一步**：处理 TD-08 反馈日志双失败首错，再收敛采集解释、共享测试归属与文档导航；不以已处理六项缩小 Goal。
+- **保留事项**：三项性能观察保持测量或实际消费者触发后裁决；既有玩法、记忆和框架延期边界不变。
 
 ## 范围与结论
 
@@ -20,27 +20,32 @@
 
 | 编号 | 建议级别 | 关注点 | 问题 | 本轮证据 |
 | --- | --- | --- | --- | --- |
-| TD-01 | P2 | Spatial | 时间边界主项已修复；hydrate 结构附记仍待处理 | 公开入口、冷开、pending 与消费者回归 |
+| TD-01 | P2 | Spatial | 已修复：时间边界与水合构造不变量重验 | 公开入口、实际水合／冷开、pending 与消费者回归 |
 | TD-02 | P2 | 内容／领域 | 已修复：内容 ID 单词元与物品 money 保留规则 | 作者拒绝、往返／实际采集、匹配指纹冷开 |
 | TD-03 | P2 | CLI | 已修复：完整命令临时身份与结构化显示 | 键碰撞、标签／撤回／Context 回归及真实 Console |
-| TD-04 | P2 | 预测维护 | 诊断 ToString 同时充当身份编码与相等合同 | 源码复核；未发现当前碰撞 |
-| TD-05 | P2 | 宿主日志 | 写入接受的 payload 不一定满足阅读合同 | 实际写盘、重读、导出探针 |
-| TD-06 | P2 | 工程 | CLI 真实进程 smoke 未纳入 CI | CI／夹具复核；Home smoke 实跑 |
+| TD-04 | P2 | 预测维护 | 已处理：候选键、身份比较与预测诊断分离 | 固定字节、同刻仲裁、轨迹／恢复与字段 oracle |
+| TD-05 | P2 | 宿主日志 | 已处理：写入、重读和人物阅读共用合同 | 对称拒绝、保存／重开／导出与真实进程 |
+| TD-06 | P2 | 工程 | 已接线：真实 CLI 进程 smoke 进入双平台 CI | 本机双平台／故障验证、actionlint；未跑远端 CI |
 | TD-07 | P3 | CLI／领域 | 采集速度公式在领域和两布局分别维护 | 源码三处复核 |
 | TD-08 | P3 | 反馈日志 | 故障清理异常可能覆盖首个 I/O 错误 | 控制流复核；双失败未实测 |
 | TD-09 | P3 | Completion | 共享协议主要回归仍依赖游戏测试夹具 | 实现／测试归属复核 |
 | TD-10 | P3 | 文档入口 | 活跃导航仍把已实现能力和旧参数写成旧状态 | 与当前代码、主入口交叉核对 |
 
-## TD-01：时间边界主项已修复，hydrate 结构附记待处理
+## TD-01：时间边界与水合结构检查（已处理）
 
 - **原问题**：公开构造 anchor=10、arrival=20 的运动后，`Rebuild(business, 0)` 曾成功，同一时刻 GetLocation 随后抛错；当时只检查 arrival 不早于边界，没有检查 anchor。没有证据表明正常 Kernel 提交会生成这种状态。
 - **方案与实现**：主线程与 subagent 交叉审查后，在 [SpatialSimulation.Validate:106](../../src/Spatial/Simulation/SpatialSimulation.cs#L106) 增加未来 anchor 拒绝，并保留 arrival 上界。沿用 Rebuild、Kernel、Replay 和 Playground 的既有校验 seam；不改 Schema／修订号，不给无时间的结构校验添加游标，也不在 Complete 重复校验。
 - **回归**：[SpatialPredictionBoundaryTests:118](../../tests/Spatial.Tests/Persistence/SpatialPredictionBoundaryTests.cs#L118) 验证 Validate／Rebuild／Kernel／空 Replay 拒绝未来 anchor，验证首个实体合法但后续实体非法，验证两个运动分别处于 arrival／anchor 的同一边界；真实写盘冷开覆盖 0、9 拒绝，10、15、20 可查询，21 拒绝。新增用例在修复前明确失败，修复后通过。
 - **恢复合同**：[新运动 E 的真实 pending 恢复](../../tests/Spatial.Tests/Persistence/SpatialPredictionPersistenceTests.cs#L148) 增加 anchor 等于恢复目标当前时间、位置查询成功的断言，保留禁止 Forecast／Plan、缓存重建与后续轨迹一致的原验收。
 - **夹具收敛**：[BusinessRuleAdapters](../../tests/Spatial.Tests/TestSupport/BusinessRuleAdapters.cs#L7) 移除 `long.MinValue` 伪边界：有运动取最大 anchor，无运动取最早 schedule due，皆无取 0；再走严格 Rebuild。该值只为没有 cursor 的业务数学测试选择兼容快照，不冒充真实历史边界；过期 arrival／contact／schedule 仍拒绝。
-- **本轮验证**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Spatial.Tests 全部 114、Playground.Tests 全部 621、Playground.Cli.Tests 全部 691 通过，共 1426 通过、0 失败、0 跳过。未运行其他测试项目、真实模型或 Linux；本轮没有实际进程入口改动，不重复跑初始 Home smoke。
+- **时间主项验收**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Spatial.Tests 全部 114、Playground.Tests 全部 621、Playground.Cli.Tests 全部 691 通过，共 1426 通过、0 失败、0 跳过。该轮未运行其他测试项目、真实模型或 Linux，没有实际进程入口改动，未重复跑初始 Home smoke。
 
-**仍未处理的附记**：hydrate 绕过构造后，负 AnchorOffset、非规范 consumed-contact 实体顺序未被 [GraphSpatialStateValidator](../../src/Spatial/State/GraphSpatialStateValidator.cs#L45) 完整重验。这属于独立的无时间结构合同，后续应在该 Validator 配合绕过构造／真实水合夹具处理；本轮主项验收不关闭这两处缺口。
+**水合结构附记（已处理）**：这是与时间主项独立的无时间结构合同。绕过构造后，负 AnchorOffset 即使同步成自洽 ArrivalDue、反序／self consumed-contact 即使仍引用正确当前代次，都曾通过完整校验；同类 EntityId 首尾空白也曾因 typed Require 未重验 Trim 合同而被接受。
+
+- **实现**：[GraphSpatialStateValidator](../../src/Spatial/State/GraphSpatialStateValidator.cs) 在实体入口复用 EntityId 字符串构造校验、在运动入口检查 `[0, Length]`、在已消费 pair 入口要求 `EntityA < EntityB`，沿用后续当前 segment 校验。不修改三种 typed Require、游标、Schema、修订或生成器，不自动正规化坏字段；朝向正确的端点偏移、负 AnchorTime、通用实体 ID 内部空格仍合法。合同说明见[动态状态](../design/graph-spatial-world.md#26-dynamic-state)。
+- **实际水合回归**：[SpatialHydrationValidationTests](../../tests/Spatial.Tests/Persistence/SpatialHydrationValidationTests.cs) 覆盖五类反例的 Validator／Rebuild／Restore 拒绝，以及真实 Repository 保存、fresh registry 只读冷读、不同 CLR 实例且坏字段深相等、adapter 冷开拒绝。负 offset 同步 due，反序与 self 同步完整实体／代次对，空白 ID 同步关联引用，避免旧检查遮蔽。正例冷开保留负 anchor 时间、0/Length 偏移、内部空格、构造反序时整对 canonicalize，并确认已消费 contact 不再预测。
+- **生产消费者**：[SpatialHydrationBoundaryTests](../../tests/Playground.Tests/SpatialHydrationBoundaryTests.cs) 用真实 Go 完成出发，造朝 EndpointB 的自洽负偏移保存，确认原字段经过实际水合后，PlaygroundDurableHistory.Open 在业务验证阶段拒绝；合法对照可查询。两组磁盘测试在所有对象释放后比较文件路径集合与 SHA-256，不把它扩写成无瞬时 I/O 或无元数据变化的证明。
+- **验收范围**：新增 13 项在修复前为 **11 失败（未抛异常）、2 合法对照通过**；修复后定向 42 项通过。Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下串行运行 Spatial.Tests 125、Playground.Tests 656、Playground.Cli.Tests 774，共 **1,555 通过、0 失败、0 跳过**；独立静态复核无阻断意见，主线程核验代码、红／绿输出、实际冷开和持久字节断言。本轮新增坏存档用例针对完成 S，未新增 pending-E／其他损坏类型或所有 whitespace 的枚举；既有 pending／负时间／strict-interior／stale-segment 回归仍通过。未运行完整 solution、真实模型或本轮 Linux 验证。
 
 ## TD-02：内容 ID 与命令语法合同已修复
 
@@ -168,4 +173,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；先完成 TD-01 剩余结构边界，再分别收敛反馈清理、采集解释、共享测试归属和文档导航，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；分别收敛反馈清理、采集解释、共享测试归属和文档导航，不因此启动整仓重构。

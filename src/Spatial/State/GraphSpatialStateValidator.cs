@@ -20,7 +20,7 @@ public static class GraphSpatialStateValidator {
             "consumed contacts");
 
         foreach (SpatialEntity entity in state.Entities) {
-            SpatialIdentifier.Require(entity.Id, nameof(state));
+            SpatialIdentifier.Require(entity.Id.Value, nameof(state), "Entity identifier");
             if (entity.MovementGeneration < 0) {
                 throw new InvalidOperationException(
                     $"Entity '{entity.Id}' has a negative movement generation.");
@@ -44,6 +44,9 @@ public static class GraphSpatialStateValidator {
 
         foreach (PassageContactKey contact in state.ConsumedContacts) {
             RequirePassage(definition, contact.PassageId);
+            if (contact.EntityA.CompareTo(contact.EntityB) >= 0) {
+                throw new InvalidOperationException("Consumed contacts require two distinct entities in canonical order.");
+            }
             ValidateContactSegment(
                 state,
                 contact.PassageId,
@@ -89,7 +92,7 @@ public static class GraphSpatialStateValidator {
                         $"Entity '{entity.Id}' traversal target does not match passage '{passage.Id}'.");
                 }
 
-                if (traversing.AnchorOffset > passage.Length) {
+                if (traversing.AnchorOffset < 0 || traversing.AnchorOffset > passage.Length) {
                     throw new InvalidOperationException(
                         $"Entity '{entity.Id}' traversal anchor is outside passage '{passage.Id}'.");
                 }

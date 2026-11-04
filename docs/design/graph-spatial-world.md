@@ -390,6 +390,8 @@ ConsumedContacts[]
 - 同一对 constant-linear segments 最多只有一个严格内部交点；
 - CoTravel 的相同 worldline 不产生 contact。
 
+完整快照（包括跳过构造的水合结果）由 [GraphSpatialStateValidator](../../src/Spatial/State/GraphSpatialStateValidator.cs) 重验构造合同：实体 ID 非空且无首尾空白，运动锚点偏移在 `[0, Length]` 且不同于目标端点，已消费 pair 满足 `EntityA < EntityB` 并引用当前 movement generation。通用实体 ID 的内部空格和负 AnchorTime 仍合法；校验不修复／重排坏值。该层不接受当前时间，anchor／arrival 与完成边界的关系另由 `SpatialSimulation.Validate` 检查。
+
 该状态与真实 contact + AI encounter consumer 已在第二竖切一起交付，没有预建历史 contact ledger、capacity 或 kinetic index。
 
 ---
