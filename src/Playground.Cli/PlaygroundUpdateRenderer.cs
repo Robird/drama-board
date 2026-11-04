@@ -15,7 +15,7 @@ internal static class PlaygroundUpdateRenderer {
                     ? attribute.Description : Format(pair.Value, pair.Key);
                 text.AppendLine($"- {update.Label(pair.Key)}：{value}");
             }
-            text.Append(RenderCommandStates(update.CurrentValues));
+            text.Append(RenderCommandStates(update.CurrentValues, update.Commands));
             if (update.CurrentValues.Keys.Any(key => key.Category == "navigation" && key.Field == "candidate")) {
                 text.Append(NavigationView.RenderCandidate(update.Snapshot.Observation));
             }
@@ -29,19 +29,21 @@ internal static class PlaygroundUpdateRenderer {
         return text.ToString();
     }
 
-    public static string RenderCommandStates(IEnumerable<KeyValuePair<PlaygroundStateKey, PlaygroundVisibleValue>> values) {
+    public static string RenderCommandStates(IEnumerable<KeyValuePair<PlaygroundStateKey, PlaygroundVisibleValue>> values,
+        IReadOnlyDictionary<string, PlaygroundCommand> commands) {
         var text = new StringBuilder();
         foreach (var group in values.Where(pair => pair.Key.Category == "command")
                 .GroupBy(pair => (pair.Key.Field, pair.Value))) {
-                string commands = string.Join("、", CommandLabels(group.Select(pair => pair.Key)));
+                PlaygroundCommand[] selected = group.Select(pair => commands[pair.Key.ObjectId]).ToArray();
+                string labels = string.Join("、", CommandLabels(selected));
                 string field = group.Key.Field == "warning" ? "额外提示" : "条件";
                 string value = group.Key.Field == "warning" && group.Key.Value.Kind is PlaygroundVisibleValueKind.KnownAbsent or PlaygroundVisibleValueKind.Unobserved
                     ? "原行动提示已不再适用" : Format(group.Key.Value, group.First().Key);
                 if (group.Key.Field == "rejection" && group.Key.Value.Kind == PlaygroundVisibleValueKind.KnownAbsent &&
-                    group.Any(pair => pair.Key.ObjectId.StartsWith("Accept|", StringComparison.Ordinal))) {
+                    selected.Any(command => command.Kind == PlaygroundCommandKind.Accept)) {
                     value += "；accept 仅可尝试，成交以提交结果为准";
                 }
-                text.AppendLine($"- {commands} · {field}：{value}");
+                text.AppendLine($"- {labels} · {field}：{value}");
         }
         return text.ToString();
     }
@@ -145,35 +147,17 @@ internal static class PlaygroundUpdateRenderer {
     }
     private static string Signed(decimal value) => (value > 0 ? "+" : "") + value.ToString("0.##", CultureInfo.InvariantCulture);
     // Compact only the display. Every command retains its own semantic key and current value.
-    private static IEnumerable<string> CommandLabels(IEnumerable<PlaygroundStateKey> keys) {
-        var commands = keys.Select(key => key.ObjectId.Split('|')).ToArray();
-        var hours = commands.Where(parts => parts[0] == nameof(PlaygroundCommandKind.Wait))
-            .Select(parts => int.Parse(parts[1], CultureInfo.InvariantCulture)).Distinct().Order().ToArray();
+    private static IEnumerable<string> CommandLabels(IReadOnlyList<PlaygroundCommand> commands) {
+        var hours = commands.Where(command => command.Kind == PlaygroundCommandKind.Wait)
+            .Select(command => command.Hours).Distinct().Order().ToArray();
         for (int i = 0; i < hours.Length; i++) {
             int first = hours[i], last = first;
             while (i + 1 < hours.Length && hours[i + 1] == last + 1) { last = hours[++i]; }
-            yield return first == last ? $"wait {first}" : $"wait {first}–{last}";
+            yield return first == last ? PlaygroundCommandParser.Format(PlaygroundCommand.Wait(first))
+                : $"wait {first.ToString(CultureInfo.InvariantCulture)}–{last.ToString(CultureInfo.InvariantCulture)}";
         }
-        foreach (var parts in commands.Where(parts => parts[0] != nameof(PlaygroundCommandKind.Wait))) {
-            yield return parts[0] switch {
-                nameof(PlaygroundCommandKind.Offer) => $"offer {parts[7]} {parts[11]} {parts[12]} for {parts[13]} {parts[14]} {parts[1]}",
-                nameof(PlaygroundCommandKind.Accept) => $"accept {parts[10]}",
-                nameof(PlaygroundCommandKind.Reject) => $"reject {parts[10]}",
-                nameof(PlaygroundCommandKind.Withdraw) => $"withdraw {parts[10]}",
-                nameof(PlaygroundCommandKind.Gather) => $"gather {parts[2]} {(parts[4] == "all" ? "all" : parts[3])}",
-                nameof(PlaygroundCommandKind.Buy) => $"buy {parts[6]} {parts[3]}",
-                nameof(PlaygroundCommandKind.Sell) => $"sell {parts[6]} {parts[3]}",
-                nameof(PlaygroundCommandKind.Produce) => $"produce {parts[8]} {parts[3]}",
-                nameof(PlaygroundCommandKind.GiveMoney) => $"give {parts[7]} money {parts[9]}",
-                nameof(PlaygroundCommandKind.Give) => $"give {parts[7]} {parts[6]} {parts[3]}",
-                nameof(PlaygroundCommandKind.Follow) => $"follow {parts[7]}",
-                nameof(PlaygroundCommandKind.DismissFollowers) => "dismiss-followers",
-                nameof(PlaygroundCommandKind.Navigate) => $"navigate {parts[17]}",
-                nameof(PlaygroundCommandKind.Map) => "map",
-                nameof(PlaygroundCommandKind.Path) => $"path {parts[15]}" + (parts[16].Length > 0 ? $" from {parts[16]}" : ""),
-                nameof(PlaygroundCommandKind.Go) => $"go {parts[5]}", nameof(PlaygroundCommandKind.Use) => $"use {parts[6]}",
-                _ => parts[0].ToLowerInvariant()
-            };
+        foreach (var command in commands.Where(command => command.Kind != PlaygroundCommandKind.Wait)) {
+            yield return PlaygroundCommandParser.Format(command);
         }
     }
     private static string Time(long ticks) {

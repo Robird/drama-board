@@ -92,7 +92,7 @@ internal static class NavigationView {
     internal static string RenderNavigateCommands(PlaygroundObservation observation) {
         var text = new StringBuilder();
         foreach (var check in observation.Commands.Where(check => check.Command.Kind == PlaygroundCommandKind.Navigate)) {
-            text.AppendLine($"- `{PlaygroundViewSnapshot.CommandSyntax(check.Command)}`：{(check.Rejection is null ? "可执行" : "受阻：" + check.Rejection)}。");
+            text.AppendLine($"- `{PlaygroundCommandParser.Format(check.Command)}`：{(check.Rejection is null ? "可执行" : "受阻：" + check.Rejection)}。");
             if (check.Warning is { } warning) { text.AppendLine("  行动提示（不禁止）：" + warning); }
         }
         return text.ToString();

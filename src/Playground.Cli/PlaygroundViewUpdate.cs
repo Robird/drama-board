@@ -9,6 +9,7 @@ internal sealed class PlaygroundViewUpdate {
     public PlaygroundViewSnapshot Snapshot { get; }
     public IReadOnlyList<PlaygroundObservedEvent> Events { get; }
     public IReadOnlyDictionary<PlaygroundStateKey, PlaygroundVisibleValue> CurrentValues { get; }
+    public IReadOnlyDictionary<string, PlaygroundCommand> Commands { get; }
     public PlayDeliveryPhase Phase { get; }
     public bool FullTail { get; }
     public bool GoalsChanged { get; }
@@ -18,11 +19,13 @@ internal sealed class PlaygroundViewUpdate {
 
     private PlaygroundViewUpdate(PlaygroundViewSnapshot snapshot, IReadOnlyList<PlaygroundObservedEvent> events,
         Dictionary<PlaygroundStateKey, PlaygroundVisibleValue> currentValues, PlayDeliveryPhase phase, bool fullTail,
-        IReadOnlyList<PlaygroundObservedEventSource> sources, IReadOnlyDictionary<PlaygroundStateKey, string> labels, bool goalsChanged) {
+        IReadOnlyList<PlaygroundObservedEventSource> sources, IReadOnlyDictionary<PlaygroundStateKey, string> labels,
+        Dictionary<string, PlaygroundCommand> commands, bool goalsChanged) {
         Snapshot = snapshot; Events = events; CurrentValues = new ReadOnlyDictionary<PlaygroundStateKey, PlaygroundVisibleValue>(currentValues);
         Phase = phase; FullTail = fullTail;
         Sources = sources;
         _labels = labels;
+        Commands = new ReadOnlyDictionary<string, PlaygroundCommand>(commands);
         GoalsChanged = goalsChanged;
     }
 
@@ -57,10 +60,13 @@ internal sealed class PlaygroundViewUpdate {
         var labels = keys.ToDictionary(key => key, key => current.KnownLabel(key) ?? previous.KnownLabel(key) ??
             (key.Category == "inventory" && visibleEvents.FirstOrDefault(e => e.SubjectId == key.ObjectId)?.SubjectName is { } name
                 ? name + "库存" : current.Label(key)));
+        // Removed catalogue entries still need their frozen command when rendering the withdrawal.
+        var commands = new Dictionary<string, PlaygroundCommand>(previous.Commands, StringComparer.Ordinal);
+        foreach (var pair in current.Commands) { commands[pair.Key] = pair.Value; }
         return new(current, Array.AsReadOnly(visibleEvents), keys.OrderBy(k => k.Category, StringComparer.Ordinal)
             .ThenBy(k => k.ObjectId, StringComparer.Ordinal).ThenBy(k => k.Field, StringComparer.Ordinal)
             .ToDictionary(key => key, current.Resolve), phase, fullTail, Array.AsReadOnly(visibleSources),
-            new ReadOnlyDictionary<PlaygroundStateKey, string>(labels), current.IncludeGoals &&
+            new ReadOnlyDictionary<PlaygroundStateKey, string>(labels), commands, current.IncludeGoals &&
             !(previous.Observation.Goals is { } beforeGoals ? beforeGoals.SameAs(current.Observation.Goals) : current.Observation.Goals is null));
     }
 }

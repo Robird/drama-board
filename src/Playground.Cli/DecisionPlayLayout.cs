@@ -108,11 +108,10 @@ internal sealed class DecisionPlayLayout : IPlayLayout {
             AppendCommand(text, observation, "wait 1", PlaygroundCommand.Wait(1), "在原地停留 1 小时；完成或危险警告时请求输入");
             text.AppendLine("等待可选 1–24 整数小时；当前条件：");
         }
-        text.Append(PlaygroundUpdateRenderer.RenderCommandStates(PlaygroundViewSnapshot.Create(observation).Values
+        text.Append(PlaygroundUpdateRenderer.RenderCommandStates(snapshot.Values
             .Where(pair => pair.Key.Category == "command" &&
-                (pair.Key.ObjectId.StartsWith("Wait|", StringComparison.Ordinal) ||
-                 pair.Key.ObjectId.StartsWith("Handoff|", StringComparison.Ordinal) ||
-                 pair.Key.ObjectId.StartsWith("Cancel|", StringComparison.Ordinal)))));
+                snapshot.Commands[pair.Key.ObjectId].Kind is PlaygroundCommandKind.Wait or PlaygroundCommandKind.Handoff or PlaygroundCommandKind.Cancel),
+            snapshot.Commands));
         text.AppendLine();
         return text.ToString();
     }

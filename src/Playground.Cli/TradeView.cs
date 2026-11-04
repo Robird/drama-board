@@ -28,7 +28,7 @@ internal static class TradeView {
         foreach (PlaygroundCommandCheck check in observation.Commands.Where(check => check.Command.Kind is PlaygroundCommandKind.Offer or PlaygroundCommandKind.Accept or PlaygroundCommandKind.Reject or PlaygroundCommandKind.Withdraw)) {
             string condition = check.Rejection is { } reason ? "受阻：" + reason
                 : check.Command.Kind == PlaygroundCommandKind.Accept ? "可尝试接受；成交以提交结果为准" : "当前条件允许";
-            text.AppendLine($"- `{PlaygroundViewSnapshot.CommandSyntax(check.Command)}`：{condition}。");
+            text.AppendLine($"- `{PlaygroundCommandParser.Format(check.Command)}`：{condition}。");
         }
         text.AppendLine();
     }

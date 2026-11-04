@@ -1,13 +1,16 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using DramaBoard.Kernel.Time;
 using DramaBoard.Playground;
 
 /// <summary>A transient, actor-scoped semantic index. Missing values are resolved from this observation only.</summary>
 internal sealed class PlaygroundViewSnapshot {
+    private static readonly JsonSerializerOptions CommandIdentityJson = new() { DefaultIgnoreCondition = JsonIgnoreCondition.Never };
     private readonly Dictionary<PlaygroundStateKey, PlaygroundVisibleValue> _values = [];
     private readonly Dictionary<PlaygroundStateKey, string> _labels = [];
     private readonly Dictionary<PlaygroundStateKey, PlaygroundAttributeView> _rateExplanations = [];
+    private readonly Dictionary<string, PlaygroundCommand> _commands = new(StringComparer.Ordinal);
     public PlaygroundObservation Observation { get; }
     public CharacterInteractionState? InteractionState { get; }
     public CharacterContext? Context { get; }
@@ -17,6 +20,7 @@ internal sealed class PlaygroundViewSnapshot {
     public bool IncludeGoals { get; }
     public IReadOnlyDictionary<PlaygroundStateKey, PlaygroundVisibleValue> Values { get; }
     public IReadOnlyDictionary<PlaygroundStateKey, PlaygroundAttributeView> RateExplanations { get; }
+    public IReadOnlyDictionary<string, PlaygroundCommand> Commands { get; }
 
     private PlaygroundViewSnapshot(PlaygroundObservation observation, CharacterInteractionState? interactionState,
         CharacterContext? context = null, string? draftHandoff = null, bool includeHistory = true, bool includeGoals = true) {
@@ -29,6 +33,7 @@ internal sealed class PlaygroundViewSnapshot {
         IncludeGoals = includeGoals;
         Values = new ReadOnlyDictionary<PlaygroundStateKey, PlaygroundVisibleValue>(_values);
         RateExplanations = new ReadOnlyDictionary<PlaygroundStateKey, PlaygroundAttributeView>(_rateExplanations);
+        Commands = new ReadOnlyDictionary<string, PlaygroundCommand>(_commands);
         Project();
     }
 
@@ -208,9 +213,11 @@ internal sealed class PlaygroundViewSnapshot {
         }
         foreach (var c in o.Commands) {
             string id = CommandId(c.Command);
-            Add("command", id, "rejection", Text(c.Rejection), CommandSyntax(c.Command) + "条件");
+            _commands.Add(id, c.Command);
+            string syntax = PlaygroundCommandParser.Format(c.Command);
+            Add("command", id, "rejection", Text(c.Rejection), syntax + "条件");
             if (c.Warning is not null) {
-                Add("command", id, "warning", Text(c.Warning), CommandSyntax(c.Command) + "额外提示");
+                Add("command", id, "warning", Text(c.Warning), syntax + "额外提示");
             }
         }
         foreach (var other in o.OtherCharacters) {
@@ -245,23 +252,8 @@ internal sealed class PlaygroundViewSnapshot {
         }
     }
 
-    internal static string CommandId(PlaygroundCommand c) => string.Join('|', c.Kind, c.Hours.ToString(CultureInfo.InvariantCulture),
-        c.ResourceId ?? "", c.Count.ToString(CultureInfo.InvariantCulture), c.All ? "all" : "count", c.EntranceId ?? "", c.ItemId ?? "", c.TargetActorId ?? "", c.RecipeId ?? "", c.MoneyAmount.ToString(CultureInfo.InvariantCulture),
-        c.TradeId ?? "", c.GiveAsset?.AssetId ?? "", c.GiveAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "",
-        c.WantAsset?.AssetId ?? "", c.WantAsset?.Amount.ToString(CultureInfo.InvariantCulture) ?? "", c.TargetPlaceId ?? "", c.OriginPlaceId ?? "", c.PathId ?? "");
-    internal static string CommandSyntax(PlaygroundCommand c) => c.Kind switch {
-        PlaygroundCommandKind.Offer => $"offer {c.TargetActorId} {c.GiveAsset!.AssetId} {c.GiveAsset.Amount} for {c.WantAsset!.AssetId} {c.WantAsset.Amount} {c.Hours}",
-        PlaygroundCommandKind.Accept => $"accept {c.TradeId}", PlaygroundCommandKind.Reject => $"reject {c.TradeId}", PlaygroundCommandKind.Withdraw => $"withdraw {c.TradeId}",
-        PlaygroundCommandKind.Wait => $"wait {c.Hours}", PlaygroundCommandKind.Gather => $"gather {c.ResourceId} {(c.All ? "all" : c.Count.ToString(CultureInfo.InvariantCulture))}",
-        PlaygroundCommandKind.Buy => $"buy {c.ItemId} {c.Count}", PlaygroundCommandKind.Sell => $"sell {c.ItemId} {c.Count}",
-        PlaygroundCommandKind.Produce => $"produce {c.RecipeId} {c.Count}", PlaygroundCommandKind.GiveMoney => $"give {c.TargetActorId} money {c.MoneyAmount}",
-        PlaygroundCommandKind.Give => $"give {c.TargetActorId} {c.ItemId} {c.Count}",
-        PlaygroundCommandKind.Follow => $"follow {c.TargetActorId}", PlaygroundCommandKind.DismissFollowers => "dismiss-followers",
-        PlaygroundCommandKind.Navigate => $"navigate {c.PathId}",
-        PlaygroundCommandKind.Map => "map",
-        PlaygroundCommandKind.Path => $"path {c.TargetPlaceId}" + (c.OriginPlaceId is { } origin ? $" from {origin}" : ""),
-        PlaygroundCommandKind.Go => $"go {c.EntranceId}", PlaygroundCommandKind.Use => $"use {c.ItemId}", _ => c.Kind.ToString().ToLowerInvariant()
-    };
+    // Opaque transient identity: preserve every field, including null/default values; never parse or display it.
+    internal static string CommandId(PlaygroundCommand command) => JsonSerializer.Serialize(command, CommandIdentityJson);
 
     private static string FieldLabel(string field) => field switch {
         "proposer" => "发起方", "recipient" => "收件人", "give" => "发起方给予", "want" => "发起方索取", "status" => "状态", "created" => "发起时间", "expires" => "到期时间", "closed" => "结束时间",

@@ -22,7 +22,7 @@ internal static class FollowingView {
         text.AppendLine("到达工作地点后显式解除跟随，各自采集或生产；完成或取消活动后再 follow 集合。途中不能改变关系；收到提醒时可补给后 continue 继续跟随。say 与 give 仍仅限同地；地点内可 shout 召集声音一跳范围内的同伴。无人提醒时不会逐段询问队员。");
         foreach (PlaygroundCommandCheck check in observation.Commands.Where(check => check.Command.Kind is
             PlaygroundCommandKind.Follow or PlaygroundCommandKind.Unfollow or PlaygroundCommandKind.DismissFollowers)) {
-            text.AppendLine($"- `{PlaygroundViewSnapshot.CommandSyntax(check.Command)}`：{(check.Rejection is null ? "可执行" : "受阻：" + check.Rejection)}。");
+            text.AppendLine($"- `{PlaygroundCommandParser.Format(check.Command)}`：{(check.Rejection is null ? "可执行" : "受阻：" + check.Rejection)}。");
         }
         if (!observation.Commands.Any(check => check.Command.Kind == PlaygroundCommandKind.Follow)) {
             text.AppendLine("follow 的 actor-id：空域；当前没有可见的同地领队候选。");

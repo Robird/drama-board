@@ -15,7 +15,7 @@ internal static class ContextHistoryPlayView {
         string resultLabel = context.Status == CharacterContextStatus.Terminal ? "终局结果" : "上次推进的结果";
         text.AppendLine($"## 决策回合 {context.ContextSequence} · {resultLabel}");
         if (opening.PreviousAdvance is { } advance) {
-            text.AppendLine($"历史区间：{Time(advance.AcceptedAt)} → {Time(opening.DeliveredAt)}；行动：`{PlaygroundViewSnapshot.CommandSyntax(advance.Command)}`（{advance.Description}）。");
+            text.AppendLine($"历史区间：{Time(advance.AcceptedAt)} → {Time(opening.DeliveredAt)}；行动：`{PlaygroundCommandParser.Format(advance.Command)}`（{advance.Description}）。");
             text.AppendLine("上回合提交内容（原始输入，仅为记录）：");
             Quote(text, advance.RawInput);
             if (advance.OriginPlaceName is { } origin) { text.AppendLine($"出发位置：{origin}。"); }

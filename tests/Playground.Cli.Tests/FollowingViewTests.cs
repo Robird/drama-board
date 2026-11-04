@@ -35,7 +35,7 @@ public sealed class FollowingViewTests {
         var candidates = observation.Commands.Where(check => check.Command.Kind == PlaygroundCommandKind.Follow).ToArray();
         Assert.Equal(new[] { "b", "c" }, candidates.Select(check => check.Command.TargetActorId).ToArray());
         Assert.Equal(2, candidates.Select(check => PlaygroundViewSnapshot.CommandId(check.Command)).Distinct().Count());
-        string text = PlaygroundUpdateRenderer.RenderCommandStates(snapshot.Values);
+        string text = PlaygroundUpdateRenderer.RenderCommandStates(snapshot.Values, snapshot.Commands);
         Assert.Contains("follow b", text);
         Assert.Contains("follow c", text);
         Assert.Contains("dismiss-followers", text);

@@ -10,6 +10,7 @@
 - [PlaygroundObservedEvents](../../src/Playground/PlaygroundObservedEvents.cs) 在最终业务事实形成后，按明确的事实种类组装期间变化与直接效果；[校验器](../../src/Playground/PlaygroundObservedEventValidation.cs) 核对归属、顺序、可见性及业务端点。恢复应用已记录材料，不重新规划效果。
 - [PlaygroundOperationResults](../../src/Playground/PlaygroundOperationResults.cs) 为正常提交及冷开补录提供同一语义答复。没有变化的成功操作仍有答复，不伪造经历事件。
 - [PlaygroundViewSnapshot](../../src/Playground.Cli/PlaygroundViewSnapshot.cs)、[PlaygroundViewUpdate](../../src/Playground.Cli/PlaygroundViewUpdate.cs) 是 CLI 内部的非持久呈现模型，由已提交 Context Item 和相邻保存观察生成；来源提交身份只属于独立诊断。尚未创建通用游戏库或最近 n 回合历史窗口。
+- 命令状态的临时键编码完整命令值，snapshot／update 保留结构化命令映射；update 同时保留上次目录中已退出的条目。显示复用 `PlaygroundCommandParser.Format`，按 Kind 压缩 wait 范围及选择提示，不反解析键，不改变领域 Effects 或持久 Schema。
 - [PlayPresentationSession](../../src/Playground.Cli/PlayPresentationSession.cs) 串行拥有输出与临时消费游标；[IPlayLayout](../../src/Playground.Cli/IPlayLayout.cs) 提供全量与更新入口，最新状态预览与完整 Context 渲染分开。下文接口草图表达职责，具体签名以源码为准。
 
 ## 1. 本片交付与边界
