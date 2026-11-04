@@ -109,169 +109,11 @@ public sealed class LlmCharacterControllerTests {
         Assert.All(client.Requests, request => {
             Assert.Empty(request.TailMessages);
             Assert.Equal("fixture-model", request.ModelId);
-            Assert.Equal(CompletionToolChoiceKind.Auto, request.PromptPrefix.OutputContract.ToolChoice.Kind);
-            Assert.False(request.PromptPrefix.OutputContract.AllowParallelToolCalls);
-            var definition = Assert.Single(request.PromptPrefix.OutputContract.Tools);
-            Assert.Equal("act", definition.Name);
-            var schema = Assert.IsType<ToolSchema.Object>(definition.InputSchema);
-            Assert.False(schema.AdditionalProperties);
-            Assert.True(Assert.Single(schema.Properties).IsRequired);
         });
         Assert.Equal(new[] { LlmControllerTraceKind.Request, LlmControllerTraceKind.Response,
             LlmControllerTraceKind.Request, LlmControllerTraceKind.Response }, traces.Select(t => t.Kind));
         Assert.Equal(new CommandSubmission(first.ToolCallId, first.RawInput, first.OperationRecordId), traces[1].Operation);
         Assert.All(traces, trace => Assert.Equal("a", trace.CharacterId));
-    }
-
-    public static IEnumerable<object[]> InvalidResponses() {
-        yield return [new ActionMessage([new ActionBlock.Text("wait 1")]), "expected-single-call"];
-        yield return [new ActionMessage([new ActionBlock.ToolCall(Call("1", "wait 1")), new ActionBlock.ToolCall(Call("2", "wait 2"))]), "expected-single-call"];
-        yield return [new ActionMessage([new ActionBlock.ToolCall(new("other", "1", "{}"))]), "unexpected-tool"];
-        yield return [new ActionMessage([new ActionBlock.ToolCall(Call(" ", "wait 1"))]), "missing-call-id"];
-        yield return [new ActionMessage([new ActionBlock.ToolCall(RawToolCall.FromText("act", "1", "wait 1"))]), "expected-json-input"];
-        foreach (string input in new[] { "{}", "{\"command\":1}", "{\"command\":null}", "{\"Command\":\"wait 1\"}",
-            "{\"command\":\"wait 1\",\"extra\":1}", "{\"command\":\"wait 1\",\"command\":\"wait 2\"}" }) {
-            yield return [new ActionMessage([new ActionBlock.ToolCall(new("act", "1", input))]), "expected-command-string"];
-        }
-        yield return [new ActionMessage([new ActionBlock.ToolCall(new("act", "1", "[]"))]), "expected-object"];
-        yield return [new ActionMessage([new ActionBlock.ToolCall(new("act", "1", "{\"command\":"))]), "invalid-json"];
-    }
-
-    [Theory, MemberData(nameof(InvalidResponses))]
-    public async Task Invalid_completed_envelopes_are_bounded_and_never_produce_operations(ActionMessage message, string code) {
-        var result = new CompletionResult(message, Descriptor);
-        var client = new FakeClient(result, result, result);
-        var traces = new List<LlmControllerTrace>();
-        var controller = new LlmCharacterController(client, "fixture-model", _ => "material", trace: traces.Add);
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
-            await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal("protocol-failure-limit", exception.ReasonCode);
-        Assert.Equal(3, exception.CallsMade);
-        Assert.All(traces.Where(t => t.Kind == LlmControllerTraceKind.Response), trace => {
-            Assert.Equal(code, trace.ProtocolError);
-            Assert.Null(trace.Operation);
-        });
-        Assert.All(client.Requests.Skip(1), request => {
-            Assert.Empty(request.TailMessages);
-            Assert.Equal(2, request.PromptPrefix.SharedContextMessages.Length);
-            Assert.Contains(code, Assert.IsType<ObservationMessage>(request.PromptPrefix.SharedContextMessages[1]).Content);
-        });
-    }
-
-    [Fact]
-    public async Task Protocol_correction_can_succeed_and_failure_count_restarts_after_valid_operation() {
-        var invalid = new CompletionResult(new ActionMessage([]), Descriptor);
-        var client = new FakeClient(invalid, Result(Call("1", "wait 1")), invalid, Result(Call("2", "wait 1")));
-        var controller = new LlmCharacterController(client, "fixture-model", _ => "material",
-            new() { MaxConsecutiveProtocolFailures = 2 });
-        PlaygroundDecisionContext context = await Context();
-        Assert.Equal("1", (await controller.ChooseCommandAsync(context, default)).ToolCallId);
-        Assert.Equal("2", (await controller.ChooseCommandAsync(context, default)).ToolCallId);
-        Assert.Equal(4, controller.CallsMade);
-    }
-
-    [Theory]
-    [InlineData(CompletionTerminationKind.Incomplete, "completion-incomplete")]
-    [InlineData(CompletionTerminationKind.Failed, "completion-failed")]
-    public async Task Non_completed_results_with_full_looking_tool_calls_pause_without_execution_or_retry(CompletionTerminationKind kind, string code) {
-        var client = new FakeClient(Result(Call("id", "wait 1")) with { Termination = new(kind) });
-        var controller = new LlmCharacterController(client, "model", _ => "material");
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
-            await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal(code, exception.ReasonCode);
-        Assert.Single(client.Requests);
-    }
-
-    [Fact]
-    public async Task Total_budget_covers_game_legal_or_illegal_commands_without_automatic_substitute() {
-        var client = new FakeClient(Result(Call("1", "nonsense")), Result(Call("2", "")));
-        var controller = new LlmCharacterController(client, "model", _ => "material", new() { MaxCalls = 2 });
-        PlaygroundDecisionContext context = await Context();
-        Assert.Equal("nonsense", (await controller.ChooseCommandAsync(context, default)).RawInput);
-        Assert.Equal("", (await controller.ChooseCommandAsync(context, default)).RawInput);
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () => await controller.ChooseCommandAsync(context, default));
-        Assert.Equal("call-budget-exhausted", exception.ReasonCode);
-        Assert.Equal(2, client.Requests.Count);
-    }
-
-    [Fact]
-    public async Task Oversized_material_is_not_truncated_or_sent() {
-        var client = new FakeClient();
-        var controller = new LlmCharacterController(client, "model", _ => "12345", new() { MaxContextCharacters = 4 });
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
-            await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal("context-too-large", exception.ReasonCode);
-        Assert.Empty(client.Requests);
-        Assert.Equal(0, controller.CallsMade);
-    }
-
-    [Theory]
-    [InlineData("12345", "command-too-large")]
-    [InlineData("large-json", "arguments-too-large")]
-    public async Task Oversized_tool_input_is_rejected(string value, string error) {
-        RawToolCall call = value == "large-json" ? new("act", "id", new string(' ', 1100)) : Call("id", value);
-        var traces = new List<LlmControllerTrace>();
-        var controller = new LlmCharacterController(new FakeClient(Result(call)), "model", _ => "material",
-            new() { MaxCommandCharacters = 4, MaxConsecutiveProtocolFailures = 1 }, traces.Add);
-        await Assert.ThrowsAsync<LlmControllerPausedException>(async () => await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal(error, traces.Last().ProtocolError);
-    }
-
-    [Fact]
-    public async Task Transport_interruption_pauses_without_retry_and_keeps_structured_cause() {
-        var failure = new CompletionFailureException(new(CompletionFailureKind.Transport), "private provider diagnostic");
-        var client = new FakeClient { OnCall = (_, _) => throw failure };
-        var controller = new LlmCharacterController(client, "model", _ => "material");
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
-            await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal("transport-failure", exception.ReasonCode);
-        Assert.DoesNotContain("private", exception.Message);
-        Assert.Same(failure, exception.InnerException);
-        Assert.Single(client.Requests);
-    }
-
-    [Fact]
-    public async Task Local_request_rejection_is_a_host_pause_with_safe_diagnostics() {
-        var rejection = new CompletionRequestRejectedException(CompletionTermination.Failed("unsupported-contract"));
-        var client = new FakeClient { OnCall = (_, _) => throw rejection };
-        var traces = new List<LlmControllerTrace>();
-        var controller = new LlmCharacterController(client, "model", _ => "material", trace: traces.Add);
-        var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
-            await controller.ChooseCommandAsync(await Context(), default));
-        Assert.Equal("request-rejected", exception.ReasonCode);
-        Assert.Same(rejection, exception.InnerException);
-        Assert.Equal("request-rejected", traces.Last().ProtocolError);
-        Assert.Single(client.Requests);
-    }
-
-    [Fact]
-    public async Task Catching_protocol_pause_does_not_refund_consecutive_failure_budget() {
-        var client = new FakeClient(new CompletionResult(new ActionMessage([]), Descriptor));
-        var controller = new LlmCharacterController(client, "model", _ => "material",
-            new() { MaxConsecutiveProtocolFailures = 1 });
-        PlaygroundDecisionContext context = await Context();
-        for (int i = 0; i < 2; i++) {
-            var exception = await Assert.ThrowsAsync<LlmControllerPausedException>(async () => await controller.ChooseCommandAsync(context, default));
-            Assert.Equal("protocol-failure-limit", exception.ReasonCode);
-        }
-        Assert.Single(client.Requests);
-    }
-
-    [Fact]
-    public async Task Cancellation_retains_token_and_pre_cancelled_calls_spend_no_budget() {
-        using var source = new CancellationTokenSource();
-        var client = new FakeClient { OnCall = (_, token) => {
-            source.Cancel();
-            token.ThrowIfCancellationRequested();
-            throw new InvalidOperationException();
-        } };
-        var controller = new LlmCharacterController(client, "model", _ => "material");
-        PlaygroundDecisionContext context = await Context();
-        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await controller.ChooseCommandAsync(context, source.Token));
-        Assert.Equal(source.Token, exception.CancellationToken);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await controller.ChooseCommandAsync(context, source.Token));
-        Assert.Single(client.Requests);
-        Assert.Equal(1, controller.CallsMade);
     }
 
     [Fact]
@@ -350,10 +192,9 @@ public sealed class LlmCharacterControllerTests {
         public string Name => "fixture";
         public string ApiSpecId => "fixture-api";
         public List<CompletionRequest> Requests { get; } = [];
-        public Func<CompletionRequest, CancellationToken, CompletionResult>? OnCall { get; init; }
         public Task<CompletionResult> StreamCompletionAsync(CompletionRequest request, CompletionStreamObserver? observer, CancellationToken cancellationToken = default) {
             Requests.Add(request);
-            return Task.FromResult(OnCall?.Invoke(request, cancellationToken) ?? _results.Dequeue());
+            return Task.FromResult(_results.Dequeue());
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Atelia.Completion.Abstractions;
+using static DramaBoard.CharacterControl.Completion.Tests.LlmDecisionTestSupport;
 
 namespace DramaBoard.CharacterControl.Completion.Tests;
 
@@ -27,12 +28,16 @@ public sealed class LlmDecisionLoopTests {
         Assert.Equal("town-call", town.ToolCallId);
         Assert.NotEqual(town.OperationRecordId, forest.OperationRecordId);
         Assert.Same(feedback.Message, client.Requests[1].TailMessages[0]);
-        string feedbackReceipt = Assert.Single(Assert.IsType<ToolResultsMessage>(
-            client.Requests[1].TailMessages[1]).Results).GetFlattenedText();
+        var receipt = Assert.Single(Assert.IsType<ToolResultsMessage>(
+            client.Requests[1].TailMessages[1]).Results);
+        Assert.Equal("feedback-call", receipt.ToolCallId);
+        Assert.Equal("feedback", receipt.ToolName);
+        Assert.Equal(ToolExecutionStatus.Success, receipt.Status);
+        string feedbackReceipt = receipt.GetFlattenedText();
         Assert.Contains("saved-feedback", feedbackReceipt);
         Assert.Contains("反馈已保存", feedbackReceipt);
-        using (JsonDocument receipt = JsonDocument.Parse(feedbackReceipt)) {
-            Assert.True(receipt.RootElement.GetProperty("saved").GetBoolean());
+        using (JsonDocument receiptDocument = JsonDocument.Parse(feedbackReceipt)) {
+            Assert.True(receiptDocument.RootElement.GetProperty("saved").GetBoolean());
         }
         Assert.Empty(client.Requests[2].TailMessages);
         Assert.Contains("forest survival policy", client.Requests[2].PromptPrefix.SystemPrompt);
@@ -40,9 +45,18 @@ public sealed class LlmDecisionLoopTests {
         Assert.Equal("private forest notebook", Assert.IsType<ObservationMessage>(
             Assert.Single(client.Requests[2].PromptPrefix.SharedContextMessages)).Content);
         Assert.Equal("resident-a", Assert.Single(submissions).CharacterId);
-        Assert.Equal(4, Assert.Single(submissions).ContextSequence);
+        var submission = Assert.Single(submissions);
+        Assert.Equal(4, submission.ContextSequence);
+        Assert.Equal(1, submission.CallNumber);
+        Assert.Equal("feedback-call", submission.ToolCallId);
+        Assert.Equal("missing price; cannot compare", submission.Text);
+        Assert.Equal(traces[0].RequestId, submission.RequestId);
+        Assert.Equal("saved-feedback", Assert.Single(traces, trace => trace.Kind == LlmControllerTraceKind.Feedback).FeedbackId);
+        Assert.Equal(2, client.Requests[0].PromptPrefix.OutputContract.Tools.Length);
         Assert.Equal(3, traces.Where(trace => trace.Kind == LlmControllerTraceKind.Request)
             .Select(trace => trace.RequestId).Distinct().Count());
+        var requests = traces.Where(trace => trace.Kind == LlmControllerTraceKind.Request).ToArray();
+        Assert.All(traces, trace => Assert.Equal(requests.Single(request => request.CallNumber == trace.CallNumber).RequestId, trace.RequestId));
         Assert.Equal(forest, traces[^1].Operation);
         Assert.Equal("survivor-b", traces[^1].CharacterId);
         Assert.Equal(3, loop.CallsMade);
@@ -50,10 +64,10 @@ public sealed class LlmDecisionLoopTests {
 
     [Fact]
     public async Task Shared_call_budget_spans_characters_without_creating_a_substitute_operation() {
-        var client = new Client(Act("one", "work"), Act("two", "rest"));
+        var client = new Client(Act("one", "nonsense"), Act("two", ""));
         var loop = new LlmDecisionLoop(client, "model", new() { MaxCalls = 2 });
-        await loop.ChooseCommandAsync(new("one", 1, "material one", "policy one"), default);
-        await loop.ChooseCommandAsync(new("two", 1, "material two", "policy two"), default);
+        Assert.Equal("nonsense", (await loop.ChooseCommandAsync(new("one", 1, "material one", "policy one"), default)).RawInput);
+        Assert.Equal("", (await loop.ChooseCommandAsync(new("two", 1, "material two", "policy two"), default)).RawInput);
         var error = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
             await loop.ChooseCommandAsync(new("three", 1, "material three", "policy three"), default));
         Assert.Equal("call-budget-exhausted", error.ReasonCode);
@@ -102,7 +116,7 @@ public sealed class LlmDecisionLoopTests {
             resolutions++;
             return ValueTask.FromResult(new LlmDecisionBinding(client, actor, actor));
         }, new() { MaxConsecutiveProtocolFailures = 1 });
-        foreach (string actor in new[] { "a", "b" }) {
+        foreach (string actor in new[] { "a", "a", "b" }) {
             var paused = await Assert.ThrowsAsync<LlmControllerPausedException>(async () =>
                 await loop.ChooseCommandAsync(new(actor, 1, "material", "policy"), default));
             Assert.Equal("protocol-failure-limit", paused.ReasonCode);
@@ -116,7 +130,7 @@ public sealed class LlmDecisionLoopTests {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource<CompletionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new Client {
-            Invoke = _ => { entered.SetResult(); return release.Task; }
+            Invoke = (_, _) => { entered.SetResult(); return release.Task; }
         };
         var loop = new LlmDecisionLoop(client, "model");
         Task<CommandSubmission> active = loop.ChooseCommandAsync(new("a", 1, "a", "a"), default).AsTask();
@@ -127,22 +141,5 @@ public sealed class LlmDecisionLoopTests {
             Assert.Single(client.Requests);
         } finally { release.SetResult(Act("one", "wait")); }
         Assert.Equal("wait", (await active).RawInput);
-    }
-
-    private static CompletionResult Act(string id, string command) => Result(new("act", id, JsonSerializer.Serialize(new { command })));
-    private static CompletionResult Result(RawToolCall call) =>
-        new(new ActionMessage([new ActionBlock.ToolCall(call)]), new("fixture", "fixture-api", "fixture-model"));
-
-    private sealed class Client(params CompletionResult[] results) : ICompletionClient {
-        private readonly Queue<CompletionResult> _results = new(results);
-        public string Name => "fixture";
-        public string ApiSpecId => "fixture-api";
-        public List<CompletionRequest> Requests { get; } = [];
-        public Func<CompletionRequest, Task<CompletionResult>>? Invoke { get; init; }
-        public Task<CompletionResult> StreamCompletionAsync(CompletionRequest request, CompletionStreamObserver? observer,
-            CancellationToken cancellationToken = default) {
-            Requests.Add(request);
-            return Invoke?.Invoke(request) ?? Task.FromResult(_results.Dequeue());
-        }
     }
 }

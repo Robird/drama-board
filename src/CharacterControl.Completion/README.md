@@ -24,4 +24,6 @@ Connection configuration and credentials are host data, never character memory o
 
 `LlmControllerPausedException` reports a pause, not a fallback action. Successful feedback persistence precedes the tool receipt; neither feedback nor a model proposal proves that a game effect committed. Native Tail survives only the current service, not cold reopen or another character's decision. There is no generic persistent model session or automatic retry of an external call.
 
-Pure cross-game protocol and connection tests live in [CharacterControl.Completion.Tests](../../tests/CharacterControl.Completion.Tests). Game-specific adapter tests live in [Playground.Completion.Tests](../../tests/Playground.Completion.Tests).
+Pure cross-game protocol and connection tests live in [CharacterControl.Completion.Tests](../../tests/CharacterControl.Completion.Tests). They use `LlmDecisionInput` directly to cover tool validation, context and argument limits, shared budgets, transport pauses, cancellation, and feedback persistence/receipt/Tail boundaries. Local HTTP handlers also exercise the public Responses client for native reasoning replay and original tool-call identity without external calls.
+
+Game-specific tests live in [Playground.Completion.Tests](../../tests/Playground.Completion.Tests): actual Kernel openings and role bindings, capability guidance, frozen Context rendering, renderer concurrency protection, feedback-sink identity, and submission conversion/commit. Generic protocol failures do not require constructing a game world.

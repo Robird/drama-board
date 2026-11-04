@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 9 轮，TD-01（含水合结构附记）至 TD-08 均已处理；TD-09、TD-10 继续保留。
-- **当前结果**：TD-07 已独立复核并验收；两布局仅展示等级、冻结每份周期与已有活动期限，采集公式只保留在领域。真实 Gather／冷开、冻结材料消费、CLI 回归与实际 Console 均通过，没有未验收的本轮代码改动。
-- **下一步**：处理 TD-09 共享协议测试归属，再收敛 TD-10 文档导航；不以已处理八项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 10 轮，TD-01（含水合结构附记）至 TD-09 均已处理；TD-10 继续保留。
+- **当前结果**：TD-09 已独立复核并验收；纯协议、反馈和本地 Responses wire 测试可直接运行共享项目，游戏身份／材料／提交仍由适配集成测试保护。逐用例数据与断言映射、独立依赖边界及两项目回归已核验，没有未验收的本轮代码改动。
+- **下一步**：处理 TD-10 活跃文档导航，再对本 Goal 的十项整改及三项观察的裁决做最终复核；不以已处理九项缩小 Goal。
 - **保留事项**：三项性能观察保持测量或实际消费者触发后裁决；既有玩法、记忆和框架延期边界不变。
 
 ## 范围与结论
@@ -28,7 +28,7 @@
 | TD-06 | P2 | 工程 | 已接线：真实 CLI 进程 smoke 进入双平台 CI | 本机双平台／故障验证、actionlint；未跑远端 CI |
 | TD-07 | P3 | CLI／领域 | 已处理：两布局共用冻结采集周期 | 实际 Gather／冷开、材料消费及真实 Console |
 | TD-08 | P3 | 反馈日志 | 已处理：反馈首错保留与流所有权 | 双失败注入、退役／重开及真实反馈进程 |
-| TD-09 | P3 | Completion | 共享协议主要回归仍依赖游戏测试夹具 | 实现／测试归属复核 |
+| TD-09 | P3 | Completion | 已处理：共享协议回归归入共享测试项目 | 原数据／断言映射、独立项目运行与逐类 TRX |
 | TD-10 | P3 | 文档入口 | 活跃导航仍把已实现能力和旧参数写成旧状态 | 与当前代码、主入口交叉核对 |
 
 ## TD-01：时间边界与水合结构检查（已处理）
@@ -107,12 +107,13 @@
 - **真实进程证据**：[反馈 smoke manifest](../../artifacts/td08-feedback-smoke-verified/manifest.json) 的 10 个 CLI 进程全部 exit 0、无 stderr／超时，覆盖保存、冷开、只读查询／导出源哈希不变、独立反馈分叉、父分支未来不泄漏与 ephemeral 反馈，模型请求和 raw 文件均为 0。首次 smoke 在 8 个正常退出进程后因旧缺口文案断言失败；[脚本](../../scripts/Smoke-Feedback.ps1#L94)仅将该断言对齐当前“无可证明的宿主日志切点；祖先宿主材料未继承”合同，再从新目录完整重跑。不是弱化缺口或未来隔离检查；artifacts 不随 Git 保存。
 - **验收范围**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Cli.Tests 共 **782 通过、0 失败、0 跳过**。subagent 参与方案讨论，另一个 subagent 独立静态复核代码、故障证据及 smoke 断言修正，无阻断意见；主线程核验集成 diff、运行输出和产物。未运行完整 solution、真实模型或 Linux，不将故障注入等同特定磁盘／电源故障。
 
-## TD-09：共享协议回归仍主要放在游戏适配测试中
+## TD-09：共享协议回归仍主要放在游戏适配测试中（已处理）
 
-- **证据**：协议、超大材料／参数、transport 分类、反馈 Tail 和保存失败由共享 [LlmDecisionLoop.cs:71](../../src/CharacterControl.Completion/LlmDecisionLoop.cs#L71) 实现；主要回归却仍在 [LlmCharacterControllerTests.cs:141](../../tests/Playground.Completion.Tests/LlmCharacterControllerTests.cs#L141) 与 [LlmFeedbackTests.cs:94](../../tests/Playground.Completion.Tests/LlmFeedbackTests.cs#L94)，并构造 Playground Context。[共享测试](../../tests/CharacterControl.Completion.Tests/LlmDecisionLoopTests.cs) 主要覆盖跨角色、预算、绑定和串行合同。
-- **维护成本**：独立修改／复用共享库时，主要协议验证仍需游戏夹具知识；[共享 README:27](../../src/CharacterControl.Completion/README.md#L27) 的测试归属描述也不完全符合实际。
-- **边界**：这些行为已有测试，完整 solution 会执行；本项不等于协议缺少测试或当前循环错误。
-- **最小建议与验收**：把纯 loop 合同迁到共享测试，直接使用 LlmDecisionInput 和伪客户端；游戏能力指引、冻结 Context、引擎提交留在适配集成测试。分别验证两个测试项目，保持覆盖而不复制两份用例。
+- **原问题**：共享 loop 的协议、容量、transport 和反馈回归曾借用 Playground Context 夹具，独立修改或复用共享库仍需游戏知识。迁移前两项目本轮实跑为共享 13、适配 51 项全部通过；这是归属与维护债，不是新增协议故障。
+- **归属与实现**：共享 [protocol](../../tests/CharacterControl.Completion.Tests/LlmDecisionProtocolTests.cs)、[feedback](../../tests/CharacterControl.Completion.Tests/LlmDecisionFeedbackTests.cs) 直接构造 `LlmDecisionInput`；窄 [support](../../tests/CharacterControl.Completion.Tests/LlmDecisionTestSupport.cs) 仅共用输入、结果和先记录 Request 再调用的假客户端。共享 [wire](../../tests/CharacterControl.Completion.Tests/LlmDecisionResponsesWireTests.cs) 保留真实 public Responses client＋本地 HttpMessageHandler／SSE，覆盖单 act、无 terminal 中断和 opaque reasoning／原始 call ID／反馈 receipt 重放，无外部调用。测试源码与项目没有 Playground／Kernel 引用，共享项目构建图也不包含它们。
+- **合并而非复制**：[loop 测试](../../tests/CharacterControl.Completion.Tests/LlmDecisionLoopTests.cs) 吸收两项重复预算回归，保留 nonsense／空字符串原文、不返还已耗额度、同角色重复暂停后跨角色不重新 resolve。原反馈测试的完整 Tail／receipt／RequestId 断言并入已有跨游戏用例；单 act schema 断言移入共享关闭反馈用例。13 组非法响应、2＋2 组协议 InlineData、7＋3＋2 组反馈 InlineData 均逐项保持；协议失败断言新增实际 Request／Response trace 数各为 3，消除旧 filtered Assert.All 的空集合通过可能。
+- **游戏边界**：[适配 controller](../../tests/Playground.Completion.Tests/LlmCharacterControllerTests.cs) 保留真实 Kernel／角色绑定、能力指引、新 renderer 材料与操作转换、领域拒绝／提交和 renderer 串行／预取消保护；[适配 feedback](../../tests/Playground.Completion.Tests/LlmFeedbackTests.cs) 只验证实际角色／ContextSequence 转交、冻结 Context 不变和返回游戏操作。删除迁走的旧 wire 文件与无消费者的假客户端 OnCall；产品代码、项目引用、包依赖及持久化合同均未改。[共享 README](../../src/CharacterControl.Completion/README.md#operational-boundaries) 同步测试职责。
+- **验收范围**：独立 subagent 对照固定 `423b75c` 的原数据集、断言及合并映射静态复核无阻断意见；主线程复核集成源码并在尾修后以 Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 串行验证两项目，共享 **56**（协议 22、反馈 18、wire 3、loop 5、原连接 8）＋适配 **6**，共 **62 通过、0 失败、0 跳过**。总案例从 64 减少到 62 仅因两项重复预算合同合并；[TRX 逐类核对](../../artifacts/td09-test-results/verification.json) 与源码分组一致。artifacts 不随 Git 保存。未运行完整 solution、新 CLI 进程 smoke、真实模型或 Linux；本轮不改运行时行为。
 
 ## TD-10：活跃文档导航保留过时能力状态
 
@@ -175,4 +176,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；分别收敛共享测试归属和文档导航，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；收敛文档导航后做范围内最终复核，不因此启动整仓重构。
