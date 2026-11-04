@@ -120,7 +120,7 @@ public sealed class HillsideTradeTests {
         Assert.Empty(refreshed.Items[^1].Experiences);
         Assert.Equal(before.GetCharacter("b").DecisionGeneration, kernel.World.GetCharacter("b").DecisionGeneration);
         Assert.Empty(opening.ObservedEvents);
-        Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public sealed class HillsideTradeTests {
         for (int step = 0; step < 80; step++) {
             PlaygroundWorld before = kernel.World;
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
-            Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
             PlaygroundFact fact = Assert.Single(kernel.LastCompletion!.Event.Facts);
             if (fact.Kind == kind) { return (before, fact); }
         }

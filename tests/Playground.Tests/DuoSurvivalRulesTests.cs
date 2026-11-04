@@ -167,7 +167,7 @@ public sealed class DuoSurvivalRulesTests {
     private static async Task Commit(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
     }
 }

@@ -37,7 +37,7 @@ internal static class PlaygroundTestSupport {
         do {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
             if (kernel.World.Expedition is null) { AssertPredictions(kernel.World); }
-            else { Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString()); }
+            else { AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts); }
         } while (kernel.LastCompletion!.Event.Facts.All(fact => fact.Kind == PlaygroundEventKind.DecisionContextOpened));
     }
     public static async Task Until(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel, Func<PlaygroundWorld, bool> stop) {
@@ -72,6 +72,15 @@ internal static class PlaygroundTestSupport {
     public static long Recalculations(PlaygroundMetrics metrics, string owner) =>
         metrics.RecalculationsByOwner.TryGetValue(owner, out long count) ? count : 0;
 
+    public static void AssertForecasts(PlaygroundForecasts expected, PlaygroundForecasts actual) {
+        Assert.Equal(expected.Predictions.Select(prediction =>
+            (prediction.OwnerId, prediction.Kind, prediction.TargetId, prediction.Due.Ticks, prediction.Generation, prediction.Sequence)).ToArray(),
+            actual.Predictions.Select(prediction =>
+                (prediction.OwnerId, prediction.Kind, prediction.TargetId, prediction.Due.Ticks, prediction.Generation, prediction.Sequence)).ToArray());
+        Assert.Equal(expected.Bindings.Select(binding => (binding.OwnerId, binding.EventKind, binding.TargetId)).ToArray(),
+            actual.Bindings.Select(binding => (binding.OwnerId, binding.EventKind, binding.TargetId)).ToArray());
+    }
+
     // Independent discovery/formula oracle: do not call Owners/Predict or consult routing.
     public static void AssertPredictions(PlaygroundWorld world) {
         List<(string Owner, PlaygroundPredictionKind Kind, string Target, long Due, long Generation, int Sequence)> expected = [
@@ -103,7 +112,7 @@ internal static class PlaygroundTestSupport {
         Assert.Equal(expected.OrderBy(p => p.Owner, StringComparer.Ordinal), world.Forecasts.Predictions
             .Select(p => (p.OwnerId, p.Kind, p.TargetId, p.Due.Ticks, p.Generation, p.Sequence))
             .OrderBy(p => p.OwnerId, StringComparer.Ordinal));
-        Assert.Equal(PlaygroundEngine.Rebuild(world.Business, world.Time).Forecasts.ToString(), world.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(world.Business, world.Time).Forecasts, world.Forecasts);
     }
 
     internal sealed class StubCharacterController(Func<PlaygroundObservation, string, PlaygroundCommand> choose) : IPlaygroundCharacterController {

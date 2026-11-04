@@ -96,7 +96,7 @@ public sealed class HillsideFoundationTests {
         for (int step = 0; step < 300; step++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(72)));
             Assert.True(kernel.World.GetCharacter("a").IsActive);
-            Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
             string? place = PlaygroundActions.CurrentPlace(kernel.World, "a");
             leftHome |= place != "home";
             if (leftHome && place == "home") { return; }

@@ -73,7 +73,7 @@ public sealed class WeatherTests {
             Assert.NotNull(PlaygroundActions.Check(initial, "a", PlaygroundCommand.Go("not-visible")));
             Assert.NotNull(PlaygroundActions.Check(initial, "a", PlaygroundCommand.Use("not-owned")));
             Assert.NotNull(PlaygroundEnvironmentRules.Observe(initial, "a"));
-            Assert.Equal(initial.Forecasts.ToString(), PlaygroundEngine.Rebuild(initial.Business, initial.Time).Forecasts.ToString());
+            AssertForecasts(initial.Forecasts, PlaygroundEngine.Rebuild(initial.Business, initial.Time).Forecasts);
             string projection = JsonSerializer.Serialize(observation);
             Assert.DoesNotContain("\"Seed\"", projection, StringComparison.Ordinal);
             Assert.DoesNotContain("\"Sequence\"", projection, StringComparison.Ordinal);
@@ -326,7 +326,7 @@ public sealed class WeatherTests {
         await StepWorldEvent(kernel);
         kernel.World.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
         Assert.Same(kernel.World.Expedition!.Spatial, kernel.World.Spatial.Business);
     }

@@ -210,7 +210,7 @@ public sealed class DuoRecoveryTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
         kernel.World.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
     }
 

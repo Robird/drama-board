@@ -251,7 +251,7 @@ public sealed class HillsideTradeAcceptanceTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(72)));
         kernel.World.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
         PlaygroundTradeOffer[] active = kernel.World.Business.Economy!.Trades.Offers.Where(offer => offer.Status == PlaygroundTradeStatus.Active).ToArray();
         if (active.Length == 0) {

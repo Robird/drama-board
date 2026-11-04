@@ -123,7 +123,7 @@ public sealed class DecisionOutcomeSummaryTests {
 
     private static async Task Advance(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
-        Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
     }
     private sealed class ForbiddenController : IPlaygroundCharacterController {
         public ValueTask<PlaygroundControllerOperation> ChooseCommandAsync(PlaygroundDecisionContext context, CancellationToken cancellationToken) =>

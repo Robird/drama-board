@@ -122,7 +122,7 @@ public sealed class FollowingObservationTests {
             PlaygroundWorld before = kernel.World;
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(24)));
             kernel.World.Validate();
-            Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
             PlaygroundFact fact = Assert.Single(kernel.LastCompletion!.Event.Facts);
             if (fact.Kind == kind) { return (before, fact); }
         }

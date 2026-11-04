@@ -85,7 +85,7 @@ public sealed class GoalRecoveryTests {
             Assert.Equal(PlaygroundOperationDisposition.Succeeded, commit.Disposition);
             Assert.Equal(MaterialSnapshot(initial.GetCharacter("a").Backpack), MaterialSnapshot(recovery.World.GetCharacter("a").Backpack));
             Assert.Equal(initial.Time, recovery.World.Time);
-            Assert.Equal(PlaygroundEngine.Rebuild(recovery.World.Business, recovery.World.Time).Forecasts.ToString(), recovery.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(recovery.World.Business, recovery.World.Time).Forecasts, recovery.World.Forecasts);
             recoveredMaterial = MaterialSnapshot(recovery.World.Business.InteractionStates["a"]);
         }
 

@@ -81,7 +81,11 @@ public sealed class MultiplayerEdgeTests {
             Assert.NotEqual(oldActivity.Id, restarted.Id);
             Assert.Equal(oldActivity.Due, restarted.Due);
             PlaygroundPrediction replacement = Assert.Single(kernel.World.Forecasts.Predictions, p => p.OwnerId == stale.OwnerId);
-            Assert.NotEqual(stale.ToString(), replacement.ToString());
+            Assert.Equal(oldActivity.Id, stale.Generation);
+            Assert.Equal(restarted.Id, replacement.Generation);
+            Assert.NotEqual(stale.Generation, replacement.Generation);
+            Assert.Equal(oldActivity.CycleIndex, stale.Sequence);
+            Assert.Equal(restarted.CycleIndex, replacement.Sequence);
             PlaygroundWorld corrupted = new(kernel.World.Business, kernel.World.Forecasts.WithPredictions(
                 kernel.World.Forecasts.Predictions.Where(p => p.OwnerId != stale.OwnerId).Append(stale)));
             Assert.Throws<InvalidOperationException>(() => PlaygroundEngine.Validate(corrupted, corrupted.Time));

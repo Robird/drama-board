@@ -183,7 +183,7 @@ public sealed class CommunicationRecoveryTests {
         SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> actual) {
         Assert.Equal(expected.Cursor, actual.Cursor);
         Assert.Equal(MaterialSnapshot(expected.World.Business), MaterialSnapshot(actual.World.Business));
-        Assert.Equal(expected.World.Forecasts.ToString(), actual.World.Forecasts.ToString());
+        AssertForecasts(expected.World.Forecasts, actual.World.Forecasts);
         Assert.Equal(expected.World.Spatial!.Contacts, actual.World.Spatial!.Contacts);
     }
 
@@ -191,7 +191,7 @@ public sealed class CommunicationRecoveryTests {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(24)));
         kernel.World.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
     }
 

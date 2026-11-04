@@ -368,7 +368,7 @@ public sealed class SurvivalTests {
         await StepWorldEvent(kernel);
         kernel.World.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, kernel.World.Spatial!.Contacts);
         Assert.Same(kernel.World.Expedition!.Spatial, kernel.World.Spatial.Business);
     }

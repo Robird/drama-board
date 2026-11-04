@@ -193,7 +193,7 @@ public sealed class GymBranchTests {
         KernelCursor blocked = reason == "budget"
             ? new(new WorldVersion(memory.Version.LineageId, PlaygroundEngine.MaximumTransitionsPerModelTime), initial.Cursor.GenesisTime,
                 new LogicalInstant(memory.CurrentModelTime, PlaygroundEngine.MaximumTransitionsPerModelTime - 1), memory.Cursor.LastCauseKey)
-            : new(memory.Version, initial.Cursor.GenesisTime, memory.Cursor.LastInstant, new CandidateKey(request.ToString()));
+            : new(memory.Version, initial.Cursor.GenesisTime, memory.Cursor.LastInstant, request.CreateCandidateKey());
         string branch, state;
         using (var history = PlaygroundDurableHistory.Create(store.StorePath, memory.World, blocked)) {
             branch = PlaygroundDurableHistory.FormatBranchId(history.BranchId);

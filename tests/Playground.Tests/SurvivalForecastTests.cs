@@ -77,7 +77,7 @@ public sealed class SurvivalForecastTests {
         PlaygroundSurvival body = world.GetCharacter("a").Survival!;
         PlaygroundEnvironment weather = world.Expedition!.Environment!;
         string before = world.DescribeState();
-        string forecasts = world.Forecasts.ToString();
+        PlaygroundForecasts forecasts = world.Forecasts;
         for (int repeat = 0; repeat < 3; repeat++) {
             PlaygroundObservation observation = PlaygroundDecisionContext.Observe(world, "a");
             Assert.Null(observation.CheckDisplayed(PlaygroundCommand.Wait(6)));
@@ -90,7 +90,7 @@ public sealed class SurvivalForecastTests {
         Assert.Equal(0, weather.Sequence);
         Assert.Null(weather.LastAt);
         Assert.Equal(before, world.DescribeState());
-        Assert.Equal(forecasts, world.Forecasts.ToString());
+        AssertForecasts(forecasts, world.Forecasts);
     }
 
     [Fact]

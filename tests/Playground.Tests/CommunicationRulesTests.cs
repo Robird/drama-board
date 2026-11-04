@@ -226,7 +226,7 @@ public sealed class CommunicationRulesTests {
         for (int step = 0; step < 100; step++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
             PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-            Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+            AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
             Assert.Equal(rebuilt.Spatial!.Contacts.ToString(), kernel.World.Spatial!.Contacts.ToString());
             if (kernel.LastCompletion!.Event.Facts.Any(stop)) { return; }
         }

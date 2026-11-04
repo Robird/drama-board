@@ -61,7 +61,7 @@ public sealed class DecisionContinuityTests {
         Assert.Equal(before.LastResult, edited.LastResult);
         Assert.Equal(sequence, Context(kernel.World).ContextSequence);
         Assert.Equal("抵达后找庇护", Interaction(kernel.World).DraftHandoff);
-        Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
 
         await Advance(kernel);
         PlaygroundCharacter resumed = kernel.World.GetCharacter("a");
@@ -98,7 +98,7 @@ public sealed class DecisionContinuityTests {
         Assert.Single(kernel.LastCompletion!.Event.Facts);
     private static async Task Advance(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) {
         Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(240)));
-        Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
     }
     private static async Task UntilIncoming(SimulationKernel<PlaygroundWorld, PlaygroundPrediction, PlaygroundFact> kernel) {
         for (int count = 0; count < 50; count++) {

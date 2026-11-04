@@ -5,9 +5,9 @@
 
 ## 维护状态
 
-- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 4 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同。
-- **当前结果**：TD-05 已独立复核并完成验收；人物／模型／操作 payload 共用严格读取，缺字段、非法 null 和身份错配在写前与重读时拒绝。CLI 全套、真实进程 Human／冷开／只读导出通过，没有未验收的本轮代码改动。
-- **下一步**：优先 TD-04 预测身份与相等合同，然后 TD-06 真实进程回归进入 CI；其余已确认债务继续保留，不以已完成四项缩小 Goal。
+- **执行方式**：Goal 持续维护，无固定轮数上限；每轮选择一项、与 subagent 讨论、实施、独立验收后再推进。当前完成 5 轮：TD-01 时间边界主项、TD-02 内容 ID 合同、TD-03 命令身份与标签、TD-05 宿主日志写读合同、TD-04 预测身份与相等合同。
+- **当前结果**：TD-04 已独立复核并完成验收；稳定候选键、六字段身份比较和预测诊断分开，轨迹断言采用独立字段投影。领域／CLI／Completion 适配全套通过，没有未验收的本轮代码改动。
+- **下一步**：优先 TD-06 真实进程回归进入 CI；其余已确认债务继续保留，不以已完成五项缩小 Goal。
 - **保留事项**：TD-01 附记的 hydrate 结构检查与时间合同独立，仍未处理；在主项之后单独收敛，不以主项完成抹去。三项性能观察保持测量后裁决。
 
 ## 范围与结论
@@ -60,12 +60,13 @@
 - **真实进程证据**：[临时 manifest](../../artifacts/td03-command-label-probe/manifest.json) 记录两个成功退出且 stderr 为空的 CLI 进程。自定义 `herb|rare` 存档初始背包满，`use item.food` 释放容量后，[delta:208](../../artifacts/td03-command-label-probe/live-delta.stdout.txt#L208) 正确显示采集条件满足；退出并冷开后，[保存 Context:171](../../artifacts/td03-command-label-probe/cold-context.stdout.txt#L171) 重新生成相同标签。模型记录为 0；这是自动 Console 输入验证，不代替独立真人体验验收。artifacts 不随 Git 保存。
 - **验收范围**：Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 下，Playground.Cli.Tests 全部 707 通过、0 失败、0 跳过；独立 diff 复核无阻断意见。领域 Effects 不生成且不接受 command 类别，持久观察保存命令对象，重放重新生成 UI 键；因此不改领域 Schema／修订／协议，不做旧临时键迁移。未运行完整 solution、真实模型或 Linux。当前投影合同同步到[切片 A 当前接点](../design/incremental-ui-slice-a.md#当前实现接点)。
 
-## TD-04：预测 ToString 承担调度身份和语义相等
+## TD-04：预测 ToString 承担调度身份和语义相等（已处理）
 
-- **证据**：[PlaygroundForecasts.cs:26](../../src/Playground/PlaygroundForecasts.cs#L26) 定义 ToString；[PlaygroundEngine.cs:120](../../src/Playground/PlaygroundEngine.cs#L120) 用它构造／比对 CandidateKey、检查候选是否存在及有效；[PredictionMaintenance.cs:43](../../src/Playground/PlaygroundPredictionMaintenance.cs#L43) 还用字符串相等决定是否复用旧预测。
-- **维护成本**：诊断文案改动同时改变身份和缓存行为；新增身份字段依赖维护者同步隐式编码。当前字段尚未证明遗漏或碰撞，不能写成已有仲裁错误。
-- **最小建议与验收**：显式提供候选键编码和类型化比较，ToString 只用于阅读；重构保持现有键字节与仲裁行为。验证全部身份字段参与比较，诊断显示改动不影响键或实例复用。
-- **已有防线**：[PlaygroundMaintenanceBoundaryTests.cs:78](../../tests/Playground.Tests/PlaygroundMaintenanceBoundaryTests.cs#L78) 检查等值重算复用；部分轨迹 oracle 自身也通过 Forecasts.ToString 比较，尚不能独立约束诊断／身份边界。
+- **原问题**：同一预测诊断字符串曾同时作为候选键与更新／执行／有效性检查的相等依据，改文案会影响调度和缓存。没有证明合法预测已有键碰撞或仲裁错误，本项针对维护耦合。
+- **实现**：[PlaygroundPrediction](../../src/Playground/PlaygroundForecasts.cs#L26) 保留 sealed class，`CreateCandidateKey()` 独立编码，`HasSameIdentity()` 按 OwnerId、Kind、TargetId、Due、Generation、Sequence 比较；内部 SpatialCandidate 只提供计划委派材料，不扩大为整对象相等。[Engine](../../src/Playground/PlaygroundEngine.cs#L120) 与 [Maintenance](../../src/Playground/PlaygroundPredictionMaintenance.cs#L43) 的所有预测身份路径均使用显式方法，ToString 已实际改成可读诊断格式。
+- **字节与范围**：保留原六字段顺序、冒号、枚举名和 UTF-8；数字改为 invariant。合法业务预测的 Due／Generation／Sequence 非负，新编码保持其既有键字节；公开构造的负样本采用新 invariant 规范，不承诺保留旧自定义文化负号。应用 due／kind 筛选、角色轮转及 Kernel 的 due＋HMAC rank＋canonical bytes 仲裁保持；组合 Spatial owner 继续使用核心 CandidateKey 固定十六进制表示，核心编码、领域 Schema 和修订未改。`DescribeState()` 仍是可含诊断文本的状态描述。
+- **独立断言**：[AssertForecasts](../../tests/Playground.Tests/PlaygroundTestSupport.cs#L75) 直接比较六字段预测 tuple 与三字段 Binding tuple，保留序列顺序，不调用生产身份方法或 ToString；迁移 25 个既有测试文件，保留独立业务公式 oracle、真实冷开和 E-only 恢复检查。Gym 重复 cause 夹具使用显式键；cancel／restart 的 stale 断言直接核对活动 ID、代次和序号。
+- **回归与验收**：[新增 17 项](../../tests/Playground.Tests/PredictionIdentityTests.cs) 覆盖全部 11 个 Kind 的固定 UTF-8 样本、六字段及大小写差异、null／不同实例／内部载荷、文化独立性、控制器调用前拒绝错误键与陈旧身份、真实 seed=0 同刻 beta→alpha 顺序和组合 Spatial 的实际到达。定向 36 项通过后，以 Release、`--no-restore -m:1 -p:DurableGraphSchemaHistoryMode=Verify` 串行运行 Playground.Tests 654、Playground.Cli.Tests 774、Playground.Completion.Tests 51，共 **1,479 通过、0 失败、0 跳过**；独立静态复核无阻断意见，主线程核验集成 diff、键字节与运行结果。术语接点同步到[词表](../glossary.md#时间预测与调度)。未运行完整 solution、真实模型或 Linux。
 
 ## TD-05：宿主日志可写合同与可读合同不对称（已处理）
 
@@ -165,4 +166,4 @@ pwsh -NoProfile -File scripts/Smoke-PlaygroundHome.ps1 -OutputDirectory artifact
 
 实际 Home 进程 smoke 成功，证据在 [manifest.json](../../artifacts/technical-debt-audit-20261104-home-smoke/manifest.json)。测试通过说明既有覆盖仍成立，不否定新探针暴露的合同缺口。artifacts 是本机临时证据，不随 Git 保存；目录清理后以正文复现说明和源码位置为准。
 
-余项顺序以顶部维护状态为准；TD-04 的身份编码、TD-06 的进程回归可按现有工程边界分别收敛。其余低优先级项目随对应改动处理，不因此启动整仓重构。
+余项顺序以顶部维护状态为准；TD-06 的进程回归可按现有工程边界收敛。其余低优先级项目随对应改动处理，不因此启动整仓重构。

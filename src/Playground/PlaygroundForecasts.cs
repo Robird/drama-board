@@ -11,7 +11,7 @@ public sealed class PlaygroundBinding(string ownerId, PlaygroundEventKind eventK
     public override string ToString() => $"{OwnerId}:{EventKind}:{TargetId}";
 }
 
-/// <summary>Runtime candidate identity; activity sequence is independent of attention revisions.</summary>
+/// <summary>Runtime prediction; activity sequence is independent of attention revisions.</summary>
 public sealed class PlaygroundPrediction {
     public string OwnerId { get; }
     public PlaygroundPredictionKind Kind { get; }
@@ -23,7 +23,15 @@ public sealed class PlaygroundPrediction {
     public PlaygroundPrediction(string ownerId, PlaygroundPredictionKind kind, string targetId, ModelTime due, long generation, int sequence = 0) {
         OwnerId = ownerId; Kind = kind; TargetId = targetId; Due = due; Generation = generation; Sequence = sequence;
     }
-    public override string ToString() => $"{OwnerId}:{Kind}:{TargetId}:{Due.Ticks}:{Generation}:{Sequence}";
+    /// <summary>Encodes the scheduling identity independently of diagnostic formatting.</summary>
+    public CandidateKey CreateCandidateKey() => new(FormattableString.Invariant($"{OwnerId}:{Kind}:{TargetId}:{Due.Ticks}:{Generation}:{Sequence}"));
+
+    /// <summary>Compares the six scheduling fields, excluding the composed spatial candidate's planning data.</summary>
+    public bool HasSameIdentity(PlaygroundPrediction? other) => other is not null &&
+        OwnerId == other.OwnerId && Kind == other.Kind && TargetId == other.TargetId && Due == other.Due &&
+        Generation == other.Generation && Sequence == other.Sequence;
+
+    public override string ToString() => $"{Kind} for {TargetId} at {Due} (owner={OwnerId}, generation={Generation}, sequence={Sequence})";
 }
 
 /// <summary>Immutable derived predictions and fixed coarse routing. No part of this object is durable.</summary>

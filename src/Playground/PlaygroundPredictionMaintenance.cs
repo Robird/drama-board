@@ -40,7 +40,7 @@ internal static class PlaygroundPredictionMaintenance {
             metrics?.Count(owner, $"complete@{completionTime}");
             PlaygroundPrediction? next = Predict(business, owner);
             if (next is null) { predictions.Remove(owner); }
-            else if (!predictions.TryGetValue(owner, out PlaygroundPrediction? old) || old.ToString() != next.ToString()) { predictions[owner] = next; }
+            else if (!predictions.TryGetValue(owner, out PlaygroundPrediction? old) || !old.HasSameIdentity(next)) { predictions[owner] = next; }
         }
         bool changed = predictions.Count != previous.Predictions.Count ||
             previous.Predictions.Any(p => !predictions.TryGetValue(p.OwnerId, out PlaygroundPrediction? current) || !ReferenceEquals(p, current));
@@ -129,7 +129,7 @@ internal static class PlaygroundPredictionMaintenance {
     private static bool ValidIdentity(PlaygroundBusinessState business, PlaygroundPrediction prediction) {
         switch (prediction.Kind) {
             case PlaygroundPredictionKind.TradesExpire:
-                return prediction.OwnerId == "trades" && Predict(business, "trades")?.ToString() == prediction.ToString();
+                return prediction.OwnerId == "trades" && prediction.HasSameIdentity(Predict(business, "trades"));
             case PlaygroundPredictionKind.MarketRefresh:
                 return business.Economy is { } economy && prediction.OwnerId == "market" && prediction.TargetId == "world" &&
                     prediction.Due == economy.Market.NextRefresh && prediction.Generation == economy.Market.Cycle && prediction.Sequence == 0;
@@ -152,7 +152,7 @@ internal static class PlaygroundPredictionMaintenance {
                 return deciding is not null && PlaygroundActions.NeedsDecision(business, deciding.Id) && prediction.OwnerId == $"actor:{deciding.Id}:attention" &&
                     prediction.Generation == deciding.DecisionGeneration && prediction.Sequence == 0 && prediction.Due == business.Time;
             case PlaygroundPredictionKind.SurvivalFatal or PlaygroundPredictionKind.SurvivalWarning:
-                return Predict(business, prediction.OwnerId)?.ToString() == prediction.ToString();
+                return prediction.HasSameIdentity(Predict(business, prediction.OwnerId));
             case PlaygroundPredictionKind.Weather:
                 return prediction.OwnerId == "environment" && prediction.TargetId == "world" && prediction.Sequence == 0 &&
                     business.Expedition?.Environment is { } environment && prediction.Generation == environment.Sequence && prediction.Due == environment.NextDue;

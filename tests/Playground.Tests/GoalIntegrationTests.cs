@@ -282,7 +282,7 @@ public sealed class GoalIntegrationTests {
         for (int i = 0; i < 100; i++) {
             Assert.Equal(StepStatus.Committed, await kernel.StepAsync(Hour(48)));
             PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time);
-            Assert.Equal(rebuilt.Forecasts.ToString(), kernel.World.Forecasts.ToString());
+            AssertForecasts(rebuilt.Forecasts, kernel.World.Forecasts);
             if (kernel.LastCompletion!.Event.Facts.Any(stop)) { return; }
         }
         Assert.Fail("Expected goal operation boundary was not reached.");

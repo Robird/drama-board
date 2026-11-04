@@ -23,7 +23,7 @@ internal static class FollowingTestSupport {
     public static void ValidateRuntime(PlaygroundWorld world) {
         world.Validate();
         PlaygroundWorld rebuilt = PlaygroundEngine.Rebuild(world.Business, world.Time);
-        Assert.Equal(rebuilt.Forecasts.ToString(), world.Forecasts.ToString());
+        AssertForecasts(rebuilt.Forecasts, world.Forecasts);
         Assert.Equal(rebuilt.Spatial!.Contacts, world.Spatial!.Contacts);
     }
 
@@ -53,7 +53,7 @@ internal static class FollowingTestSupport {
     public static void AssertSameWorld(PlaygroundWorld expected, PlaygroundWorld actual) {
         Assert.Equal(expected.Time, actual.Time);
         Assert.Equal(MaterialSnapshot(expected.Business), MaterialSnapshot(actual.Business));
-        Assert.Equal(expected.Forecasts.ToString(), actual.Forecasts.ToString());
+        AssertForecasts(expected.Forecasts, actual.Forecasts);
         Assert.Equal(expected.Spatial!.Contacts, actual.Spatial!.Contacts);
         ValidateRuntime(actual);
     }

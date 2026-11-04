@@ -78,7 +78,7 @@ public sealed class DecisionContinuityTrajectoryTests {
             Assert.Equal(incremental.Cursor, full.Cursor);
             Assert.Equal(MaterialSnapshot(incremental.World.Business.InteractionStates["a"]), MaterialSnapshot(full.World.Business.InteractionStates["a"]));
             Assert.Equal(incrementalSource.Calls, fullSource.Calls);
-            Assert.Equal(PlaygroundEngine.Rebuild(incremental.World.Business, incremental.World.Time).Forecasts.ToString(), incremental.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(incremental.World.Business, incremental.World.Time).Forecasts, incremental.World.Forecasts);
             PlaygroundFact fact = Assert.Single(incremental.LastCompletion.Event.Facts);
             Assert.Equal(previousCalls + (fact.ToolCallId is null ? 0 : 1), incrementalSource.Calls);
             if (fact.ToolCallId is not null) {

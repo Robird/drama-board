@@ -138,8 +138,7 @@ public sealed class DecisionContinuityPersistenceTests {
                     Assert.Equal(StepStatus.Exhausted, await recovered.StepAsync(Hour(240)));
                     break;
             }
-            Assert.Equal(PlaygroundEngine.Rebuild(recovered.World.Business, recovered.World.Time).Forecasts.ToString(),
-                recovered.World.Forecasts.ToString());
+            AssertForecasts(PlaygroundEngine.Rebuild(recovered.World.Business, recovered.World.Time).Forecasts, recovered.World.Forecasts);
             Assert.False(recovered.RecoverPending());
         }
 

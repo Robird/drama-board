@@ -117,15 +117,15 @@ public static class PlaygroundEngine {
             PlaygroundPrediction prediction = winner.Data;
             metrics.PredictionChecks++;
             if (prediction.SpatialCandidate is { } spatialCandidate) {
-                if (world.Spatial is null || winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != spatialCandidate.Due.ModelTime) {
+                if (world.Spatial is null || winner.Key != prediction.CreateCandidateKey() || winner.Due.ModelTime != spatialCandidate.Due.ModelTime) {
                     throw new InvalidOperationException("Invalid composed spatial candidate.");
                 }
                 TransitionDraft<GraphSpatialFact> spatialDraft = await world.Definition.Runtime.OccurrenceRule.PlanSelectedAsync(world.Spatial, spatialCandidate, cancellationToken).ConfigureAwait(false);
                 return new([PlaygroundInteractionRules.Enrich(world, PlaygroundPlanning.Observe(world, PlaygroundSurvivalRules.Enrich(world,
                     PlaygroundPlanning.Arrive(world, prediction.Due, spatialDraft.Facts))))]);
             }
-            if (winner.Key != new CandidateKey(prediction.ToString()) || winner.Due.ModelTime != prediction.Due || prediction.Due < world.Time ||
-                !world.Forecasts.Predictions.Any(p => p.ToString() == prediction.ToString()) || PlaygroundPredictionMaintenance.Predict(world.Business, prediction.OwnerId)?.ToString() != prediction.ToString()) {
+            if (winner.Key != prediction.CreateCandidateKey() || winner.Due.ModelTime != prediction.Due || prediction.Due < world.Time ||
+                !world.Forecasts.Predictions.Any(p => p.HasSameIdentity(prediction)) || !prediction.HasSameIdentity(PlaygroundPredictionMaintenance.Predict(world.Business, prediction.OwnerId))) {
                 throw new InvalidOperationException("A stale or invalid prediction cannot execute.");
             }
             PlaygroundFact fact;
@@ -172,6 +172,6 @@ public static class PlaygroundEngine {
             return new([PlaygroundInteractionRules.Enrich(world, PlaygroundPlanning.Observe(world, PlaygroundSurvivalRules.Enrich(world, PlaygroundTradeRules.Enrich(world, PlaygroundEconomyRules.Enrich(world, fact)))), operation)]);
         }
         private static OccurrenceCandidate<PlaygroundPrediction> Candidate(PlaygroundPrediction prediction) =>
-            new(new CandidateKey(prediction.ToString()), new CandidateDue(prediction.Due), prediction);
+            new(prediction.CreateCandidateKey(), new CandidateDue(prediction.Due), prediction);
     }
 }

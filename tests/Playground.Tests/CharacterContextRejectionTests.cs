@@ -60,7 +60,7 @@ public sealed class CharacterContextRejectionTests {
         Assert.Empty(item.Experiences);
         Assert.Equal(1, item.OperationSequence);
         Assert.Equal(1, source.Calls);
-        Assert.Equal(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts.ToString(), kernel.World.Forecasts.ToString());
+        AssertForecasts(PlaygroundEngine.Rebuild(kernel.World.Business, kernel.World.Time).Forecasts, kernel.World.Forecasts);
     }
 
     [Fact]
